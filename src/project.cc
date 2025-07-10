@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -59,7 +60,7 @@ std::string normalize(const std::string& file_path, const fs::path& base_path) {
 }  // namespace
 
 Project::Project(const std::string& project_file) {
-  static xml::Validator validator(env::project_schema());
+  static xml::Validator validator = xml::Validator::from_memory(env::project_schema());
 
   if (fs::exists(project_file) == false) {
     SCRAM_THROW(IOError("The configuration file does not exist."))

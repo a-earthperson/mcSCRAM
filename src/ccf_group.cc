@@ -150,11 +150,13 @@ void CcfGroup::ApplyModel() {
   ExpressionMap probabilities = this->CalculateProbabilities();
   assert(probabilities.size() > 1);
 
-  // Generate CCF events.
-  for (auto& [level, prob] : probabilities) {
+for (const auto& level_prob_pair : probabilities) {
+    const auto& level = level_prob_pair.first;
+    const auto& prob = level_prob_pair.second;
+
     using Iterator = decltype(proxy_gates)::iterator;
-    auto combination_visitor = [this, prob](Iterator it_begin,
-                                            Iterator it_end) {
+    auto combination_visitor = [this, &level, &prob](Iterator it_begin, Iterator it_end)
+    {
       std::vector<Gate*> combination;
       for (auto it = it_begin; it != it_end; ++it)
         combination.push_back(it->first);

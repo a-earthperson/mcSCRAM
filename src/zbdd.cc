@@ -330,8 +330,8 @@ Zbdd::VertexPtr Zbdd::ConvertGraph(
   if (auto it_entry = ext::find(*gates, gate.index())) {
     std::pair<VertexPtr, int>& entry = it_entry->second;
     result = entry.first;
-    assert(entry.second < gate.parents().size());
-    if (++entry.second == gate.parents().size())
+    assert(entry.second < static_cast<int>(gate.parents().size()));
+    if (++entry.second == static_cast<int>(gate.parents().size()))
       gates->erase(it_entry);
     return result;
   }

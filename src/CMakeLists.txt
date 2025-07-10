@@ -1,10 +1,3 @@
-# vim: set foldmarker={{{,}}} foldlevel=0 foldmethod=marker:
-################### File Configurations ####################### {{{
-execute_process(COMMAND git describe --tags OUTPUT_VARIABLE SCRAM_GIT_REVISION
-  OUTPUT_STRIP_TRAILING_WHITESPACE)
-configure_file(version.h.in version.h @ONLY)
-################### End File Configurations ################### }}}
-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 ####################### Begin SCRAM core lib config ##################### {{{
@@ -16,6 +9,11 @@ set(SCRAM_CORE_SRC
   settings.cc
   xml.cc
   project.cc
+  # Generated embedded schema files
+  "${PROJECT_BINARY_DIR}/generated/input_schema.cpp"
+  "${PROJECT_BINARY_DIR}/generated/project_schema.cpp"
+  "${PROJECT_BINARY_DIR}/generated/report_schema.cpp"
+  "${PROJECT_BINARY_DIR}/generated/gui_schema.cpp"
   element.cc
   expression.cc
   parameter.cc
@@ -55,24 +53,23 @@ add_library(scram SHARED ${SCRAM_CORE_SRC})
 target_link_libraries(scram ${LIBS})
 target_compile_options(scram PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
 
-install(
-  TARGETS scram
-  LIBRARY DESTINATION lib/scram
-  ARCHIVE DESTINATION lib/scram/static
-  RUNTIME DESTINATION bin
-  COMPONENT scram
-  )
-####################### End SCRAM core lib config ##################### }}}
+# Disable unused variable warnings for generated schema files
+set_source_files_properties(
+  "${PROJECT_BINARY_DIR}/generated/input_schema.cpp"
+  "${PROJECT_BINARY_DIR}/generated/project_schema.cpp"
+  "${PROJECT_BINARY_DIR}/generated/report_schema.cpp"
+  "${PROJECT_BINARY_DIR}/generated/gui_schema.cpp"
+  PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable"
+)
 
-####################### Begin SCRAM CLI config ##################### {{{
-add_executable(scram-cli scram.cc)
-set_target_properties(scram-cli PROPERTIES OUTPUT_NAME scram)
-target_link_libraries(scram-cli scram ${Boost_LIBRARIES})
-target_compile_options(scram-cli PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
+# Define a variable for the installation base directory
+set(INSTALL_BASE_DIR "$ENV{HOME}/.local")
 
+# Install the library to ~/.local/lib/scram
 install(
-  TARGETS scram-cli
-  RUNTIME DESTINATION bin
-  COMPONENT scram
-  )
-####################### End SCRAM CLI config ##################### }}}
+        TARGETS scram
+        LIBRARY DESTINATION ${INSTALL_BASE_DIR}/lib/scram
+        ARCHIVE DESTINATION ${INSTALL_BASE_DIR}/lib/scram/static
+        RUNTIME DESTINATION ${INSTALL_BASE_DIR}/bin
+        COMPONENT scram
+)

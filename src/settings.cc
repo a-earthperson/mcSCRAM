@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +32,10 @@ namespace scram::core {
 Settings& Settings::algorithm(Algorithm value) noexcept {
   algorithm_ = value;
   switch (algorithm_) {
+    case Algorithm::kDirect:
+      approximation(Approximation::kMonteCarlo);
+      skip_products(true);
+      break;
     case Algorithm::kBdd:
       approximation(Approximation::kNone);
       break;
@@ -55,9 +60,9 @@ Settings& Settings::algorithm(std::string_view value) {
 }
 
 Settings& Settings::approximation(Approximation value) {
-  if (value != Approximation::kNone && prime_implicants_)
-    SCRAM_THROW(SettingsError(
-        "Prime implicants require no quantitative approximation."));
+    if (prime_implicants_ && (value == Approximation::kMcub || value == Approximation::kRareEvent)) {
+        SCRAM_THROW(SettingsError("Prime implicants cannot be compute when using mcub or rare-event approximations."));
+    }
   approximation_ = value;
   return *this;
 }
@@ -74,13 +79,9 @@ Settings& Settings::approximation(std::string_view value) {
 }
 
 Settings& Settings::prime_implicants(bool flag) {
-  if (flag && algorithm_ != Algorithm::kBdd)
-    SCRAM_THROW(
-        SettingsError("Prime implicants can only be calculated with BDD"));
-
+  if (flag && (algorithm_ == Algorithm::kMocus || algorithm_ == Algorithm::kZbdd))
+    SCRAM_THROW(SettingsError("Prime implicants can only be calculated with BDD or PDAG"));
   prime_implicants_ = flag;
-  if (prime_implicants_)
-    approximation(Approximation::kNone);
   return *this;
 }
 

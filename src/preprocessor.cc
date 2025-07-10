@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -126,6 +127,54 @@ void TopologicalOrder(Pdag* graph) noexcept {
   topological_order(topological_order, graph->root().get(), 0);
 }
 
+void LayeredTopologicalOrder(Pdag* graph) noexcept {
+    std::unordered_map<Node*, int> depths;
+
+    std::function<int(Node*)> compute_depth = [&](Node* node) -> int {
+        // Memoization check.
+        auto it = depths.find(node);
+        if (it != depths.end()) {
+            return it->second;
+        }
+
+        // Leaf node case.
+        if (dynamic_cast<Variable*>(node) || dynamic_cast<Constant*>(node)) {
+            node->order(0);
+            depths[node] = 0;
+            return 0;
+        }
+
+        // Gate node case.
+        Gate* gate = dynamic_cast<Gate*>(node);
+        assert(gate && "Node is neither a Variable, Constant, nor a Gate.");
+
+        int max_child_depth = -1;
+
+        // Compute depths of Variable arguments.
+        for (const Gate::Arg<Variable>& arg_pair : gate->args<Variable>()) {
+            Node* child = arg_pair.second.get();
+            int child_depth = compute_depth(child);
+            max_child_depth = std::max(max_child_depth, child_depth);
+        }
+
+        // Compute depths of Gate arguments.
+        for (const Gate::Arg<Gate>& arg_pair : gate->args<Gate>()) {
+            Node* child = arg_pair.second.get();
+            int child_depth = compute_depth(child);
+            max_child_depth = std::max(max_child_depth, child_depth);
+        }
+
+        // Assign depth and order to the gate.
+        int depth = max_child_depth + 1;
+        gate->order(depth);
+        depths[gate] = depth;
+        return depth;
+    };
+
+    graph->Clear<Pdag::kOrder>();
+    compute_depth(graph->root().get());
+}
+
 void MarkCoherence(Pdag* graph) noexcept {
   auto mark_coherence = [](auto& self, const GatePtr& gate) {
     if (gate->mark())
@@ -175,7 +224,8 @@ void Preprocessor::operator()() noexcept {
 }
 
 void Preprocessor::Run() noexcept {
-  pdag::Transform(graph_, [this](Pdag*) { RunPhaseOne(); },
+  TIMER(DEBUG2, "Preprocessor:: Running Transform Phases I, II, and III...");
+  pdag::Transform(graph_, [this](Pdag*) { RunPhaseOne(NormalizationLevel::partial); },
                   [this](Pdag*) { RunPhaseTwo(); },
                   [this](Pdag*) {
                     if (!graph_->normal())
@@ -291,7 +341,7 @@ class TestGateStructure {
         break;
       case kAtleast:
         assert(gate.min_number() > 1 && "K/N has wrong K!");
-        assert(gate.args().size() > gate.min_number() && "K/N has wrong N!");
+        assert(static_cast<int>(gate.args().size()) > gate.min_number() && "K/N has wrong N!");
         break;
       default:
         assert(gate.args().size() > 1 && "Missing arguments!");
@@ -317,19 +367,21 @@ class TestGateStructure {
   assert(TestGateStructure()(*graph_->root()));                            \
   assert(TestGateMarks()(*graph_->root(), graph_->root()->mark()))
 
-void Preprocessor::RunPhaseOne() noexcept {
-  TIMER(DEBUG2, "Preprocessing Phase I");
-  graph_->Log();
-  if (graph_->HasNullGates()) {
-    TIMER(DEBUG3, "Removing NULL gates");
-    graph_->RemoveNullGates();
-    if (graph_->IsTrivial())
-      return;
-  }
-  SANITY_ASSERT;
-  if (!graph_->coherent()) {
-    NormalizeGates(/*full=*/false);
-  }
+void Preprocessor::RunPhaseOne(const NormalizationLevel &normalization_level = NormalizationLevel::partial) noexcept {
+    TIMER(DEBUG2, "Preprocessing Phase I");
+    graph_->Log();
+    if (graph_->HasNullGates()) {
+        TIMER(DEBUG3, "Removing NULL gates");
+        graph_->RemoveNullGates();
+        if (graph_->IsTrivial())
+            return;
+    }
+    SANITY_ASSERT;
+    if (normalization_level > NormalizationLevel::none) {
+        if (!graph_->coherent()) {
+            NormalizeGates(normalization_level);
+        }
+    }
 }
 
 void Preprocessor::RunPhaseTwo() noexcept {
@@ -365,7 +417,7 @@ void Preprocessor::RunPhaseThree() noexcept {
   SANITY_ASSERT;
   graph_->Log();
   assert(!graph_->normal());
-  NormalizeGates(/*full=*/true);
+  NormalizeGates(NormalizationLevel::full);
   graph_->normal(true);
 
   if (graph_->IsTrivial())
@@ -477,12 +529,12 @@ bool IsSubgraphWithinGraph(const GatePtr& root, int enter_time,
 
 }  // namespace
 
-void Preprocessor::NormalizeGates(bool full) noexcept {
-  TIMER(DEBUG3, (full ? "Full normalization" : "Partial normalization"));
+void Preprocessor::NormalizeGates(const NormalizationLevel &normalization_level) noexcept {
+  TIMER(DEBUG3, normalization_level == NormalizationLevel::full ? "Full normalization" : "Partial normalization");
   assert(!graph_->HasNullGates());
-  if (full)
-    pdag::TopologicalOrder(graph_);  // K/N gates need order.
-
+  if (normalization_level == NormalizationLevel::full) {
+      pdag::TopologicalOrder(graph_);  // K/N gates need order.
+  }
   const GatePtr& root_gate = graph_->root();
   Connective type = root_gate->type();
   switch (type) {  // Handle special case for the root gate.
@@ -518,16 +570,19 @@ void Preprocessor::NotifyParentsOfNegativeGates(const GatePtr& gate) noexcept {
   }
 }
 
-void Preprocessor::NormalizeGate(const GatePtr& gate, bool full) noexcept {
+void Preprocessor::NormalizeGate(const GatePtr& gate, const NormalizationLevel &normalization_level) noexcept {
   if (gate->mark())
     return;
   gate->mark(true);
   assert(!gate->constant());
   assert(!gate->args().empty());
+
   // Depth-first traversal before the arguments may get changed.
   for (const Gate::Arg<Gate>& arg : gate->args<Gate>()) {
-    NormalizeGate(arg.second, full);
+    NormalizeGate(arg.second, normalization_level);
   }
+
+  const bool full_normalization = normalization_level == NormalizationLevel::full;
 
   switch (gate->type()) {  // Negation is already processed.
     case kNor:
@@ -540,13 +595,13 @@ void Preprocessor::NormalizeGate(const GatePtr& gate, bool full) noexcept {
       break;
     case kXor:
       assert(gate->args().size() == 2);
-      if (full)
+      if (full_normalization)
         NormalizeXorGate(gate);
       break;
     case kAtleast:
       assert(gate->args().size() > 2);
       assert(gate->min_number() > 1);
-      if (full)
+      if (full_normalization)
         NormalizeAtleastGate(gate);
       break;
     case kNot:
@@ -588,7 +643,7 @@ void Preprocessor::NormalizeAtleastGate(const GatePtr& gate) noexcept {
 
   assert(min_number > 0);  // Min number can be 1 for special OR gates.
   assert(gate->args().size() > 1);
-  if (gate->args().size() == min_number) {
+  if (static_cast<int>(gate->args().size()) == min_number) {
     gate->type(kAnd);
     return;
   } else if (min_number == 1) {
@@ -729,6 +784,7 @@ bool Preprocessor::CoalesceGates(const GatePtr& gate, bool common) noexcept {
     if (!common && arg_gate->parents().size() > 1)
       continue;  // Check common.
 
+    // TODO:: @earthperson: add XOR, XNOR here
     if (arg_gate->type() == target_type)
       to_join.push_back(arg_gate);
   }
@@ -1102,16 +1158,32 @@ bool Preprocessor::MergeCommonArgs() noexcept {
   changed |= MergeCommonArgs(kAnd);
   LOG(DEBUG4) << "Finished merging for AND gates!";
 
+  LOG(DEBUG4) << "Merging common arguments for NAND gates...";
+  changed |= MergeCommonArgs(kNand);
+  LOG(DEBUG4) << "Finished merging for NAND gates!";
+
   LOG(DEBUG4) << "Merging common arguments for OR gates...";
   changed |= MergeCommonArgs(kOr);
   LOG(DEBUG4) << "Finished merging for OR gates!";
+
+  LOG(DEBUG4) << "Merging common arguments for NOR gates...";
+  changed |= MergeCommonArgs(kNor);
+  LOG(DEBUG4) << "Finished merging for NOR gates!";
+
+  LOG(DEBUG4) << "Merging common arguments for XOR gates...";
+  changed |= MergeCommonArgs(kXor);
+  LOG(DEBUG4) << "Finished merging for XOR gates!";
+
+  // LOG(DEBUG4) << "Merging common arguments for XNOR gates...";
+  // changed |= MergeCommonArgs(kXnor);
+  // LOG(DEBUG4) << "Finished merging for XNOR gates!";
 
   assert(!graph_->HasNullGates());
   return changed;
 }
 
 bool Preprocessor::MergeCommonArgs(Connective op) noexcept {
-  assert(op == kAnd || op == kOr);
+  assert(op == kAnd || op == kOr || op == kNand || op == kXor || op == kNor);
   graph_->Clear<Pdag::kCount>();
   graph_->Clear<Pdag::kGateMark>();
   // Gather and group gates
@@ -1323,8 +1395,8 @@ void Preprocessor::GroupCandidatesByArgs(
       super_group.pop_front();
 
       int prev_size = 0;  // To track the change in group arguments.
-      while (prev_size < group_args.size()) {
-        prev_size = group_args.size();
+      while (prev_size < static_cast<int>(group_args.size())) {
+        prev_size = static_cast<int>(group_args.size());
         for (auto it = super_group.begin(); it != super_group.end();) {
           const MergeTable::CommonArgs& member_args = (*it)->second;
           if (ext::intersects(member_args, group_args)) {
@@ -1347,17 +1419,17 @@ void Preprocessor::GroupCandidatesByArgs(
 void Preprocessor::GroupCommonParents(
     int num_common_args, const MergeTable::Candidates& group,
     MergeTable::Collection* parents) noexcept {
-  for (int i = 0; i < group.size(); ++i) {
+  for (int i = 0; i < static_cast<int>(group.size()); ++i) {
     const std::vector<int>& args_gate = group[i].second;
     assert(args_gate.size() > 1);
     int j = i;
-    for (++j; j < group.size(); ++j) {
+    for (++j; j < static_cast<int>(group.size()); ++j) {
       const std::vector<int>& args_comp = group[j].second;
       assert(args_comp.size() > 1);
 
       std::vector<int> common;
       boost::set_intersection(args_gate, args_comp, std::back_inserter(common));
-      if (common.size() < num_common_args)
+      if (static_cast<int>(common.size()) < num_common_args)
         continue;  // Doesn't satisfy.
       MergeTable::CommonParents& common_parents = (*parents)[common];
       common_parents.insert(group[i].first);
@@ -1538,6 +1610,10 @@ bool Preprocessor::DetectDistributivity(const GatePtr& gate) noexcept {
     case kNor:
       distr_type = kAnd;
       break;
+    case kXor:
+    //case kXnor:
+      distr_type = kXor;
+      break;
     default:
       distr_type = kNull;
   }
@@ -1661,10 +1737,12 @@ bool Preprocessor::FilterDistributiveArgs(
     switch (gate->type()) {
       case kAnd:
       case kOr:
+      case kXor:
         gate->type(kNull);
         break;
       case kNand:
       case kNor:
+      //case kXnor:
         gate->type(kNot);
         break;
       default:
@@ -1711,7 +1789,7 @@ void Preprocessor::TransformDistributiveArgs(
     MergeTable::MergeGroup* group) noexcept {
   if (group->empty())
     return;
-  assert(distr_type == kAnd || distr_type == kOr);
+  assert(distr_type == kAnd || distr_type == kOr || distr_type == kXor);
   const MergeTable::Option& base_option = group->front();
   const MergeTable::CommonArgs& args = base_option.first;
   const MergeTable::CommonParents& gates = base_option.second;
@@ -1722,6 +1800,7 @@ void Preprocessor::TransformDistributiveArgs(
     switch (gate->type()) {
       case kAnd:
       case kOr:
+      case kXor:
         gate->type(distr_type);
         break;
       case kNand:
@@ -1739,8 +1818,8 @@ void Preprocessor::TransformDistributiveArgs(
     gate->AddArg(new_parent);
   }
 
-  auto sub_parent =
-      std::make_shared<Gate>(distr_type == kAnd ? kOr : kAnd, graph_);
+  // TODO:: determine how to handle xor
+  auto sub_parent = std::make_shared<Gate>(distr_type == kAnd ? kOr : kAnd, graph_);
   sub_parent->mark(true);
   new_parent->AddArg(sub_parent);
 
@@ -1963,7 +2042,7 @@ void Preprocessor::DetermineGateState(const GatePtr& gate, int num_failure,
       gate->opti_value(compute_state(gate->args().size(), 1));
       break;
     case kAtleast:
-      assert(gate->args().size() > gate->min_number());
+      assert(static_cast<int>(gate->args().size()) > gate->min_number());
       gate->opti_value(compute_state(
           gate->min_number(), gate->args().size() - gate->min_number() + 1));
       break;
@@ -2367,8 +2446,8 @@ void Preprocessor::GatherNodes(const GatePtr& gate, std::vector<GatePtr>* gates,
 }
 
 void CustomPreprocessor<Bdd>::Run() noexcept {
-  Preprocessor::Run();
-  pdag::Transform(graph_, &pdag::MarkCoherence, &pdag::TopologicalOrder);
+    Preprocessor::Run();
+    pdag::Transform(graph_, &pdag::MarkCoherence, &pdag::TopologicalOrder);
 }
 
 void CustomPreprocessor<Zbdd>::Run() noexcept {
@@ -2406,6 +2485,44 @@ void CustomPreprocessor<Mocus>::InvertOrder() noexcept {
 
   for (auto var : variables)
     var->order(shift + var->order());
+}
+
+void CustomPreprocessor<DirectEval>::InvertOrder() noexcept {
+    std::vector<GatePtr> gates;
+    std::vector<VariablePtr> variables;
+    Preprocessor::GatherNodes(&gates, &variables);
+    auto middle = boost::partition(
+        gates, [](const GatePtr& gate) { return gate->module(); });
+
+    std::sort(middle, gates.end(), [](const GatePtr& lhs, const GatePtr& rhs) {
+      return lhs->order() < rhs->order();
+    });
+    for (auto it = middle; it != gates.end(); ++it)
+        (*it)->order(gates.end() - it);  // Inversion.
+
+    int shift = gates.end() - middle;
+    for (auto it = gates.begin(); it != middle; ++it)
+        (*it)->order(shift + (*it)->order());
+
+    for (auto var : variables)
+        var->order(shift + var->order());
+}
+
+void CustomPreprocessor<DirectEval>::Run() noexcept {
+    TIMER(DEBUG2, "CustomPreprocessor<DirectEval>:: Running Transform Phases I, II with no normalization, followed by layered toposort...");
+    // pdag::Transform(graph_,
+    //     [this](Pdag*) { RunPhaseOne(NormalizationLevel::full); },
+    //     [this](Pdag*) { RunPhaseTwo(); });
+    Preprocessor::Run();
+    pdag::Transform(graph_,
+                    [this](Pdag*) {
+                      if (!graph_->coherent())
+                          RunPhaseFour();
+                      },
+                      [this](Pdag*) { RunPhaseFive(); }, &pdag::MarkCoherence,
+                      &pdag::TopologicalOrder);
+    pdag::Transform(graph_, [this](Pdag*) { InvertOrder(); });
+    pdag::Transform(graph_, &pdag::LayeredTopologicalOrder);
 }
 
 }  // namespace scram::core

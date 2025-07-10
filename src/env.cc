@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,35 +20,35 @@
 /// The environment variables discovered at run-time.
 
 #include "env.h"
+#include "schemas.h"
 
-#include <boost/dll/runtime_symbol_info.hpp>
+#include <cstdlib>
+#include <stdexcept>
 
 namespace scram::env {
 
-const std::string& project_schema() {
-  static const std::string schema_path =
-      install_dir() + "/share/scram/project.rng";
-  return schema_path;
+const std::string_view& project_schema() {
+  return schemas::get_PROJECT_SCHEMA();
 }
 
-const std::string& input_schema() {
-  static const std::string schema_path =
-      install_dir() + "/share/scram/input.rng";
-  return schema_path;
+const std::string_view& input_schema() {
+  return schemas::get_INPUT_SCHEMA();
 }
 
-const std::string& report_schema() {
-  static const std::string schema_path =
-      install_dir() + "/share/scram/report.rng";
-  return schema_path;
+const std::string_view& report_schema() {
+  return schemas::get_REPORT_SCHEMA();
+}
+
+const std::string_view& gui_schema() {
+  return schemas::get_GUI_SCHEMA();
 }
 
 const std::string& install_dir() {
-  static const std::string install_path =
-      boost::dll::program_location()  // executable
-          .parent_path()  // bin
-          .parent_path()  // install
-          .generic_string();  // POSIX format.
+  static const char* home = std::getenv("HOME");
+  if (!home) {
+    throw std::runtime_error("Environment variable HOME is not set.");
+  }
+  static const std::string install_path = std::string(home) + "/.local";
   return install_path;
 }
 

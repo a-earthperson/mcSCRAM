@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,7 +29,7 @@ Document::Document(const std::string& file_path, Validator* validator)
     : doc_(nullptr, &xmlFreeDoc) {
   xmlResetLastError();
   doc_.reset(xmlReadFile(file_path.c_str(), nullptr, kParserOptions));
-  xmlErrorPtr xml_error = xmlGetLastError();
+  const xmlError* xml_error = xmlGetLastError();
   if (xml_error) {
     if (xml_error->domain == xmlErrorDomain::XML_FROM_IO) {
       SCRAM_THROW(IOError(xml_error->message))
@@ -54,7 +55,24 @@ Validator::Validator(const std::string& rng_file)
   if (!parser_ctxt)
     SCRAM_THROW(detail::GetError<LogicError>());
 
-  schema_.reset(xmlRelaxNGParse(parser_ctxt.get()));
+  initialize_schema(parser_ctxt.get());
+}
+
+Validator Validator::from_memory(const std::string_view& rng_content) {
+  Validator validator;
+  xmlResetLastError();
+  std::unique_ptr<xmlRelaxNGParserCtxt, decltype(&xmlRelaxNGFreeParserCtxt)>
+      parser_ctxt(xmlRelaxNGNewMemParserCtxt(rng_content.data(), rng_content.size()),
+                  &xmlRelaxNGFreeParserCtxt);
+  if (!parser_ctxt)
+    SCRAM_THROW(detail::GetError<LogicError>());
+
+  validator.initialize_schema(parser_ctxt.get());
+  return validator;
+}
+
+void Validator::initialize_schema(xmlRelaxNGParserCtxt* parser_ctxt) {
+  schema_.reset(xmlRelaxNGParse(parser_ctxt));
   if (!schema_)
     SCRAM_THROW(detail::GetError<ParseError>());
 

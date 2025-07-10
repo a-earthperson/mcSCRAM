@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +34,6 @@
 #include <boost/range/algorithm.hpp>
 
 #include "event.h"
-#include "ext/algorithm.h"
 #include "logger.h"
 #include "model.h"
 #include "substitution.h"
@@ -363,14 +363,14 @@ void Gate::ProcessAtleastGateDuplicateArg(int index) noexcept {
   // This is a very special handling of K/N duplicates.
   // @(k, [x, x, y_i]) = x & @(k-2, [y_i]) | @(k, [y_i])
   assert(min_number_ > 1);
-  assert(args_.size() >= min_number_);
+  assert(static_cast<int>(args_.size()) >= min_number_);
   if (args_.size() == 2) {  // @(2, [x, x, z]) = x
     assert(min_number_ == 2);
     this->EraseArg(index);
     this->type(kNull);
     return;
   }
-  if (min_number_ == args_.size()) {  // @(k, [y_i]) is NULL set.
+  if (min_number_ == static_cast<int>(args_.size())) {  // @(k, [y_i]) is NULL set.
     assert(min_number_ > 2 && "Corrupted number of gate arguments.");
     GatePtr clone_two = this->Clone();
     clone_two->min_number(min_number_ - 2);  // @(k-2, [y_i])
@@ -407,8 +407,8 @@ void Gate::ProcessAtleastGateDuplicateArg(int index) noexcept {
     assert(and_gate->args().size() == 2);
     assert(this->args_.size() == 2);
   }
-  assert(clone_one->min_number() <= clone_one->args().size());
-  if (clone_one->args().size() == clone_one->min_number())
+  assert(clone_one->min_number() <= static_cast<int>(clone_one->args().size()));
+  if (static_cast<int>(clone_one->args().size()) == clone_one->min_number())
     clone_one->type(kAnd);
 }
 
@@ -429,7 +429,7 @@ void Gate::ProcessComplementArg(int index) noexcept {
     case kAtleast:
       LOG(DEBUG5) << "Handling special case of K/N complement argument!";
       assert(min_number_ > 1 && "Min number is wrong.");
-      assert((args_.size() + 1) > min_number_ && "Malformed K/N gate.");
+      assert((static_cast<int>(args_.size()) + 1) > min_number_ && "Malformed K/N gate.");
       // @(k, [x, x', y_i]) = @(k-1, [y_i])
       EraseArg(-index);
       --min_number_;
@@ -437,7 +437,7 @@ void Gate::ProcessComplementArg(int index) noexcept {
         type(kNull);
       } else if (min_number_ == 1) {
         type(kOr);
-      } else if (min_number_ == args_.size()) {
+      } else if (min_number_ == static_cast<int>(args_.size())) {
         type(kAnd);
       }
       break;
@@ -533,7 +533,7 @@ void Pdag::GatherVariables(const mef::BasicEvent& basic_event, bool ccf,
     if (!var) {
       basic_events_.push_back(&basic_event);
       var = std::make_shared<Variable>(this);  // Sequential indices.
-      assert((kVariableStartIndex + basic_events_.size() - 1) == var->index());
+      assert((kVariableStartIndex + static_cast<int>(basic_events_.size()) - 1) == var->index());
     }
   }
 }
@@ -664,7 +664,7 @@ GatePtr Pdag::ConstructComplexGate(const mef::Formula& formula, bool ccf,
       return parent;
     }
     case mef::kCardinality: {
-      assert(formula.args().size() >= *formula.max_number());
+      assert(static_cast<int>(formula.args().size()) >= *formula.max_number());
       assert(*formula.min_number() <= *formula.max_number());
       normal_ = false;
       auto parent = std::make_shared<Gate>(kAnd, this);
@@ -682,7 +682,7 @@ GatePtr Pdag::ConstructComplexGate(const mef::Formula& formula, bool ccf,
           atleast->MakeConstant(true);
         } else if (atleast->min_number() == 1) {
           atleast->type(kOr);
-        } else if (atleast->min_number() == atleast->args().size()) {
+        } else if (atleast->min_number() == static_cast<int>(atleast->args().size())) {
           atleast->type(kAnd);
         }
       };
@@ -694,7 +694,8 @@ GatePtr Pdag::ConstructComplexGate(const mef::Formula& formula, bool ccf,
       return parent;
     }
     default:
-      assert(false && "Unexpected connective for complex gates.");
+      LOG(ERROR) << "Unexpected connective for complex gates.";
+      exit(1);
   }
 }
 

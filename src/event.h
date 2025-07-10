@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -82,7 +83,7 @@ class BasicEvent : public Event {
 
   using Event::Event;
 
-  virtual ~BasicEvent() = default;
+  virtual ~BasicEvent();
 
   /// @returns true if the probability expression is set.
   bool HasExpression() const { return expression_ != nullptr; }
@@ -137,10 +138,7 @@ class BasicEvent : public Event {
   /// CCF group application.
   ///
   /// @param[in] gate  CCF group gate.
-  void ccf_gate(std::unique_ptr<Gate> gate) {
-    assert(!ccf_gate_);
-    ccf_gate_ = std::move(gate);
-  }
+  void ccf_gate(std::unique_ptr<Gate> gate);
 
  private:
   /// Expression that describes this basic event
