@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -238,9 +239,11 @@ class FaultTreeAnalysis : public Analysis {
     return *products_;
   }
 
+  [[nodiscard]] std::shared_ptr<Pdag> pdag() { return std::move(graph_); }
+
  protected:
   /// @returns Pointer to the PDAG representing the fault tree.
-  const Pdag* graph() const { return graph_.get(); }
+  [[nodiscard]] Pdag* graph() const { return graph_.get(); }
 
  private:
   /// Preprocesses a PDAG for future analysis with a specific algorithm.

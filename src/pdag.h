@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,12 +43,13 @@
 #include <vector>
 
 #include <boost/container/flat_set.hpp>
-#include <boost/noncopyable.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 
 #include "ext/find_iterator.h"
 #include "ext/index_map.h"
 #include "ext/linear_map.h"
+
+#include <event.h>
 
 namespace scram::mef {  // Declarations to decouple from the MEF initialization.
 class Model;  // Provider of substitutions.
@@ -263,6 +265,7 @@ enum Connective : std::uint8_t {
   kOr,  ///< OR gate.
   kAtleast,  ///< Combination, K/N, or Vote gate representation.
   kXor,  ///< Exclusive OR gate with two inputs.
+  // kXnor, ///< Negation of the exclusive OR gate
   kNot,  ///< Boolean negation.
   kNand,  ///< NAND gate.
   kNor,  ///< NOR gate.
@@ -274,9 +277,8 @@ enum Connective : std::uint8_t {
 const int kNumConnectives = 8;  // Update this number if connectives change.
 
 /// An indexed gate for use in a PDAG.
-/// Initially this gate can represent any type of gate or logic;
-/// however, this gate can be only of OR and AND type
-/// at the end of all simplifications and processing.
+/// this gate can represent any type of boolean primitive like AND, OR, XOR,
+/// ATLEAST and their inversions
 /// This gate class helps process the fault tree
 /// before any complex analysis is done.
 class Gate : public Node, public std::enable_shared_from_this<Gate> {
@@ -729,7 +731,7 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   /// @param[in] num_args  The number of required arguments.
   void ReduceLogic(Connective target_type, int num_args = 1) noexcept {
     assert(!args_.empty());
-    if (args_.size() == num_args)
+    if (static_cast<int>(args_.size()) == num_args)
       type(target_type);
   }
 
@@ -890,6 +892,8 @@ class Pdag : private boost::noncopyable {
   ///
   /// @pre The graph has been constructed with a root gate.
   const Gate& root() const { return *root_; }
+
+  const GatePtr& root_ptr() const { return root_; }
 
   /// Sets the root gate.
   /// This function is helpful for transformations.

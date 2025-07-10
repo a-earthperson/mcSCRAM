@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,16 +28,16 @@
 namespace scram::core {
 
 /// Qualitative analysis algorithms.
-enum class Algorithm : std::uint8_t { kBdd = 0, kZbdd, kMocus };
+enum class Algorithm : std::uint8_t { kBdd = 0, kZbdd, kMocus, kDirect };
 
 /// String representations for algorithms.
-const char* const kAlgorithmToString[] = {"bdd", "zbdd", "mocus"};
+const char* const kAlgorithmToString[] = { "bdd", "zbdd", "mocus", "pdag" };
 
 /// Quantitative analysis approximations.
-enum class Approximation : std::uint8_t { kNone = 0, kRareEvent, kMcub };
+enum class Approximation : std::uint8_t { kNone = 0, kRareEvent, kMcub, kMonteCarlo };
 
 /// String representations for approximations.
-const char* const kApproximationToString[] = {"none", "rare-event", "mcub"};
+const char* const kApproximationToString[] = { "none", "rare-event", "mcub", "monte-carlo" };
 
 /// Builder for analysis settings.
 /// Analysis facilities are guaranteed not to throw or fail
@@ -143,6 +144,30 @@ class Settings {
   /// @throws SettingsError  The number is less than 1.
   Settings& num_trials(int n);
 
+  /// @returns The batch size for Monte-Carlo simulations.
+  [[nodiscard]] int batch_size() const { return batch_size_; }
+
+  /// Sets the batch size for Monte Carlo simulations.
+  ///
+  /// @param[in] n  A natural number for the batch size.
+  ///
+  /// @returns Reference to this object.
+  ///
+  /// @throws SettingsError  The number is less than 1.
+  Settings& batch_size(int n) { batch_size_ = n; return *this; }
+
+  /// @returns The batch size for Monte-Carlo simulations.
+  [[nodiscard]] int sample_size() const { return sample_size_; }
+
+  /// Sets the sample size for Monte Carlo simulations.
+  ///
+  /// @param[in] n  A natural number for the sample size.
+  ///
+  /// @returns Reference to this object.
+  ///
+  /// @throws SettingsError  The number is less than 1.
+  Settings& sample_size(int n) { sample_size_ = n; return *this; }
+
   /// @returns The number of quantiles for distributions.
   int num_quantiles() const { return num_quantiles_; }
 
@@ -226,6 +251,19 @@ class Settings {
     return *this;
   }
 
+  /// Sets the flag for skipping products calculation.
+  ///
+  /// @param[in] flag  True or false for turning on or off the products calculation.
+  ///
+  /// @returns Reference to this object.
+  Settings& skip_products(bool flag) {
+    skip_products_ = flag;
+    return *this;
+  }
+
+  /// @returns true if the products calculation will be skipped.
+  [[nodiscard]] bool skip_products() const { return skip_products_; }
+
   /// @returns true if the SIL metrics are requested.
   bool safety_integrity_levels() const { return safety_integrity_levels_; }
 
@@ -287,30 +325,29 @@ class Settings {
     return *this;
   }
 
-#ifndef NDEBUG
   bool preprocessor = false;  ///< Stop analysis after preprocessor.
   bool print = false;  ///< Print analysis results in a terminal friendly way.
-#endif
 
  private:
-  bool probability_analysis_ = false;  ///< A flag for probability analysis.
-  bool safety_integrity_levels_ = false;  ///< Calculation of the SIL metrics.
-  bool importance_analysis_ = false;  ///< A flag for importance analysis.
-  bool uncertainty_analysis_ = false;  ///< A flag for uncertainty analysis.
-  bool ccf_analysis_ = false;  ///< A flag for common-cause analysis.
-  bool prime_implicants_ = false;  ///< Calculation of prime implicants.
-  /// Qualitative analysis algorithm.
-  Algorithm algorithm_ = Algorithm::kBdd;
-  /// The approximations for calculations.
-  Approximation approximation_ = Approximation::kNone;
-  int limit_order_ = 20;  ///< Limit on the order of products.
-  int seed_ = 0;  ///< The seed for the pseudo-random number generator.
-  int num_trials_ = 1e3;  ///< The number of trials for Monte Carlo simulations.
-  int num_quantiles_ = 20;  ///< The number of quantiles for distributions.
-  int num_bins_ = 20;  ///< The number of bins for histograms.
-  double mission_time_ = 8760;  ///< System mission time.
-  double time_step_ = 0;  ///< The time step for probability analyses.
-  double cut_off_ = 1e-8;  ///< The cut-off probability for products.
+  Algorithm algorithm_ = Algorithm::kBdd;             ///< Algorithm for minimal cut set / prime implicant analysis
+  Approximation approximation_ = Approximation::kNone;///< The approximations for calculations
+  bool probability_analysis_ = false;                 ///< A flag for probability analysis.
+  bool safety_integrity_levels_ = false;              ///< Calculation of the SIL metrics.
+  bool importance_analysis_ = false;                  ///< A flag for importance analysis.
+  bool uncertainty_analysis_ = false;                 ///< A flag for uncertainty analysis.
+  bool ccf_analysis_ = false;                         ///< A flag for common-cause analysis.
+  bool prime_implicants_ = false;                     ///< Calculation of prime implicants.
+  bool skip_products_ = false;                        ///< Do not compute the products.
+  int limit_order_ = 20;                              ///< Limit on the order of products.
+  int seed_ = 0;                                      ///< The seed for the pseudo-random number generator.
+  int num_trials_  = 1e3;                             ///< The number of trials for Monte Carlo simulations.
+  int batch_size_  = 1;                               ///< Batch size for Monte Carlo simulations.
+  int sample_size_ = 1;                               ///< Sample size for Monte Carlo simulations.
+  int num_quantiles_ = 20;                            ///< The number of quantiles for distributions.
+  int num_bins_ = 20;                                 ///< The number of bins for histograms.
+  double mission_time_ = 8760;                        ///< System mission time.
+  double time_step_ = 0;                              ///< The time step for probability analyses.
+  double cut_off_ = 1e-8;                             ///< The cut-off probability for products.
 };
 
 }  // namespace scram::core

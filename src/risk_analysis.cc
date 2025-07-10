@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +28,7 @@
 #include "logger.h"
 #include "mocus.h"
 #include "zbdd.h"
+#include "direct_eval.h"
 
 namespace scram::core {
 
@@ -128,15 +130,16 @@ void RiskAnalysis::RunAnalysis(const mef::Gate& target,
     case Algorithm::kZbdd:
       return RunAnalysis<Zbdd>(target, result);
     case Algorithm::kMocus:
-      return RunAnalysis<Mocus>(target, result);
+        return RunAnalysis<Mocus>(target, result);
+    case Algorithm::kDirect:
+        return RunAnalysis<DirectEval>(target, result);
   }
 }
 
 template <class Algorithm>
 void RiskAnalysis::RunAnalysis(const mef::Gate& target,
                                Result* result) noexcept {
-  auto fta = std::make_unique<FaultTreeAnalyzer<Algorithm>>(
-      target, Analysis::settings(), model_);
+  auto fta = std::make_unique<FaultTreeAnalyzer<Algorithm>>(target, Analysis::settings(), model_);
   fta->Analyze();
   if (Analysis::settings().probability_analysis()) {
     switch (Analysis::settings().approximation()) {
@@ -148,6 +151,9 @@ void RiskAnalysis::RunAnalysis(const mef::Gate& target,
         break;
       case Approximation::kMcub:
         RunAnalysis<Algorithm, McubCalculator>(fta.get(), result);
+        break;
+      case Approximation::kMonteCarlo:
+        RunAnalysis<Algorithm, DirectEval>(fta.get(), result);
     }
   }
   result->fault_tree_analysis = std::move(fta);

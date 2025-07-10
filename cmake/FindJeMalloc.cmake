@@ -1,47 +1,49 @@
-# - Try to find jemalloc
-# Once done this will define
-#  JEMALLOC_FOUND - System has jemalloc
-#  JEMALLOC_INCLUDE_DIRS - The jemalloc include directories
-#  JEMALLOC_LIBRARIES - The libraries needed to use jemalloc
-
-if(NOT JEMALLOC_USE_BUNDLED)
-  find_package(PkgConfig)
-  if (PKG_CONFIG_FOUND)
-    pkg_check_modules(PC_JEMALLOC QUIET jemalloc)
-  endif()
-else()
-  set(PC_JEMALLOC_INCLUDEDIR)
-  set(PC_JEMALLOC_INCLUDE_DIRS)
-  set(PC_JEMALLOC_LIBDIR)
-  set(PC_JEMALLOC_LIBRARY_DIRS)
-  set(LIMIT_SEARCH NO_DEFAULT_PATH)
-endif()
-
-set(JEMALLOC_DEFINITIONS ${PC_JEMALLOC_CFLAGS_OTHER})
-
-find_path(JEMALLOC_INCLUDE_DIR jemalloc/jemalloc.h
-          PATHS ${PC_JEMALLOC_INCLUDEDIR} ${PC_JEMALLOC_INCLUDE_DIRS}
-          ${LIMIT_SEARCH})
-
-# If we're asked to use static linkage, add libjemalloc.a as a preferred library name.
-if(JEMALLOC_USE_STATIC)
-  list(APPEND JEMALLOC_NAMES
-    "${CMAKE_STATIC_LIBRARY_PREFIX}jemalloc${CMAKE_STATIC_LIBRARY_SUFFIX}")
-endif()
-
-list(APPEND JEMALLOC_NAMES jemalloc)
-
-find_library(JEMALLOC_LIBRARY NAMES ${JEMALLOC_NAMES}
-  HINTS ${PC_JEMALLOC_LIBDIR} ${PC_JEMALLOC_LIBRARY_DIRS}
-  ${LIMIT_SEARCH})
-
-set(JEMALLOC_LIBRARIES ${JEMALLOC_LIBRARY})
-set(JEMALLOC_INCLUDE_DIRS ${JEMALLOC_INCLUDE_DIR})
-
-include(FindPackageHandleStandardArgs)
-# handle the QUIETLY and REQUIRED arguments and set JEMALLOC_FOUND to TRUE
-# if all listed variables are TRUE
-find_package_handle_standard_args(JeMalloc DEFAULT_MSG
-  JEMALLOC_LIBRARY JEMALLOC_INCLUDE_DIR)
-
-mark_as_advanced(JEMALLOC_INCLUDE_DIR JEMALLOC_LIBRARY)
+#
+# Find the JEMALLOC client includes and library
+#
+# This module defines
+# JEMALLOC_INCLUDE_DIR, where to find jemalloc.h
+# JEMALLOC_LIBRARIES, the libraries to link against
+# JEMALLOC_FOUND, if false, you cannot build anything that requires JEMALLOC
+# also defined, but not for general use are
+# JEMALLOC_LIBRARY, where to find the JEMALLOC library.
+set( JEMALLOC_FOUND 0 )
+if ( UNIX )
+  FIND_PATH( JEMALLOC_INCLUDE_DIR
+          NAMES
+          jemalloc/jemalloc.h
+          PATHS
+          /usr/include
+          /usr/include/jemalloc
+          /usr/local/include
+          /usr/local/include/jemalloc
+          $ENV{JEMALLOC_ROOT}
+          $ENV{JEMALLOC_ROOT}/include
+          ${CMAKE_SOURCE_DIR}/externals/jemalloc
+          DOC
+          "Specify include-directories that might contain jemalloc.h here."
+          )
+  FIND_LIBRARY( JEMALLOC_LIBRARY
+          NAMES
+          jemalloc libjemalloc JEMALLOC
+          PATHS
+          /usr/lib
+          /usr/lib/jemalloc
+          /usr/local/lib
+          /usr/local/lib/jemalloc
+          /usr/local/jemalloc/lib
+          $ENV{JEMALLOC_ROOT}/lib
+          $ENV{JEMALLOC_ROOT}
+          DOC "Specify library-locations that might contain the jemalloc library here."
+          )
+  if ( JEMALLOC_LIBRARY )
+    if ( JEMALLOC_INCLUDE_DIR )
+      set( JEMALLOC_FOUND 1 )
+      message( STATUS "Found JEMALLOC library: ${JEMALLOC_LIBRARY}")
+      message( STATUS "Found JEMALLOC headers: ${JEMALLOC_INCLUDE_DIR}")
+    else ( JEMALLOC_INCLUDE_DIR )
+      message(FATAL_ERROR "Could not find jemalloc headers! Please install jemalloc libraries and headers")
+    endif ( JEMALLOC_INCLUDE_DIR )
+  endif ( JEMALLOC_LIBRARY )
+  mark_as_advanced( JEMALLOC_FOUND JEMALLOC_LIBRARY JEMALLOC_EXTRA_LIBRARIES JEMALLOC_INCLUDE_DIR )
+endif (UNIX)

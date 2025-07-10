@@ -23,3 +23,12 @@ build/
 
 # Pytest cache
 .cache
+.idea
+fixtures
+benchmarks
+
+.vscode
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.specstory

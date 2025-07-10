@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,6 +34,7 @@
 #include "ext/variant.h"
 #include "fault_tree.h"
 #include "xml_stream.h"
+#include "logger.h"
 
 namespace scram::mef {
 
@@ -118,7 +120,8 @@ void Serialize(const Formula& formula, xml::StreamElement* parent) {
             return atleast;
           }();  // Wrap NRVO into RVO for GCC.
         default:
-          assert(false && "Unexpected formula");
+            LOG(ERROR) << "Unexpected formula";
+            exit(1);
       }
     }();
     for (const Formula::Arg& arg : formula.args())

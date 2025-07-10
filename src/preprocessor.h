@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +32,8 @@
 #include <boost/unordered_map.hpp>
 
 #include "pdag.h"
+
+#include <direct_eval.h>
 
 namespace scram::core {
 
@@ -73,6 +76,17 @@ std::vector<T*> OrderArguments(Gate* gate) noexcept;
 /// @post The root and descendant node order marks contain the ordering.
 void TopologicalOrder(Pdag* graph) noexcept;
 
+/// Assigns layered topological ordering to nodes of the PDAG.
+/// Nodes at the same layer are assigned the same order value.
+/// The ordering is assigned to the node order marks.
+/// The highest order value belongs to the root node.
+/// The ordering ensures that all dependencies are assigned to lower layers.
+///
+/// @param[in,out] graph  The graph to be processed.
+///
+/// @post The root and descendant node order marks contain the layered ordering.
+void LayeredTopologicalOrder(Pdag* graph) noexcept;
+
 /// Marks coherence of the whole graph.
 ///
 /// @param[in,out] graph  The graph to be processed.
@@ -108,6 +122,12 @@ class Preprocessor : private boost::noncopyable {
   /// Runs the graph preprocessing.
   void operator()() noexcept;
 
+  enum NormalizationLevel {
+    none = 0,
+    partial = 1,
+    full = 2,
+  };
+
  protected:
   class GateSet;  ///< Container of unique gates by semantics.
 
@@ -133,7 +153,7 @@ class Preprocessor : private boost::noncopyable {
   ///          however, the preprocessing algorithms should not rely on this.
   ///          If the partial normalization messes some significant algorithm,
   ///          it may be removed from this phase in future.
-  void RunPhaseOne() noexcept;
+  void RunPhaseOne(const NormalizationLevel &normalization_level) noexcept;
 
   /// Preprocessing phase of the original structure of the graph.
   /// This phase attempts to leverage
@@ -172,7 +192,7 @@ class Preprocessor : private boost::noncopyable {
   /// Normalizes the gates of the whole PDAG
   /// into OR, AND gates.
   ///
-  /// @param[in] full  A flag to handle complex gates like XOR and K/N,
+  /// @param[in] normalization_level  A flag to handle complex gates like XOR and K/N,
   ///                  which generate a lot more new gates
   ///                  and make the structure of the graph more complex.
   ///
@@ -187,7 +207,7 @@ class Preprocessor : private boost::noncopyable {
   /// @warning Gate marks are used.
   /// @warning Node ordering may be used for full normalization.
   /// @warning Node visit information is used.
-  void NormalizeGates(bool full) noexcept;
+  void NormalizeGates(const NormalizationLevel &normalization_level) noexcept;
 
   /// Notifies all parents of negative gates,
   /// such as NOT, NOR, and NAND,
@@ -208,7 +228,7 @@ class Preprocessor : private boost::noncopyable {
   /// Normalizes complex gates into OR, AND gates.
   ///
   /// @param[in,out] gate  The gate to be processed.
-  /// @param[in] full  A flag to handle complex gates like XOR and K/N.
+  /// @param[in] normalization_level  A flag to handle complex gates like XOR and K/N.
   ///
   /// @note This is a helper function for NormalizeGates().
   ///
@@ -217,7 +237,7 @@ class Preprocessor : private boost::noncopyable {
   /// @warning Gate marks must be clear.
   /// @warning The parents of negative gates are assumed to be
   ///          notified about the change of their arguments' types.
-  void NormalizeGate(const GatePtr& gate, bool full) noexcept;
+  void NormalizeGate(const GatePtr& gate, const NormalizationLevel &normalization_level) noexcept;
 
   /// Normalizes a gate with XOR logic.
   /// This is a helper function
@@ -1062,5 +1082,34 @@ class CustomPreprocessor<Mocus> : public CustomPreprocessor<Zbdd> {
   /// generally (dramatically) increases the size of Binary Decision Diagrams.
   void InvertOrder() noexcept;
 };
+
+  /// Specialization of preprocessing for MOCUS based analyses.
+  template <>
+  class CustomPreprocessor<DirectEval> : public Preprocessor {
+  public:
+    using Preprocessor::Preprocessor;
+
+  private:
+    /// Performs processing of a fault tree
+    /// to simplify the structure to
+    /// normalized (OR/AND gates only),
+    /// modular (independent sub-trees),
+    /// positive-gate-only (negation normal) PDAG.
+    /// The variable ordering is assigned specifically for MOCUS.
+    void Run() noexcept override;
+
+    /// Groups and inverts the topological ordering for nodes.
+    /// The inversion is done to simplify the work of MOCUS facilities,
+    /// which rely on the top-down approach.
+    ///
+    /// Gates are ordered so that they show up at the top of ZBDD.
+    /// However, module gates are handled just as basic events.
+    /// Basic events preserve
+    /// the original topological ordering.
+    ///
+    /// Note, however, the inversion of the order
+    /// generally (dramatically) increases the size of Binary Decision Diagrams.
+    void InvertOrder() noexcept;
+  };
 
 }  // namespace scram::core

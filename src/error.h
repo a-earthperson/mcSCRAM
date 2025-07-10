@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +43,7 @@
 ///
 /// @param[in] err  The error type deriving from boost::exception.
 #define SCRAM_THROW(err)                                                       \
-  throw err << ::boost::throw_function(BOOST_THROW_EXCEPTION_CURRENT_FUNCTION) \
+  throw err << ::boost::throw_function(BOOST_CURRENT_FUNCTION) \
             << ::boost::throw_file(FILE_REL_PATH)                              \
             << ::boost::throw_line(__LINE__)
 

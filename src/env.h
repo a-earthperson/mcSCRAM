@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,14 +29,17 @@
 
 namespace scram::env {
 
-/// @returns The location of the RELAX NG schema for project files.
-const std::string& project_schema();
+/// @returns The embedded RELAX NG schema content for project files.
+const std::string_view& project_schema();
 
-/// @returns The location of the RELAX NG schema for input files.
-const std::string& input_schema();
+/// @returns The embedded RELAX NG schema content for input files.
+const std::string_view& input_schema();
 
-/// @returns The location of the RELAX NG schema for output report files.
-const std::string& report_schema();
+/// @returns The embedded RELAX NG schema content for output report files.
+const std::string_view& report_schema();
+
+/// @returns The embedded RELAX NG schema content for GUI files.
+const std::string_view& gui_schema();
 
 /// @returns The path to the installation directory.
 const std::string& install_dir();

@@ -179,9 +179,9 @@ class Zbdd : private boost::noncopyable {
         if (sentinel_)
           return;
         assert(end_pos_ >= start_pos_ && "Corrupted sentinel.");
-        while (start_pos_ != it_.product_.size()) {
+        while (start_pos_ != static_cast<int>(it_.product_.size())) {
           if (!module_stack_.empty() &&
-              it_.product_.size() == module_stack_.back().end_pos_) {
+              static_cast<int>(it_.product_.size()) == module_stack_.back().end_pos_) {
             const SetNode* node = module_stack_.back().node_;
             for (++module_stack_.back(); module_stack_.back();
                  ++module_stack_.back()) {
@@ -213,7 +213,7 @@ class Zbdd : private boost::noncopyable {
       bool GenerateProduct(const VertexPtr& vertex) noexcept {
         if (vertex->terminal())
           return Terminal<SetNode>::Ref(vertex).value();
-        if (it_.product_.size() >= it_.zbdd_.settings().limit_order())
+        if (static_cast<int>(it_.product_.size()) >= it_.zbdd_.settings().limit_order())
           return false;
         const SetNode& node = SetNode::Ref(vertex);
         if (node.module()) {
@@ -223,7 +223,7 @@ class Zbdd : private boost::noncopyable {
             if (GenerateProduct(node.high()))
               return true;
           }
-          assert(it_.product_.size() == module_stack_.back().start_pos_);
+          assert(static_cast<int>(it_.product_.size()) == module_stack_.back().start_pos_);
           module_stack_.pop_back();
           return GenerateProduct(node.low());
 
@@ -237,7 +237,7 @@ class Zbdd : private boost::noncopyable {
       ///
       /// @returns The current leaf node in the product.
       const SetNode* Pop() noexcept {
-        assert(start_pos_ < it_.product_.size() && "Access beyond the range!");
+        assert(start_pos_ < static_cast<int>(it_.product_.size()) && "Access beyond the range!");
         const SetNode* leaf = it_.node_stack_.back();
         it_.node_stack_.pop_back();
         it_.product_.pop_back();

@@ -141,8 +141,8 @@ Bdd::Function Bdd::ConvertGraph(
   if (auto it_entry = ext::find(*gates, gate.index())) {
     std::pair<Function, int>& entry = it_entry->second;
     result = entry.first;
-    assert(entry.second < gate.parents().size());  // Processed parents.
-    if (++entry.second == gate.parents().size())
+    assert(entry.second < static_cast<int>(gate.parents().size()));  // Processed parents.
+    if (++entry.second == static_cast<int>(gate.parents().size()))
       gates->erase(it_entry);
     return result;
   }

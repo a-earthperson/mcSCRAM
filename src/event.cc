@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +32,13 @@
 namespace scram::mef {
 
 Event::~Event() = default;
+
+BasicEvent::~BasicEvent() = default;
+
+void BasicEvent::ccf_gate(std::unique_ptr<Gate> gate) {
+  assert(!ccf_gate_);
+  ccf_gate_ = std::move(gate);
+}
 
 HouseEvent HouseEvent::kTrue = []() {
   HouseEvent house_event("__true__");

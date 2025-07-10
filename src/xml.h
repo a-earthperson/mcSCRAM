@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2018 Olzhas Rakhimov
+ * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -75,7 +76,7 @@ std::enable_if_t<std::is_arithmetic_v<T>, T> to(const std::string_view& value) {
     char* end_char = nullptr;
     std::int64_t ret = std::strtoll(value.data(), &end_char, 10);
     int len = end_char - value.data();
-    if (len != value.size() || ret > std::numeric_limits<int>::max() ||
+    if (static_cast<size_t>(len) != value.size() || ret > std::numeric_limits<int>::max() ||
         ret < std::numeric_limits<int>::min()) {
       SCRAM_THROW(ValidityError("Failed to interpret value to int"))
           << errinfo_value(std::string(value));
@@ -86,7 +87,7 @@ std::enable_if_t<std::is_arithmetic_v<T>, T> to(const std::string_view& value) {
     char* end_char = nullptr;
     double ret = std::strtod(value.data(), &end_char);
     int len = end_char - value.data();
-    if (len != value.size() || ret == HUGE_VAL || ret == -HUGE_VAL) {
+    if (static_cast<size_t>(len) != value.size() || ret == HUGE_VAL || ret == -HUGE_VAL) {
       SCRAM_THROW(ValidityError("Failed to interpret value to double"))
           << errinfo_value(std::string(value));
     }
@@ -153,7 +154,7 @@ inline std::string_view trim(const std::string_view& text) noexcept {
 ///
 /// @returns The exception object to be thrown.
 template <typename T>
-T GetError(xmlErrorPtr xml_error = nullptr) {
+T GetError(const xmlError* xml_error = nullptr) {
   if (!xml_error)
     xml_error = xmlGetLastError();
   assert(xml_error && "No XML error is available.");
@@ -442,6 +443,12 @@ class Validator {
   /// @throws LogicError  The XML library functions have failed internally.
   explicit Validator(const std::string& rng_file);
 
+  /// @param[in] rng_content  The RelaxNG schema content as a string.
+  ///
+  /// @throws ParseError  RNG content parsing has failed.
+  /// @throws LogicError  The XML library functions have failed internally.
+  static Validator from_memory(const std::string_view& rng_content);
+
   /// Validates XML DOM documents against the schema.
   ///
   /// @param[in] doc  The initialized XML DOM document.
@@ -456,6 +463,13 @@ class Validator {
   }
 
  private:
+  /// Private constructor for from_memory static factory method.
+  Validator() : schema_(nullptr, &xmlRelaxNGFree), 
+                valid_ctxt_(nullptr, &xmlRelaxNGFreeValidCtxt) {}
+
+  /// Helper method to initialize schema and validation context.
+  void initialize_schema(xmlRelaxNGParserCtxt* parser_ctxt);
+
   /// The schema used by the validation context.
   std::unique_ptr<xmlRelaxNG, decltype(&xmlRelaxNGFree)> schema_;
   /// The validation context.
