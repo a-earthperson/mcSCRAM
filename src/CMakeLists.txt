@@ -73,3 +73,11 @@ install(
         RUNTIME DESTINATION ${INSTALL_BASE_DIR}/bin
         COMPONENT scram
 )
+
+# add canopy
+add_subdirectory(canopy)
+
+# Make the SYCL canopy library available to downstream targets
+# by appending it to the common ${LIBS} list that all executables use.
+list(APPEND LIBS canopy)
+

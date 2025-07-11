@@ -290,26 +290,4 @@ namespace scram::core {
         ite.p(p_var * high + (1 - p_var) * low);
         return ite.p();
     }
-
-    // DirectEval specialization implementations
-    ProbabilityAnalyzer<DirectEval>::ProbabilityAnalyzer(FaultTreeAnalyzer<DirectEval> *fta,
-                                                         mef::MissionTime *mission_time)
-        : ProbabilityAnalyzerBase(fta, mission_time) {
-        LOG(DEBUG2) << "Using DirectEval for ProbabilityAnalyzer (stub implementation)";
-    }
-
-    ProbabilityAnalyzer<DirectEval>::~ProbabilityAnalyzer() noexcept = default;
-
-    double ProbabilityAnalyzer<DirectEval>::CalculateTotalProbability(
-            const Pdag::IndexMap<double> &p_vars) noexcept {
-        // Stub implementation: return a simple approximation or default value
-        // In a real implementation, this would perform Monte Carlo sampling
-        // or other direct evaluation methods on the PDAG
-        LOG(DEBUG4) << "DirectEval probability calculation (stub implementation)";
-        
-        // For now, return 0.0 as a stub - in practice this should implement
-        // Monte Carlo sampling or other direct evaluation techniques
-        (void)p_vars; // Suppress unused parameter warning
-        return 0.0;
-    }
 }// namespace scram::core
