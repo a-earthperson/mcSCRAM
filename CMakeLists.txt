@@ -5,7 +5,11 @@ set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(SCRAM VERSION 0.16.2 LANGUAGES CXX)
+project(SCRAM VERSION 0.16.2 LANGUAGES C CXX)
+
+# Find and configure LLVM toolchain BEFORE project() call
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+message(${CMAKE_MODULE_PATH})
 
 # CMake 3.27 - Address CMP0144 policy warning
 # @link https://cmake.org/cmake/help/latest/policy/CMP0167.html#policy:CMP0144
@@ -88,21 +92,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sign-compare -Wno-missing-field-ini
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-new-ttp-matching")  # TODO: Boost ICL failure.
   CHECK_COMPILER_VERSION("7.1")
-#  list(APPEND SCRAM_CXX_FLAGS_DEBUG
-#          -Wredundant-decls -Wcast-align -Wlogical-op -Wvla -Wuseless-cast -Wunreachable-code
-#          -Wshadow -Wpedantic -Wmissing-declarations
-#          -Wimplicit-fallthrough=0  # TODO: Consider explicit fallthrough.
-#  )
 
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   CHECK_COMPILER_VERSION("5.0")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations -Wno-division-by-zero -Wno-nontrivial-memcall")
   list(APPEND SCRAM_CXX_FLAGS_DEBUG -Wno-missing-braces -Wshadow -Wno-unused-exception-parameter -Wno-sign-compare -Wno-missing-field-initializers -Wno-string-plus-int -Wno-unused-lambda-capture -Wno-old-style-cast -Wno-deprecated-declarations -Wno-unused-parameter)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-enum-constexpr-conversion")
 
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   CHECK_COMPILER_VERSION("9.0")
   list(APPEND SCRAM_CXX_FLAGS_DEBUG -Wno-missing-braces -Wshadow -Wno-unused-exception-parameter -Wno-sign-compare -Wno-missing-field-initializers -Wno-string-plus-int -Wno-unused-lambda-capture -Wno-old-style-cast -Wno-deprecated-declarations -Wno-unused-parameter)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-enum-constexpr-conversion")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations -Wno-enum-constexpr-conversion")
 
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
   CHECK_COMPILER_VERSION("18.0.1")
@@ -158,47 +157,6 @@ endif()
 
 ######################## End cmake configuration ################### }}}
 
-# Tell CMake where the modules are.
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-message(${CMAKE_MODULE_PATH})
-find_package(_openmp)
-######################## Begin find libraries ###################### {{{
-
-# Only build the Boost libraries we actually need
-set(BOOST_INCLUDE_LIBRARIES
-        program_options filesystem system random range exception
-        multi_index accumulators multiprecision icl math dll regex test
-        CACHE STRING "Boost libraries to build")
-
-include(FetchContent)
-
-# Fetch Boost 1.88.0 using FetchContent
-if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
-  FetchContent_Declare(
-    Boost
-    URL https://github.com/boostorg/boost/releases/download/boost-1.88.0/boost-1.88.0-cmake.tar.gz
-    URL_HASH SHA256=dcea50f40ba1ecfc448fdf886c0165cf3e525fef2c9e3e080b9804e8117b9694
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  )
-else()
-  FetchContent_Declare(
-    Boost
-    URL https://github.com/boostorg/boost/releases/download/boost-1.88.0/boost-1.88.0-cmake.tar.gz
-    URL_HASH SHA256=dcea50f40ba1ecfc448fdf886c0165cf3e525fef2c9e3e080b9804e8117b9694
-  )
-endif()
-
-# Set Boost options
-set(BOOST_ENABLE_CMAKE ON)
-set(Boost_USE_STATIC_LIBS ON)
-set(Boost_USE_MULTITHREADED ON)
-
-# Ensure Boost is built with position-independent code for shared library compatibility
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(Boost_USE_STATIC_RUNTIME OFF)
-
-FetchContent_MakeAvailable(Boost)
-
 ## set the memory allocator
 # profiling on
 if(WITH_PROFILE)
@@ -240,31 +198,32 @@ else()
   message(STATUS "memory allocator: ${MALLOC_TYPE}")
 endif()
 
-# Check for optional dependencies before configuring libxml2
-find_package(LibLZMA QUIET)
-find_package(ZLIB QUIET)
 
-# Fetch libxml2
-FetchContent_Declare(
-        libxml2
-        GIT_REPOSITORY https://gitlab.gnome.org/GNOME/libxml2.git
-        GIT_TAG v2.14.3 # Use a specific stable tag or branch
-)
-# Set options for libxml2 build based on available dependencies
-set(LIBXML2_WITH_TESTS OFF CACHE BOOL "" FORCE)
-set(LIBXML2_WITH_PYTHON OFF CACHE BOOL "" FORCE)
-set(LIBXML2_WITH_LZMA ${LIBLZMA_FOUND} CACHE BOOL "" FORCE)
-set(LIBXML2_WITH_ICONV ON CACHE BOOL "" FORCE)
-set(LIBXML2_WITH_ZLIB ${ZLIB_FOUND} CACHE BOOL "" FORCE)
-set(LIBXML2_WITH_PROGRAMS ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(libxml2)
-
-# Find LibXML2 and dependencies.
+# Find LibXML2 using our custom module
+find_package(LibXml2 REQUIRED)
 list(APPEND LIBS LibXml2::LibXml2)
+
 list(APPEND LIBS ${CMAKE_DL_LIBS})
 
+# ---------------------------------------------------------------------------
+# Boost configuration --------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Tell the custom FindBoost.cmake which libraries to build/fetch and how.
+# The list must be semicolon-separated for CMake variables.
+set(BOOST_INCLUDE_LIBRARIES
+    "program_options;filesystem;system;random;range;exception;multi_index;accumulators;multiprecision;icl;math;dll;regex;test"
+    CACHE STRING "Boost libraries to build via FetchContent" FORCE)
+
+# Enable Boost's official CMake build and request static libs built with PIC.
+set(BOOST_ENABLE_CMAKE ON CACHE BOOL "Build Boost using its new CMake build" FORCE)
+set(Boost_USE_STATIC_LIBS ON)
+set(Boost_USE_MULTITHREADED ON)
+set(Boost_USE_STATIC_RUNTIME ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Add required Boost libraries
-list(APPEND LIBS 
+find_package(boost REQUIRED)
+list(APPEND LIBS
     Boost::program_options
     Boost::filesystem
     Boost::system
@@ -280,9 +239,6 @@ list(APPEND LIBS
     Boost::regex
     Boost::unit_test_framework
 )
-
-message(STATUS "Compiler flags: ${CMAKE_CXX_FLAGS}")
-message(STATUS "Libraries: ${LIBS}")
 ########################## End of find libraries ######################## }}}
 ########################## Begin includes ############################### {{{
 
