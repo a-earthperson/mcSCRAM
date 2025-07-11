@@ -95,7 +95,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   CHECK_COMPILER_VERSION("5.0")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations -Wno-division-by-zero -Wno-nontrivial-memcall")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations -Wno-division-by-zero -Wno-nontrivial-memaccess")
   list(APPEND SCRAM_CXX_FLAGS_DEBUG -Wno-missing-braces -Wshadow -Wno-unused-exception-parameter -Wno-sign-compare -Wno-missing-field-initializers -Wno-string-plus-int -Wno-unused-lambda-capture -Wno-old-style-cast -Wno-deprecated-declarations -Wno-unused-parameter)
 
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
@@ -222,7 +222,7 @@ set(Boost_USE_STATIC_RUNTIME ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Add required Boost libraries
-find_package(boost REQUIRED)
+find_package(Boost REQUIRED)
 list(APPEND LIBS
     Boost::program_options
     Boost::filesystem
@@ -239,6 +239,8 @@ list(APPEND LIBS
     Boost::regex
     Boost::unit_test_framework
 )
+
+find_package(_adaptivecpp)
 ########################## End of find libraries ######################## }}}
 ########################## Begin includes ############################### {{{
 
