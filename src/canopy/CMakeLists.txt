@@ -13,6 +13,7 @@ set(CANOPY_HEADERS
         kernel/gate.h
         kernel/tally.h
         queue/layer_manager.h
+        queue/layer_manager.tpp
         queue/kernel_builder.h
         queue/queueable.h
 )
