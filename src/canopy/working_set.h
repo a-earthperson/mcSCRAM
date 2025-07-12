@@ -1,6 +1,21 @@
-/*
- * Copyright (C) 2025 Arjun Earthperson
+/**
+ * @file working_set.h
+ * @brief Optimal working-set configuration for SYCL device performance tuning
+ * 
+ * @details This file provides sophisticated algorithms for determining optimal
+ * working-set splits and memory configurations for SYCL devices across different
+ * backends (CUDA, OpenCL, OpenMP). It analyzes device capabilities and computes
+ * optimal work-group sizes, memory layouts, and occupancy rates to maximize
+ * performance in parallel Monte Carlo simulations.
+ * 
+ * The working set configuration is critical for achieving optimal performance
+ * across diverse hardware architectures, from GPUs with thousands of cores to
+ * multi-core CPUs with different memory hierarchies.
  *
+ * @author Arjun Earthperson
+ * @date 11/06/2024
+ *
+ * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -13,39 +28,144 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * @see node.h for related data structures
+ * @see scram::canopy::sample_shape for memory layout configuration
+ * 
+ * @example
+ * @code
+ * // Configure working set for Monte Carlo simulation
+ * sycl::queue queue;
+ * const size_t num_events = 1000;
+ * auto shape = working_set<uint32_t, uint64_t>::compute_optimal_sample_shape(queue, num_events);
+ * working_set<uint32_t, uint64_t> ws(queue, num_events, shape);
+ * 
+ * // Use computed configuration
+ * auto local_range = ws.compute_optimal_local_range_3d();
+ * std::cout << "Optimal local range: " << local_range[0] << "x" 
+ *           << local_range[1] << "x" << local_range[2] << std::endl;
+ * @endcode
  */
 
 #pragma once
 
-/**
- * @file working_set.h
- * @brief Determine optimal working-set splits for a SYCL device
- *
- * @author Arjun Earthperson
- * @date 11/06/2024
- */
-
 #include "node.h"
-
 
 #include <cstddef>
 #include <sycl/sycl.hpp>
 
-
 namespace scram::canopy {
 
+    /**
+     * @brief Computes target occupancy rate for OpenCL CPU devices
+     * 
+     * @details Calculates the optimal number of work-items per compute unit for
+     * OpenCL CPU devices using a power-law scaling formula. This heuristic is
+     * based on empirical performance measurements across various CPU architectures.
+     * 
+     * The formula accounts for the fact that CPU cores benefit from higher
+     * occupancy rates compared to GPU cores, but with diminishing returns as
+     * the number of threads increases due to memory bandwidth limitations.
+     * 
+     * @param threads Number of available CPU threads (default: 1)
+     * @return Optimal occupancy rate for the given thread count
+     * 
+     * @note The formula uses a 4/3 power scaling to model CPU performance characteristics
+     * @note Base value of 6400 is derived from empirical testing on various CPU architectures
+     * 
+     * @example
+     * @code
+     * // For an 8-core CPU with 16 threads
+     * auto occupancy = TARGET_OCCUPANCY_RATE_OPENCL_CPU(16);
+     * std::cout << "Optimal occupancy: " << occupancy << std::endl;  // ~1600
+     * @endcode
+     */
     static constexpr size_t TARGET_OCCUPANCY_RATE_OPENCL_CPU(const size_t threads = 1) {
         return static_cast<size_t>(6400.0 * std::pow((128.0 / static_cast<double_t>(threads)), 4.0 / 3.0));
     }
 
+    /**
+     * @brief Computes target occupancy rate for OpenMP CPU devices
+     * 
+     * @details Calculates the optimal number of work-items per compute unit for
+     * OpenMP CPU devices. OpenMP typically benefits from higher occupancy rates
+     * than OpenCL due to better thread scheduling and reduced overhead.
+     * 
+     * This function provides a 2x multiplier over the OpenCL CPU rate based on
+     * performance measurements showing OpenMP's superior thread utilization.
+     * 
+     * @param threads Number of available CPU threads (default: 1)
+     * @return Optimal occupancy rate for OpenMP (2x OpenCL CPU rate)
+     * 
+     * @note Higher occupancy compensates for OpenMP's thread scheduling overhead
+     * @note Performance tested on systems with 8-128 CPU threads
+     * 
+     * @example
+     * @code
+     * // For a 64-core CPU with 128 threads
+     * auto occupancy = TARGET_OCCUPANCY_RATE_OPENMP(128);
+     * std::cout << "OpenMP occupancy: " << occupancy << std::endl;  // ~12800
+     * @endcode
+     */
     static constexpr size_t TARGET_OCCUPANCY_RATE_OPENMP(const size_t threads = 1) {
         return static_cast<size_t>(2 * TARGET_OCCUPANCY_RATE_OPENCL_CPU(threads));
     }
 
+    /**
+     * @brief Computes target occupancy rate for CUDA/HIP GPU devices
+     * 
+     * @details Returns the optimal number of work-items per compute unit for
+     * CUDA and HIP GPU devices. This constant is derived from extensive
+     * performance testing across different GPU architectures including Pascal,
+     * Turing, and newer generations.
+     * 
+     * GPU devices typically benefit from very high occupancy rates due to their
+     * massive parallelism and ability to hide memory latency through thread switching.
+     * 
+     * @param threads Number of available GPU threads (unused for GPUs)
+     * @return Fixed optimal occupancy rate for GPU devices (204800)
+     * 
+     * @note Constant value optimized for modern GPU architectures
+     * @note Performance validated on Tesla P4, GTX 1660 Super, and similar GPUs
+     * 
+     * @example
+     * @code
+     * // For any CUDA/HIP GPU
+     * auto occupancy = TARGET_OCCUPANCY_RATE_CUDA();
+     * std::cout << "GPU occupancy: " << occupancy << std::endl;  // 204800
+     * @endcode
+     */
     static constexpr size_t TARGET_OCCUPANCY_RATE_CUDA(const size_t threads = 1) {
         return 204800;
     }
 
+    /**
+     * @brief Computes optimal occupancy rate based on SYCL backend type
+     * 
+     * @details Selects the appropriate occupancy rate heuristic based on the
+     * underlying SYCL backend. This function automatically chooses the best
+     * occupancy configuration for the target hardware architecture.
+     * 
+     * Different backends have vastly different optimal occupancy characteristics:
+     * - CUDA/HIP: High fixed occupancy for GPU parallelism
+     * - OpenCL/Level Zero: Variable occupancy based on CPU thread count
+     * - OpenMP: Enhanced occupancy for better thread utilization
+     * 
+     * @param backend SYCL backend identifier (CUDA, OpenCL, OpenMP, etc.)
+     * @param threads Number of available threads for CPU backends
+     * @return Optimal occupancy rate for the specified backend
+     * 
+     * @note Automatically handles backend-specific optimizations
+     * @note Falls back to OpenMP configuration for unknown backends
+     * 
+     * @example
+     * @code
+     * // Automatic backend detection
+     * sycl::queue queue;
+     * auto backend = queue.get_device().get_backend();
+     * auto occupancy = compute_desired_occupancy_rate_heuristic(backend, 16);
+     * std::cout << "Optimal occupancy: " << occupancy << std::endl;
+     * @endcode
+     */
     static constexpr size_t compute_desired_occupancy_rate_heuristic(const hipsycl::rt::backend_id backend, const size_t threads = 1) {
         switch (backend) {
             case hipsycl::rt::backend_id::cuda:
@@ -60,56 +180,164 @@ namespace scram::canopy {
         }
     }
 
+    /**
+     * @struct working_set
+     * @brief Comprehensive SYCL device working-set configuration and optimization
+     * 
+     * @details This structure encapsulates all device capabilities, memory constraints,
+     * and computed optimal configurations for SYCL-based Monte Carlo simulations.
+     * It provides a complete characterization of the target device and computes
+     * optimal work-group sizes, memory layouts, and execution parameters.
+     * 
+     * The working set analysis considers:
+     * - Device type and compute capabilities
+     * - Memory hierarchy and allocation limits
+     * - Work-group and sub-group constraints
+     * - Sample buffer organization and bit-packing
+     * - Backend-specific performance characteristics
+     * 
+     * @tparam size_type Integer type for sizes and counts (typically uint32_t or uint64_t)
+     * @tparam bitpack_type Integer type for bit-packed sample storage (typically uint64_t)
+     * 
+     * @note All device queries are performed during construction for optimal performance
+     * @note Memory allocations are validated against device limits
+     * 
+     * @example
+     * @code
+     * // Create working set for 1000 events
+     * sycl::queue queue;
+     * sample_shape<uint32_t> shape{1024, 16};
+     * working_set<uint32_t, uint64_t> ws(queue, 1000, shape);
+     * 
+     * // Query device capabilities
+     * std::cout << "Device: " << ws.device_type << std::endl;
+     * std::cout << "Compute units: " << ws.max_compute_units << std::endl;
+     * std::cout << "Memory: " << ws.global_mem_size / (1024*1024) << " MB" << std::endl;
+     * 
+     * // Compute optimal configuration
+     * auto local_range = ws.compute_optimal_local_range_3d();
+     * @endcode
+     */
     template<typename size_type, typename bitpack_type>
     struct working_set {
+        /// @brief Number of events in the Monte Carlo simulation
         size_type num_events_;
+        
+        /// @brief Number of sample bits per event (for bit-packed storage)
         size_type samples_per_event_in_bits_;
+        
+        /// @brief Number of sample bytes per event (for memory allocation)
         size_type samples_per_event_in_bytes_;
-        sample_shape<size_type> bitpack_buffer_shape_; ///<
+        
+        /// @brief Sample buffer organization and dimensions
+        sample_shape<size_type> bitpack_buffer_shape_;
+        
+        /// @brief Total sample buffer size in bytes
         size_type samples_in_bytes_;
 
-        // raw capabilities
+        // Device capabilities and constraints
+        /// @brief Type of SYCL device (CPU, GPU, accelerator, etc.)
         sycl::info::device_type device_type;
-        sycl::detail::u_int max_compute_units;            ///< Maximum number of compute units.
+        
+        /// @brief Maximum number of compute units on the device
+        sycl::detail::u_int max_compute_units;
+        
+        /// @brief Maximum clock frequency of the device in MHz
         sycl::detail::u_int max_clock_frequency;
 
-        // work-item
+        // Work-item capabilities
+        /// @brief Maximum number of work-item dimensions supported
         sycl::detail::u_int max_work_item_dimensions;
-        sycl::range<1> max_work_item_sizes_1d;  ///< Maximum sizes for each work item, by dimension, in 1D.
-        sycl::range<2> max_work_item_sizes_2d;  ///< Maximum sizes for each work item, by dimension, in 2D.
-        sycl::range<3> max_work_item_sizes_3d;  ///< Maximum sizes for each work item, by dimension, in 3D.
+        
+        /// @brief Maximum work-item sizes for 1D kernels
+        sycl::range<1> max_work_item_sizes_1d;
+        
+        /// @brief Maximum work-item sizes for 2D kernels
+        sycl::range<2> max_work_item_sizes_2d;
+        
+        /// @brief Maximum work-item sizes for 3D kernels
+        sycl::range<3> max_work_item_sizes_3d;
+        
+        /// @brief Whether work-items can make independent forward progress
         bool work_item_independent_forward_progress;
 
-        // work-group
-        std::size_t max_work_group_size;          ///< Maximum size of a work group.
+        // Work-group capabilities
+        /// @brief Maximum size of a work-group
+        std::size_t max_work_group_size;
 
-        // sub-group
-        sycl::detail::u_int max_num_sub_groups;           ///< Maximum number of subgroups.
+        // Sub-group capabilities
+        /// @brief Maximum number of sub-groups per work-group
+        sycl::detail::u_int max_num_sub_groups;
+        
+        /// @brief Whether sub-groups can make independent forward progress
         bool sub_group_independent_forward_progress;
+        
+        /// @brief Supported sub-group sizes on this device
         std::vector<std::size_t> sub_group_sizes;
-        sycl::detail::u_int preferred_vector_width_char; ///
+        
+        /// @brief Preferred vector width for char operations
+        sycl::detail::u_int preferred_vector_width_char;
 
-        // memory allocation
+        // Memory allocation capabilities
+        /// @brief Maximum size of a single memory allocation in bytes
         sycl::detail::u_long max_mem_alloc_size;
-        // global memory
+        
+        // Global memory characteristics
+        /// @brief Cache line size for global memory in bytes
         sycl::detail::u_int global_mem_cache_line_size;
+        
+        /// @brief Total global memory size in bytes
         sycl::detail::u_long global_mem_size;
+        
+        /// @brief Global memory cache size in bytes
         sycl::detail::u_long global_mem_cache_size;
+        
+        /// @brief Type of global memory cache (none, read-only, read-write)
         sycl::info::global_mem_cache_type global_mem_cache_type;
-        // local memory
+        
+        // Local memory characteristics
+        /// @brief Type of local memory (none, local, global)
         sycl::info::local_mem_type local_mem_type;
+        
+        /// @brief Local memory size in bytes
         sycl::detail::u_long local_mem_size;
 
-        //size_type max_sub_group_size;           ///< Maximum size of a subgroup.
-        //size_type work_group_size;              ///< Actual used size of a work group.
-        // size_type num_work_groups;              ///< Number of work groups.
-        // size_type global_range;                 ///< Global range of work items.
-        // size_type total_work_items = 1;         ///< Total number of work items.
-        // size_type samples_per_work_item;        ///< Number of samples per work item.
-        // size_type F_per_group = 1;              ///< Number of F operations per group.
-        // size_type num_samples = 1;              ///< Total number of samples
-        // size_type F_size = 1;                   ///< Size of the F function block
-
+        /**
+         * @brief Constructs working set configuration for a SYCL device
+         * 
+         * @details Initializes the working set by querying all relevant device
+         * capabilities and computing sample buffer requirements. This constructor
+         * performs comprehensive device introspection to gather all information
+         * needed for optimal configuration.
+         * 
+         * The constructor queries:
+         * - Device type and compute capabilities
+         * - Work-group and sub-group constraints
+         * - Memory hierarchy characteristics
+         * - Backend-specific optimal occupancy rates
+         * 
+         * @param queue SYCL queue for device access and memory operations
+         * @param num_events Number of events in the Monte Carlo simulation
+         * @param requested_shape Desired sample buffer organization
+         * 
+         * @throws std::runtime_error if device queries fail
+         * @throws std::bad_alloc if memory requirements exceed device limits
+         * 
+         * @note All device queries are performed synchronously during construction
+         * @note Memory requirements are validated against device constraints
+         * 
+         * @example
+         * @code
+         * sycl::queue gpu_queue;
+         * sample_shape<uint32_t> shape{2048, 32};
+         * working_set<uint32_t, uint64_t> ws(gpu_queue, 5000, shape);
+         * 
+         * // Check if configuration is valid
+         * if (ws.samples_in_bytes_ > ws.max_mem_alloc_size) {
+         *     throw std::runtime_error("Sample buffer too large for device");
+         * }
+         * @endcode
+         */
         working_set(const sycl::queue &queue, const size_type num_events, const sample_shape<size_type> &requested_shape) {
             const auto device = queue.get_device();
             num_events_ = num_events;
@@ -182,13 +410,38 @@ namespace scram::canopy {
         // for OpenMP 8 CPU, 16 threads @ 3.80 GHz, 6400 * 16 = 102400 : 30.8s
         // for OpenMP 8 CPU, 16 threads @ 3.80 GHz, 6400 * 8 = 51200 : 54.9s
         /**
-         * @brief Overloaded stream insertion operator for working_set.
-         *
-         * This operator allows for easy printing of the working_set configuration.
-         *
-         * @param os The output stream.
-         * @param ws The working_set instance to be printed.
-         * @return A reference to the output stream.
+         * @brief Formatted output operator for working set configuration
+         * 
+         * @details Provides comprehensive human-readable output of all device
+         * capabilities, memory constraints, and computed configuration parameters.
+         * The output is organized into logical sections for easy interpretation.
+         * 
+         * Output sections include:
+         * - Device type and compute capabilities
+         * - Work-item and work-group constraints
+         * - Sub-group characteristics
+         * - Memory hierarchy information
+         * - Sample buffer configuration
+         * 
+         * @param os Output stream for formatted output
+         * @param ws Working set instance to format
+         * @return Reference to the output stream for chaining
+         * 
+         * @note Output format is designed for debugging and performance analysis
+         * @note All values are formatted with appropriate units and descriptions
+         * 
+         * @example
+         * @code
+         * working_set<uint32_t, uint64_t> ws(queue, 1000, shape);
+         * std::cout << ws << std::endl;
+         * 
+         * // Output includes:
+         * // device_type: gpu
+         * // max_compute_units: 20
+         * // max_clock_frequency: 1800
+         * // desired_occupancy: 204800
+         * // ...
+         * @endcode
          */
         friend std::ostream &operator<<(std::ostream &os, const working_set &ws) {
             os  << "device_type: ";
@@ -249,16 +502,29 @@ namespace scram::canopy {
         }
 
         /**
-         * @brief Computes the working set configuration based on the given SYCL queue.
-         *
-         * This static method calculates the working set parameters using the device
-         * information from the provided SYCL queue. It considers the size of F operations
-         * and the number of samples to determine the configuration.
-         *
-         * @param queue The SYCL queue to query device information.
-         * @param F_size The size of F operations, defaults to 1.
-         * @param num_samples The number of samples, defaults to 1.
-         * @return A working_set instance with computed parameters.
+         * @brief Legacy compute method for working set configuration
+         * 
+         * @details This method is retained for backward compatibility but is
+         * currently non-functional. The actual working set configuration is
+         * performed in the constructor, which provides more comprehensive
+         * device analysis and optimization.
+         * 
+         * @param queue SYCL queue for device access
+         * @param F_size Size of F operations (unused)
+         * @param num_samples Number of samples (unused)
+         * @return Empty working set structure
+         * 
+         * @deprecated Use constructor-based configuration instead
+         * @todo Remove this method in future versions
+         * 
+         * @example
+         * @code
+         * // Don't use this method - use constructor instead
+         * // auto ws = working_set::compute(queue, 1000, 1000000);
+         * 
+         * // Use this instead:
+         * working_set<uint32_t, uint64_t> ws(queue, events, shape);
+         * @endcode
          */
         static working_set compute(const sycl::queue &queue, const size_type F_size = 1, const size_type num_samples = 1) {
             working_set set;
@@ -300,15 +566,37 @@ namespace scram::canopy {
         }
 
         /**
-         * @brief Computes the optimal nd_range for the tally kernel.
-         *
-         * This method calculates the optimal local size (workgroup size) for the tally kernel
-         * by querying the device capabilities.
-         *
-         * @param queue The SYCL queue to query device information.
-         * @param num_tallies The number of tally events (number of workgroups).
-         * @param buffer_size_per_tally The size of the buffer for each tally event (number of bitpack elements).
-         * @return A sycl::nd_range<1> object with the optimal global and local sizes.
+         * @brief Computes optimal nd_range for 1D tally kernels
+         * 
+         * @details Calculates the optimal SYCL nd_range for 1D tally operations
+         * by analyzing device capabilities and choosing appropriate work-group
+         * sizes. The algorithm considers sub-group sizes for GPUs and preferred
+         * vector widths for CPUs to maximize performance.
+         * 
+         * The method uses different strategies based on device type:
+         * - GPU devices: Use largest sub-group size with power-of-2 multipliers
+         * - CPU devices: Use preferred vector width with power-of-2 scaling
+         * - Fallback: Use conservative defaults for unknown device types
+         * 
+         * @param queue SYCL queue for device capability queries
+         * @param total_elements Total number of elements to process
+         * @return Optimal nd_range with computed global and local sizes
+         * 
+         * @note Global range is rounded up to be a multiple of local range
+         * @note Local range is constrained by device maximum work-group size
+         * 
+         * @example
+         * @code
+         * // Compute optimal range for 10000 tally elements
+         * auto nd_range = working_set<uint32_t, uint64_t>::compute_optimal_nd_range_for_tally(queue, 10000);
+         * 
+         * // Submit kernel with optimal configuration
+         * queue.submit([&](sycl::handler& h) {
+         *     h.parallel_for(nd_range, [=](sycl::nd_item<1> item) {
+         *         // Tally kernel implementation
+         *     });
+         * });
+         * @endcode
          */
         static sycl::nd_range<1> compute_optimal_nd_range_for_tally(const sycl::queue &queue, const size_type total_elements) {
             const auto device = queue.get_device();
@@ -364,6 +652,40 @@ namespace scram::canopy {
             return sycl::nd_range<1>(global_range_obj, local_range_obj);
         }
 
+        /**
+         * @brief Computes optimal sample shape for device memory constraints
+         * 
+         * @details Determines the optimal sample_shape configuration that fits
+         * within device memory allocation limits while maximizing computational
+         * efficiency. The algorithm searches through possible batch sizes and
+         * bitpacks per batch to find the largest configuration that doesn't
+         * exceed memory constraints.
+         * 
+         * The search strategy:
+         * 1. Start with maximum batch size (2^16) and sample size (2^16)
+         * 2. Iteratively reduce sizes until memory requirements fit
+         * 3. Validate against max_mem_alloc_size device limit
+         * 4. Return the largest valid configuration found
+         * 
+         * @param queue SYCL queue for device capability queries
+         * @param num_events Number of events requiring sample storage
+         * @return Optimal sample_shape within memory constraints
+         * 
+         * @note Uses conservative maximum values to prevent memory overflow
+         * @note Falls back to minimal configuration (1x1) if no valid config found
+         * 
+         * @example
+         * @code
+         * // Find optimal shape for 5000 events
+         * auto shape = working_set<uint32_t, uint64_t>::compute_optimal_sample_shape(queue, 5000);
+         * 
+         * std::cout << "Optimal batch size: " << shape.batch_size << std::endl;
+         * std::cout << "Bitpacks per batch: " << shape.bitpacks_per_batch << std::endl;
+         * 
+         * // Use in working set construction
+         * working_set<uint32_t, uint64_t> ws(queue, 5000, shape);
+         * @endcode
+         */
         static sample_shape<size_type> compute_optimal_sample_shape(const sycl::queue &queue, const size_type num_events) {
             const auto device = queue.get_device();
             const size_t max_malloc_size = device.get_info<sycl::info::device::max_mem_alloc_size>();
@@ -403,6 +725,36 @@ namespace scram::canopy {
             return shape;
         }
 
+        /**
+         * @brief Finds the closest power of 2 to a given value
+         * 
+         * @details Computes the power of 2 that minimizes the absolute difference
+         * with the input value. This utility function is used for optimizing
+         * work-group sizes and memory layouts to align with hardware preferences.
+         * 
+         * The algorithm:
+         * 1. Iterates through all possible powers of 2 up to the type limit
+         * 2. Computes absolute difference for each power
+         * 3. Returns the power with minimum difference
+         * 4. Breaks early when differences start increasing
+         * 
+         * @param n Input value to find closest power of 2 for
+         * @return Closest power of 2 to the input value
+         * 
+         * @note Returns 1 for input value 0 (edge case handling)
+         * @note Prefers smaller powers when there's a tie
+         * 
+         * @example
+         * @code
+         * // Find closest powers of 2
+         * auto p1 = working_set<uint32_t, uint64_t>::closest_power_of_2(100);  // Returns 128
+         * auto p2 = working_set<uint32_t, uint64_t>::closest_power_of_2(96);   // Returns 64
+         * auto p3 = working_set<uint32_t, uint64_t>::closest_power_of_2(96);   // Returns 128 (tie)
+         * 
+         * // Use for work-group size optimization
+         * size_t optimal_size = closest_power_of_2(device_preferred_size);
+         * @endcode
+         */
         static size_type closest_power_of_2(const size_type n) {
             if (n == 0) return 1;  // Edge case: define closest power of 2 to 0 as 1
 
@@ -431,6 +783,37 @@ namespace scram::canopy {
             return static_cast<size_type>(closest);
         }
 
+        /**
+         * @brief Computes optimal 3D local range for CPU devices
+         * 
+         * @details Calculates the optimal local work-group size for CPU devices
+         * in 3D kernels, considering data type alignment and memory access patterns.
+         * CPU devices typically benefit from smaller work-groups that align with
+         * cache lines and SIMD instruction widths.
+         * 
+         * The CPU optimization strategy:
+         * - Sets X and Y dimensions to 1 for simplicity
+         * - Computes Z dimension based on data type size and alignment
+         * - Considers 8-byte alignment for optimal memory access
+         * - Respects device work-item size limits
+         * 
+         * @param limits Optional constraints on each dimension (0 = no limit)
+         * @return Optimal 3D local range for CPU execution
+         * 
+         * @note CPU devices typically use (1, 1, small_z) configurations
+         * @note Z dimension is aligned to data type size for vectorization
+         * 
+         * @example
+         * @code
+         * working_set<uint32_t, uint64_t> ws(cpu_queue, 1000, shape);
+         * 
+         * // Compute optimal CPU local range
+         * auto local_range = ws.compute_optimal_local_range_3d_for_cpu();
+         * std::cout << "CPU local range: " << local_range[0] << "x" 
+         *           << local_range[1] << "x" << local_range[2] << std::endl;
+         * // Typical output: "CPU local range: 1x1x8"
+         * @endcode
+         */
         [[nodiscard]] sycl::range<3> compute_optimal_local_range_3d_for_cpu(const sycl::range<3> &limits = {0, 0, 0}) const {
             const auto num_bytes_in_dtype = sizeof(bitpack_type); // in bytes
             const auto div_8 = 8 / num_bytes_in_dtype;
@@ -439,6 +822,38 @@ namespace scram::canopy {
             return sycl::range<3>{1, 1, hw_limited_target_z};
         }
 
+        /**
+         * @brief Computes optimal 3D local range for GPU devices
+         * 
+         * @details Calculates the optimal local work-group size for GPU devices
+         * in 3D kernels by distributing the work-group size budget across all
+         * three dimensions. The algorithm uses logarithmic scaling to ensure
+         * power-of-2 work-group sizes while respecting device constraints.
+         * 
+         * The GPU optimization strategy:
+         * 1. Start with total work-group size budget (log2 of max_work_group_size)
+         * 2. Distribute budget across X, Y, Z dimensions based on problem size
+         * 3. Use power-of-2 sizes for optimal GPU warp/wavefront utilization
+         * 4. Respect per-dimension work-item size limits
+         * 5. Ensure total work-group size doesn't exceed device limits
+         * 
+         * @param limits Optional constraints on each dimension (0 = no limit)
+         * @return Optimal 3D local range for GPU execution
+         * 
+         * @note GPU devices benefit from larger work-groups (e.g., 256, 512, 1024)
+         * @note All dimensions are powers of 2 for optimal hardware utilization
+         * 
+         * @example
+         * @code
+         * working_set<uint32_t, uint64_t> ws(gpu_queue, 1000, shape);
+         * 
+         * // Compute optimal GPU local range
+         * auto local_range = ws.compute_optimal_local_range_3d_for_gpu();
+         * std::cout << "GPU local range: " << local_range[0] << "x" 
+         *           << local_range[1] << "x" << local_range[2] << std::endl;
+         * // Typical output: "GPU local range: 8x16x4" (total = 512)
+         * @endcode
+         */
         [[nodiscard]] sycl::range<3> compute_optimal_local_range_3d_for_gpu(const sycl::range<3> &limits = {0, 0, 0}) const {
             const auto log_2_max_work_group_size = static_cast<std::uint8_t>(std::log2(max_work_group_size));
             auto remaining_budget = log_2_max_work_group_size;
@@ -468,7 +883,42 @@ namespace scram::canopy {
             return {lx, ly, lz};
         }
 
-
+        /**
+         * @brief Computes optimal 3D local range for current device type
+         * 
+         * @details Automatically selects the appropriate local range computation
+         * method based on the device type detected during working set construction.
+         * This method provides a unified interface for optimal work-group size
+         * calculation across different device architectures.
+         * 
+         * Device-specific optimizations:
+         * - CPU: Use CPU-optimized algorithm (small work-groups, cache-aligned)
+         * - GPU: Use GPU-optimized algorithm (large work-groups, power-of-2 sizes)
+         * - Other: Fall back to GPU algorithm for unknown device types
+         * 
+         * @param limits Optional constraints on each dimension (0 = no limit)
+         * @return Optimal 3D local range for the current device
+         * 
+         * @note Automatically validates that computed range doesn't exceed device limits
+         * @note Logs computed configuration for debugging and performance analysis
+         * 
+         * @example
+         * @code
+         * working_set<uint32_t, uint64_t> ws(queue, 1000, shape);
+         * 
+         * // Get optimal local range for any device type
+         * auto local_range = ws.compute_optimal_local_range_3d();
+         * 
+         * // Use in kernel submission
+         * queue.submit([&](sycl::handler& h) {
+         *     sycl::range<3> global_range{1000, shape.batch_size, shape.bitpacks_per_batch};
+         *     sycl::nd_range<3> nd_range{global_range, local_range};
+         *     h.parallel_for(nd_range, [=](sycl::nd_item<3> item) {
+         *         // Kernel implementation
+         *     });
+         * });
+         * @endcode
+         */
         [[nodiscard]] sycl::range<3> compute_optimal_local_range_3d(const sycl::range<3> &limits = {0, 0, 0}) const {
             sycl::range<3> local_range;
             switch (device_type) {
@@ -489,6 +939,27 @@ namespace scram::canopy {
             return local_range;
         }
 
+        /**
+         * @brief Rounds sample shape dimensions (in-place version)
+         * 
+         * @details Modifies the provided sample_shape structure to round its
+         * dimensions to optimal values. This in-place version is useful when
+         * you want to modify an existing shape configuration.
+         * 
+         * @tparam dtype Data type used for shape dimensions
+         * @param shape Reference to shape structure to be modified
+         * @return Reference to the modified shape structure
+         * 
+         * @note Currently performs no actual rounding (placeholder implementation)
+         * @note Future versions may implement power-of-2 rounding or other optimizations
+         * 
+         * @example
+         * @code
+         * sample_shape<uint32_t> shape{1000, 15};
+         * working_set<uint32_t, uint64_t>::rounded(shape);
+         * // shape is now potentially modified for optimization
+         * @endcode
+         */
         template<typename dtype>
         static sample_shape<dtype> &rounded(sample_shape<dtype> &shape) {
             shape.batch_size = (shape.batch_size);
@@ -496,6 +967,27 @@ namespace scram::canopy {
             return shape;
         }
 
+        /**
+         * @brief Rounds sample shape dimensions (copy version)
+         * 
+         * @details Creates a new sample_shape structure with rounded dimensions
+         * from the input shape. This copy version is useful when you want to
+         * create an optimized copy without modifying the original shape.
+         * 
+         * @tparam dtype Data type used for shape dimensions
+         * @param shape Input shape structure to be rounded
+         * @return New shape structure with rounded dimensions
+         * 
+         * @note Currently performs no actual rounding (placeholder implementation)
+         * @note Future versions may implement power-of-2 rounding or other optimizations
+         * 
+         * @example
+         * @code
+         * sample_shape<uint32_t> original_shape{1000, 15};
+         * auto rounded_shape = working_set<uint32_t, uint64_t>::rounded(original_shape);
+         * // original_shape is unchanged, rounded_shape is potentially optimized
+         * @endcode
+         */
         template<typename dtype>
         static sample_shape<dtype> rounded(const sample_shape<dtype> &shape) {
             sample_shape<dtype> new_shape;

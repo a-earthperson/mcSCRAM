@@ -73,7 +73,7 @@ namespace scram::canopy::queue {
  * 
  * @since Version 1.0
  */
-template <typename bitpack_t_ = std::uint64_t, typename prob_t_ = std::double_t, typename size_t_ = std::uint32_t>
+template <typename bitpack_t_ = std::uint64_t, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
 class layer_manager {
 
     /// @brief Index type for node identification
