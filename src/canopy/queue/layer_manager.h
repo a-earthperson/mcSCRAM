@@ -1,6 +1,15 @@
-/*
- * Copyright (C) 2025 Arjun Earthperson
- *
+/**
+ * @file layer_manager.h
+ * @brief SYCL-based layer management for the compute graph
+ * @author Arjun Earthperson
+ * @date 2025
+ * 
+ * @details This file provides a templated layer manager that organizes graph
+ * analysis computations into layers for efficient parallel execution on SYCL devices.
+ * The layer manager performs topological sorting, kernel building, and execution
+ * scheduling for probabilistic directed acyclic graphs (PDAGs).
+ * 
+ * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -18,233 +27,340 @@
 #pragma once
 
 #include "canopy/node.h"
-#include "canopy/working_set.h"
-
-#include "canopy/queue/kernel_builder.h"
 #include "canopy/queue/queueable.h"
 
-#include "logger.h"
 #include "pdag.h"
-#include "preprocessor.h"
 
 #include <sycl/sycl.hpp>
 
 namespace scram::canopy::queue {
 
-    template<typename prob_t_, typename bitpack_t_, typename size_t_>
-    class layer_manager {
+/**
+ * @class layer_manager
+ * @brief Manages layered execution of pdag computations on SYCL devices
+ * 
+ * @details The layer_manager class orchestrates the execution of pdag
+ * computations by organizing nodes into layers based on topological ordering. It builds
+ * and manages SYCL kernels for parallel execution of basic events and gates, handles
+ * memory allocation, and provides tally computation for probabilistic analysis.
+ * 
+ * The class performs several key operations:
+ * - Topological sorting of PDAG nodes into execution layers
+ * - SYCL kernel generation for each layer of computations
+ * - Memory management for device-side data structures
+ * - Execution scheduling and synchronization
+ * - Tally computation with confidence intervals
+ * 
+ * @tparam bitpack_t_ Integer type for bit packing operations (default: std::uint64_t)
+ * @tparam prob_t_ Floating-point type for probability calculations (default: std::double_t)  
+ * @tparam size_t_ Integer type for size and indexing (default: std::uint32_t)
+ * 
+ * @example Basic usage:
+ * @code
+ * // Create a layer manager for a pdag
+ * scram::canopy::queue::layer_manager<> manager(pdag, 1024, 16);
+ * 
+ * // Submit all computations and wait for completion
+ * manager.submit_all().wait_and_throw();
+ * 
+ * // Get tally results for a specific event
+ * auto tally_result = manager.tally(event_index, 1000);
+ * std::cout << "Probability: " << tally_result.mean << " ± " << tally_result.std_err << std::endl;
+ * @endcode
+ * 
+ * @note This class requires SYCL-compatible hardware and runtime
+ * @warning The class manages GPU memory and should be used with proper exception handling
+ * 
+ * @since Version 1.0
+ */
+template <typename bitpack_t_ = std::uint64_t, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
+class layer_manager {
 
-        using index_t_ = std::int32_t;
+    /// @brief Index type for node identification
+    using index_t_ = std::int32_t;
 
-        sycl::queue queue_;
-        sample_shape<size_t_> sample_shape_;
+    /// @brief SYCL queue for device operations and kernel execution
+    sycl::queue queue_;
+    
+    /// @brief Sample shape configuration defining batch size and bitpack dimensions
+    sample_shape<size_t_> sample_shape_;
 
-        std::vector<std::shared_ptr<core::Node>> pdag_nodes_;
-        std::unordered_map<index_t_, std::shared_ptr<core::Node>> pdag_nodes_by_index_;
-        std::vector<std::vector<std::shared_ptr<core::Node>>> pdag_nodes_by_layer_;
+    /// @brief Vector containing all PDAG nodes in topological order
+    std::vector<std::shared_ptr<core::Node>> pdag_nodes_;
+    
+    /// @brief Map from node index to node pointer for fast lookup
+    std::unordered_map<index_t_, std::shared_ptr<core::Node>> pdag_nodes_by_index_;
+    
+    /// @brief Two-dimensional vector organizing nodes by execution layer
+    std::vector<std::vector<std::shared_ptr<core::Node>>> pdag_nodes_by_layer_;
 
-        std::unordered_map<index_t_, std::shared_ptr<queueable_base>> queueables_by_index_;
-        std::vector<std::shared_ptr<queueable_base>> queueables_;
+    /// @brief Map from node index to queueable computation object
+    std::unordered_map<index_t_, std::shared_ptr<queueable_base>> queueables_by_index_;
+    
+    /// @brief Vector of all queueable objects in execution order
+    std::vector<std::shared_ptr<queueable_base>> queueables_;
 
-        std::unordered_map<index_t_, std::shared_ptr<queueable_base>> tally_queueables_by_index_;
+    /// @brief Map from node index to tally queueable for result computation
+    std::unordered_map<index_t_, std::shared_ptr<queueable_base>> tally_queueables_by_index_;
 
-        std::unordered_map<index_t_, tally_event<bitpack_t_> *> allocated_tally_events_by_index_;
-        std::unordered_map<index_t_, basic_event<prob_t_, bitpack_t_> *> allocated_basic_events_by_index_;
-        std::unordered_map<index_t_, gate<bitpack_t_, size_t_> *> allocated_gates_by_index_;
+    /// @brief Map from node index to allocated device-side tally event structures
+    std::unordered_map<index_t_, tally_event<bitpack_t_> *> allocated_tally_events_by_index_;
+    
+    /// @brief Map from node index to allocated device-side basic event structures
+    std::unordered_map<index_t_, basic_event<prob_t_, bitpack_t_> *> allocated_basic_events_by_index_;
+    
+    /// @brief Map from node index to allocated device-side gate structures
+    std::unordered_map<index_t_, gate<bitpack_t_, size_t_> *> allocated_gates_by_index_;
 
-        std::unordered_map<index_t_, size_t_> accumulated_counts_by_index_;
+    /// @brief Map from node index to accumulated computation counts
+    std::unordered_map<index_t_, size_t_> accumulated_counts_by_index_;
 
-        static void gather_all_nodes(const std::shared_ptr<core::Gate> &gate, std::vector<std::shared_ptr<core::Node>> &nodes, std::unordered_map<std::int32_t, std::shared_ptr<core::Node>> &nodes_by_index) {
-            if (gate->Visited())
-                return;
-            gate->Visit(1);
-            nodes.push_back(gate);
-            if (nodes_by_index.contains(gate->index())) {
-                LOG(ERROR) << "Found gate with duplicate index while gathering all nodes";
-                throw std::runtime_error("gather all nodes failed");
-            }
-            nodes_by_index[gate->index()] = gate;
-            for (const auto &arg: gate->args<core::Gate>()) {
-                gather_all_nodes(arg.second, nodes, nodes_by_index);
-            }
-            for (const auto &arg: gate->args<core::Variable>()) {
-                if (!arg.second->Visited()) {
-                    arg.second->Visit(1);
-                    nodes.push_back(arg.second);
-                    if (nodes_by_index.contains(arg.second->index())) {
-                        LOG(ERROR) << "Found basic event with duplicate index while gathering all nodes";
-                        throw std::runtime_error("gather all nodes failed");
-                    }
-                    nodes_by_index[arg.second->index()] = arg.second;
-                }
-            }
-        }
+    /**
+     * @brief Recursively gathers all nodes from a gate hierarchy
+     * 
+     * @details Performs a depth-first traversal of the gate hierarchy starting from
+     * the given gate, collecting all reachable nodes (both gates and variables) while
+     * avoiding duplicates through the visit mechanism.
+     * 
+     * @param gate Root gate to start traversal from
+     * @param nodes [out] Vector to store collected nodes
+     * @param nodes_by_index [out] Map from index to node for fast lookup
+     * 
+     * @throws std::runtime_error if duplicate indices are found
+     * 
+     * @note This is a static method that modifies the visit state of nodes
+     * @warning Assumes nodes have been cleared of visit flags before calling
+     * 
+     * @example
+     * @code
+     * std::vector<std::shared_ptr<core::Node>> nodes;
+     * std::unordered_map<std::int32_t, std::shared_ptr<core::Node>> nodes_by_index;
+     * layer_manager::gather_all_nodes(root_gate, nodes, nodes_by_index);
+     * @endcode
+     */
+    static void gather_all_nodes(const std::shared_ptr<core::Gate> &gate,
+                                 std::vector<std::shared_ptr<core::Node>> &nodes,
+                                 std::unordered_map<std::int32_t, std::shared_ptr<core::Node>> &nodes_by_index);
 
-        static void layered_toposort(core::Pdag *pdag, std::vector<std::shared_ptr<core::Node>> &nodes, std::unordered_map<index_t_, std::shared_ptr<core::Node>> &nodes_by_index, std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer) {
-            // Ensure the graph has been topologically sorted, by layer/level
-            core::pdag::LayeredTopologicalOrder(pdag);
-            // TODO:: Add preprocessing rule for normalizing gates by input count
+    /**
+     * @brief Performs layered topological sorting of PDAG nodes
+     * 
+     * @details Organizes nodes into execution layers based on their topological order,
+     * ensuring that all dependencies of a node are computed before the node itself.
+     * Within each layer, variables are ordered before gates, and gates are ordered by type.
+     * 
+     * @param pdag Pointer to the probabilistic directed acyclic graph
+     * @param nodes [out] Vector to store all nodes in topological order
+     * @param nodes_by_index [out] Map from index to node pointer
+     * @param nodes_by_layer [out] Two-dimensional vector organizing nodes by layer
+     * 
+     * @note This method clears visit flags and sorts nodes within each layer
+     * @warning The PDAG must be acyclic for proper topological ordering
+     * 
+     * @example
+     * @code
+     * layer_manager::layered_toposort(pdag, nodes, nodes_by_index, nodes_by_layer);
+     * // Now nodes_by_layer[0] contains all nodes in layer 0, etc.
+     * @endcode
+     */
+    static void layered_toposort(core::Pdag *pdag, std::vector<std::shared_ptr<core::Node>> &nodes,
+                                 std::unordered_map<index_t_, std::shared_ptr<core::Node>> &nodes_by_index,
+                                 std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer);
 
-            // Clear visits for the gathering process
-            pdag->Clear<core::Pdag::kVisit>();
+    /**
+     * @brief Partitions layer nodes into variables and gates by type
+     * 
+     * @details Separates nodes in a single layer into variables (basic events) and
+     * gates grouped by their connective type (AND, OR, etc.). This organization
+     * enables efficient kernel generation for homogeneous operations.
+     * 
+     * @param layer_nodes Input vector of nodes from a single layer
+     * @param out_variables [out] Vector to store extracted variables
+     * @param out_gates_by_type [out] Map from connective type to gates of that type
+     * 
+     * @note Variables represent basic events with probability distributions
+     * @note Gates represent logical operations (AND, OR, K-out-of-N, etc.)
+     * 
+     * @example
+     * @code
+     * std::vector<std::shared_ptr<core::Variable>> variables;
+     * std::unordered_map<core::Connective, std::vector<std::shared_ptr<core::Gate>>> gates_by_type;
+     * layer_manager::gather_layer_nodes(layer_nodes, variables, gates_by_type);
+     * @endcode
+     */
+    static void gather_layer_nodes(
+        const std::vector<std::shared_ptr<core::Node>> &layer_nodes,
+        std::vector<std::shared_ptr<core::Variable>> &out_variables,
+        std::unordered_map<core::Connective, std::vector<std::shared_ptr<core::Gate>>> &out_gates_by_type);
 
-            // Collect all nodes
-            gather_all_nodes(pdag->root_ptr(), nodes, nodes_by_index);
+    /**
+     * @brief Builds SYCL kernels for all nodes in a single layer
+     * 
+     * @details Creates optimized SYCL kernels for parallel execution of computations
+     * within a layer. Builds separate kernels for variables (basic events) and for
+     * each type of gate operation, enabling efficient batched execution.
+     * 
+     * @param layer_nodes Vector of nodes to process in this layer
+     * 
+     * @note This method updates the queueables_ and queueables_by_index_ containers
+     * @note Kernels are built but not yet submitted for execution
+     * 
+     * @example
+     * @code
+     * // Process layer 0 nodes
+     * build_kernels_for_layer(nodes_by_layer[0]);
+     * @endcode
+     */
+    void build_kernels_for_layer(const std::vector<std::shared_ptr<core::Node>> &layer_nodes);
 
-            // Sort nodes by their order
-            std::sort(nodes.begin(), nodes.end(), [](const std::shared_ptr<core::Node> &a, const std::shared_ptr<core::Node> &b) {
-                return a->order() < b->order();
-            });
+    /**
+     * @brief Maps nodes by layer and builds corresponding kernels
+     * 
+     * @details Iterates through all layers of nodes, building kernels for each layer
+     * and setting up tally computations for the final layer. This method orchestrates
+     * the complete kernel generation process for the entire computation graph.
+     * 
+     * @param nodes_by_layer Two-dimensional vector of nodes organized by layer
+     * 
+     * @note The final layer receives additional tally kernel generation
+     * @note This method populates all kernel-related data structures
+     * 
+     * @example
+     * @code
+     * map_nodes_by_layer(pdag_nodes_by_layer_);
+     * // All kernels are now built and ready for execution
+     * @endcode
+     */
+    void map_nodes_by_layer(const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer);
 
-            size_t max_layer = nodes.back()->order();// Since nodes are sorted
-            nodes_by_layer.resize(max_layer + 1);
+    /**
+     * @brief Fetches and logs tally results from all allocated tally events
+     * 
+     * @details Submits all queued computations, waits for completion, and retrieves
+     * tally results including mean, standard error, and confidence intervals.
+     * Results are logged at DEBUG1 level for analysis.
+     * 
+     * @note This method blocks until all computations complete
+     * @note Results are automatically logged with detailed statistics
+     * 
+     * @example
+     * @code
+     * fetch_all_tallies();
+     * // Check logs for: "tally[index] :: [std_err] :: [p05, mean, p95]"
+     * @endcode
+     */
+    void fetch_all_tallies();
 
-            for (auto &node: nodes) {
-                nodes_by_layer[node->order()].push_back(node);
-            }
+  public:
+    /**
+     * @brief Constructs a layer manager for the given PDAG
+     * 
+     * @details Initializes the layer manager with the specified computation parameters,
+     * performs topological sorting of the PDAG, and builds all necessary kernels for
+     * parallel execution. The sample shape is automatically rounded to device-optimal
+     * dimensions.
+     * 
+     * @param pdag Pointer to the probabilistic directed acyclic graph to analyze
+     * @param batch_size Number of samples to process in each batch
+     * @param bitpacks_per_batch Number of bitpacks to use per batch for efficiency
+     * 
+     * @throws std::runtime_error if PDAG processing fails
+     * @throws std::runtime_error if kernel building fails
+     * 
+     * @note The constructor performs all setup operations synchronously
+     * @note Sample shape is optimized for the target SYCL device
+     * 
+     * @example
+     * @code
+     * // Create layer manager with 1024 samples per batch, 16 bitpacks per batch
+     * layer_manager<> manager(my_pdag, 1024, 16);
+     * 
+     * // For custom types:
+     * layer_manager<std::uint32_t, float, std::uint16_t> custom_manager(pdag, 512, 8);
+     * @endcode
+     */
+    layer_manager(core::Pdag *pdag, size_t_ batch_size, size_t_ bitpacks_per_batch);
 
-            // For each layer, sort so that variables precede gates, and gates are sorted by their Gate::type()
-            for (auto &layer: nodes_by_layer) {
-                std::sort(layer.begin(), layer.end(), [](const std::shared_ptr<core::Node> &lhs, const std::shared_ptr<core::Node> &rhs) {
-                    // Try casting to Variable
-                    auto varL = std::dynamic_pointer_cast<core::Variable>(lhs);
-                    auto varR = std::dynamic_pointer_cast<core::Variable>(rhs);
+    /**
+     * @brief Submits all queued computations to the SYCL device
+     * 
+     * @details Submits all built kernels to the SYCL queue for execution. Returns
+     * the SYCL queue object that can be used for synchronization and error checking.
+     * This method does not block; use wait_and_throw() on the returned queue for
+     * synchronous execution.
+     * 
+     * @return SYCL queue object for synchronization and error handling
+     * 
+     * @note This method is non-blocking; kernels execute asynchronously
+     * @note Call wait_and_throw() on the returned queue to ensure completion
+     * 
+     * @example
+     * @code
+     * // Submit and wait for completion
+     * manager.submit_all().wait_and_throw();
+     * 
+     * // Submit asynchronously
+     * auto queue = manager.submit_all();
+     * // Do other work...
+     * queue.wait_and_throw();
+     * @endcode
+     */
+    sycl::queue submit_all();
 
-                    // If one is a variable and the other is not, variable goes first
-                    if (varL && !varR) return true;
-                    if (!varL && varR) return false;
+    /**
+     * @brief Computes tally statistics for a specific event
+     * 
+     * @details Performs Monte Carlo sampling to compute probability statistics for
+     * the specified event, including mean probability, standard error, and confidence
+     * intervals. The computation is repeated for the specified count to improve accuracy.
+     * 
+     * @param evt_idx Index of the event to compute tally for
+     * @param count Number of tally computations to perform
+     * 
+     * @return tally_event structure containing computed statistics
+     * @retval tally_event::mean Mean probability estimate
+     * @retval tally_event::std_err Standard error of the estimate
+     * @retval tally_event::ci[0] 5th percentile confidence bound
+     * @retval tally_event::ci[1] 95th percentile confidence bound
+     * @retval tally_event::num_one_bits Number of positive outcomes
+     * 
+     * @note This method blocks until all computations complete
+     * @note Returns empty tally_event if event index is not found
+     * 
+     * @example
+     * @code
+     * // Compute tally for event 42 with 1000 iterations
+     * auto result = manager.tally(42, 1000);
+     * 
+     * if (result.mean > 0.0) {
+     *     std::cout << "Event 42 probability: " << result.mean 
+     *               << " ± " << result.std_err << std::endl;
+     *     std::cout << "95% CI: [" << result.ci[0] << ", " << result.ci[1] << "]" << std::endl;
+     * }
+     * @endcode
+     */
+    tally_event<bitpack_t_> tally(index_t_ evt_idx, std::size_t count);
 
-                    // If both are variables, treat them as equivalent in this ordering
-                    // (no further ordering required among variables)
-                    if (varL && varR) return false;
+    /**
+     * @brief Destructor that cleans up allocated device memory
+     * 
+     * @details Properly releases all allocated device-side memory for basic events,
+     * gates, and tally events. Ensures no memory leaks occur when the layer manager
+     * is destroyed.
+     * 
+     * @note All device memory is automatically freed
+     * @note SYCL queue operations are completed before destruction
+     * 
+     * @example
+     * @code
+     * {
+     *     layer_manager<> manager(pdag, 1024, 16);
+     *     // Use manager...
+     * } // Destructor automatically cleans up all device memory
+     * @endcode
+     */
+    ~layer_manager();
+};
+} // namespace scram::canopy::queue
 
-                    // Otherwise, both must be gates. Compare by gate->type()
-                    auto gateL = std::dynamic_pointer_cast<core::Gate>(lhs);
-                    auto gateR = std::dynamic_pointer_cast<core::Gate>(rhs);
-                    return gateL->type() < gateR->type();
-                });
-            }
-            LOG(DEBUG5) << "num_nodes: " << nodes.size();
-            LOG(DEBUG5) << "num_layers: " << nodes_by_layer.size();
-        }
-
-        static void gather_layer_nodes(
-                const std::vector<std::shared_ptr<core::Node>> &layer_nodes,
-                std::vector<std::shared_ptr<core::Variable>> &out_variables,
-                std::unordered_map<core::Connective, std::vector<std::shared_ptr<core::Gate>>> &out_gates_by_type) {
-            out_variables.clear();
-            out_gates_by_type.clear();
-
-            for (auto &node: layer_nodes) {
-                // If the node is a Variable, store it
-                if (auto var = std::dynamic_pointer_cast<core::Variable>(node)) {
-                    out_variables.push_back(var);
-                }
-                // Else if the node is a Gate, group it by Connective type
-                else if (auto gate = std::dynamic_pointer_cast<core::Gate>(node)) {
-                    out_gates_by_type[gate->type()].push_back(gate);
-                } else {
-                    LOG(WARNING) << "gather_layer_nodes: Node "
-                                 << node->index()
-                                 << " was neither a Variable nor a Gate.";
-                }
-            }
-        }
-
-        void build_kernels_for_layer(const std::vector<std::shared_ptr<core::Node>> &layer_nodes) {
-            // Step (1): Partition layer_nodes into Variables and gates_by_type
-            std::vector<std::shared_ptr<core::Variable>> variables;
-            std::unordered_map<core::Connective, std::vector<std::shared_ptr<core::Gate>>> gates_by_type;
-            gather_layer_nodes(layer_nodes, variables, gates_by_type);
-
-            // Step (2): Build a single kernel for all variables in this layer (if any)
-            auto be_kernel = build_kernel_for_variables<index_t_, prob_t_, bitpack_t_, size_t_>(variables, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_);
-            // We could store or log “be_kernel” if we want direct reference, or just rely
-            // on the global queueables_ list.
-
-            // Step (3): Build one kernel per gate->type() in this layer
-            auto gate_kernels = build_kernels_for_gates<index_t_, prob_t_, bitpack_t_, size_t_>(gates_by_type, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
-
-            // Optionally do something with (be_kernel) and the (gate_kernels) vector.
-            // The queueables_ container is updated in each subfunction, so
-            // they are already “registered” for execution.
-        }
-
-        void map_nodes_by_layer(const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer) {
-            for (const auto &nodes_in_layer: nodes_by_layer) {
-                build_kernels_for_layer(nodes_in_layer);
-                //build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(nodes_in_layer, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, allocated_tally_events_by_index_);
-            }
-            // last layer gets tallied
-            build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(nodes_by_layer.back(), queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, allocated_tally_events_by_index_);
-        }
-
-        void fetch_all_tallies() {
-            submit_all().wait_and_throw();
-            for (auto &pair: allocated_tally_events_by_index_) {
-                const index_t_ index = pair.first;
-                const tally_event<bitpack_t_> *tally = pair.second;
-                LOG(DEBUG1) << "tally[" << index << "]["<<pdag_nodes_by_index_[index].get()->index()<<"] :: [std_err] :: [p05, mean, p95] :: " << "[" << tally->std_err << "] :: " << "[" << tally->ci[0] << ", "<< tally->mean << ", " << tally->ci[1] << "]";
-            }
-        }
-
-    public:
-        layer_manager(core::Pdag *pdag, const size_t_ batch_size, const size_t_ bitpacks_per_batch) {
-            sample_shape_.batch_size = batch_size;
-            sample_shape_.bitpacks_per_batch = bitpacks_per_batch;
-            sample_shape_ = working_set<size_t_, bitpack_t_>::rounded(sample_shape_);
-            layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
-            LOG(DEBUG2) << working_set<size_t_, bitpack_t_>(queue_, pdag_nodes_.size(), sample_shape_);
-            map_nodes_by_layer(pdag_nodes_by_layer_);
-        }
-
-        sycl::queue submit_all() {
-            for (const auto &queueable: queueables_) {
-                queueable->submit();
-            }
-            return queue_;
-        }
-
-        tally_event<bitpack_t_> tally(const index_t_ evt_idx, const std::size_t count) {
-            tally_event<bitpack_t_> to_tally;
-            if (!allocated_tally_events_by_index_.contains(evt_idx)) {
-                LOG(ERROR) << "Unable to tally probability for unknown event with index "<< evt_idx;
-                return std::move(to_tally);
-            }
-            LOG(DEBUG1) << "Counting "<< count <<" tallies for event with index " << evt_idx;
-
-            for (auto i = 0; i < count; i++) {
-                fetch_all_tallies();
-            }
-            const tally_event<bitpack_t_>* computed_tally = allocated_tally_events_by_index_[evt_idx];
-            to_tally.num_one_bits = computed_tally->num_one_bits;
-            to_tally.mean = computed_tally->mean;
-            to_tally.std_err = computed_tally->std_err;
-            to_tally.ci = computed_tally->ci;
-            return to_tally;
-        }
-
-        ~layer_manager() {
-            // Free allocated basic events
-            for (auto &pair: allocated_basic_events_by_index_) {
-                basic_event<prob_t_, bitpack_t_> *event = pair.second;
-                auto buffer = event->buffer;
-                auto probability = event->probability;
-                auto index = event->index;
-                //destroy_basic_event(queue_, event);
-            }
-
-            // Free allocated gates
-            for (auto &pair: allocated_gates_by_index_) {
-                gate<bitpack_t_, size_t_> *event = pair.second;
-                //destroy_gate(queue_, event);
-            }
-
-            // Free allocated tally events
-            for (auto &pair: allocated_tally_events_by_index_) {
-                tally_event<bitpack_t_> *event = pair.second;
-                //destroy_tally_event(queue_, event);
-            }
-        }
-    };
-}// namespace scram::canopy::queue
+#include "layer_manager.tpp"

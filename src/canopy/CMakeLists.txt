@@ -7,12 +7,12 @@ set(CANOPY_SRC
 # Optionally collect public headers for installation
 set(CANOPY_HEADERS
         node.h
-        layer.h
         working_set.h
         kernel/basic_event.h
         kernel/gate.h
         kernel/tally.h
         queue/layer_manager.h
+        queue/layer_manager.tpp
         queue/kernel_builder.h
         queue/queueable.h
 )

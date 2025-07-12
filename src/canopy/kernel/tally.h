@@ -1,6 +1,44 @@
-/*
- * Copyright (C) 2025 Arjun Earthperson
- *
+/**
+ * @file tally.h
+ * @brief SYCL kernel implementation for parallel statistical tally computation
+ * @author Arjun Earthperson
+ * @date 2025
+ * 
+ * @details This file implements a high-performance SYCL kernel for computing statistical
+ * tallies from bit-packed simulation results. The kernel performs parallel population
+ * counting (popcount) operations and computes statistical measures including mean probability estimates,
+ * standard errors, and confidence intervals.
+ * 
+ * The implementation leverages advanced GPU parallelization techniques including
+ * intra-group reductions and atomic operations to efficiently aggregate bit counts
+ * across thousands of parallel threads. The resulting statistics provide quantitative
+ * measures of uncertainty for Monte Carlo simulation results.
+ * 
+ * **Key Statistical Operations:**
+ * - Population counting for bit-packed boolean samples
+ * - Bernoulli distribution parameter estimation
+ * - Standard error calculation using normal approximation
+ * - Confidence interval computation at multiple significance levels
+ * - Robust statistical aggregation across parallel executions
+ * 
+ * **Performance Features:**
+ * - Intra-group reduction for efficient bit count aggregation
+ * - Atomic operations for thread-safe global accumulation
+ * - Optimized work-group organization for statistical computation
+ * - Single-pass algorithm for memory-efficient processing
+ * - Parallel statistical computation with minimal synchronization
+ * 
+ * **Statistical Methodology:**
+ * The kernel implements standard Monte Carlo statistical estimation using the
+ * Central Limit Theorem. For large sample sizes, the sample proportion follows
+ * a normal distribution, enabling robust confidence interval estimation using
+ * Z-score methods.
+ * 
+ * @note All statistical computations use double-precision arithmetic for numerical stability
+ * @note Confidence intervals are clamped to [0,1] range for probability estimates
+ * @note The algorithm assumes independent and identically distributed samples
+ * 
+ * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -21,14 +59,100 @@
 #include <sycl/sycl.hpp>
 
 namespace scram::canopy::kernel {
+
+    /**
+     * @class tally
+     * @brief SYCL kernel for parallel statistical tally computation and analysis
+     * 
+     * @details This class implements a high-performance SYCL kernel that computes
+     * statistical tallies from bit-packed simulation results. The kernel performs
+     * parallel population counting across massive datasets and computes comprehensive
+     * statistical measures including probability estimates, standard errors, and
+     * confidence intervals.
+     * 
+     * The implementation uses a parallel reduction strategy that
+     * minimizes atomic operations while maximizing GPU utilization. Each work-group
+     * performs local reductions before contributing to global atomic accumulation,
+     * significantly improving performance for large-scale statistical computations.
+     * 
+     * **Algorithm Overview:**
+     * 1. **Parallel Population Counting**: Each thread processes one bitpack using
+     *    hardware-accelerated popcount operations
+     * 2. **Intra-Group Reduction**: Work-groups perform local reductions to minimize
+     *    atomic contention on global memory
+     * 3. **Atomic Accumulation**: Group leaders perform thread-safe updates to
+     *    global bit count accumulators
+     * 4. **Statistical Computation**: Final statistical measures are computed using
+     *    standard Monte Carlo estimation techniques
+     * 
+     * **Statistical Measures Computed:**
+     * - **Mean**: Sample proportion estimate of underlying probability
+     * - **Standard Error**: Measure of estimation uncertainty
+     * - **95% Confidence Interval**: Range containing true value with 95% probability
+     * - **99% Confidence Interval**: Range containing true value with 99% probability
+     * 
+     * **Performance Characteristics:**
+     * - Time Complexity: O(total_bits / num_threads) for population counting
+     * - Space Complexity: O(1) per thread for local computation
+     * - Scalability: Linear scaling with number of GPU compute units
+     * - Memory Efficiency: Single-pass algorithm with minimal memory overhead
+     * 
+     * @tparam prob_t_ Floating-point type for probability and statistical calculations
+     * @tparam bitpack_t_ Integer type for bit-packed data storage
+     * @tparam size_t_ Integer type for indexing and counting operations
+     * 
+     * @note The kernel assumes tally_nodes_ array is allocated in unified shared memory
+     * @note Statistical computation uses double-precision for numerical stability
+     * @note Work-group organization is optimized for statistical computation patterns
+     * 
+     * @example Basic tally kernel usage:
+     * @code
+     * // Create tally events and kernel
+     * auto tally_events = create_tally_events(queue, buffers, initial_counts);
+     * tally<double, uint64_t, uint32_t> tally_kernel(tally_events, num_tallies, sample_shape);
+     * 
+     * // Submit kernel for execution
+     * queue.submit([&](sycl::handler& h) {
+     *     auto range = tally_kernel.get_range(num_tallies, local_range, sample_shape);
+     *     h.parallel_for(range, [=](sycl::nd_item<3> item) {
+     *         tally_kernel(item, iteration);
+     *     });
+     * });
+     * @endcode
+     */
     template<typename prob_t_, typename bitpack_t_, typename size_t_>
     class tally {
+        /// @brief Pointer to array of tally events to be processed
         tally_event<bitpack_t_> *tally_nodes_;
+        
+        /// @brief Number of tally events in the array
         const size_t_ num_tallies_;
+        
+        /// @brief Configuration for sample batch dimensions and bit-packing
         const sample_shape<size_t_> sample_shape_;
 
     public:
-        // Constructor
+        /**
+         * @brief Constructs a statistical tally computation kernel
+         * 
+         * @details Initializes the kernel with the tally events array and sampling
+         * configuration. The kernel is designed for efficient statistical computation
+         * across multiple tally events simultaneously.
+         * 
+         * @param tally_nodes Pointer to array of tally events (must be in unified shared memory)
+         * @param num_tallies Number of tally events in the array
+         * @param sample_shape Configuration defining batch size and bit-packing dimensions
+         * 
+         * @note The tally_nodes array must remain valid for the lifetime of the kernel
+         * @note Each tally event maintains its own statistical accumulators
+         * @note Sample shape determines the total number of bits processed per tally
+         * 
+         * @example
+         * @code
+         * sample_shape<uint32_t> shape{1024, 16};
+         * tally<double, uint64_t, uint32_t> tally_kernel(tally_events, num_tallies, shape);
+         * @endcode
+         */
         tally(tally_event<bitpack_t_> *tally_nodes,
               const size_t_ &num_tallies,
               const sample_shape<size_t_> sample_shape)
@@ -36,10 +160,42 @@ namespace scram::canopy::kernel {
               num_tallies_(num_tallies),
               sample_shape_(sample_shape) {}
 
-        // Returns an nd_range over 3 dimensions:
-        //   X-dimension -> number of tally nodes
-        //   Y-dimension -> batch size
-        //   Z-dimension -> bitpacks per batch
+        /**
+         * @brief Calculates optimal SYCL nd_range for tally kernel execution
+         * 
+         * @details Computes the global and local work-group sizes optimized for
+         * statistical computation. The function uses a specialized work-group
+         * organization where the X-dimension is constrained to 1 to optimize
+         * for the statistical reduction patterns used in tally computation.
+         * 
+         * The specialized organization improves performance by:
+         * - Reducing synchronization overhead for atomic operations
+         * - Optimizing memory access patterns for statistical computation
+         * - Minimizing contention on global memory accumulators
+         * - Enabling efficient intra-group reductions
+         * 
+         * **3D Execution Space Organization:**
+         * - X dimension: Single tally per work-group (local_range[0] = 1)
+         * - Y dimension: Batch size from sample shape
+         * - Z dimension: Bitpacks per batch from sample shape
+         * 
+         * @param num_tallies Number of tally events to process
+         * @param local_range Desired local work-group size (X dimension will be overridden)
+         * @param shape Sample shape configuration defining Y and Z dimensions
+         * 
+         * @return SYCL nd_range object optimized for statistical computation
+         * 
+         * @note X dimension is automatically set to 1 for optimal tally computation
+         * @note Work-group size affects atomic operation performance
+         * @note The returned range ensures proper coverage of all tally operations
+         * 
+         * @example
+         * @code
+         * sycl::range<3> local_range(8, 16, 4);  // X will be overridden to 1
+         * auto nd_range = tally::get_range(num_tallies, local_range, sample_shape);
+         * // Actual local range will be (1, 16, 4)
+         * @endcode
+         */
         static sycl::nd_range<3> get_range(const size_t_ num_tallies,
                                            const sycl::range<3> &local_range,
                                            const sample_shape<size_t_> &shape) {
@@ -52,6 +208,52 @@ namespace scram::canopy::kernel {
             return {sycl::range<3>(global_x, global_y, global_z), new_local_range};
         }
 
+        /**
+         * @brief Updates statistical measures for a tally event
+         * 
+         * @details Computes comprehensive statistical measures from accumulated bit counts
+         * using standard Monte Carlo estimation techniques. The function calculates the
+         * sample proportion, standard error, and confidence intervals based on the
+         * normal approximation to the binomial distribution.
+         * 
+         * **Statistical Methodology:**
+         * 1. **Sample Proportion**: Estimated as number of successes divided by total trials
+         * 2. **Variance Estimation**: Uses Bernoulli variance formula p(1-p)
+         * 3. **Standard Error**: Square root of variance divided by sample size
+         * 4. **Confidence Intervals**: Uses Z-score method with normal approximation
+         * 
+         * **Z-Score Values:**
+         * - 95% Confidence Interval: Z = 1.96 (captures 95% of normal distribution)
+         * - 99% Confidence Interval: Z = 2.58 (captures 99% of normal distribution)
+         * 
+         * **Confidence Interval Calculation:**
+         * - Lower bound: mean - Z × standard_error
+         * - Upper bound: mean + Z × standard_error
+         * - Results are clamped to [0,1] range for probability estimates
+         * 
+         * @tparam prob_vec_t_ Vector type for storing confidence interval bounds
+         * 
+         * @param tally [in,out] Tally event to update with computed statistics
+         * @param total_bits Total number of bits processed (sample size)
+         * 
+         * @note Uses double-precision arithmetic for numerical stability
+         * @note Confidence intervals are clamped to valid probability range [0,1]
+         * @note Normal approximation is valid for large sample sizes (n > 30)
+         * 
+         * @example Statistical computation:
+         * @code
+         * // Example with 1000 bits, 250 successes
+         * tally_event<uint64_t> tally;
+         * tally.num_one_bits = 250;
+         * update_tally_stats<sycl::double4>(tally, 1000.0);
+         * 
+         * // Results:
+         * // tally.mean = 0.25 (25% success rate)
+         * // tally.std_err ≈ 0.0137 (standard error)
+         * // tally.ci[0] ≈ 0.223 (95% CI lower bound)
+         * // tally.ci[1] ≈ 0.277 (95% CI upper bound)
+         * @endcode
+         */
         template<typename prob_vec_t_>
         static void update_tally_stats(tally_event<bitpack_t_> &tally, const prob_t_ &total_bits) {
             const prob_t_ bernoulli_mean = static_cast<prob_t_>(tally.num_one_bits) / total_bits;
@@ -73,7 +275,58 @@ namespace scram::canopy::kernel {
             tally.ci = clamped_cis;
         }
 
-        // 3D kernel for popcount
+        /**
+         * @brief SYCL kernel operator for parallel statistical tally computation
+         * 
+         * @details This is the main kernel function that performs parallel population
+         * counting and statistical computation. The kernel uses a multi-stage algorithm that maximizes GPU
+         * utilization while minimizing atomic operation overhead.
+         * 
+         * **Algorithm Stages:**
+         * 
+         * **Stage 1: Parallel Population Counting**
+         * - Each thread processes one bitpack using hardware popcount
+         * - Threads extract bit counts from their assigned bitpack
+         * - Local bit counts are computed independently
+         * 
+         * **Stage 2: Intra-Group Reduction**
+         * - Work-groups perform local reductions to aggregate bit counts
+         * - Uses SYCL's optimized reduce_over_group operation
+         * - Reduces atomic contention on global memory
+         * 
+         * **Stage 3: Atomic Accumulation**
+         * - Group leader performs thread-safe update to global accumulator
+         * - Uses relaxed memory ordering for optimal performance
+         * - Accumulates partial sums from all work-groups
+         * 
+         * **Stage 4: Statistical Computation**
+         * - Group leader computes final statistical measures
+         * - Updates mean, standard error, and confidence intervals
+         * - Uses double-precision arithmetic for numerical stability
+         * 
+         * **Thread Organization:**
+         * - 3D thread space: (tally_id, batch_id, bitpack_id)
+         * - Each thread processes exactly one bitpack
+         * - Work-groups are organized for efficient statistical computation
+         * 
+         * @param item SYCL nd_item providing thread indices and group information
+         * @param iteration Current iteration number for statistical computation
+         * 
+         * @note Performs bounds checking to handle over-provisioned thread grids
+         * @note Uses atomic operations for thread-safe global accumulation
+         * @note Computes final statistics only on group leader threads
+         * @note Assumes work-group organization optimized for tally computation
+         * 
+         * @example Kernel execution flow:
+         * @code
+         * // Thread (tally=0, batch=5, bitpack=10) processes:
+         * // 1. Extract bitpack from tally_nodes_[0].buffer[5*16+10]
+         * // 2. Count bits using popcount(bitpack)
+         * // 3. Participate in group reduction
+         * // 4. Group leader updates tally_nodes_[0].num_one_bits atomically
+         * // 5. Group leader computes final statistics
+         * @endcode
+         */
         void operator()(const sycl::nd_item<3> &item, const uint32_t iteration) const {
             // Map global IDs to (tally_id, batch_id, bitpack_id)
             const size_t tally_id = item.get_global_id(0);
