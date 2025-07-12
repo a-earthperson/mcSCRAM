@@ -31,7 +31,11 @@
 
 namespace scram::canopy::queue {
 
-    template<typename prob_t_, typename bitpack_t_, typename size_t_>
+    template<
+        typename bitpack_t_ = std::uint64_t,
+        typename prob_t_ = std::double_t,
+        typename size_t_ = std::uint32_t
+    >
     class layer_manager {
 
         using index_t_ = std::int32_t;

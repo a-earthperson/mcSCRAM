@@ -33,14 +33,15 @@ namespace scram::core {
     inline ProbabilityAnalyzer<DirectEval>::~ProbabilityAnalyzer() noexcept = default;
 
     double ProbabilityAnalyzer<DirectEval>::CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept {
-        CLOCK(calc_time);// BDD based calculation time.
+        CLOCK(calc_time);
         LOG(DEBUG4) << "Calculating probability using monte carlo sampling...";
-        const auto num_samples_per_event = this->settings().num_trials();
+        const auto num_iterations = this->settings().num_trials();
         const auto batch_size = this->settings().batch_size();
         const auto sample_size = this->settings().sample_size();
         auto pdag = this->graph();
-        canopy::queue::layer_manager<std::double_t, std::uint8_t, std::uint32_t> manager(pdag, batch_size, sample_size);
-        const auto tally = manager.tally(pdag->root()->index(), num_samples_per_event);
+
+        canopy::queue::layer_manager manager(pdag, batch_size, sample_size);
+        const auto tally = manager.tally(pdag->root()->index(), num_iterations);
         LOG(DEBUG4) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
         return tally.mean;
     }
