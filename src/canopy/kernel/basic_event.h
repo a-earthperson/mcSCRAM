@@ -38,7 +38,7 @@
 
 #pragma once
 
-#include "canopy/node.h"
+#include "canopy/event/node.h"
 
 #include <sycl/sycl.hpp>
 
@@ -129,14 +129,11 @@ namespace scram::canopy::kernel {
      */
     template<typename prob_t_, typename bitpack_t_, typename size_t_>
     class basic_event {
-        /// @brief Pointer to array of basic events to be sampled
-        canopy::basic_event<prob_t_, bitpack_t_> *basic_events_;
-        
-        /// @brief Number of basic events in the array
-        const size_t_ num_basic_events_;
-        
+
+        event::basic_event_block<prob_t_, bitpack_t_> basic_events_block_;
+
         /// @brief Configuration for sample batch dimensions and bit-packing
-        const sample_shape<size_t_> sample_shape_;
+        const event::sample_shape<size_t_> sample_shape_;
 
     public:
         /**
@@ -146,8 +143,7 @@ namespace scram::canopy::kernel {
          * configuration. The kernel instance can be used multiple times for different
          * iterations of the sampling process.
          * 
-         * @param basic_events Pointer to array of basic events (must be in unified shared memory)
-         * @param num_basic_events Number of events in the basic_events array
+         * @param basic_events_block reference to basic events block (must be in unified shared memory)
          * @param sample_shape Configuration defining batch size and bit-packing dimensions
          * 
          * @note The basic_events array must remain valid for the lifetime of the kernel
@@ -160,11 +156,10 @@ namespace scram::canopy::kernel {
          * @endcode
          */
         basic_event(
-                canopy::basic_event<prob_t_, bitpack_t_> *basic_events,
-                const size_t_ &num_basic_events,
-                const sample_shape<size_t_> &sample_shape) : basic_events_(basic_events),
-                                                            num_basic_events_(num_basic_events),
-                                                            sample_shape_(sample_shape) {}
+                const event::basic_event_block<prob_t_, bitpack_t_> &basic_events_block,
+                const event::sample_shape<size_t_> &sample_shape)
+                : basic_events_block_(basic_events_block),
+                  sample_shape_(sample_shape) {}
 
         /// @name Philox PRNG Constants
         /// @{
@@ -515,18 +510,19 @@ namespace scram::canopy::kernel {
             };
 
             // Bounds checking
-            if (args.event_id >= num_basic_events_ || args.batch_id >= sample_shape_.batch_size || args.bitpack_idx >= sample_shape_.bitpacks_per_batch) {
+            if (args.event_id >= basic_events_block_.count || args.batch_id >= sample_shape_.batch_size || args.bitpack_idx >= sample_shape_.bitpacks_per_batch) {
                 return;
             }
 
-            args.probability = basic_events_[args.event_id].probability;
-            args.index_id = static_cast<uint32_t>(basic_events_[args.event_id].index);
+            const event::basic_event event = basic_events_block_[args.event_id];
+            args.probability = event.probability;
+            args.index_id = static_cast<uint32_t>(event.index);
 
             // Calculate the index within the generated_samples buffer
             const size_t_ index = args.batch_id * sample_shape_.bitpacks_per_batch + args.bitpack_idx;
 
             // Store the bitpacked samples into the buffer
-            bitpack_t_ *output = basic_events_[args.event_id].buffer;
+            bitpack_t_ *output = event.buffer;
             const bitpack_t_ bitpack_value = generate(args);
             output[index] = bitpack_value;
         }
@@ -572,7 +568,7 @@ namespace scram::canopy::kernel {
          */
         static sycl::nd_range<3> get_range(const size_t_ num_events,
                                            const sycl::range<3> &local_range,
-                                           const sample_shape<size_t_> &sample_shape_) {
+                                           const event::sample_shape<size_t_> &sample_shape_) {
             // Compute global range
             size_t global_size_x = num_events;
             size_t global_size_y = sample_shape_.batch_size;

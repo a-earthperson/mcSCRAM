@@ -55,7 +55,7 @@
 
 #pragma once
 
-#include "canopy/node.h"
+#include "canopy/event/node.h"
 #include <sycl/sycl.hpp>
 
 namespace scram::canopy::kernel {
@@ -123,13 +123,13 @@ namespace scram::canopy::kernel {
     template<typename prob_t_, typename bitpack_t_, typename size_t_>
     class tally {
         /// @brief Pointer to array of tally events to be processed
-        tally_event<bitpack_t_> *tally_nodes_;
+        event::tally<bitpack_t_> *tally_nodes_;
         
         /// @brief Number of tally events in the array
         const size_t_ num_tallies_;
         
         /// @brief Configuration for sample batch dimensions and bit-packing
-        const sample_shape<size_t_> sample_shape_;
+        const event::sample_shape<size_t_> sample_shape_;
 
     public:
         /**
@@ -153,9 +153,9 @@ namespace scram::canopy::kernel {
          * tally<double, uint64_t, uint32_t> tally_kernel(tally_events, num_tallies, shape);
          * @endcode
          */
-        tally(tally_event<bitpack_t_> *tally_nodes,
+        tally(event::tally<bitpack_t_> *tally_nodes,
               const size_t_ &num_tallies,
-              const sample_shape<size_t_> sample_shape)
+              const event::sample_shape<size_t_> sample_shape)
             : tally_nodes_(tally_nodes),
               num_tallies_(num_tallies),
               sample_shape_(sample_shape) {}
@@ -198,7 +198,7 @@ namespace scram::canopy::kernel {
          */
         static sycl::nd_range<3> get_range(const size_t_ num_tallies,
                                            const sycl::range<3> &local_range,
-                                           const sample_shape<size_t_> &shape) {
+                                           const event::sample_shape<size_t_> &shape) {
             auto new_local_range = local_range;
             new_local_range[0] = 1;
             size_t global_x = (num_tallies + new_local_range[0] - 1) / new_local_range[0] * new_local_range[0];
@@ -255,7 +255,7 @@ namespace scram::canopy::kernel {
          * @endcode
          */
         template<typename prob_vec_t_>
-        static void update_tally_stats(tally_event<bitpack_t_> &tally, const prob_t_ &total_bits) {
+        static void update_tally_stats(event::tally<bitpack_t_> &tally, const prob_t_ &total_bits) {
             const prob_t_ bernoulli_mean = static_cast<prob_t_>(tally.num_one_bits) / total_bits;
             const prob_t_ bernoulli_variance = bernoulli_mean * (1.0 - bernoulli_mean);
             const prob_t_ bernoulli_std_error = sycl::sqrt(bernoulli_variance / total_bits);

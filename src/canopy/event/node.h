@@ -32,8 +32,11 @@
 #pragma once
 
 #include <sycl/sycl.hpp>
+#include <vector>
+#include <cstddef>
+#include <cassert>
 
-namespace scram::canopy {
+namespace scram::canopy::event {
 
     /**
      * @struct node
@@ -95,7 +98,7 @@ namespace scram::canopy {
     };
 
     /**
-     * @struct tally_event
+     * @struct tally
      * @brief Accumulates and stores statistical results from Monte Carlo sampling
      * 
      * @details A tally event collects statistical information from multiple simulation
@@ -124,7 +127,7 @@ namespace scram::canopy {
      * @endcode
      */
     template<typename bitpack_t_>
-    struct tally_event : node<bitpack_t_> {
+    struct tally : node<bitpack_t_> {
         /// @brief Count of positive outcomes (1-bits) across all samples
         std::size_t num_one_bits = 0;
         
@@ -166,9 +169,9 @@ namespace scram::canopy {
      * @endcode
      */
     template<typename bitpack_t_>
-    tally_event<bitpack_t_> *create_tally_events(const sycl::queue &queue, const std::vector<bitpack_t_ *> &buffers, const std::vector<std::size_t> &initial_values) {
+    tally<bitpack_t_> *create_tally_events(const sycl::queue &queue, const std::vector<bitpack_t_ *> &buffers, const std::vector<std::size_t> &initial_values) {
         const auto num_tallies = buffers.size();
-        tally_event<bitpack_t_> *tallies = sycl::malloc_shared<tally_event<bitpack_t_>>(num_tallies, queue);
+        tally<bitpack_t_> *tallies = sycl::malloc_shared<tally<bitpack_t_>>(num_tallies, queue);
         for (auto i = 0; i < num_tallies; ++i) {
             tallies[i].buffer = buffers[i];
             tallies[i].num_one_bits = initial_values[i];
@@ -201,7 +204,7 @@ namespace scram::canopy {
      * @endcode
      */
     template<typename bitpack_t_>
-    void destroy_tally_event(const sycl::queue queue, tally_event<bitpack_t_> *event) {
+    void destroy_tally_event(const sycl::queue queue, tally<bitpack_t_> *event) {
         sycl::free(event, queue);
     }
 
@@ -240,16 +243,15 @@ namespace scram::canopy {
     template<typename prob_t_, typename bitpack_t_>
     basic_event<prob_t_, bitpack_t_> *create_basic_events(const sycl::queue &queue, const std::vector<prob_t_> &probabilities, const std::vector<int32_t> &indices, const std::size_t num_bitpacks) {
         const auto num_events = probabilities.size();
-        // allocate the basic event objects in a contiguous block
+        // allocate the basic event objects in a contiguous (shared) block
         basic_event<prob_t_, bitpack_t_> *basic_events = sycl::malloc_shared<basic_event<prob_t_, bitpack_t_>>(num_events, queue);
+        // allocate the basic event buffers in a contiguous (device) block
         bitpack_t_* buffers = sycl::malloc_device<bitpack_t_>(num_events * num_bitpacks, queue);
-        // allocate basic event buffers separately
+        // populate the allocated basic events
         for (auto i = 0; i < num_events; ++i) {
             basic_events[i].probability = probabilities[i];
             basic_events[i].index = indices[i];
-            //basic_events[i].buffer = sycl::malloc_device<bitpack_t_>(num_bitpacks, queue);
             basic_events[i].buffer = buffers + i * num_bitpacks;
-            //LOG(DEBUG5) <<"building basic event "<<basic_events[i].index<<" with probability "<<basic_events[i].probability;
         }
         return basic_events;
     }
@@ -477,12 +479,14 @@ namespace scram::canopy {
     template<typename bitpack_t_, typename size_t_>
     gate<bitpack_t_, size_t_> *create_gates(const sycl::queue &queue, const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>> &inputs_per_gate, const std::size_t num_bitpacks) {
         const auto num_gates = inputs_per_gate.size();
-        // allocate all the gate objects contiguously
+        // allocate all the gate objects in a contiguous (shared) block
         gate<bitpack_t_, size_t_> *gates = sycl::malloc_shared<gate<bitpack_t_, size_t_>>(num_gates, queue);
+
+        // allocate the actual buffers in a contiguous (device) block
         bitpack_t_* buffers = sycl::malloc_device<bitpack_t_>(num_gates * num_bitpacks, queue);
 
         for (auto i = 0; i < num_gates; ++i) {
-            const auto gate_input_buffers = inputs_per_gate[i].first;
+            const std::vector<bitpack_t_ *> gate_input_buffers = inputs_per_gate[i].first;
             const auto num_inputs = gate_input_buffers.size();
             const auto num_negated_inputs = inputs_per_gate[i].second;
             assert(num_negated_inputs <= num_inputs);
@@ -583,4 +587,104 @@ namespace scram::canopy {
          */
         size_t_ num_bitpacks() const { return batch_size * bitpacks_per_batch; }
     };
-}// namespace scram::canopy
+
+    /**
+     * @brief Thin wrapper describing one contiguous allocation of Node objects.
+     *
+     * A node_block owns (or at least refers to) a *single* contiguous allocation
+     * that stores <code>count</code> nodes of type <code>node_t</code>.  The core
+     * motivation is to make the memory-layout property explicit so that callers
+     * can reason about lifetime and de-allocation without having to keep track
+     * of individual interior pointers.
+     *
+     * The wrapper itself is intentionally minimal – just a pointer and a size –
+     * because different node types sometimes need extra bookkeeping (e.g. a
+     * separate buffer block for `basic_event`).  Specialisations or derived
+     * wrappers can extend it with such fields.
+     */
+    template<typename node_t>
+    struct node_block {
+        node_t       *data  = nullptr;   ///< first element of the contiguous allocation
+        std::size_t   count = 0;         ///< number of valid nodes in <code>data</code>
+
+        [[nodiscard]] node_t       &operator[](std::size_t i)       { return data[i]; }
+        [[nodiscard]] const node_t &operator[](std::size_t i) const { return data[i]; }
+    };
+
+    /**
+     * @brief Specialised node_block for <code>basic_event</code> that also owns the
+     * contiguous device buffer block used for bit-packed samples.
+     *
+     * The <code>buffers</code> pointer is the *sole* allocation for all bit-packed
+     * outputs of all events in this block.  Each individual event’s
+     * <code>buffer</code> member points somewhere inside this big block at an
+     * offset of <code>event_index * bitpacks_per_event</code>.
+     */
+    template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
+    struct basic_event_block : public node_block<basic_event<prob_t_, bitpack_t_, index_t_>> {
+        bitpack_t_  *buffers            = nullptr;   ///< single contiguous device allocation
+        std::size_t  bitpacks_per_event = 0;         ///< stride between successive event buffers
+    };
+
+    /**
+     * @brief Factory that allocates and initialises a contiguous block of
+     * <code>basic_event</code> objects *and* their shared output-buffer block.
+     *
+     * The layout mimics the one previously produced by <code>create_basic_events</code>
+     * but returns a richer wrapper that makes ownership explicit and therefore
+     * easier to free safely.
+     */
+    template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
+    [[nodiscard]]
+    basic_event_block<prob_t_, bitpack_t_, index_t_>
+    create_basic_event_block(const sycl::queue                                  &queue,
+                             const std::vector<std::pair<index_t_, prob_t_>>    &indexed_probabilities,
+                             const std::size_t                                  num_bitpacks) {
+
+        const std::size_t num_events = indexed_probabilities.size();
+
+        // 1. Allocate host-visible node array (USM shared memory).
+        using event_t = basic_event<prob_t_, bitpack_t_, index_t_>;
+        event_t *events = sycl::malloc_shared<event_t>(num_events, queue);
+
+        // 2. Allocate device-side bit-packed buffer for *all* events.
+        bitpack_t_ *buffer_block = sycl::malloc_device<bitpack_t_>(num_events * num_bitpacks, queue);
+
+        // 3. Populate per-event fields.
+        for (std::size_t i = 0; i < num_events; ++i) {
+            events[i].probability = indexed_probabilities[i].second;
+            events[i].index       = indexed_probabilities[i].first;
+            events[i].buffer      = buffer_block + i * num_bitpacks;
+        }
+
+        // 4. Wrap everything in a basic_event_block and return.
+        basic_event_block<prob_t_, bitpack_t_, index_t_> blk;
+        blk.data               = events;
+        blk.count              = num_events;
+        blk.buffers            = buffer_block;
+        blk.bitpacks_per_event = num_bitpacks;
+        return blk;
+    }
+
+    /**
+     * @brief Releases all device memory owned by a <code>basic_event_block</code>.
+     *
+     * After the call the block is zeroed out so that double-free / use-after-free
+     * errors are easier to spot during debugging.
+     */
+    template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
+    void destroy_basic_event_block(const sycl::queue                                   &queue,
+                                   basic_event_block<prob_t_, bitpack_t_, index_t_>      &blk) {
+        if (blk.buffers) {
+            sycl::free(blk.buffers, queue);
+            blk.buffers = nullptr;
+        }
+        if (blk.data) {
+            sycl::free(blk.data, queue);
+            blk.data  = nullptr;
+        }
+        blk.count = 0;
+        blk.bitpacks_per_event = 0;
+    }
+
+}// namespace scram::canopy::event

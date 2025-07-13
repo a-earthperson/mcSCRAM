@@ -48,7 +48,7 @@
 
 #pragma once
 
-#include "canopy/node.h"
+#include "canopy/event/node.h"
 
 #include <sycl/sycl.hpp>
 
@@ -153,13 +153,13 @@ namespace scram::canopy::kernel {
     class op {
     protected:
         /// @brief Pointer to array of gates to be processed
-        gate<bitpack_t_, size_t_> *gates_;
+        event::gate<bitpack_t_, size_t_> *gates_;
         
         /// @brief Number of gates in the array
         const size_t_ num_gates_;
         
         /// @brief Configuration for sample batch dimensions and bit-packing
-        const sample_shape<size_t_> sample_shape_;
+        const event::sample_shape<size_t_> sample_shape_;
 
     public:
         /**
@@ -181,7 +181,7 @@ namespace scram::canopy::kernel {
          * op<core::Connective::kOr, uint64_t, uint32_t> or_kernel(gates, num_gates, shape);
          * @endcode
          */
-        op(gate<bitpack_t_, size_t_> *gates, const size_t_ &num_gates, const sample_shape<size_t_> &sample_shape)
+        op(event::gate<bitpack_t_, size_t_> *gates, const size_t_ &num_gates, const event::sample_shape<size_t_> &sample_shape)
             : gates_(gates),
               num_gates_(num_gates),
               sample_shape_(sample_shape) {}
@@ -217,7 +217,7 @@ namespace scram::canopy::kernel {
          */
         static sycl::nd_range<3> get_range(const size_t_ num_gates,
                                            const sycl::range<3> &local_range,
-                                           const sample_shape<size_t_> &sample_shape_) {
+                                           const event::sample_shape<size_t_> &sample_shape_) {
             // Compute global range
             auto global_size_x = static_cast<size_t>(num_gates);
             auto global_size_y = static_cast<size_t>(sample_shape_.batch_size);
@@ -419,13 +419,13 @@ namespace scram::canopy::kernel {
     class op<core::Connective::kAtleast, bitpack_t_, size_t_> {
     protected:
         /// @brief Pointer to array of at-least gates to be processed
-        atleast_gate<bitpack_t_, size_t_> *gates_;
+        event::atleast_gate<bitpack_t_, size_t_> *gates_;
         
         /// @brief Number of at-least gates in the array
         const size_t_ num_gates_;
         
         /// @brief Configuration for sample batch dimensions and bit-packing
-        const sample_shape<size_t_> sample_shape_;
+        const event::sample_shape<size_t_> sample_shape_;
 
     public:
         /**
@@ -448,7 +448,7 @@ namespace scram::canopy::kernel {
          * op<core::Connective::kAtleast, uint64_t, uint32_t> atleast_kernel(gates, num_gates, shape);
          * @endcode
          */
-        op(atleast_gate<bitpack_t_, size_t_> *gates, const size_t_ &num_gates, const sample_shape<size_t_> &sample_shape)
+        op(event::atleast_gate<bitpack_t_, size_t_> *gates, const size_t_ &num_gates, const event::sample_shape<size_t_> &sample_shape)
             : gates_(gates),
               num_gates_(num_gates),
               sample_shape_(sample_shape) {}
@@ -477,7 +477,7 @@ namespace scram::canopy::kernel {
          */
         static sycl::nd_range<3> get_range(const size_t_ num_gates,
                                            const sycl::range<3> &local_range,
-                                           const sample_shape<size_t_> &sample_shape_) {
+                                           const event::sample_shape<size_t_> &sample_shape_) {
             // Compute global range
             auto global_size_x = static_cast<size_t>(num_gates);
             auto global_size_y = static_cast<size_t>(sample_shape_.batch_size);

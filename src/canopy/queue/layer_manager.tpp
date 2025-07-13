@@ -19,6 +19,7 @@
 
 #include <algorithm>
 
+#include "canopy/event/node.h"
 #include "canopy/working_set.h"
 #include "logger.h"
 #include "preprocessor.h"
@@ -179,7 +180,7 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies() {
     submit_all().wait_and_throw();
     for (auto &pair : allocated_tally_events_by_index_) {
         const index_t_ index = pair.first;
-        const tally_event<bitpack_t_> *tally = pair.second;
+        const event::tally<bitpack_t_> *tally = pair.second;
         LOG(DEBUG1) << "tally[" << index << "][" << pdag_nodes_by_index_[index].get()->index()
                     << "] :: [std_err] :: [p05, mean, p95] :: " << "[" << tally->std_err << "] :: " << "["
                     << tally->ci[0] << ", " << tally->mean << ", " << tally->ci[1] << "]";
@@ -206,9 +207,9 @@ sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::submit_all() {
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-tally_event<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(const index_t_ evt_idx,
+event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(const index_t_ evt_idx,
                                                                            const std::size_t count) {
-    tally_event<bitpack_t_> to_tally;
+    event::tally<bitpack_t_> to_tally;
     if (!allocated_tally_events_by_index_.contains(evt_idx)) {
         LOG(ERROR) << "Unable to tally probability for unknown event with index " << evt_idx;
         return std::move(to_tally);
@@ -218,7 +219,7 @@ tally_event<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(const
     for (auto i = 0; i < count; i++) {
         fetch_all_tallies();
     }
-    const tally_event<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
+    const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.mean = computed_tally->mean;
     to_tally.std_err = computed_tally->std_err;
@@ -230,7 +231,7 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
     // Free allocated basic events
     for (auto &pair : allocated_basic_events_by_index_) {
-        basic_event<prob_t_, bitpack_t_> *event = pair.second;
+        event::basic_event<prob_t_, bitpack_t_> *event = pair.second;
         auto buffer = event->buffer;
         auto probability = event->probability;
         auto index = event->index;
@@ -239,13 +240,13 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
 
     // Free allocated gates
     for (auto &pair : allocated_gates_by_index_) {
-        gate<bitpack_t_, size_t_> *event = pair.second;
+        event::gate<bitpack_t_, size_t_> *event = pair.second;
         // destroy_gate(queue_, event);
     }
 
     // Free allocated tally events
     for (auto &pair : allocated_tally_events_by_index_) {
-        tally_event<bitpack_t_> *event = pair.second;
+        event::tally<bitpack_t_> *event = pair.second;
         // destroy_tally_event(queue_, event);
     }
 }

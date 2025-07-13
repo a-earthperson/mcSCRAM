@@ -48,7 +48,7 @@
 
 #pragma once
 
-#include "node.h"
+#include "canopy/event/node.h"
 
 #include <cstddef>
 #include <sycl/sycl.hpp>
@@ -230,7 +230,7 @@ namespace scram::canopy {
         size_type samples_per_event_in_bytes_;
         
         /// @brief Sample buffer organization and dimensions
-        sample_shape<size_type> bitpack_buffer_shape_;
+        event::sample_shape<size_type> bitpack_buffer_shape_;
         
         /// @brief Total sample buffer size in bytes
         size_type samples_in_bytes_;
@@ -338,7 +338,7 @@ namespace scram::canopy {
          * }
          * @endcode
          */
-        working_set(const sycl::queue &queue, const size_type num_events, const sample_shape<size_type> &requested_shape) {
+        working_set(const sycl::queue &queue, const size_type num_events, const event::sample_shape<size_type> &requested_shape) {
             const auto device = queue.get_device();
             num_events_ = num_events;
             bitpack_buffer_shape_ = requested_shape;
@@ -686,7 +686,7 @@ namespace scram::canopy {
          * working_set<uint32_t, uint64_t> ws(queue, 5000, shape);
          * @endcode
          */
-        static sample_shape<size_type> compute_optimal_sample_shape(const sycl::queue &queue, const size_type num_events) {
+        static event::sample_shape<size_type> compute_optimal_sample_shape(const sycl::queue &queue, const size_type num_events) {
             const auto device = queue.get_device();
             const size_t max_malloc_size = device.get_info<sycl::info::device::max_mem_alloc_size>();
             static constexpr size_type max_sample_size = 16;
@@ -718,7 +718,7 @@ namespace scram::canopy {
                 ss = ss;
                 bs = bs;
             }
-            sample_shape<size_type> shape = {
+            event::sample_shape<size_type> shape = {
                     .batch_size = one << bs,
                     .bitpacks_per_batch = one << ss,
             };
@@ -961,7 +961,7 @@ namespace scram::canopy {
          * @endcode
          */
         template<typename dtype>
-        static sample_shape<dtype> &rounded(sample_shape<dtype> &shape) {
+        static event::sample_shape<dtype> &rounded(event::sample_shape<dtype> &shape) {
             shape.batch_size = (shape.batch_size);
             shape.bitpacks_per_batch = (shape.bitpacks_per_batch);
             return shape;
@@ -989,8 +989,8 @@ namespace scram::canopy {
          * @endcode
          */
         template<typename dtype>
-        static sample_shape<dtype> rounded(const sample_shape<dtype> &shape) {
-            sample_shape<dtype> new_shape;
+        static event::sample_shape<dtype> rounded(const event::sample_shape<dtype> &shape) {
+            event::sample_shape<dtype> new_shape;
             new_shape.batch_size = (shape.batch_size);
             new_shape.bitpacks_per_batch = (shape.bitpacks_per_batch);
             return new_shape;

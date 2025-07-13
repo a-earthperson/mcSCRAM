@@ -6,7 +6,7 @@ set(CANOPY_SRC
 
 # Optionally collect public headers for installation
 set(CANOPY_HEADERS
-        node.h
+        event/node.h
         working_set.h
         kernel/basic_event.h
         kernel/gate.h

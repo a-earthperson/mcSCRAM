@@ -60,7 +60,7 @@
 
 #pragma once
 
-#include "canopy/node.h"
+#include "canopy/event/node.h"
 #include "canopy/working_set.h"
 
 #include "canopy/kernel/basic_event.h"
@@ -157,46 +157,44 @@ namespace scram::canopy::queue {
     static std::shared_ptr<queueable_base> build_kernel_for_variables(
         const std::vector<std::shared_ptr<core::Variable>> &variables_,
         sycl::queue &queue_,
-        const sample_shape<size_t_> &sample_shape_,
+        const event::sample_shape<size_t_> &sample_shape_,
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
-        std::unordered_map<index_t_, basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_) {
+        std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_) {
 
         if (variables_.empty()) {
             return nullptr;
         }
 
         // 1) Gather each Variable's index and probability from the BasicEvent data
-        std::vector<index_t_> indices;
-        std::vector<prob_t_> probabilities;
-        indices.reserve(variables_.size());
-        probabilities.reserve(variables_.size());
+        std::vector<std::pair<index_t_, prob_t_>> indexed_probabilities;
+        indexed_probabilities.reserve(variables_.size());
 
         for (const auto& variable : variables_) {
             const auto var_unique_index = variable->index();
-            const auto var_unique_index_in_pdag_indexmap = var_unique_index - 2;
-            indices.push_back(var_unique_index);
+            const auto var_unique_index_in_pdag_index_map = var_unique_index - 2;
 
             // Retrieve the mef::BasicEvent for this variable
             const core::Pdag::IndexMap<const mef::BasicEvent*>& events = variable->graph().basic_events();
-            const mef::BasicEvent* event = events.at(var_unique_index_in_pdag_indexmap);
+            const mef::BasicEvent* event = events.at(var_unique_index_in_pdag_index_map);
             const double p = event->expression().value();
-            probabilities.push_back(static_cast<prob_t_>(p));
+
+            indexed_probabilities.push_back(std::pair<index_t_, prob_t_>{var_unique_index, static_cast<prob_t_>(p)});
         }
 
-        if (indices.empty()) {
+        if (indexed_probabilities.empty()) {
             return nullptr;
         }
 
-        const auto num_events_in_kernel = indices.size();
+        const auto num_events_in_kernel = indexed_probabilities.size();
 
-        // 2) Create the basic_event objects (contiguous array)
-        using event_type = basic_event<prob_t_, bitpack_t_>;
-        event_type* allocated_basic_events = create_basic_events<prob_t_, bitpack_t_>(queue_, probabilities, indices, sample_shape_.num_bitpacks());
+        // 2) Create a contiguous block of basic_events
+        using block_type = event::basic_event_block<prob_t_, bitpack_t_>;
+        block_type event_block = event::create_basic_event_block<prob_t_, bitpack_t_>(queue_, indexed_probabilities, sample_shape_.num_bitpacks());
 
-        // 3) Build the basic_event kernel
+        // 3) Build the basic_event kernel using the block wrapper
         using kernel_type = kernel::basic_event<prob_t_, bitpack_t_, size_t_>;
-        kernel_type be_kernel(allocated_basic_events, num_events_in_kernel, sample_shape_);
+        kernel_type be_kernel(event_block, sample_shape_);
 
         // 4) Compute the ND-range and create a queueable partition
         const auto local_range = working_set<size_t_, bitpack_t_>(queue_, num_events_in_kernel, sample_shape_).compute_optimal_local_range_3d();
@@ -206,8 +204,9 @@ namespace scram::canopy::queue {
 
         // 5) Update allocated objects and queueables in the global maps
         for (auto i = 0; i < num_events_in_kernel; ++i) {
-            const auto event_index_in_pdag = indices[i];
-            allocated_basic_events_by_index_[event_index_in_pdag] = allocated_basic_events + i;
+            const auto event_index_in_pdag = indexed_probabilities[i].first;
+            // allocated_basic_events_by_index_[event_index_in_pdag] = event_block.data + i;
+            allocated_basic_events_by_index_[event_index_in_pdag] = &event_block[i];
             queueables_by_index_[event_index_in_pdag] = queueable_partition;
         }
 
@@ -308,11 +307,11 @@ namespace scram::canopy::queue {
     static std::shared_ptr<queueable_base> build_kernel_for_gates_of_type(
         const std::vector<std::shared_ptr<core::Gate>> &gates_,
         sycl::queue &queue_,
-        const sample_shape<size_t_> &sample_shape_,
+        const event::sample_shape<size_t_> &sample_shape_,
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
-        const std::unordered_map<index_t_, basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
-        std::unordered_map<index_t_, gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_) {
+        const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
+        std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_) {
 
         if (gates_.empty()) {
             return nullptr;
@@ -395,7 +394,7 @@ namespace scram::canopy::queue {
         std::shared_ptr<queueable_base> queueable_partition;
 
         if constexpr (gate_type_ == core::Connective::kAtleast) {
-            atleast_gate<bitpack_t_, size_t_>* allocated_gates = create_atleast_gates<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, atleast_args_by_gate, sample_shape_.num_bitpacks());
+            event::atleast_gate<bitpack_t_, size_t_>* allocated_gates = event::create_atleast_gates<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, atleast_args_by_gate, sample_shape_.num_bitpacks());
             kernel_type typed_kernel(allocated_gates, num_events_in_layer, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
             queueable<kernel_type, 3> partition(queue_, typed_kernel, nd_range, layer_dependencies);
@@ -408,7 +407,7 @@ namespace scram::canopy::queue {
                 queueables_by_index_[indices[i]] = queueable_partition;
             }
         } else {
-            gate<bitpack_t_, size_t_>* allocated_gates = create_gates<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, sample_shape_.num_bitpacks());
+            event::gate<bitpack_t_, size_t_>* allocated_gates = event::create_gates<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, sample_shape_.num_bitpacks());
             kernel_type typed_kernel(allocated_gates, num_events_in_layer, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
             queueable<kernel_type, 3> partition(queue_, typed_kernel, nd_range, layer_dependencies);
@@ -527,11 +526,11 @@ namespace scram::canopy::queue {
     static std::vector<std::shared_ptr<queueable_base>> build_kernels_for_gates(
         const std::unordered_map<core::Connective, std::vector<std::shared_ptr<core::Gate>>> &gates_by_type,
         sycl::queue &queue_,
-        const sample_shape<size_t_> &sample_shape_,
+        const event::sample_shape<size_t_> &sample_shape_,
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
-        const std::unordered_map<index_t_, basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
-        std::unordered_map<index_t_, gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_
+        const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
+        std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_
         ) {
         std::vector<std::shared_ptr<queueable_base>> kernels;
         kernels.reserve(gates_by_type.size());
@@ -695,12 +694,12 @@ namespace scram::canopy::queue {
     static std::shared_ptr<queueable_base> build_tallies_for_layer(
         const std::vector<std::shared_ptr<core::Node>> &nodes,
         sycl::queue &queue_,
-        const sample_shape<size_t_> &sample_shape_,
+        const event::sample_shape<size_t_> &sample_shape_,
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
-        const std::unordered_map<index_t_, basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
-        const std::unordered_map<index_t_, gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
-        std::unordered_map<index_t_, tally_event<bitpack_t_> *> &allocated_tally_events_by_index_) {
+        const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
+        const std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
+        std::unordered_map<index_t_, event::tally<bitpack_t_> *> &allocated_tally_events_by_index_) {
         // collect all events in this layer
         std::vector<index_t_> indices;
         std::vector<bitpack_t_ *> node_buffers;
@@ -741,8 +740,8 @@ namespace scram::canopy::queue {
 
         // allocate basic_events object
         const auto num_events_in_layer = indices.size();
-        using event_type = tally_event<bitpack_t_>;
-        event_type *allocated_tallies = create_tally_events<bitpack_t_>(queue_, node_buffers, initial_tallies);
+        using event_type = event::tally<bitpack_t_>;
+        event_type *allocated_tallies = event::create_tally_events<bitpack_t_>(queue_, node_buffers, initial_tallies);
 
         // build the kernel
         using kernel_type = kernel::tally<prob_t_, bitpack_t_, size_t_>;

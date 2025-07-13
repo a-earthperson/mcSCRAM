@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include "canopy/node.h"
+#include "canopy/event/node.h"
 #include "canopy/queue/queueable.h"
 
 #include "pdag.h"
@@ -83,7 +83,7 @@ class layer_manager {
     sycl::queue queue_;
     
     /// @brief Sample shape configuration defining batch size and bitpack dimensions
-    sample_shape<size_t_> sample_shape_;
+    event::sample_shape<size_t_> sample_shape_;
 
     /// @brief Vector containing all PDAG nodes in topological order
     std::vector<std::shared_ptr<core::Node>> pdag_nodes_;
@@ -104,13 +104,13 @@ class layer_manager {
     std::unordered_map<index_t_, std::shared_ptr<queueable_base>> tally_queueables_by_index_;
 
     /// @brief Map from node index to allocated device-side tally event structures
-    std::unordered_map<index_t_, tally_event<bitpack_t_> *> allocated_tally_events_by_index_;
+    std::unordered_map<index_t_, event::tally<bitpack_t_> *> allocated_tally_events_by_index_;
     
     /// @brief Map from node index to allocated device-side basic event structures
-    std::unordered_map<index_t_, basic_event<prob_t_, bitpack_t_> *> allocated_basic_events_by_index_;
+    std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_> *> allocated_basic_events_by_index_;
     
     /// @brief Map from node index to allocated device-side gate structures
-    std::unordered_map<index_t_, gate<bitpack_t_, size_t_> *> allocated_gates_by_index_;
+    std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_> *> allocated_gates_by_index_;
 
     /// @brief Map from node index to accumulated computation counts
     std::unordered_map<index_t_, size_t_> accumulated_counts_by_index_;
@@ -339,7 +339,7 @@ class layer_manager {
      * }
      * @endcode
      */
-    tally_event<bitpack_t_> tally(index_t_ evt_idx, std::size_t count);
+    event::tally<bitpack_t_> tally(index_t_ evt_idx, std::size_t count);
 
     /**
      * @brief Destructor that cleans up allocated device memory
