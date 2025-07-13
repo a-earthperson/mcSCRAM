@@ -703,7 +703,7 @@ namespace scram::canopy::queue {
         // collect all events in this layer
         std::vector<index_t_> indices;
         std::vector<bitpack_t_ *> node_buffers;
-        std::vector<std::size_t> initial_tallies;
+        // initial counts no longer required; tallies start at 0
         std::set<std::shared_ptr<queueable_base>> layer_dependencies;// it is the union of all the tally dependencies
         for (const auto &node: nodes) {
             const auto event_index = node->index();
@@ -731,21 +731,19 @@ namespace scram::canopy::queue {
             // store the data for this tally
             node_buffers.push_back(buffer);
             indices.push_back(event_index);
-            initial_tallies.push_back(0);
         }
 
         if (indices.empty()) {
             return nullptr;
         }
 
-        // allocate basic_events object
         const auto num_events_in_layer = indices.size();
-        using event_type = event::tally<bitpack_t_>;
-        event_type *allocated_tallies = event::create_tally_events<bitpack_t_>(queue_, node_buffers, initial_tallies);
+        using block_type = event::tally_block<bitpack_t_>;
+        block_type tally_blk = event::create_tally_block<bitpack_t_>(queue_, node_buffers);
 
         // build the kernel
         using kernel_type = kernel::tally<prob_t_, bitpack_t_, size_t_>;
-        kernel_type tally_kernel(allocated_tallies, num_events_in_layer, sample_shape_);
+        kernel_type tally_kernel(tally_blk, sample_shape_);
         const sycl::range<3> local_limits(1, 0, 0); // first dimension always needs to have just one
         const auto local_range = working_set<size_t_, bitpack_t_>(queue_, num_events_in_layer, sample_shape_).compute_optimal_local_range_3d(local_limits);
         const auto nd_range = tally_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
@@ -756,7 +754,7 @@ namespace scram::canopy::queue {
         for (auto i = 0; i < num_events_in_layer; i++) {
             const auto event_index_in_pdag = indices[i];
             // store each event raw pointer in the identity/index map
-            allocated_tally_events_by_index_[event_index_in_pdag] = allocated_tallies + i;
+            allocated_tally_events_by_index_[event_index_in_pdag] = &tally_blk[i];
             // the queueable where this event is computed can be found from the global queueables_by_index_ map
             queueables_by_index_[event_index_in_pdag] = queueable_partition;
         }

@@ -169,12 +169,12 @@ namespace scram::canopy::event {
      * @endcode
      */
     template<typename bitpack_t_>
-    tally<bitpack_t_> *create_tally_events(const sycl::queue &queue, const std::vector<bitpack_t_ *> &buffers, const std::vector<std::size_t> &initial_values) {
+    tally<bitpack_t_> *create_tally_events(const sycl::queue &queue, const std::vector<bitpack_t_ *> &buffers) {
         const auto num_tallies = buffers.size();
         tally<bitpack_t_> *tallies = sycl::malloc_shared<tally<bitpack_t_>>(num_tallies, queue);
         for (auto i = 0; i < num_tallies; ++i) {
             tallies[i].buffer = buffers[i];
-            tallies[i].num_one_bits = initial_values[i];
+            tallies[i].num_one_bits = 0;
             tallies[i].mean = 0.0;
             tallies[i].std_err = 0.0;
         }
@@ -685,6 +685,68 @@ namespace scram::canopy::event {
         }
         blk.count = 0;
         blk.bitpacks_per_event = 0;
+    }
+
+    // ---------------------------------------------------------------------
+    //  Tally block wrappers (one contiguous allocation of tally nodes)
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Thin wrapper describing one contiguous allocation of `tally` nodes.
+     *
+     * Contrary to `basic_event_block`, a tally block owns only the array of
+     * `tally` structs; the bit-packed sample buffers it references are owned by
+     * the producer nodes (basic events or gates).  Therefore the wrapper holds
+     * no extra fields beyond the base `node_block`.
+     */
+    template<typename bitpack_t_>
+    struct tally_block : public node_block<tally<bitpack_t_>> {
+        // no additional state – buffers are external
+    };
+
+    /**
+     * @brief Allocates and initialises a contiguous array of `tally` objects.
+     *
+     * Each tally’s `buffer` member is set to the corresponding entry in
+     * `source_buffers`, and `num_one_bits` is initialised to 0.
+     */
+    template<typename bitpack_t_>
+    [[nodiscard]]
+    tally_block<bitpack_t_>
+    create_tally_block(const sycl::queue                    &queue,
+                       const std::vector<bitpack_t_ *>      &source_buffers) {
+        const std::size_t n = source_buffers.size();
+        using tally_t = tally<bitpack_t_>;
+        tally_t *tallies = sycl::malloc_shared<tally_t>(n, queue);
+
+        for (std::size_t i = 0; i < n; ++i) {
+            tallies[i].buffer       = source_buffers[i];
+            tallies[i].num_one_bits = 0;
+            tallies[i].mean         = 0.0;
+            tallies[i].std_err      = 0.0;
+            tallies[i].ci           = {0.0, 0.0, 0.0, 0.0};
+        }
+
+        tally_block<bitpack_t_> blk;
+        blk.data  = tallies;
+        blk.count = n;
+        return blk;
+    }
+
+    /**
+     * @brief Frees the USM allocation owned by a `tally_block`.
+     *
+     * Does **not** free the sample buffers the individual tally nodes point to;
+     * those are owned by the nodes that produced the samples.
+     */
+    template<typename bitpack_t_>
+    void destroy_tally_block(const sycl::queue          &queue,
+                             tally_block<bitpack_t_>    &blk) {
+        if (blk.data) {
+            sycl::free(blk.data, queue);
+            blk.data = nullptr;
+        }
+        blk.count = 0;
     }
 
 }// namespace scram::canopy::event
