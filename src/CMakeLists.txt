@@ -58,7 +58,6 @@ set_source_files_properties(
   "${PROJECT_BINARY_DIR}/generated/input_schema.cpp"
   "${PROJECT_BINARY_DIR}/generated/project_schema.cpp"
   "${PROJECT_BINARY_DIR}/generated/report_schema.cpp"
-  "${PROJECT_BINARY_DIR}/generated/gui_schema.cpp"
   PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable"
 )
 
