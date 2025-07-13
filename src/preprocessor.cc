@@ -2510,18 +2510,10 @@ void CustomPreprocessor<DirectEval>::InvertOrder() noexcept {
 
 void CustomPreprocessor<DirectEval>::Run() noexcept {
     TIMER(DEBUG2, "CustomPreprocessor<DirectEval>:: Running Transform Phases I, II with no normalization, followed by layered toposort...");
-    // pdag::Transform(graph_,
-    //     [this](Pdag*) { RunPhaseOne(NormalizationLevel::full); },
-    //     [this](Pdag*) { RunPhaseTwo(); });
-    Preprocessor::Run();
     pdag::Transform(graph_,
-                    [this](Pdag*) {
-                      if (!graph_->coherent())
-                          RunPhaseFour();
-                      },
-                      [this](Pdag*) { RunPhaseFive(); }, &pdag::MarkCoherence,
-                      &pdag::TopologicalOrder);
-    pdag::Transform(graph_, [this](Pdag*) { InvertOrder(); });
+            [this](Pdag*){ RunPhaseOne(NormalizationLevel::none); },
+                    [this](Pdag*){ RunPhaseTwo(); },
+                    [this](Pdag*){ RunPhaseFive();});
     pdag::Transform(graph_, &pdag::LayeredTopologicalOrder);
 }
 
