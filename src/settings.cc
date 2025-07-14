@@ -105,7 +105,7 @@ Settings& Settings::cut_off(double prob) {
   return *this;
 }
 
-Settings& Settings::num_trials(int n) {
+Settings& Settings::num_trials(std::size_t n) {
   if (n < 1)
     SCRAM_THROW(SettingsError("The number of trials cannot be less than 1."))
         << errinfo_value(std::to_string(n));

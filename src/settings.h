@@ -22,6 +22,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 
 #include <string_view>
 
@@ -133,7 +134,7 @@ class Settings {
   Settings& cut_off(double prob);
 
   /// @returns The number of trials for Monte-Carlo simulations.
-  int num_trials() const { return num_trials_; }
+  std::size_t num_trials() const { return num_trials_; }
 
   /// Sets the number of trials for Monte Carlo simulations.
   ///
@@ -142,10 +143,10 @@ class Settings {
   /// @returns Reference to this object.
   ///
   /// @throws SettingsError  The number is less than 1.
-  Settings& num_trials(int n);
+  Settings& num_trials(std::size_t n);
 
   /// @returns The batch size for Monte-Carlo simulations.
-  [[nodiscard]] int batch_size() const { return batch_size_; }
+  [[nodiscard]] std::size_t batch_size() const { return batch_size_; }
 
   /// Sets the batch size for Monte Carlo simulations.
   ///
@@ -154,10 +155,10 @@ class Settings {
   /// @returns Reference to this object.
   ///
   /// @throws SettingsError  The number is less than 1.
-  Settings& batch_size(int n) { batch_size_ = n; return *this; }
+  Settings& batch_size(std::size_t n) { batch_size_ = n; return *this; }
 
   /// @returns The batch size for Monte-Carlo simulations.
-  [[nodiscard]] int sample_size() const { return sample_size_; }
+  [[nodiscard]] std::size_t sample_size() const { return sample_size_; }
 
   /// Sets the sample size for Monte Carlo simulations.
   ///
@@ -166,7 +167,7 @@ class Settings {
   /// @returns Reference to this object.
   ///
   /// @throws SettingsError  The number is less than 1.
-  Settings& sample_size(int n) { sample_size_ = n; return *this; }
+  Settings& sample_size(std::size_t n) { sample_size_ = n; return *this; }
 
   /// @returns The number of quantiles for distributions.
   int num_quantiles() const { return num_quantiles_; }
@@ -340,9 +341,9 @@ class Settings {
   bool skip_products_ = false;                        ///< Do not compute the products.
   int limit_order_ = 20;                              ///< Limit on the order of products.
   int seed_ = 0;                                      ///< The seed for the pseudo-random number generator.
-  int num_trials_  = 1e3;                             ///< The number of trials for Monte Carlo simulations.
-  int batch_size_  = 1;                               ///< Batch size for Monte Carlo simulations.
-  int sample_size_ = 1;                               ///< Sample size for Monte Carlo simulations.
+  std::size_t num_trials_  = 1000;                             ///< The number of trials for Monte Carlo simulations.
+  std::size_t batch_size_  = 1;                               ///< Batch size for Monte Carlo simulations.
+  std::size_t sample_size_ = 1;                               ///< Sample size for Monte Carlo simulations.
   int num_quantiles_ = 20;                            ///< The number of quantiles for distributions.
   int num_bins_ = 20;                                 ///< The number of bins for histograms.
   double mission_time_ = 8760;                        ///< System mission time.

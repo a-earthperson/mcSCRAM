@@ -75,9 +75,9 @@ namespace ScramCLI {
         SET("limit-order", int, limit_order);
         SET("cut-off", double, cut_off);
         SET("mission-time", double, mission_time);
-        SET("num-trials", int, num_trials);
-        SET("batch-size", int, batch_size);
-        SET("sample-size", int, sample_size);
+        SET("num-trials", std::size_t, num_trials);
+        SET("batch-size", std::size_t, batch_size);
+        SET("sample-size", std::size_t, sample_size);
         SET("num-quantiles", int, num_quantiles);
         SET("num-bins", int, num_bins);
         settings->preprocessor = vm.count("preprocessor");
