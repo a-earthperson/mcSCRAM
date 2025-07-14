@@ -749,4 +749,125 @@ namespace scram::canopy::event {
         blk.count = 0;
     }
 
+    // ---------------------------------------------------------------------
+    //  Gate block wrappers (one contiguous allocation of standard `gate`s)
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Thin wrapper describing one contiguous allocation of `gate` nodes.
+     *
+     * In addition to the base `node_block` data/size pair, a `gate_block` owns
+     * a single device allocation that stores all bit-packed output buffers for
+     * every gate in the block.  Each individual gate’s `buffer` member points
+     * somewhere *inside* this big allocation at an offset of
+     * `gate_index * bitpacks_per_gate`.
+     */
+    template<typename bitpack_t_, typename size_t_>
+    struct gate_block : public node_block<gate<bitpack_t_, size_t_>> {
+        /* contiguous device block that stores every gate’s computed output */
+        bitpack_t_   *buffers           = nullptr;
+
+        /* single USM-shared array containing *all* input buffer pointers
+         * for *every* gate in this block.  Each gate’s `inputs` member is
+         * simply a slice into this big array.                           */
+        bitpack_t_  **all_inputs        = nullptr;
+        std::size_t   total_inputs      = 0;        ///< length of all_inputs
+
+        std::size_t   bitpacks_per_gate = 0;        ///< stride between successive gate buffers
+    };
+
+    /**
+     * @brief Allocates and initialises a contiguous block of `gate` objects and
+     * their shared output-buffer block.
+     *
+     * `inputs_per_gate` follows the same convention used previously in
+     * `create_gates`: each entry is a pair whose first element is the *ordered*
+     * vector of input buffers and whose second element is the number of *negated*
+     * inputs at the tail of that vector.
+     */
+    template<typename bitpack_t_, typename size_t_>
+    [[nodiscard]]
+    gate_block<bitpack_t_, size_t_>
+    create_gate_block(const sycl::queue                                                      &queue,
+                      const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>>       &inputs_per_gate,
+                      const std::size_t                                                      num_bitpacks) {
+        const std::size_t num_gates = inputs_per_gate.size();
+
+        using gate_t = gate<bitpack_t_, size_t_>;
+
+        /* First pass: count total unique pointer slots needed */
+        std::size_t total_input_ptrs = 0;
+        for (const auto &g : inputs_per_gate) {
+            total_input_ptrs += g.first.size();
+        }
+
+        // 1) Allocate primary USM-shared structures.
+        gate_t      *gates        = sycl::malloc_shared<gate_t>(num_gates, queue);
+        bitpack_t_ **all_inputs   = sycl::malloc_shared<bitpack_t_ *>(total_input_ptrs, queue);
+
+        // 2) Allocate single device block for all gate outputs.
+        bitpack_t_  *buffer_block = sycl::malloc_device<bitpack_t_>(num_gates * num_bitpacks, queue);
+
+        // 3) Populate gate structs and fill the all_inputs array.
+        std::size_t cursor = 0;
+        for (std::size_t i = 0; i < num_gates; ++i) {
+            const auto &gate_inputs   = inputs_per_gate[i].first;
+            const std::size_t n_in    = gate_inputs.size();
+            const std::size_t n_neg   = inputs_per_gate[i].second;
+
+            assert(n_neg <= n_in);
+
+            // Slice in all_inputs where this gate’s pointers will live.
+            gates[i].inputs                = all_inputs + cursor;
+            gates[i].num_inputs            = static_cast<size_t_>(n_in);
+            gates[i].negated_inputs_offset = static_cast<size_t_>(n_in - n_neg);
+            gates[i].buffer                = buffer_block + i * num_bitpacks;
+
+            // Copy actual buffer pointers.
+            std::copy(gate_inputs.begin(), gate_inputs.end(), all_inputs + cursor);
+            cursor += n_in;
+        }
+
+        // 4) Wrap and return.
+        gate_block<bitpack_t_, size_t_> blk;
+        blk.data               = gates;
+        blk.count              = num_gates;
+        blk.buffers            = buffer_block;
+        blk.all_inputs         = all_inputs;
+        blk.total_inputs       = total_input_ptrs;
+        blk.bitpacks_per_gate  = num_bitpacks;
+        return blk;
+    }
+
+    /**
+     * @brief Releases all device memory owned by a `gate_block`.
+     *
+     * Frees, in order:
+     *   1. Each per-gate `inputs` array
+     *   2. The shared output-buffer block
+     *   3. The contiguous array of `gate` structures
+     */
+    template<typename bitpack_t_, typename size_t_>
+    void destroy_gate_block(const sycl::queue                     &queue,
+                            gate_block<bitpack_t_, size_t_>       &blk) {
+        if (blk.all_inputs) {
+            sycl::free(blk.all_inputs, queue);
+            blk.all_inputs = nullptr;
+        }
+
+        if (blk.buffers) {
+            sycl::free(blk.buffers, queue);
+            blk.buffers = nullptr;
+        }
+
+        if (blk.data) {
+            sycl::free(blk.data, queue);
+            blk.data = nullptr;
+        }
+
+        blk.count = 0;
+        blk.total_inputs = 0;
+        blk.bitpacks_per_gate = 0;
+    }
+
 }// namespace scram::canopy::event

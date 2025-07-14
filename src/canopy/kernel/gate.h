@@ -152,11 +152,8 @@ namespace scram::canopy::kernel {
     template<core::Connective OpType, typename bitpack_t_, typename size_t_>
     class op {
     protected:
-        /// @brief Pointer to array of gates to be processed
-        event::gate<bitpack_t_, size_t_> *gates_;
-        
-        /// @brief Number of gates in the array
-        const size_t_ num_gates_;
+        /// @brief Contiguous block of gates (and associated buffers)
+        const event::gate_block<bitpack_t_, size_t_> gates_block_;
         
         /// @brief Configuration for sample batch dimensions and bit-packing
         const event::sample_shape<size_t_> sample_shape_;
@@ -168,8 +165,7 @@ namespace scram::canopy::kernel {
          * @details Initializes the kernel with the gates array and sampling configuration.
          * The kernel instance can be used multiple times for different execution contexts.
          * 
-         * @param gates Pointer to array of gates (must be in unified shared memory)
-         * @param num_gates Number of gates in the gates array
+         * @param gates_block Pointer to array of gates (must be in unified shared memory)
          * @param sample_shape Configuration defining batch size and bit-packing dimensions
          * 
          * @note The gates array must remain valid for the lifetime of the kernel
@@ -181,9 +177,8 @@ namespace scram::canopy::kernel {
          * op<core::Connective::kOr, uint64_t, uint32_t> or_kernel(gates, num_gates, shape);
          * @endcode
          */
-        op(event::gate<bitpack_t_, size_t_> *gates, const size_t_ &num_gates, const event::sample_shape<size_t_> &sample_shape)
-            : gates_(gates),
-              num_gates_(num_gates),
+        op(const event::gate_block<bitpack_t_, size_t_> &gates_block, const event::sample_shape<size_t_> &sample_shape)
+            : gates_block_(gates_block),
               sample_shape_(sample_shape) {}
 
         /**
@@ -305,7 +300,7 @@ namespace scram::canopy::kernel {
             const auto bitpack_idx = static_cast<size_t_>(item.get_global_id(2));
 
             // Bounds checking
-            if (gate_id >= this->num_gates_ || batch_id >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
+            if (gate_id >= this->gates_block_.count || batch_id >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
                 return;
             }
 
@@ -313,7 +308,7 @@ namespace scram::canopy::kernel {
             const size_t_ index = batch_id * sample_shape_.bitpacks_per_batch + bitpack_idx;
 
             // Get gate
-            const auto &g = gates_[gate_id];
+            const auto &g = gates_block_[gate_id];
             const size_t_ num_inputs = g.num_inputs;
             const size_t_ negations_offset = g.negated_inputs_offset;
             // ---------------------------------------------------------------------
