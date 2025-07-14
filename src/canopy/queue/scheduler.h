@@ -64,7 +64,12 @@ struct scheduler {
         target_bits_per_iteration_ = static_cast<std::size_t>(std::floor(max_device_bits_ / static_cast<std::double_t>(num_nodes_)));
 
         // compute the optimal sample shape for each node's output per iteration
-        const event::sample_shape<std::size_t> sample_shape = compute_optimal_sample_shape_for_bits(device, target_bits_per_iteration_);
+        event::sample_shape<std::size_t> sample_shape = compute_optimal_sample_shape_for_bits(device, target_bits_per_iteration_);
+        sample_shape.batch_size *= sample_shape.bitpacks_per_batch / 2;
+        sample_shape.bitpacks_per_batch = 2;
+
+        // Log working_set configuration
+        LOG(DEBUG2) << working_set<std::size_t, bitpack_t_>(queue, num_nodes, sample_shape);
 
         // the actual number of bits per sample shape per iteration
         bits_per_iteration_ = sample_shape.num_bitpacks() * bits_in_bitpack_;

@@ -2,4 +2,4 @@
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
         DESTINATION share/scram/input
         COMPONENT examples
-        FILES_MATCHING PATTERN "*.xml")
+        FILES_MATCHING PATTERN "*.xml*")
