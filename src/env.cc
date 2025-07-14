@@ -23,7 +23,6 @@
 #include "schemas.h"
 
 #include <cstdlib>
-#include <stdexcept>
 
 namespace scram::env {
 
@@ -37,19 +36,6 @@ const std::string_view& input_schema() {
 
 const std::string_view& report_schema() {
   return schemas::get_REPORT_SCHEMA();
-}
-
-const std::string_view& gui_schema() {
-  return schemas::get_GUI_SCHEMA();
-}
-
-const std::string& install_dir() {
-  static const char* home = std::getenv("HOME");
-  if (!home) {
-    throw std::runtime_error("Environment variable HOME is not set.");
-  }
-  static const std::string install_path = std::string(home) + "/.local";
-  return install_path;
 }
 
 }  // namespace scram::env

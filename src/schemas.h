@@ -34,7 +34,4 @@ const std::string_view& get_PROJECT_SCHEMA();
 /// @returns The RelaxNG schema for report files (embedded at compile time).
 const std::string_view& get_REPORT_SCHEMA();
 
-/// @returns The RelaxNG schema for GUI files (embedded at compile time).
-const std::string_view& get_GUI_SCHEMA();
-
 }  // namespace scram::schemas

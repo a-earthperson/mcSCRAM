@@ -13,7 +13,6 @@ set(SCRAM_CORE_SRC
   "${PROJECT_BINARY_DIR}/generated/input_schema.cpp"
   "${PROJECT_BINARY_DIR}/generated/project_schema.cpp"
   "${PROJECT_BINARY_DIR}/generated/report_schema.cpp"
-  "${PROJECT_BINARY_DIR}/generated/gui_schema.cpp"
   element.cc
   expression.cc
   parameter.cc
@@ -49,6 +48,7 @@ set(SCRAM_CORE_SRC
   risk_analysis.cc
   )
 ### End SCRAM core source list ### }}}
+# Build scram as shared library explicitly (dependencies are static)
 add_library(scram SHARED ${SCRAM_CORE_SRC})
 target_link_libraries(scram ${LIBS})
 target_compile_options(scram PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
@@ -61,15 +61,12 @@ set_source_files_properties(
   PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable"
 )
 
-# Define a variable for the installation base directory
-set(INSTALL_BASE_DIR "$ENV{HOME}/.local")
-
-# Install the library to ~/.local/lib/scram
+# Install the library to standard system directories respecting CMAKE_INSTALL_PREFIX
 install(
         TARGETS scram
-        LIBRARY DESTINATION ${INSTALL_BASE_DIR}/lib/scram
-        ARCHIVE DESTINATION ${INSTALL_BASE_DIR}/lib/scram/static
-        RUNTIME DESTINATION ${INSTALL_BASE_DIR}/bin
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT scram
 )
 

@@ -38,10 +38,4 @@ const std::string_view& input_schema();
 /// @returns The embedded RELAX NG schema content for output report files.
 const std::string_view& report_schema();
 
-/// @returns The embedded RELAX NG schema content for GUI files.
-const std::string_view& gui_schema();
-
-/// @returns The path to the installation directory.
-const std::string& install_dir();
-
 }  // namespace scram::env
