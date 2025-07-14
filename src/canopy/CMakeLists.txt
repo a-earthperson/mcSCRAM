@@ -11,6 +11,7 @@ set(CANOPY_HEADERS
         kernel/basic_event.h
         kernel/gate.h
         kernel/tally.h
+        queue/scheduler.h
         queue/layer_manager.h
         queue/layer_manager.tpp
         queue/kernel_builder.h

@@ -27,6 +27,7 @@
 #pragma once
 
 #include "canopy/event/node.h"
+#include "canopy/queue/scheduler.h"
 #include "canopy/queue/queueable.h"
 
 #include "pdag.h"
@@ -73,7 +74,7 @@ namespace scram::canopy::queue {
  * 
  * @since Version 1.0
  */
-template <typename bitpack_t_ = std::uint64_t, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
+template <typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
 class layer_manager {
 
     /// @brief Index type for node identification
@@ -84,6 +85,8 @@ class layer_manager {
     
     /// @brief Sample shape configuration defining batch size and bitpack dimensions
     event::sample_shape<size_t_> sample_shape_;
+
+    scheduler<bitpack_t_> scheduler_{};
 
     /// @brief Vector containing all PDAG nodes in topological order
     std::vector<std::shared_ptr<core::Node>> pdag_nodes_;
@@ -260,26 +263,14 @@ class layer_manager {
      * parallel execution. The sample shape is automatically rounded to device-optimal
      * dimensions.
      * 
-     * @param pdag Pointer to the probabilistic directed acyclic graph to analyze
-     * @param batch_size Number of samples to process in each batch
-     * @param bitpacks_per_batch Number of bitpacks to use per batch for efficiency
-     * 
      * @throws std::runtime_error if PDAG processing fails
      * @throws std::runtime_error if kernel building fails
      * 
      * @note The constructor performs all setup operations synchronously
      * @note Sample shape is optimized for the target SYCL device
-     * 
-     * @example
-     * @code
-     * // Create layer manager with 1024 samples per batch, 16 bitpacks per batch
-     * layer_manager<> manager(my_pdag, 1024, 16);
-     * 
-     * // For custom types:
-     * layer_manager<std::uint32_t, float, std::uint16_t> custom_manager(pdag, 512, 8);
-     * @endcode
+     *
      */
-    layer_manager(core::Pdag *pdag, size_t_ batch_size, size_t_ bitpacks_per_batch);
+    layer_manager(core::Pdag *pdag, size_t_ num_trials);
 
     /**
      * @brief Submits all queued computations to the SYCL device
@@ -329,8 +320,8 @@ class layer_manager {
      * 
      * @example
      * @code
-     * // Compute tally for event 42 with 1000 iterations
-     * auto result = manager.tally(42, 1000);
+     * // Compute tally for event 42
+     * auto result = manager.tally(42);
      * 
      * if (result.mean > 0.0) {
      *     std::cout << "Event 42 probability: " << result.mean 
@@ -339,7 +330,7 @@ class layer_manager {
      * }
      * @endcode
      */
-    event::tally<bitpack_t_> tally(index_t_ evt_idx, std::size_t count);
+    event::tally<bitpack_t_> tally(index_t_ evt_idx);
 
     /**
      * @brief Destructor that cleans up allocated device memory
