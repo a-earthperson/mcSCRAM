@@ -169,7 +169,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
 FROM hobbsau/aria2 AS amdgpu-debs
 WORKDIR /build/amdgpu
 COPY <<EOF /build/amdgpu/amdgpu-debs.list
-https://repo.radeon.com/amdgpu-install/6.2.3/ubuntu/jammy/amdgpu-install_6.2.60203-1_all.deb
+https://repo.radeon.com/amdgpu-install/6.4.1/ubuntu/noble/amdgpu-install_6.4.60401-1_all.deb
 EOF
 RUN aria2c -j8 -k 1M -i amdgpu-debs.list -d debs
 
@@ -191,7 +191,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
 
 ## Install AdaptiveCpp
 WORKDIR /build
-FROM lz-oneapi-clang AS adaptivecpp-lz-oneapi-clang
+FROM amd-lz-oneapi-clang AS adaptivecpp-amd-lz-oneapi-clang
 ENV ADAPTIVE_CPP_INSTALL_DIR="/usr/local"
 ENV CLANG_EXECUTABLE_PATH="/usr/bin/clang++-$CLANG_VERSION"
 ENV LLVM_DIR="/usr/lib/llvm-$CLANG_VERSION/cmake"
@@ -208,13 +208,13 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
           -DLLVM_DIR=$LLVM_DIR \
           -DWITH_CUDA_BACKEND=ON \
           -DWITH_OPENCL_BACKEND=ON \
-          -DWITH_ROCM_BACKEND=OFF \
+          -DWITH_ROCM_BACKEND=ON \
           -DWITH_LEVEL_ZERO_BACKEND=ON  \
           -DACPP_COMPILER_FEATURE_PROFILE="full" .. && \
     make -j && \
     make install
 
-FROM adaptivecpp-lz-oneapi-clang AS generic_backend
+FROM adaptivecpp-amd-lz-oneapi-clang AS generic_backend
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
@@ -225,7 +225,9 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
 FROM generic_backend AS builder
 COPY . /app
 WORKDIR /app/build
+ARG APP_MALLOC_TYPE="tcmalloc"
 RUN cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
+          -DMALLOC_TYPE=$APP_MALLOC_TYPE \
           -DCMAKE_C_COMPILER=$CMAKE_C_COMPILER \
           -DCMAKE_CXX_COMPILER=$CMAKE_CXX_COMPILER \
           -DCLANG_EXECUTABLE_PATH=$CLANG_EXECUTABLE_PATH \
@@ -276,3 +278,46 @@ EXPOSE 22
 
 # Run SSH daemon in the foreground so that the container stays alive
 ENTRYPOINT ["/usr/sbin/sshd", "-D"]
+
+## Runtime image with minimal dependencies
+FROM amd-lz-oneapi-clang AS scramruntime
+WORKDIR /app
+
+# Install runtime packages
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-fast update && \
+    apt-fast install -y --no-install-recommends \
+    $SCRAM_RUNTIME_PACKAGES \
+    libatomic1 \
+    libstdc++6 \
+    libc6 \
+    libgcc-s1 \
+    liblzma5 \
+    zlib1g \
+    ca-certificates && \
+    apt-fast -y autoremove && \
+    apt-fast -y autoclean
+
+# Copy AdaptiveCpp runtime libraries
+COPY --from=adaptivecpp-amd-lz-oneapi-clang /usr/local/bin/acpp-info /usr/local/bin/
+COPY --from=adaptivecpp-amd-lz-oneapi-clang /usr/local/lib/libacpp-rt.so /usr/local/lib/
+COPY --from=adaptivecpp-amd-lz-oneapi-clang /usr/local/lib/libacpp-common.so /usr/local/lib/
+
+# Copy built SCRAM binaries and libraries from builder stage
+COPY --from=builder /app/build/targets/scram/scram-cli /usr/local/bin/
+COPY --from=builder /app/build/src/libscram.so /usr/local/lib/
+COPY --from=builder /app/build/src/canopy/libcanopy.so /usr/local/lib/
+COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
+
+# Update library cache
+RUN ldconfig
+
+ENV ACPP_VISIBILITY_MASK=cuda
+ENV ACPP_DEBUG_LEVEL=0
+ENV ACPP_ADAPTIVITY_LEVEL=2
+ENV ACPP_ALLOCATION_TRACKING=1
+# Set the entrypoint to the SCRAM binary
+ENTRYPOINT ["/usr/local/bin/scram-cli"]
+CMD ["--help"]

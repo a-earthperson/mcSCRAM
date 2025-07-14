@@ -40,3 +40,6 @@ CMakeFiles
 cmake-build-*
 
 .env
+
+docker-compose.yml
+Dockerfile
