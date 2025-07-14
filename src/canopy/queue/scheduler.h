@@ -36,37 +36,82 @@ struct scheduler {
     std::size_t TOTAL_ITERATIONS = 0;
     event::sample_shape<std::size_t> SAMPLE_SHAPE{};
 
-    explicit scheduler(){}
+    explicit scheduler()= default;
 
-    scheduler(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes) {
+    scheduler(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes) 
+        : requested_num_trials_(requested_num_trials), num_nodes_(num_nodes) {
 
         const sycl::device device = queue.get_device();
-        const std::size_t max_device_bytes = device.get_info<sycl::info::device::max_mem_alloc_size>();
-        const std::size_t max_device_bits = max_device_bytes * static_cast<std::size_t>(8);
+        max_device_bytes_ = device.get_info<sycl::info::device::max_mem_alloc_size>();
+        max_device_bits_ = max_device_bytes_ * static_cast<std::size_t>(8);
 
         // round number of sampled bits to nearest multiple of bits in bitpack_t_
-        constexpr std::size_t bits_in_bitpack = sizeof(bitpack_t_) * static_cast<std::size_t>(8);
-        const std::size_t num_trials = requested_num_trials + bits_in_bitpack - (requested_num_trials % bits_in_bitpack);
+        const std::size_t remainder = requested_num_trials_ % bits_in_bitpack_;
+        if (remainder == 0) {
+            num_trials_ = requested_num_trials_;
+        } else if (remainder <= bits_in_bitpack_ / 2) {
+            // Round down
+            num_trials_ = requested_num_trials_ - remainder;
+        } else {
+            // Round up
+            num_trials_ = requested_num_trials_ + bits_in_bitpack_ - remainder;
+        }
 
         // num_trials is now the number of bits to sample, over all iterations, for each node.
-        const std::size_t total_bits_to_sample = num_trials;
+        total_bits_to_sample_ = num_trials_;
 
         // but the resident memory will need to be split between each node's outputs
-        const std::size_t target_bits_per_iteration = max_device_bits / num_nodes;
+        target_bits_per_iteration_ = static_cast<std::size_t>(std::floor(max_device_bits_ / static_cast<std::double_t>(num_nodes_)));
 
         // compute the optimal sample shape for each node's output per iteration
-        const event::sample_shape<std::size_t> sample_shape = compute_optimal_sample_shape_for_bits(device, target_bits_per_iteration);
+        const event::sample_shape<std::size_t> sample_shape = compute_optimal_sample_shape_for_bits(device, target_bits_per_iteration_);
 
         // the actual number of bits per sample shape per iteration
-        const std::size_t bits_per_iteration = sample_shape.num_bitpacks() * bits_in_bitpack;
+        bits_per_iteration_ = sample_shape.num_bitpacks() * bits_in_bitpack_;
 
         // so, it will take these many iterations to collect the total samples
-        const std::size_t num_iterations = total_bits_to_sample / bits_per_iteration;
+        num_iterations_ = static_cast<std::size_t>(std::ceil(total_bits_to_sample_ / static_cast<std::double_t>(bits_per_iteration_)));
 
-        TOTAL_ITERATIONS = num_iterations;
+        TOTAL_ITERATIONS = num_iterations_;
         SAMPLE_SHAPE = sample_shape;
+    }
 
-        LOG(DEBUG2) << working_set<std::size_t, bitpack_t_>(queue, num_nodes, sample_shape);
+    /**
+     * @brief Formatted output operator for scheduler configuration
+     * 
+     * @details Provides comprehensive human-readable output of all scheduler
+     * parameters, memory calculations, and computed configuration. The output
+     * is organized into logical sections for easy interpretation.
+     * 
+     * @param os Output stream for formatted output
+     * @param sched Scheduler instance to format
+     * @return Reference to the output stream for chaining
+     * 
+     * @example
+     * @code
+     * scheduler<uint64_t> sched(queue, 1000000, 555);
+     * std::cout << sched << std::endl;
+     * @endcode
+     */
+    friend std::ostream &operator<<(std::ostream &os, const scheduler &sched) {
+        os << "requested_num_trials: " << sched.requested_num_trials_ << std::endl
+           << "num_nodes: " << sched.num_nodes_ << std::endl
+           << "------------------------------------------------" << std::endl
+           << "max_device_bytes: " << sched.max_device_bytes_ << std::endl
+           << "max_device_bits: " << sched.max_device_bits_ << std::endl
+           << "bits_in_bitpack: " << sched.bits_in_bitpack_ << std::endl
+           << "------------------------------------------------" << std::endl
+           << "num_trials (rounded): " << sched.num_trials_ << std::endl
+           << "total_bits_to_sample: " << sched.total_bits_to_sample_ << std::endl
+           << "target_bits_per_iteration: " << sched.target_bits_per_iteration_ << std::endl
+           << "bits_per_iteration: " << sched.bits_per_iteration_ << std::endl
+           << "num_iterations: " << sched.num_iterations_ << std::endl
+           << "------------------------------------------------" << std::endl
+           << "SAMPLE_SHAPE.batch_size: " << sched.SAMPLE_SHAPE.batch_size << std::endl
+           << "SAMPLE_SHAPE.bitpacks_per_batch: " << sched.SAMPLE_SHAPE.bitpacks_per_batch << std::endl
+           << "SAMPLE_SHAPE.num_bitpacks(): " << sched.SAMPLE_SHAPE.num_bitpacks() << std::endl
+           << "TOTAL_ITERATIONS: " << sched.TOTAL_ITERATIONS << std::endl;
+        return os;
     }
 
     static event::sample_shape<std::size_t> compute_optimal_sample_shape_for_bitpacks(const sycl::device &device,
@@ -156,6 +201,25 @@ struct scheduler {
         const std::size_t rounded_bitpack_count = rounded_bit_count / bits_in_bitpack;
         return compute_optimal_sample_shape_for_bitpacks(device, rounded_bitpack_count);
     }
+
+protected:
+    // Input parameters
+    std::size_t requested_num_trials_ = 0;
+    std::size_t num_nodes_ = 0;
+    
+    // Device capabilities
+    std::size_t max_device_bytes_ = 0;
+    std::size_t max_device_bits_ = 0;
+    
+    // Computed constants
+    static constexpr std::size_t bits_in_bitpack_ = sizeof(bitpack_t_) * static_cast<std::size_t>(8);
+    
+    // Intermediate calculations
+    std::size_t num_trials_ = 0;
+    std::size_t total_bits_to_sample_ = 0;
+    std::size_t target_bits_per_iteration_ = 0;
+    std::size_t bits_per_iteration_ = 0;
+    std::size_t num_iterations_ = 0;
 };
 }
 

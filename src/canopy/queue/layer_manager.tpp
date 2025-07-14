@@ -197,6 +197,10 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, con
     const auto num_nodes = pdag_nodes_.size();
     scheduler_ = scheduler<bitpack_t_>(queue_, num_trials, num_nodes);
     sample_shape_ = scheduler_.SAMPLE_SHAPE;
+    
+    // Log scheduler configuration
+    LOG(DEBUG2) << scheduler_;
+    
     map_nodes_by_layer(pdag_nodes_by_layer_);
 }
 
