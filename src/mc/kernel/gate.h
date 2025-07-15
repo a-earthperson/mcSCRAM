@@ -48,7 +48,7 @@
 
 #pragma once
 
-#include "canopy/event/node.h"
+#include "mc/event/node.h"
 
 #include <sycl/sycl.hpp>
 
@@ -96,7 +96,7 @@
  * auto group_result = sycl::reduce_over_group(item.get_group(), partial_result, sycl::plus<>());
  * @endcode
  */
-namespace scram::canopy::kernel {
+namespace scram::mc::kernel {
 
     /**
      * @class op

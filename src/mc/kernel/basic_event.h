@@ -38,11 +38,11 @@
 
 #pragma once
 
-#include "canopy/event/node.h"
+#include "mc/event/node.h"
 
 #include <sycl/sycl.hpp>
 
-namespace scram::canopy::kernel {
+namespace scram::mc::kernel {
 
     /**
      * @class basic_event
@@ -543,4 +543,4 @@ namespace scram::canopy::kernel {
             return {global_range, local_range};
         }
     };
-}// namespace scram::canopy::kernel
+}// namespace scram::mc::kernel

@@ -35,7 +35,7 @@
 #include <sycl/sycl.hpp>
 #include <vector>
 
-namespace scram::canopy::queue {
+namespace scram::mc::queue {
 
     /**
      * @class queueable_base
@@ -729,4 +729,4 @@ namespace scram::canopy::queue {
             });
         }
     };
-}// namespace scram::canopy::queue
+}// namespace scram::mc::queue

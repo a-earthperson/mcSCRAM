@@ -60,21 +60,21 @@
 
 #pragma once
 
-#include "canopy/event/node.h"
-#include "canopy/working_set.h"
+#include "mc/event/node.h"
+#include "mc/working_set.h"
 
-#include "canopy/kernel/basic_event.h"
-#include "canopy/kernel/gate.h"
-#include "canopy/kernel/tally.h"
+#include "mc/kernel/basic_event.h"
+#include "mc/kernel/gate.h"
+#include "mc/kernel/tally.h"
 
-#include "canopy/queue/queueable.h"
+#include "mc/queue/queueable.h"
 
 #include "logger.h"
 #include "pdag.h"
 
 #include <sycl/sycl.hpp>
 
-namespace scram::canopy::queue {
+namespace scram::mc::queue {
 
     /**
      * @brief Builds a SYCL kernel for parallel basic event sampling

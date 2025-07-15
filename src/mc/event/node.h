@@ -37,7 +37,7 @@
 #include <cassert>
 #include <algorithm>
 
-namespace scram::canopy::event {
+namespace scram::mc::event {
 
     /**
      * @struct node
@@ -94,7 +94,7 @@ namespace scram::canopy::event {
         /// @brief Unique identifier for this event within the computation graph
         index_t_ index;
 
-        std::uint32_t probability_threshold;
+        std::uint32_t probability_threshold{};
     };
 
     /**
@@ -761,4 +761,4 @@ namespace scram::canopy::event {
         blk.bitpacks_per_gate = 0;
     }
 
-}// namespace scram::canopy::event
+}// namespace scram::mc::event

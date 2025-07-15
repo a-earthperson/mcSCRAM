@@ -308,7 +308,7 @@ COPY --from=adaptivecpp-amd-lz-oneapi-clang /usr/local/lib/libacpp-common.so /us
 # Copy built SCRAM binaries and libraries from builder stage
 COPY --from=builder /app/build/targets/scram/scram-cli /usr/local/bin/
 COPY --from=builder /app/build/src/libscram.so /usr/local/lib/
-COPY --from=builder /app/build/src/canopy/libcanopy.so /usr/local/lib/
+COPY --from=builder /app/build/src/mc/libmc.so /usr/local/lib/
 COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
 
 # Update library cache

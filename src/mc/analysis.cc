@@ -51,7 +51,7 @@
  * @note Computation precision depends on number of Monte Carlo trials
  * 
  * @see ProbabilityAnalyzer<DirectEval> for interface documentation
- * @see canopy::queue::layer_manager for execution engine details
+ * @see mc::queue::layer_manager for execution engine details
  * @see sample_shape for memory layout configuration
  * 
  * @example Basic usage:
@@ -303,8 +303,8 @@ namespace scram::core {
      * }
      * @endcode
      * 
-     * @see canopy::queue::layer_manager for execution engine details
-     * @see canopy::queue::layer_manager::tally for statistical computation
+     * @see mc::queue::layer_manager for execution engine details
+     * @see mc::queue::layer_manager::tally for statistical computation
      * @see sample_shape for memory layout configuration
      * @see Settings for parameter configuration options
      */
@@ -320,7 +320,7 @@ namespace scram::core {
         
         // Create and configure the SYCL-based layer manager
         using bitpack_t_ = std::uint64_t;
-        canopy::queue::layer_manager<bitpack_t_> manager(pdag, num_trials);
+        mc::queue::layer_manager<bitpack_t_> manager(pdag, num_trials);
         
         // Perform Monte Carlo sampling and compute statistics
         const auto tally = manager.tally(pdag->root()->index());

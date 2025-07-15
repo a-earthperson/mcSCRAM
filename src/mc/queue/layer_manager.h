@@ -26,15 +26,15 @@
 
 #pragma once
 
-#include "canopy/event/node.h"
-#include "canopy/queue/scheduler.h"
-#include "canopy/queue/queueable.h"
+#include "mc/event/node.h"
+#include "mc/queue/queueable.h"
+#include "mc/queue/scheduler.h"
 
 #include "pdag.h"
 
 #include <sycl/sycl.hpp>
 
-namespace scram::canopy::queue {
+namespace scram::mc::queue {
 
 /**
  * @class layer_manager
@@ -59,7 +59,7 @@ namespace scram::canopy::queue {
  * @example Basic usage:
  * @code
  * // Create a layer manager for a pdag
- * scram::canopy::queue::layer_manager<> manager(pdag, 1024, 16);
+ * scram::mc::queue::layer_manager<> manager(pdag, 1024, 16);
  * 
  * // Submit all computations and wait for completion
  * manager.submit_all().wait_and_throw();
@@ -352,6 +352,6 @@ class layer_manager {
      */
     ~layer_manager();
 };
-} // namespace scram::canopy::queue
+} // namespace scram::mc::queue
 
 #include "layer_manager.tpp"

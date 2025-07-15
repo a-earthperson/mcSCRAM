@@ -15,7 +15,7 @@ if (NOT TARGET scram-cli)
     add_executable(scram-cli ${SCRAM_CLI_SOURCES})
 endif ()
 
-target_link_libraries(scram-cli scram-cli-utils scram canopy)
+target_link_libraries(scram-cli scram-cli-utils scram mc)
 
 # Install the executable to ~/.local/bin
 install(

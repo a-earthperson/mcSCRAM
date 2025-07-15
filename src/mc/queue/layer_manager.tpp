@@ -21,14 +21,14 @@
 
 #include <algorithm>
 
-#include "canopy/event/node.h"
-#include "canopy/working_set.h"
 #include "logger.h"
+#include "mc/event/node.h"
+#include "mc/working_set.h"
 #include "preprocessor.h"
 
-#include "canopy/queue/kernel_builder.h"
+#include "mc/queue/kernel_builder.h"
 
-namespace scram::canopy::queue {
+namespace scram::mc::queue {
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 void layer_manager<bitpack_t_, prob_t_, size_t_>::gather_all_nodes(
@@ -253,4 +253,4 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
     }
 }
 
-} // namespace scram::canopy::queue
+} // namespace scram::mc::queue

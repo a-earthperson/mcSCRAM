@@ -48,24 +48,56 @@ docker build --target scramruntime -t mc-scram:runtime .
 ```
 
 Build arguments for configurations:
-- `CMAKE_BUILD_TYPE`: Debug, Release, RelWithDebInfo
-- `APP_MALLOC_TYPE`: tcmalloc, jemalloc, malloc
+- `CMAKE_BUILD_TYPE`: Debug, Release, RelWithDebInfo, MinSizeRel (default: Release)
+- `APP_MALLOC_TYPE`: tcmalloc, jemalloc, malloc (default: tcmalloc)
 
 ### Native Build
 
-Requirements:
+#### Requirements:
 - CMake ≥ 3.18.4
-- C++23 compiler (GCC ≥ 7.1, Clang ≥ 5.0)
-- AdaptiveCpp for SYCL support
-- Boost libraries (automatically fetched)
+- C++23 compiler:
+  - Clang ≥ 18.0 ✅
+  - GCC ≥ 7.1 ⚠️ Untested
+  - AppleClang ≥ 9.0 ⚠️ Untested
+  - Intel ≥ 18.0.1 ⚠️ Untested
+- AdaptiveCpp ≥ 25.2.0
+- Memory allocator:
+  - tcmalloc (default)
+  - jemalloc
+  - malloc
+- Drivers for your CUDA/ROCm/OpenCL/ZE/OpenMP runtimes
+
+#### Auto-Fetched
+- LibXML2 (with LZMA, ZLIB, and ICONV support for compressed `.xml.gz` files)
+- Boost 1.88.0 libraries (automatically fetched via FetchContent):
+  - program_options, filesystem, system, random, range
+  - exception, multi_index, accumulators, multiprecision
+  - icl, math, dll, regex, unit_test_framework
+
 
 ```bash
 git clone --recursive https://github.com/your-username/mc-scram.git
 cd mc-scram
 mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DMALLOC_TYPE=tcmalloc
+cmake .. \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DMALLOC_TYPE=tcmalloc \
+  -DBUILD_TESTS=ON \
+  -DOPTIMIZE_FOR_NATIVE=ON
 make -j$(nproc)
 ```
+
+### CMake Build Options
+
+| Option | Description | Default | Values |
+|--------|-------------|---------|--------|
+| `CMAKE_BUILD_TYPE` | Build configuration | Release | Debug, Release, RelWithDebInfo, MinSizeRel |
+| `MALLOC_TYPE` | Memory allocator | tcmalloc | tcmalloc, jemalloc, malloc |
+| `BUILD_TESTS` | Build test suite | ON | ON, OFF |
+| `WITH_COVERAGE` | Enable coverage instrumentation | OFF | ON, OFF |
+| `WITH_PROFILE` | Enable profiling instrumentation | OFF | ON, OFF |
+| `OPTIMIZE_FOR_NATIVE` | Build with -march=native | ON | ON, OFF |
+| `BUILD_SHARED_LIBS` | Build shared libraries | OFF | ON, OFF |
 
 ## Usage
 

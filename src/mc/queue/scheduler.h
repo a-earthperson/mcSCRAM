@@ -22,14 +22,14 @@
 
 #pragma once
 
-#include "canopy/event/node.h"
-#include "canopy/working_set.h"
+#include "mc/event/node.h"
+#include "mc/working_set.h"
 
 #include "logger.h"
 
 #include <sycl/sycl.hpp>
 
-namespace scram::canopy::queue {
+namespace scram::mc::queue {
 template<typename bitpack_t_>
 struct scheduler {
 

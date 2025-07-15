@@ -29,7 +29,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * @see node.h for related data structures
- * @see scram::canopy::sample_shape for memory layout configuration
+ * @see scram::mc::sample_shape for memory layout configuration
  * 
  * @example
  * @code
@@ -48,12 +48,12 @@
 
 #pragma once
 
-#include "canopy/event/node.h"
+#include "mc/event/node.h"
 
 #include <cstddef>
 #include <sycl/sycl.hpp>
 
-namespace scram::canopy {
+namespace scram::mc {
 
     /**
      * @brief Computes target occupancy rate for OpenCL CPU devices
@@ -932,4 +932,4 @@ namespace scram::canopy {
             return new_shape;
         }
     };
-}// namespace scram::canopy
+}// namespace scram::mc

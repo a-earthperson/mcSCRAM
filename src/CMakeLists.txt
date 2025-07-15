@@ -70,10 +70,10 @@ install(
         COMPONENT scram
 )
 
-# add canopy
-add_subdirectory(canopy)
+# add mc
+add_subdirectory(mc)
 
-# Make the SYCL canopy library available to downstream targets
+# Make the SYCL mc library available to downstream targets
 # by appending it to the common ${LIBS} list that all executables use.
-list(APPEND LIBS canopy)
+list(APPEND LIBS mc)
 
