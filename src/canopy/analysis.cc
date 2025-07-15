@@ -314,8 +314,6 @@ namespace scram::core {
         
         // Extract sampling configuration from analysis settings
         const auto num_trials = this->settings().num_trials();
-        const auto batch_size = this->settings().batch_size();
-        const auto sample_size = this->settings().sample_size();
         
         // Get the PDAG for computation
         auto pdag = this->graph();

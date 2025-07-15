@@ -45,41 +45,6 @@
 namespace scram::canopy::kernel {
 
     /**
-     * @enum SampledBitWidth
-     * @brief Enumeration defining supported bit widths for random sampling
-     * 
-     * @details This enum specifies the number of bits used in each sampling operation.
-     * Different bit widths allow for trade-offs between memory usage and sampling
-     * granularity. Smaller bit widths reduce memory consumption but may limit
-     * the precision of probabilistic calculations.
-     * 
-     * The bit width determines how many independent random samples are generated
-     * and packed into each operation. For example, four_bits generates 4 independent
-     * samples per PRNG call, which are then bit-packed into the result.
-     * 
-     * @note Bit widths must be powers of 2 and divisors of the target bitpack type size
-     * @note Higher bit widths provide better utilization of PRNG output but may increase computation
-     * 
-     * @example
-     * @code
-     * // Use 4-bit sampling for balanced performance
-     * auto sample = basic_event::sample<SampledBitWidth::four_bits>(&seeds, probability);
-     * 
-     * // Use 1-bit sampling for maximum memory efficiency
-     * auto sample = basic_event::sample<SampledBitWidth::one_bit>(&seeds, probability);
-     * @endcode
-     */
-    enum SampledBitWidth {
-        one_bit = 1,        ///< Single bit sampling - maximum memory efficiency
-        two_bits = 2,       ///< Two-bit sampling - good for sparse probabilities
-        four_bits = 4,      ///< Four-bit sampling - balanced performance (default)
-        eight_bits = 8,     ///< Eight-bit sampling - byte-aligned operations
-        sixteen_bits = 16,  ///< Sixteen-bit sampling - word-aligned operations
-        thirtytwo_bits = 32,///< Thirty-two-bit sampling - full 32-bit utilization
-        sixtyfour_bits = 64 ///< Sixty-four-bit sampling - maximum parallelization
-    };
-
-    /**
      * @class basic_event
      * @brief SYCL kernel class for parallel random sampling of basic events
      * 
@@ -300,17 +265,10 @@ namespace scram::canopy::kernel {
             philox128_state counters = *seeds;
 
             // Number of rounds; Philox 4x32 uses 10 rounds
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-            philox_round(k0, k1, &counters);
-
+            #pragma unroll
+            for(auto i=0; i<10;i++){
+                philox_round(k0, k1, &counters);
+            }
             *results = counters;
         }
 
@@ -330,7 +288,7 @@ namespace scram::canopy::kernel {
          * @tparam width Bit width specifying how many samples to generate (default: 4 bits)
          * 
          * @param seeds Input seeds for random number generation
-         * @param probability Threshold probability for Bernoulli sampling (range: [0.0, 1.0])
+         * @param threshold Threshold probability for Bernoulli sampling (range: [0, UINT32MAX])
          * 
          * @return Bit-packed samples with the specified bit width
          * 
@@ -353,19 +311,17 @@ namespace scram::canopy::kernel {
          * bool bit3 = (samples >> 3) & 1;
          * @endcode
          */
-        template<SampledBitWidth width=SampledBitWidth::four_bits>
-        static bitpack_t_ sample(const philox128_state *seeds, const prob_t_ probability) {
+        static bitpack_t_ sample(const philox128_state *seeds, const uint32_t &threshold) {
             philox128_state results;
             philox_generate(seeds, &results);
-            // Use one of the generated values; we can also combine them if higher precision is needed
-            static constexpr prob_t_ inv_uint32_max = static_cast<prob_t_>(1.0) / static_cast<prob_t_>(UINT32_MAX + 1ULL);
 
-            bitpack_t_ sample = bitpack_t_(0);
-            sample |= (static_cast<prob_t_>(results.x[0]) * inv_uint32_max < probability ? 1 : 0) << 0;
-            sample |= (static_cast<prob_t_>(results.x[1]) * inv_uint32_max < probability ? 1 : 0) << 1;
-            sample |= (static_cast<prob_t_>(results.x[2]) * inv_uint32_max < probability ? 1 : 0) << 2;
-            sample |= (static_cast<prob_t_>(results.x[3]) * inv_uint32_max < probability ? 1 : 0) << 3;
-            return sample;
+            bitpack_t_ out_bits = bitpack_t_(0);
+
+            out_bits |= (results.x[0] < threshold ? 1 : 0) << 0;
+            out_bits |= (results.x[1] < threshold ? 1 : 0) << 1;
+            out_bits |= (results.x[2] < threshold ? 1 : 0) << 2;
+            out_bits |= (results.x[3] < threshold ? 1 : 0) << 3;
+            return out_bits;
         }
 
         /**
@@ -413,9 +369,9 @@ namespace scram::canopy::kernel {
             
             /// @brief Iteration number for multiple sampling rounds
             uint32_t iteration;
-            
-            /// @brief Failure probability for Bernoulli sampling
-            prob_t_ probability;
+
+            /// @brief 32-bit fixed-point threshold p·2^32 for Bernoulli sampling
+            uint32_t prob_threshold;
         };
 
         /**
@@ -450,18 +406,22 @@ namespace scram::canopy::kernel {
          * @endcode
          */
         static bitpack_t_ generate(const sampler_args &args) {
+            static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
+            static constexpr std::uint8_t bits_in_bitpack = sizeof(bitpack_t_) * 8;
+            static constexpr std::uint8_t num_generations = bits_in_bitpack / bernoulli_bits_per_generation;
+
+            philox128_state seeds;
+            seeds.x[0] = args.index_id + 1;
+            seeds.x[1] = args.event_id + 1;
+            seeds.x[2] = args.batch_id + 1;
+            seeds.x[3] = (args.bitpack_idx + args.iteration + 1) << 6; // spare 6 bits to store generation count (i)
+
             bitpack_t_ bitpacked_sample = bitpack_t_(0);
-            static constexpr std::uint32_t num_samples_bit_round_ = 4;
-            static constexpr std::uint32_t num_bits_in_dtype_ = sizeof(bitpack_t_) * 8;
-            static constexpr std::uint32_t num_bitpack_rounds_ = num_bits_in_dtype_ / num_samples_bit_round_;
             #pragma unroll
-            for (auto i = 0; i < num_bitpack_rounds_; ++i) {
-                philox128_state seeds;
-                seeds.x[0] = args.index_id + 1;
-                seeds.x[1] = args.event_id + 1;
-                seeds.x[2] = args.batch_id + 1;
-                seeds.x[3] = args.bitpack_idx + args.iteration << (num_bits_in_dtype_ << i);
-                bitpacked_sample |= sample<four_bits>(&seeds, args.probability) << (num_samples_bit_round_ * i);
+            for (auto i = 0; i < num_generations; ++i) {
+                seeds.x[3] += i;
+                const auto generation_offset = bernoulli_bits_per_generation * i;
+                bitpacked_sample |= sample(&seeds, args.prob_threshold) << generation_offset;
             }
             return bitpacked_sample;
         }
@@ -502,11 +462,14 @@ namespace scram::canopy::kernel {
          * @endcode
          */
         void operator()(const sycl::nd_item<3> &item, const uint32_t iteration) const {
+            const auto blk_idx = static_cast<uint32_t>(item.get_global_id(0));
             sampler_args args = {
+                .index_id    = static_cast<uint32_t>(basic_events_block_[blk_idx].index),
                 .event_id    = static_cast<uint32_t>(item.get_global_id(0)),
                 .batch_id    = static_cast<uint32_t>(item.get_global_id(1)),
                 .bitpack_idx = static_cast<uint32_t>(item.get_global_id(2)),
                 .iteration = iteration,
+                .prob_threshold = basic_events_block_[blk_idx].probability_threshold,
             };
 
             // Bounds checking
@@ -514,15 +477,11 @@ namespace scram::canopy::kernel {
                 return;
             }
 
-            const event::basic_event event = basic_events_block_[args.event_id];
-            args.probability = event.probability;
-            args.index_id = static_cast<uint32_t>(event.index);
-
             // Calculate the index within the generated_samples buffer
             const size_t_ index = args.batch_id * sample_shape_.bitpacks_per_batch + args.bitpack_idx;
 
             // Store the bitpacked samples into the buffer
-            bitpack_t_ *output = event.buffer;
+            bitpack_t_ *output = basic_events_block_[args.event_id].buffer;
             const bitpack_t_ bitpack_value = generate(args);
             output[index] = bitpack_value;
         }

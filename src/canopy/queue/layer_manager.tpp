@@ -237,9 +237,6 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
     // Free allocated basic events
     for (auto &pair : allocated_basic_events_by_index_) {
         event::basic_event<prob_t_, bitpack_t_> *event = pair.second;
-        auto buffer = event->buffer;
-        auto probability = event->probability;
-        auto index = event->index;
         // destroy_basic_event(queue_, event);
     }
 

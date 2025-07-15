@@ -35,6 +35,7 @@
 #include <vector>
 #include <cstddef>
 #include <cassert>
+#include <algorithm>
 
 namespace scram::canopy::event {
 
@@ -90,11 +91,10 @@ namespace scram::canopy::event {
      */
     template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
     struct basic_event : node<bitpack_t_> {
-        /// @brief Failure probability of this basic event (range: [0.0, 1.0])
-        prob_t_ probability;
-        
         /// @brief Unique identifier for this event within the computation graph
         index_t_ index;
+
+        std::uint32_t probability_threshold;
     };
 
     /**
@@ -206,117 +206,6 @@ namespace scram::canopy::event {
     template<typename bitpack_t_>
     void destroy_tally_event(const sycl::queue queue, tally<bitpack_t_> *event) {
         sycl::free(event, queue);
-    }
-
-    /**
-     * @brief Factory function for creating device-allocated basic events
-     * 
-     * @details Creates an array of basic_event structures with optimized memory layout
-     * for parallel processing. Allocates both the event structures and their associated
-     * buffers in contiguous memory blocks for improved cache performance and reduced
-     * memory fragmentation.
-     * 
-     * @tparam prob_t_ Floating-point type for probability values
-     * @tparam bitpack_t_ Integer type for bit-packed data storage
-     * 
-     * @param queue SYCL queue for memory allocation and device context
-     * @param probabilities Vector of failure probabilities for each basic event
-     * @param indices Vector of unique indices for each basic event
-     * @param num_bitpacks Number of bitpacks to allocate per event buffer
-     * 
-     * @return Pointer to array of allocated basic events
-     * 
-     * @throws std::bad_alloc if device memory allocation fails
-     * 
-     * @note Buffers are allocated as a single contiguous block for efficiency
-     * @note Caller is responsible for calling destroy_basic_events() for cleanup
-     * 
-     * @example
-     * @code
-     * std::vector<double> probs = {0.01, 0.05, 0.001};
-     * std::vector<int32_t> indices = {1, 2, 3};
-     * auto events = create_basic_events<double, std::uint64_t>(queue, probs, indices, 1024);
-     * // Use events...
-     * destroy_basic_events(queue, events, probs.size());
-     * @endcode
-     */
-    template<typename prob_t_, typename bitpack_t_>
-    basic_event<prob_t_, bitpack_t_> *create_basic_events(const sycl::queue &queue, const std::vector<prob_t_> &probabilities, const std::vector<int32_t> &indices, const std::size_t num_bitpacks) {
-        const auto num_events = probabilities.size();
-        // allocate the basic event objects in a contiguous (shared) block
-        basic_event<prob_t_, bitpack_t_> *basic_events = sycl::malloc_shared<basic_event<prob_t_, bitpack_t_>>(num_events, queue);
-        // allocate the basic event buffers in a contiguous (device) block
-        bitpack_t_* buffers = sycl::malloc_device<bitpack_t_>(num_events * num_bitpacks, queue);
-        // populate the allocated basic events
-        for (auto i = 0; i < num_events; ++i) {
-            basic_events[i].probability = probabilities[i];
-            basic_events[i].index = indices[i];
-            basic_events[i].buffer = buffers + i * num_bitpacks;
-        }
-        return basic_events;
-    }
-
-    /**
-     * @brief Destroys a single basic event and frees associated memory
-     * 
-     * @details Properly releases device memory allocated for a basic event structure
-     * and its associated buffer. This function handles both the event structure and
-     * its data buffer.
-     * 
-     * @tparam prob_t_ Floating-point type for probability values
-     * @tparam bitpack_t_ Integer type for bit-packed data storage
-     * 
-     * @param queue SYCL queue for memory deallocation
-     * @param event Pointer to basic event to destroy
-     * 
-     * @note This function frees both the event structure and its buffer
-     * @note Should not be used with events created by create_basic_events() (use destroy_basic_events() instead)
-     * 
-     * @example
-     * @code
-     * // For individually allocated events
-     * auto event = sycl::malloc_shared<basic_event<double, std::uint64_t>>(1, queue);
-     * event->buffer = sycl::malloc_device<std::uint64_t>(1024, queue);
-     * // Use event...
-     * destroy_basic_event(queue, event);
-     * @endcode
-     */
-    template<typename prob_t_, typename bitpack_t_>
-    void destroy_basic_event(const sycl::queue &queue, basic_event<prob_t_, bitpack_t_> *event) {
-        sycl::free(event->buffer, queue);
-        sycl::free(event, queue);
-    }
-
-    /**
-     * @brief Destroys an array of basic events created by create_basic_events()
-     * 
-     * @details Properly releases device memory allocated for an array of basic events
-     * and their associated buffers. This function handles the contiguous memory layout
-     * created by create_basic_events().
-     * 
-     * @tparam prob_t_ Floating-point type for probability values
-     * @tparam bitpack_t_ Integer type for bit-packed data storage
-     * 
-     * @param queue SYCL queue for memory deallocation
-     * @param events Pointer to array of basic events to destroy
-     * @param count Number of events in the array
-     * 
-     * @note This function assumes events were created with create_basic_events()
-     * @note Handles the contiguous buffer allocation optimization
-     * 
-     * @example
-     * @code
-     * auto events = create_basic_events<double, std::uint64_t>(queue, probs, indices, 1024);
-     * // Use events...
-     * destroy_basic_events(queue, events, probs.size());
-     * @endcode
-     */
-    template<typename prob_t_, typename bitpack_t_>
-    void destroy_basic_events(const sycl::queue &queue, basic_event<prob_t_, bitpack_t_> *events, const std::size_t count) {
-        for (auto i = 0; i < count; ++i) {
-            sycl::free(events[i]->buffer, queue);
-        }
-        sycl::free(events, queue);
     }
 
     /**
@@ -652,7 +541,9 @@ namespace scram::canopy::event {
 
         // 3. Populate per-event fields.
         for (std::size_t i = 0; i < num_events; ++i) {
-            events[i].probability = indexed_probabilities[i].second;
+            //events[i].probability = indexed_probabilities[i].second;
+            // NEW: pre-compute 32-bit Bernoulli threshold to avoid FP math in kernels
+            events[i].probability_threshold = static_cast<std::uint32_t>(static_cast<std::double_t>(indexed_probabilities[i].second) * static_cast<std::double_t>(UINT32_MAX));
             events[i].index       = indexed_probabilities[i].first;
             events[i].buffer      = buffer_block + i * num_bitpacks;
         }
