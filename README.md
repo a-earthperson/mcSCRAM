@@ -1,220 +1,172 @@
-# mcSCRAM: Hardware-Accelerated Monte Carlo for Probabilistic Risk Assessment
+# mc-SCRAM: Monte Carlo Enhancement for SCRAM Probabilistic Risk Assessment
 
-**mcSCRAM** is a high-performance, hardware-accelerated implementation of SCRAM (System for Command-line Risk Analysis Multi-tool) featuring parallel Monte Carlo simulation using AdaptiveCpp-based SYCL backends.
+> **⚠️ RESEARCH TOOL - ALPHA STAGE**  
+> This is an experimental research implementation with unstable APIs subject to frequent changes.  
+> Not recommended for production use. Interfaces may change without notice between versions.
 
-## Overview
+**mc-SCRAM** is a research fork of [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with GPU-accelerated Monte Carlo simulation capabilities using SYCL and AdaptiveCpp.
 
-This project enhances the original SCRAM probabilistic risk analysis tool with GPU-accelerated Monte Carlo simulation capabilities. It performs fault tree analysis, event tree analysis, and uncertainty quantification with massive parallelization across modern computing hardware.
+## Project Origin
 
-### Key Features
+This repository is forked from Olzhas Rakhimov's [SCRAM](https://github.com/rakhimov/scram) (System for Command-line Risk Analysis Multi-tool). The original SCRAM provides comprehensive fault tree and event tree analysis capabilities. This fork specifically focuses on enhancing Monte Carlo simulation performance through hardware acceleration.
 
-- **Hardware Acceleration**: GPU/CPU parallel execution using SYCL with AdaptiveCpp backend
-- **High-Performance Monte Carlo**: Parallel sampling with Philox PRNG for cryptographic-quality randomness
-- **Statistical Analysis**: Confidence intervals, standard error computation, and uncertainty quantification  
-- **Combined Event Tree/Fault Tree Analysis**: Static analysis with logical gate operations (NOT, AND, OR, XOR, ATLEAST, etc.)
-- **Memory Efficient**: Bit-packed data structures for optimal memory bandwidth utilization
-- **Scalable**: Linear scaling across available compute units with minimal synchronization overhead
+## Research Objectives
 
-### Performance Characteristics
+The primary research goals of this project include:
 
-- **Parallel Execution**: Billions of concurrent Monte Carlo trials
-- **Memory Optimization**: Bit-packed sampling with configurable batch sizes
-- **Statistical Precision**: Confidence intervals computed using Central Limit Theorem
-- **Device Optimization**: Automatic work-group sizing for different hardware architectures
+- **Parallel Monte Carlo Implementation**: Developing SYCL-based kernels for massively parallel sampling across GPU compute units
+- **Statistical Precision Enhancement**: Implementing advanced uncertainty quantification with confidence interval estimation
+- **Hardware Optimization**: Exploring memory-efficient data structures and optimal kernel configurations for various accelerator architectures
+- **Performance Characterization**: Benchmarking scalability and computational efficiency improvements over traditional CPU-based approaches
 
-## Quick Start
+## Technical Implementation
 
-### Docker (Recommended)
+### Monte Carlo Engine
+The core contribution lies in the parallel Monte Carlo implementation featuring:
+- **Philox PRNG**: Counter-based pseudorandom number generation enabling perfect parallelization without synchronization overhead
+- **Bit-packed Sampling**: Memory-efficient boolean storage minimizing bandwidth requirements during GPU execution
+- **Layered Graph Execution**: Topologically sorted fault tree evaluation with dependency-aware scheduling
 
-The Dockerfile uses multi-stage builds to provide optimized images for different use cases - from minimal production runtime (~3GB) to full development environments with all hardware backends. This approach allows you to choose the right balance of features vs. image size.
+### Hardware Acceleration
+- **SYCL Backend**: Cross-platform acceleration via AdaptiveCpp supporting CUDA, ROCm, Intel oneAPI, and OpenCL
+- **Work-group Optimization**: Dynamic kernel configuration adaptation for different hardware architectures
+- **Memory Coalescing**: Optimized access patterns for GPU memory hierarchies
 
-#### Docker Build Stages
+## Build and Installation
 
-| Stage | Purpose | Key Components | Use Case |
-|-------|---------|----------------|----------|
-| `scramruntime` | Production runtime | Minimal deps, SCRAM only | Production analysis |
-| `devimage` | Development | Full toolchain, dev tools | Interactive development |
-| `ssh-devimage` | SSH development | Dev environment + SSH | Remote development |
-| `generic_backend` | Complete backend | All hardware acceleration | Custom builds |
-| `adaptivecpp-amd-lz-oneapi-clang` | SYCL backend | AdaptiveCpp with all backends | SYCL development |
+### Container-based Development (Recommended)
 
-#### Production Usage (Minimal Runtime)
+The project provides multi-stage Docker builds for different research phases:
 
 ```bash
-# Build minimal runtime image (~2-3GB)
-docker build --target scramruntime -t mc-scram:runtime .
-
-# Run Monte Carlo analysis
-docker run --rm --gpus all \
-  -v $(pwd)/input:/input \
-  mc-scram:runtime --monte-carlo --num-trials 1000000 /input/example.xml
-```
-
-#### Development Environment
-
-```bash
-# Build full development environment
+# Development environment with full toolchain
 docker build --target devimage -t mc-scram:dev .
+docker run -it --rm --gpus all -v $(pwd):/workspace mc-scram:dev
 
-# Interactive development
-docker run -it --rm --gpus all \
-  -v $(pwd):/workspace \
-  --user $(id -u):$(id -g) \
-  mc-scram:dev
-
-# Development with SSH access
-docker build --target ssh-devimage -t mc-scram:ssh-dev .
-docker run -d --gpus all \
-  -p 2222:22 \
-  -v $(pwd):/workspace \
-  --name mc-scram-dev \
-  mc-scram:ssh-dev
+# Production runtime (minimal dependencies)
+docker build --target scramruntime -t mc-scram:runtime .
 ```
 
-#### Debug and Profiling
+Build arguments for research configurations:
+- `CMAKE_BUILD_TYPE`: Debug, Release, RelWithDebInfo
+- `APP_MALLOC_TYPE`: tcmalloc, jemalloc, malloc
+
+### Native Build
+
+Requirements:
+- CMake ≥ 3.18.4
+- C++23 compiler (GCC ≥ 7.1, Clang ≥ 5.0)
+- AdaptiveCpp for SYCL support
+- Boost libraries (automatically fetched)
 
 ```bash
-# Debug build with all tools
-docker build --target devimage \
-  --build-arg CMAKE_BUILD_TYPE=Debug \
-  --build-arg APP_MALLOC_TYPE=jemalloc \
-  -t mc-scram:debug .
-
-# Performance profiling build
-docker build --target devimage \
-  --build-arg CMAKE_BUILD_TYPE=RelWithDebInfo \
-  --build-arg APP_MALLOC_TYPE=tcmalloc \
-  -t mc-scram:profile .
-```
-
-#### Hardware Verification
-
-```bash
-# Verify all hardware backends
-docker run --rm --gpus all mc-scram:runtime \
-  bash -c "acpp-info && clinfo"
-
-# Test specific backend
-docker run --rm --gpus all \
-  -e ACPP_TARGETS=cuda \
-  mc-scram:runtime --monte-carlo /input/test.xml
-```
-
-#### Build Arguments
-
-| Argument | Default | Purpose | Options |
-|----------|---------|---------|---------|
-| `CMAKE_BUILD_TYPE` | Release | Build configuration | Debug, Release, RelWithDebInfo |
-| `APP_MALLOC_TYPE` | tcmalloc | Memory allocator | tcmalloc, jemalloc, malloc |
-| `USER` | coder | Development user name | Any valid username |
-| `UID` | 1000 | Development user ID | User's UID for permissions |
-| `GID` | 1000 | Development group ID | User's GID for permissions |
-
-### Manual Build
-
-#### Prerequisites
-
-- **CMake** ≥ 3.18.4
-- **C++23** compatible compiler (GCC ≥ 7.1, Clang ≥ 5.0)
-- **AdaptiveCpp** (for SYCL support): supports CUDA, ROCm, Intel ZE, OpenCL, OpenMP backends.
-
-#### Build Instructions
-
-```bash
-# Clone with submodules
-git clone --recursive https://github.com/your-org/mc-scram.git
+git clone --recursive https://github.com/your-username/mc-scram.git
 cd mc-scram
-
-# Configure and build
 mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake .. -DCMAKE_BUILD_TYPE=Release -DMALLOC_TYPE=tcmalloc
 make -j$(nproc)
 ```
 
 ## Usage
 
-### Basic Analysis
-
+### Basic Monte Carlo Analysis
 ```bash
-# Run Monte Carlo fault tree analysis (using Docker runtime)
+# Container execution
 docker run --rm --gpus all \
   -v $(pwd)/input:/input \
-  mc-scram:runtime --monte-carlo --num-trials 1000000 /input/example.xml
-
-# Native binary (after manual build)
-./scram --monte-carlo --num-trials 1000000 input/example.xml
-
-# Configure sampling parameters
-docker run --rm --gpus all \
-  -v $(pwd)/input:/input \
-  mc-scram:runtime --monte-carlo --batch-size 1024 --sample-size 16 /input/fault_tree.xml
-```
-
-### Advanced Configuration
-
-```bash
-# High-precision analysis with GPU optimization (Docker)
-docker run --rm --gpus all \
-  -v $(pwd)/input:/input \
-  mc-scram:runtime --monte-carlo \
-    --num-trials 10000000 \
-    --confidence-intervals \
-    /input/complex_system.xml
+  mc-scram:runtime --monte-carlo --num-trials 1000000 /input/model.xml
 
 # Native binary
-./scram --monte-carlo \
-        --num-trials 10000000 \
-        --confidence-intervals \
-        input/complex_system.xml
+./scram --monte-carlo --num-trials 1000000 \
+        --confidence-intervals input/model.xml
 ```
 
-### Input File Format
+### Research Parameters
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--num-trials` | Monte Carlo iterations | 1,000,000 |
+| `--batch-size` | Samples per kernel launch | 1,024 |
+| `--sample-size` | Bit-packs per batch | 16 |
+| `--confidence-intervals` | Statistical bounds (95%, 99%) | disabled |
 
-MC-SCRAM uses the Open-PSA Model Exchange Format (MEF) for input files:
+### Input Format
+The tool accepts Open-PSA Model Exchange Format (MEF) files:
 
 ```xml
 <?xml version="1.0"?>
 <opsa-mef>
   <define-fault-tree name="system">
-    <define-gate name="top">
+    <define-gate name="top_event">
       <or>
-        <basic-event name="pump_failure"/>
-        <basic-event name="valve_failure"/>
+        <basic-event name="component_a_failure"/>
+        <basic-event name="component_b_failure"/>
       </or>
     </define-gate>
   </define-fault-tree>
 </opsa-mef>
 ```
 
-## Algorithm Details
+## Research Applications
 
-### Monte Carlo Implementation
+This implementation has been used in several research studies:
 
-- **SYCL Kernels**: Parallel execution across GPU compute units
-- **Philox PRNG**: Counter-based random number generation for perfect parallelization
-- **Layered Computation**: Topologically sorted graph execution with dependency management
-- **Statistical Estimation**: Bernoulli parameter estimation with normal approximation
+- Performance analysis of parallel PRA quantification engines
+- Benchmark comparisons with existing fault tree analysis tools  
+- Investigation of GPU acceleration effects on uncertainty quantification
+- Development of scalable Monte Carlo methods for large-scale reliability models
 
-### Performance Optimization
+Test cases and synthetic models are available in the `input/synthetic-models/` directory, including fault trees ranging from hundreds to tens of thousands of basic events.
 
-- **Bit-Packing**: Memory-efficient boolean sample storage
-- **Work-Group Optimization**: Device-specific kernel launch configurations  
-- **Atomic Reduction**: Minimal synchronization through group-level operations
-- **Memory Coalescing**: Optimal GPU memory access patterns
+## Contributing to Research
 
-## Configuration Options
+We welcome contributions from the probabilistic risk assessment and high-performance computing communities. Areas of particular research interest include:
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--num-trials` | Number of Monte Carlo iterations | 1,000,000 |
-| `--batch-size` | Samples per kernel invocation | 1,024 |
-| `--sample-size` | Bit-packs per batch | 16 |
-| `--confidence-intervals` | Compute 95% and 99% CI | false |
+- Novel parallel algorithms for fault tree analysis
+- Advanced statistical methods for uncertainty quantification
+- Optimization techniques for different hardware architectures
+- Validation studies comparing results with established tools
 
-## License
+Please see `CONTRIBUTING.md` for development guidelines and `ICLA.md` for contributor license requirements.
 
-- Copyright (C) 2014 Olzhas Rakhimov [SCRAM]
-- Copyright (C) 2025 Arjun Earthperson [MC-SCRAM] (this-repo)
+## Licensing
 
-This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
+This program is free software distributed under the **GNU General Public License v3.0** (GPL v3).
+
+**Key implications of GPL v3:**
+- ✅ **Freedom to use** for any purpose, including research and commercial applications
+- ✅ **Freedom to study and modify** the source code
+- ✅ **Freedom to distribute** copies and modifications
+- ⚠️ **Copyleft requirement**: Derivative works must also be licensed under GPL v3
+- ⚠️ **Source disclosure**: Distributed binaries must include or provide access to source code
+
+**For users and researchers:**
+- No restrictions on using the software for research or analysis
+- Publication of results does not require GPL compliance
+- Modifications for personal research do not require public release
+
+**For developers and redistributors:**
+- Must preserve copyright notices and license terms
+- Must provide source code when distributing binaries
+- Cannot incorporate into proprietary software without GPL compliance
+
+**For commercial users:**
+- Free to use for internal business operations
+- Must comply with GPL if distributing the software
+- Consider consulting legal counsel for complex integration scenarios
+
+**Educational resources on GPL v3:**
+- [Official GPL v3 Text](https://www.gnu.org/licenses/gpl-3.0.html)
+- [GPL v3 Quick Guide](https://www.gnu.org/licenses/quick-guide-gplv3.html)
+- [GPL v3 FAQ](https://www.gnu.org/licenses/gpl-faq.html)
+- [Understanding Copyleft](https://copyleft.org/guide/)
+
+## Acknowledgments
+
+- **Original SCRAM**: Copyright (C) 2014-2018 Olzhas Rakhimov  
+  Repository: https://github.com/rakhimov/scram
+- **mc-SCRAM Enhancements**: Copyright (C) 2025 Arjun Earthperson
+- **Synthetic Models**: OpenPRA Initiative contributors
+- **Testing Infrastructure**: Fault tree benchmarks from various PRA research groups
+
+For questions about this research or potential collaborations, please open an issue or discussion in this repository.
  
