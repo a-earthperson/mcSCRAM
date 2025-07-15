@@ -1,10 +1,10 @@
-# mcSCRAM: Monte Carlo Enhancement for SCRAM Probabilistic Risk Assessment
+# mcSCRAM: Monte Carlo SCRAM
 
 > **⚠️ RESEARCH TOOL - ALPHA STAGE**  
 > This is an experimental research implementation with unstable APIs subject to frequent changes.  
 > Interfaces may change without notice between versions.
 
-**mcSCRAM** is a research fork of [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with GPU-accelerated Monte Carlo simulation capabilities using SYCL and AdaptiveCpp.
+**mcSCRAM** is a fork of [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with multicore CPU, GPU-accelerated Monte Carlo simulation capabilities AdaptiveCpp's SYCL backend.
 
 ## Project Origin
 
@@ -69,7 +69,6 @@ make -j$(nproc)
 
 ## Usage
 
-### Basic Monte Carlo Analysis
 ```bash
 # Container execution
 docker run --rm --gpus all \
@@ -81,7 +80,7 @@ docker run --rm --gpus all \
         --confidence-intervals input/model.xml
 ```
 
-### Research Parameters
+### Parameters
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `--num-trials` | Monte Carlo iterations | 1,000,000 |
@@ -89,42 +88,7 @@ docker run --rm --gpus all \
 | `--sample-size` | Bit-packs per batch | 16 |
 | `--confidence-intervals` | Statistical bounds (95%, 99%) | disabled |
 
-### Input Format
-The tool accepts Open-PSA Model Exchange Format (MEF) files:
-
-```xml
-<?xml version="1.0"?>
-<opsa-mef>
-  <define-fault-tree name="system">
-    <define-gate name="top_event">
-      <or>
-        <basic-event name="component_a_failure"/>
-        <basic-event name="component_b_failure"/>
-      </or>
-    </define-gate>
-  </define-fault-tree>
-</opsa-mef>
-```
-
-## Research Applications
-
-This implementation has been used in several research studies:
-
-- Performance analysis of parallel PRA quantification engines
-- Benchmark comparisons with existing fault tree analysis tools  
-- Investigation of GPU acceleration effects on uncertainty quantification
-- Development of scalable Monte Carlo methods for large-scale reliability models
-
-Test cases and synthetic models are available in the `input/synthetic-models/` directory, including fault trees ranging from hundreds to tens of thousands of basic events.
-
-## Contributing to Research
-
-We welcome contributions from the probabilistic risk assessment and high-performance computing communities. Areas of particular research interest include:
-
-- Novel parallel algorithms for fault tree analysis
-- Advanced statistical methods for uncertainty quantification
-- Optimization techniques for different hardware architectures
-- Validation studies comparing results with established tools
+## Contributing
 
 Please see `CONTRIBUTING.md` for development guidelines and `ICLA.md` for contributor license requirements.
 
