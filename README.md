@@ -1,7 +1,7 @@
 # mcSCRAM: Monte Carlo SCRAM
 
 > **⚠️ RESEARCH TOOL - ALPHA STAGE**  
-> This is an experimental research implementation with unstable APIs subject to frequent changes.  
+> This is an experimental implementation with unstable APIs subject to frequent changes.  
 > Interfaces may change without notice between versions.
 
 **mcSCRAM** is a fork of [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with multicore CPU, GPU-accelerated Monte Carlo simulation capabilities AdaptiveCpp's SYCL backend.
@@ -10,9 +10,9 @@
 
 This repository is forked from Olzhas Rakhimov's [SCRAM](https://github.com/rakhimov/scram) (System for Command-line Risk Analysis Multi-tool). The original SCRAM provides comprehensive fault tree and event tree analysis capabilities. This fork specifically focuses on enhancing Monte Carlo simulation performance through hardware acceleration.
 
-## Research Objectives
+## Objectives
 
-The primary research goals of this project include:
+The primary goals of this project include:
 
 - **Parallel Monte Carlo Implementation**: Developing SYCL-based kernels for massively parallel sampling across GPU compute units
 - **Statistical Precision Enhancement**: Implementing advanced uncertainty quantification with confidence interval estimation
@@ -36,7 +36,7 @@ The core contribution lies in the parallel Monte Carlo implementation featuring:
 
 ### Container-based Development (Recommended)
 
-The project provides multi-stage Docker builds for different research phases:
+The project provides multi-stage Docker builds for different phases:
 
 ```bash
 # Development environment with full toolchain
@@ -47,7 +47,7 @@ docker run -it --rm --gpus all -v $(pwd):/workspace mc-scram:dev
 docker build --target scramruntime -t mc-scram:runtime .
 ```
 
-Build arguments for research configurations:
+Build arguments for configurations:
 - `CMAKE_BUILD_TYPE`: Debug, Release, RelWithDebInfo
 - `APP_MALLOC_TYPE`: tcmalloc, jemalloc, malloc
 
@@ -134,4 +134,4 @@ This program is free software distributed under the **GNU Affero General Public 
   Repository: https://github.com/rakhimov/scram
 - **mcSCRAM**: Copyright (C) 2025 Arjun Earthperson
 - **Synthetic Models**: OpenPRA Initiative contributors
-- **Testing Infrastructure**: Fault tree benchmarks from various PRA research groups
+- **Testing Infrastructure**: Fault tree benchmarks from various PRA/PSA research groups
