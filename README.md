@@ -153,7 +153,7 @@ Build arguments for configurations:
 
 
 ```bash
-git clone --recursive https://github.com/your-username/mc-scram.git
+git clone --recursive https://github.com/a-earthperson/mcSCRAM.git
 cd mc-scram
 mkdir build && cd build
 cmake .. \
