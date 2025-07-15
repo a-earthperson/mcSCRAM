@@ -2,16 +2,16 @@
  * Copyright (C) 2014-2018 Olzhas Rakhimov
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -59,9 +59,9 @@ namespace ScramCLI {
             ("cut-off", OPT_VALUE(double), "Cut-off probability for products")
             ("mission-time", OPT_VALUE(double), "System mission time in hours")
             ("time-step", OPT_VALUE(double), "Time step in hours for probability analysis")
-            ("num-trials", OPT_VALUE(int),"Number of trials for Monte Carlo simulations")
-            ("batch-size", OPT_VALUE(int),"Batch size for Monte Carlo simulations")
-            ("sample-size", OPT_VALUE(int),"Sample size for Monte Carlo simulations")
+            ("num-trials", OPT_VALUE(std::size_t),"Number of trials for Monte Carlo simulations")
+            ("batch-size", OPT_VALUE(std::size_t),"Batch size for Monte Carlo simulations")
+            ("sample-size", OPT_VALUE(std::size_t),"Sample size for Monte Carlo simulations")
             ("num-quantiles", OPT_VALUE(int),"Number of quantiles for distributions")
             ("num-bins", OPT_VALUE(int), "Number of bins for histograms")
             ("seed", OPT_VALUE(int), "Seed for the pseudo-random number generator")

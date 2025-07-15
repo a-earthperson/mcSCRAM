@@ -17,16 +17,16 @@
  *
  * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * @see node.h for related data structures
  * @see scram::canopy::sample_shape for memory layout configuration
@@ -48,7 +48,7 @@
 
 #pragma once
 
-#include "node.h"
+#include "canopy/event/node.h"
 
 #include <cstddef>
 #include <sycl/sycl.hpp>
@@ -230,7 +230,7 @@ namespace scram::canopy {
         size_type samples_per_event_in_bytes_;
         
         /// @brief Sample buffer organization and dimensions
-        sample_shape<size_type> bitpack_buffer_shape_;
+        event::sample_shape<size_type> bitpack_buffer_shape_;
         
         /// @brief Total sample buffer size in bytes
         size_type samples_in_bytes_;
@@ -338,7 +338,7 @@ namespace scram::canopy {
          * }
          * @endcode
          */
-        working_set(const sycl::queue &queue, const size_type num_events, const sample_shape<size_type> &requested_shape) {
+        working_set(const sycl::queue &queue, const size_type num_events, const event::sample_shape<size_type> &requested_shape) {
             const auto device = queue.get_device();
             num_events_ = num_events;
             bitpack_buffer_shape_ = requested_shape;
@@ -502,70 +502,6 @@ namespace scram::canopy {
         }
 
         /**
-         * @brief Legacy compute method for working set configuration
-         * 
-         * @details This method is retained for backward compatibility but is
-         * currently non-functional. The actual working set configuration is
-         * performed in the constructor, which provides more comprehensive
-         * device analysis and optimization.
-         * 
-         * @param queue SYCL queue for device access
-         * @param F_size Size of F operations (unused)
-         * @param num_samples Number of samples (unused)
-         * @return Empty working set structure
-         * 
-         * @deprecated Use constructor-based configuration instead
-         * @todo Remove this method in future versions
-         * 
-         * @example
-         * @code
-         * // Don't use this method - use constructor instead
-         * // auto ws = working_set::compute(queue, 1000, 1000000);
-         * 
-         * // Use this instead:
-         * working_set<uint32_t, uint64_t> ws(queue, events, shape);
-         * @endcode
-         */
-        static working_set compute(const sycl::queue &queue, const size_type F_size = 1, const size_type num_samples = 1) {
-            working_set set;
-            // set.F_size = F_size;
-            // set.num_samples = num_samples;
-            // const auto device = queue.get_device();
-            // // queried
-            // set.max_num_sub_groups = device.get_info<sycl::info::device::max_num_sub_groups>();
-            // set.max_sub_group_size = 0;
-            // set.max_work_item_size_1d = device.get_info<sycl::info::device::max_work_item_sizes<3>>()[0];
-            // set.max_work_group_size = device.get_info<sycl::info::device::max_work_group_size>();
-            // set.max_compute_units = device.get_info<sycl::info::device::max_compute_units>();
-            //
-            // set.desired_occupancy = compute_desired_occupancy_rate_heuristic(device.get_backend(), set.max_compute_units);
-            //
-            // // Desired parameters (can be adjusted)
-            // set.work_group_size = set.max_work_group_size;// Use the maximum work group size
-            //
-            // // Compute the initial number of work-groups based on desired occupancy
-            // set.num_work_groups = set.max_compute_units * set.desired_occupancy;
-            // set.num_work_groups = std::max<size_t>(1UL, std::min(set.num_work_groups, F_size));
-            //
-            // // Calculate F_per_group with ceiling division to cover all F elements
-            // set.F_per_group = (F_size + set.num_work_groups - 1) / set.num_work_groups;
-            //
-            // // Recalculate num_work_groups based on adjusted F_per_group
-            // set.num_work_groups = (F_size + set.F_per_group - 1) / set.F_per_group;
-            //
-            // // Calculate the total number of work-items
-            // set.total_work_items = set.num_work_groups * set.work_group_size;
-            //
-            // // Determine samples_per_work_item to cover all samples
-            // set.samples_per_work_item = (num_samples + set.total_work_items - 1) / set.total_work_items;
-            //
-            // // compute the global range
-            // set.global_range = set.total_work_items;
-            //
-            return set;
-        }
-
-        /**
          * @brief Computes optimal nd_range for 1D tally kernels
          * 
          * @details Calculates the optimal SYCL nd_range for 1D tally operations
@@ -686,7 +622,7 @@ namespace scram::canopy {
          * working_set<uint32_t, uint64_t> ws(queue, 5000, shape);
          * @endcode
          */
-        static sample_shape<size_type> compute_optimal_sample_shape(const sycl::queue &queue, const size_type num_events) {
+        static event::sample_shape<size_type> compute_optimal_sample_shape(const sycl::queue &queue, const size_type num_events) {
             const auto device = queue.get_device();
             const size_t max_malloc_size = device.get_info<sycl::info::device::max_mem_alloc_size>();
             static constexpr size_type max_sample_size = 16;
@@ -718,7 +654,7 @@ namespace scram::canopy {
                 ss = ss;
                 bs = bs;
             }
-            sample_shape<size_type> shape = {
+            event::sample_shape<size_type> shape = {
                     .batch_size = one << bs,
                     .bitpacks_per_batch = one << ss,
             };
@@ -961,7 +897,7 @@ namespace scram::canopy {
          * @endcode
          */
         template<typename dtype>
-        static sample_shape<dtype> &rounded(sample_shape<dtype> &shape) {
+        static event::sample_shape<dtype> &rounded(event::sample_shape<dtype> &shape) {
             shape.batch_size = (shape.batch_size);
             shape.bitpacks_per_batch = (shape.bitpacks_per_batch);
             return shape;
@@ -989,8 +925,8 @@ namespace scram::canopy {
          * @endcode
          */
         template<typename dtype>
-        static sample_shape<dtype> rounded(const sample_shape<dtype> &shape) {
-            sample_shape<dtype> new_shape;
+        static event::sample_shape<dtype> rounded(const event::sample_shape<dtype> &shape) {
+            event::sample_shape<dtype> new_shape;
             new_shape.batch_size = (shape.batch_size);
             new_shape.bitpacks_per_batch = (shape.bitpacks_per_batch);
             return new_shape;

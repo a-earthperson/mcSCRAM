@@ -38,12 +38,30 @@ if(NOT DEFINED BOOST_INCLUDE_LIBRARIES)
     set(BOOST_INCLUDE_LIBRARIES "" CACHE STRING "Boost libraries to build via FetchContent")
 endif()
 
-# Boost’s CMake build is enabled by the BOOST_ENABLE_CMAKE option.
+# Boost's CMake build is enabled by the BOOST_ENABLE_CMAKE option.
 set(BOOST_ENABLE_CMAKE ON CACHE BOOL "Build Boost using its new CMake build" FORCE)
+
+# Force static libraries if BUILD_SHARED_LIBS is OFF
+if(NOT BUILD_SHARED_LIBS)
+    set(Boost_USE_STATIC_LIBS ON)
+    # Additional Boost-specific options to ensure static builds
+    set(BOOST_RUNTIME_LINK "static" CACHE STRING "Boost runtime linking")
+endif()
 
 # Position-independent code is generally required when building shared
 # libraries that depend on Boost.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Force static libraries for Boost build when BUILD_SHARED_LIBS is OFF
+if(NOT BUILD_SHARED_LIBS)
+    # Save current BUILD_SHARED_LIBS state
+    set(_boost_build_shared_libs_backup ${BUILD_SHARED_LIBS})
+    # Force Boost to build static libraries
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force Boost static libraries" FORCE)
+    # Additional Boost-specific settings for static builds
+    set(Boost_USE_STATIC_LIBS ON CACHE BOOL "Use static Boost libraries" FORCE)
+    set(Boost_USE_STATIC_RUNTIME ON CACHE BOOL "Use static runtime" FORCE)
+endif()
 
 # Use Boost 1.88.0 which is the first release to ship an official CMake build
 # tarball.
@@ -55,6 +73,12 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(boost)
+
+# Restore BUILD_SHARED_LIBS if it was changed
+if(DEFINED _boost_build_shared_libs_backup)
+    set(BUILD_SHARED_LIBS ${_boost_build_shared_libs_backup} CACHE BOOL "Build shared libraries" FORCE)
+    unset(_boost_build_shared_libs_backup)
+endif()
 
 # Restore developer-warning and FPHSA settings.
 set(CMAKE_WARN_DEV ${_scram_prev_warn_dev})

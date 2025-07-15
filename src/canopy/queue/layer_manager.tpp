@@ -2,23 +2,26 @@
  * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
 
+#include "layer_manager.h"
+
 #include <algorithm>
 
+#include "canopy/event/node.h"
 #include "canopy/working_set.h"
 #include "logger.h"
 #include "preprocessor.h"
@@ -58,7 +61,8 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::gather_all_nodes(
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 void layer_manager<bitpack_t_, prob_t_, size_t_>::layered_toposort(
-    core::Pdag *pdag, std::vector<std::shared_ptr<core::Node>> &nodes,
+    core::Pdag *pdag,
+    std::vector<std::shared_ptr<core::Node>> &nodes,
     std::unordered_map<index_t_, std::shared_ptr<core::Node>> &nodes_by_index,
     std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer) {
     // Ensure the graph has been topologically sorted, by layer/level
@@ -179,7 +183,7 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies() {
     submit_all().wait_and_throw();
     for (auto &pair : allocated_tally_events_by_index_) {
         const index_t_ index = pair.first;
-        const tally_event<bitpack_t_> *tally = pair.second;
+        const event::tally<bitpack_t_> *tally = pair.second;
         LOG(DEBUG1) << "tally[" << index << "][" << pdag_nodes_by_index_[index].get()->index()
                     << "] :: [std_err] :: [p05, mean, p95] :: " << "[" << tally->std_err << "] :: " << "["
                     << tally->ci[0] << ", " << tally->mean << ", " << tally->ci[1] << "]";
@@ -187,13 +191,16 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies() {
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ batch_size,
-                                                           const size_t_ bitpacks_per_batch) {
-    sample_shape_.batch_size = batch_size;
-    sample_shape_.bitpacks_per_batch = bitpacks_per_batch;
-    sample_shape_ = working_set<size_t_, bitpack_t_>::rounded(sample_shape_);
+layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials) {
+    // create and sort layers
     layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
-    LOG(DEBUG2) << working_set<size_t_, bitpack_t_>(queue_, pdag_nodes_.size(), sample_shape_);
+    const auto num_nodes = pdag_nodes_.size();
+    scheduler_ = scheduler<bitpack_t_>(queue_, num_trials, num_nodes);
+    sample_shape_ = scheduler_.SAMPLE_SHAPE;
+    
+    // Log scheduler configuration
+    LOG(DEBUG2) << scheduler_;
+    
     map_nodes_by_layer(pdag_nodes_by_layer_);
 }
 
@@ -206,19 +213,18 @@ sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::submit_all() {
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-tally_event<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(const index_t_ evt_idx,
-                                                                           const std::size_t count) {
-    tally_event<bitpack_t_> to_tally;
+event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(const index_t_ evt_idx) {
+    event::tally<bitpack_t_> to_tally;
     if (!allocated_tally_events_by_index_.contains(evt_idx)) {
         LOG(ERROR) << "Unable to tally probability for unknown event with index " << evt_idx;
         return std::move(to_tally);
     }
-    LOG(DEBUG1) << "Counting " << count << " tallies for event with index " << evt_idx;
+    LOG(DEBUG1) << "Counting " << scheduler_.TOTAL_ITERATIONS << " tallies for event with index " << evt_idx;
 
-    for (auto i = 0; i < count; i++) {
+    for (auto i = 0; i < scheduler_.TOTAL_ITERATIONS; i++) {
         fetch_all_tallies();
     }
-    const tally_event<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
+    const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.mean = computed_tally->mean;
     to_tally.std_err = computed_tally->std_err;
@@ -230,22 +236,19 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
     // Free allocated basic events
     for (auto &pair : allocated_basic_events_by_index_) {
-        basic_event<prob_t_, bitpack_t_> *event = pair.second;
-        auto buffer = event->buffer;
-        auto probability = event->probability;
-        auto index = event->index;
+        event::basic_event<prob_t_, bitpack_t_> *event = pair.second;
         // destroy_basic_event(queue_, event);
     }
 
     // Free allocated gates
     for (auto &pair : allocated_gates_by_index_) {
-        gate<bitpack_t_, size_t_> *event = pair.second;
+        event::gate<bitpack_t_, size_t_> *event = pair.second;
         // destroy_gate(queue_, event);
     }
 
     // Free allocated tally events
     for (auto &pair : allocated_tally_events_by_index_) {
-        tally_event<bitpack_t_> *event = pair.second;
+        event::tally<bitpack_t_> *event = pair.second;
         // destroy_tally_event(queue_, event);
     }
 }

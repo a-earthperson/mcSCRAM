@@ -6,16 +6,16 @@
  *
  * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * @details This file implements the Monte Carlo-based probability analysis for SCRAM
@@ -313,18 +313,17 @@ namespace scram::core {
         LOG(DEBUG4) << "Calculating probability using monte carlo sampling...";
         
         // Extract sampling configuration from analysis settings
-        const auto num_iterations = this->settings().num_trials();
-        const auto batch_size = this->settings().batch_size();
-        const auto sample_size = this->settings().sample_size();
+        const auto num_trials = this->settings().num_trials();
         
         // Get the PDAG for computation
         auto pdag = this->graph();
         
         // Create and configure the SYCL-based layer manager
-        canopy::queue::layer_manager manager(pdag, batch_size, sample_size);
+        using bitpack_t_ = std::uint64_t;
+        canopy::queue::layer_manager<bitpack_t_> manager(pdag, num_trials);
         
         // Perform Monte Carlo sampling and compute statistics
-        const auto tally = manager.tally(pdag->root()->index(), num_iterations);
+        const auto tally = manager.tally(pdag->root()->index());
         
         LOG(DEBUG4) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
         return tally.mean;

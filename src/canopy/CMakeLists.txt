@@ -6,17 +6,19 @@ set(CANOPY_SRC
 
 # Optionally collect public headers for installation
 set(CANOPY_HEADERS
-        node.h
+        event/node.h
         working_set.h
         kernel/basic_event.h
         kernel/gate.h
         kernel/tally.h
+        queue/scheduler.h
         queue/layer_manager.h
         queue/layer_manager.tpp
         queue/kernel_builder.h
         queue/queueable.h
 )
 
+# Build canopy as shared library explicitly (dependencies are static)
 add_library(canopy SHARED ${CANOPY_SRC} ${CANOPY_HEADERS})
 
 # Mark header files as SYSTEM headers to suppress warnings from third-party code
@@ -55,9 +57,9 @@ target_compile_options(canopy PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}
 # consumers can find it in the same prefix.
 install(
   TARGETS canopy
-  LIBRARY DESTINATION ${INSTALL_BASE_DIR}/lib/scram
-  ARCHIVE DESTINATION ${INSTALL_BASE_DIR}/lib/scram/static
-  RUNTIME DESTINATION ${INSTALL_BASE_DIR}/bin
-  PUBLIC_HEADER DESTINATION ${INSTALL_BASE_DIR}/include/canopy
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/canopy
   COMPONENT scram
 )

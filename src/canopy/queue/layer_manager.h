@@ -11,22 +11,23 @@
  * 
  * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
 
-#include "canopy/node.h"
+#include "canopy/event/node.h"
+#include "canopy/queue/scheduler.h"
 #include "canopy/queue/queueable.h"
 
 #include "pdag.h"
@@ -73,7 +74,7 @@ namespace scram::canopy::queue {
  * 
  * @since Version 1.0
  */
-template <typename bitpack_t_ = std::uint64_t, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
+template <typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
 class layer_manager {
 
     /// @brief Index type for node identification
@@ -83,7 +84,9 @@ class layer_manager {
     sycl::queue queue_;
     
     /// @brief Sample shape configuration defining batch size and bitpack dimensions
-    sample_shape<size_t_> sample_shape_;
+    event::sample_shape<size_t_> sample_shape_;
+
+    scheduler<bitpack_t_> scheduler_{};
 
     /// @brief Vector containing all PDAG nodes in topological order
     std::vector<std::shared_ptr<core::Node>> pdag_nodes_;
@@ -104,13 +107,13 @@ class layer_manager {
     std::unordered_map<index_t_, std::shared_ptr<queueable_base>> tally_queueables_by_index_;
 
     /// @brief Map from node index to allocated device-side tally event structures
-    std::unordered_map<index_t_, tally_event<bitpack_t_> *> allocated_tally_events_by_index_;
+    std::unordered_map<index_t_, event::tally<bitpack_t_> *> allocated_tally_events_by_index_;
     
     /// @brief Map from node index to allocated device-side basic event structures
-    std::unordered_map<index_t_, basic_event<prob_t_, bitpack_t_> *> allocated_basic_events_by_index_;
+    std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_> *> allocated_basic_events_by_index_;
     
     /// @brief Map from node index to allocated device-side gate structures
-    std::unordered_map<index_t_, gate<bitpack_t_, size_t_> *> allocated_gates_by_index_;
+    std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_> *> allocated_gates_by_index_;
 
     /// @brief Map from node index to accumulated computation counts
     std::unordered_map<index_t_, size_t_> accumulated_counts_by_index_;
@@ -260,26 +263,14 @@ class layer_manager {
      * parallel execution. The sample shape is automatically rounded to device-optimal
      * dimensions.
      * 
-     * @param pdag Pointer to the probabilistic directed acyclic graph to analyze
-     * @param batch_size Number of samples to process in each batch
-     * @param bitpacks_per_batch Number of bitpacks to use per batch for efficiency
-     * 
      * @throws std::runtime_error if PDAG processing fails
      * @throws std::runtime_error if kernel building fails
      * 
      * @note The constructor performs all setup operations synchronously
      * @note Sample shape is optimized for the target SYCL device
-     * 
-     * @example
-     * @code
-     * // Create layer manager with 1024 samples per batch, 16 bitpacks per batch
-     * layer_manager<> manager(my_pdag, 1024, 16);
-     * 
-     * // For custom types:
-     * layer_manager<std::uint32_t, float, std::uint16_t> custom_manager(pdag, 512, 8);
-     * @endcode
+     *
      */
-    layer_manager(core::Pdag *pdag, size_t_ batch_size, size_t_ bitpacks_per_batch);
+    layer_manager(core::Pdag *pdag, size_t_ num_trials);
 
     /**
      * @brief Submits all queued computations to the SYCL device
@@ -329,8 +320,8 @@ class layer_manager {
      * 
      * @example
      * @code
-     * // Compute tally for event 42 with 1000 iterations
-     * auto result = manager.tally(42, 1000);
+     * // Compute tally for event 42
+     * auto result = manager.tally(42);
      * 
      * if (result.mean > 0.0) {
      *     std::cout << "Event 42 probability: " << result.mean 
@@ -339,7 +330,7 @@ class layer_manager {
      * }
      * @endcode
      */
-    tally_event<bitpack_t_> tally(index_t_ evt_idx, std::size_t count);
+    event::tally<bitpack_t_> tally(index_t_ evt_idx);
 
     /**
      * @brief Destructor that cleans up allocated device memory

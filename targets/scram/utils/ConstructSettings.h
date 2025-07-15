@@ -2,16 +2,16 @@
  * Copyright (C) 2017-2018 Olzhas Rakhimov
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -75,9 +75,9 @@ namespace ScramCLI {
         SET("limit-order", int, limit_order);
         SET("cut-off", double, cut_off);
         SET("mission-time", double, mission_time);
-        SET("num-trials", int, num_trials);
-        SET("batch-size", int, batch_size);
-        SET("sample-size", int, sample_size);
+        SET("num-trials", std::size_t, num_trials);
+        SET("batch-size", std::size_t, batch_size);
+        SET("sample-size", std::size_t, sample_size);
         SET("num-quantiles", int, num_quantiles);
         SET("num-bins", int, num_bins);
         settings->preprocessor = vm.count("preprocessor");

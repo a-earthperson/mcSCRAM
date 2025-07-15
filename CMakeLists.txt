@@ -6,6 +6,7 @@ set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(SCRAM VERSION 0.16.2 LANGUAGES C CXX)
+include(GNUInstallDirs)
 
 # Find and configure LLVM toolchain BEFORE project() call
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -34,7 +35,7 @@ endif()
 
 # Memory allocator
 set(ALLOWED_MALLOC_TYPES "tcmalloc" "jemalloc" "malloc" CACHE STRING "Allowed memory allocator types: tcmalloc, jemalloc, malloc")
-set(MALLOC_TYPE "malloc" CACHE STRING "Select the memory allocator type (tcmalloc, jemalloc, malloc)")
+set(MALLOC_TYPE "tcmalloc" CACHE STRING "Select the memory allocator type (tcmalloc, jemalloc, malloc)")
 option(WITH_COVERAGE "Instrument for coverage analysis" OFF)
 option(WITH_PROFILE "Instrument for performance profiling" OFF)
 option(BUILD_TESTS "Build the tests" ON)  # Influences CTest.
@@ -56,6 +57,7 @@ function(CHECK_COMPILER_VERSION MIN_VERSION)
 endfunction()
 
 add_definitions(-DPROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")  # Needed to print file paths.
+add_definitions(-DCMAKE_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}")  # Needed for runtime install path detection.
 
 # Generate version.h from version.h.in
 set(SCRAM_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
@@ -216,6 +218,10 @@ set(BOOST_INCLUDE_LIBRARIES
 
 # Enable Boost's official CMake build and request static libs built with PIC.
 set(BOOST_ENABLE_CMAKE ON CACHE BOOL "Build Boost using its new CMake build" FORCE)
+
+# Force static libraries for all dependencies to avoid runtime linking issues
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
+
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME ON)
@@ -223,6 +229,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Add required Boost libraries
 find_package(Boost REQUIRED)
+
 list(APPEND LIBS
     Boost::program_options
     Boost::filesystem

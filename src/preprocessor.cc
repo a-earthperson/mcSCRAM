@@ -3,16 +3,16 @@
  * Copyright (C) 2025 Arjun Earthperson
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -1614,6 +1614,9 @@ bool Preprocessor::DetectDistributivity(const GatePtr& gate) noexcept {
     //case kXnor:
       distr_type = kXor;
       break;
+  case kAtleast:
+      distr_type = kAtleast;
+      break;
     default:
       distr_type = kNull;
   }
@@ -1623,7 +1626,7 @@ bool Preprocessor::DetectDistributivity(const GatePtr& gate) noexcept {
     const GatePtr& child_gate = arg.second;
     changed |= DetectDistributivity(child_gate);
     assert(!child_gate->constant() && "Impossible state.");
-    if (distr_type == kNull)
+    if (distr_type == kNull || distr_type == kAtleast || distr_type == kXor)
       continue;  // Distributivity is not possible.
     if (arg.first < 0)
       continue;  // Does not work on negation.
@@ -2510,18 +2513,10 @@ void CustomPreprocessor<DirectEval>::InvertOrder() noexcept {
 
 void CustomPreprocessor<DirectEval>::Run() noexcept {
     TIMER(DEBUG2, "CustomPreprocessor<DirectEval>:: Running Transform Phases I, II with no normalization, followed by layered toposort...");
-    // pdag::Transform(graph_,
-    //     [this](Pdag*) { RunPhaseOne(NormalizationLevel::full); },
-    //     [this](Pdag*) { RunPhaseTwo(); });
-    Preprocessor::Run();
     pdag::Transform(graph_,
-                    [this](Pdag*) {
-                      if (!graph_->coherent())
-                          RunPhaseFour();
-                      },
-                      [this](Pdag*) { RunPhaseFive(); }, &pdag::MarkCoherence,
-                      &pdag::TopologicalOrder);
-    pdag::Transform(graph_, [this](Pdag*) { InvertOrder(); });
+            [this](Pdag*){ RunPhaseOne(NormalizationLevel::none); },
+                    [this](Pdag*){ RunPhaseTwo(); },
+                    [this](Pdag*){ RunPhaseFive();});
     pdag::Transform(graph_, &pdag::LayeredTopologicalOrder);
 }
 

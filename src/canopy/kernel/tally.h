@@ -40,22 +40,22 @@
  * 
  * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
 
-#include "canopy/node.h"
+#include "canopy/event/node.h"
 #include <sycl/sycl.hpp>
 
 namespace scram::canopy::kernel {
@@ -122,14 +122,11 @@ namespace scram::canopy::kernel {
      */
     template<typename prob_t_, typename bitpack_t_, typename size_t_>
     class tally {
-        /// @brief Pointer to array of tally events to be processed
-        tally_event<bitpack_t_> *tally_nodes_;
-        
-        /// @brief Number of tally events in the array
-        const size_t_ num_tallies_;
+        /// @brief Wrapper owning the contiguous tally allocation
+        event::tally_block<bitpack_t_> tallies_block_;
         
         /// @brief Configuration for sample batch dimensions and bit-packing
-        const sample_shape<size_t_> sample_shape_;
+        const event::sample_shape<size_t_> sample_shape_;
 
     public:
         /**
@@ -139,8 +136,7 @@ namespace scram::canopy::kernel {
          * configuration. The kernel is designed for efficient statistical computation
          * across multiple tally events simultaneously.
          * 
-         * @param tally_nodes Pointer to array of tally events (must be in unified shared memory)
-         * @param num_tallies Number of tally events in the array
+         * @param tally_blk Pointer to array of tally events (must be in unified shared memory)
          * @param sample_shape Configuration defining batch size and bit-packing dimensions
          * 
          * @note The tally_nodes array must remain valid for the lifetime of the kernel
@@ -153,11 +149,9 @@ namespace scram::canopy::kernel {
          * tally<double, uint64_t, uint32_t> tally_kernel(tally_events, num_tallies, shape);
          * @endcode
          */
-        tally(tally_event<bitpack_t_> *tally_nodes,
-              const size_t_ &num_tallies,
-              const sample_shape<size_t_> sample_shape)
-            : tally_nodes_(tally_nodes),
-              num_tallies_(num_tallies),
+        tally(const event::tally_block<bitpack_t_> &tally_blk,
+              const event::sample_shape<size_t_> &sample_shape)
+            : tallies_block_(tally_blk),
               sample_shape_(sample_shape) {}
 
         /**
@@ -198,7 +192,7 @@ namespace scram::canopy::kernel {
          */
         static sycl::nd_range<3> get_range(const size_t_ num_tallies,
                                            const sycl::range<3> &local_range,
-                                           const sample_shape<size_t_> &shape) {
+                                           const event::sample_shape<size_t_> &shape) {
             auto new_local_range = local_range;
             new_local_range[0] = 1;
             size_t global_x = (num_tallies + new_local_range[0] - 1) / new_local_range[0] * new_local_range[0];
@@ -255,7 +249,7 @@ namespace scram::canopy::kernel {
          * @endcode
          */
         template<typename prob_vec_t_>
-        static void update_tally_stats(tally_event<bitpack_t_> &tally, const prob_t_ &total_bits) {
+        static void update_tally_stats(event::tally<bitpack_t_> &tally, const prob_t_ &total_bits) {
             const prob_t_ bernoulli_mean = static_cast<prob_t_>(tally.num_one_bits) / total_bits;
             const prob_t_ bernoulli_variance = bernoulli_mean * (1.0 - bernoulli_mean);
             const prob_t_ bernoulli_std_error = sycl::sqrt(bernoulli_variance / total_bits);
@@ -334,7 +328,7 @@ namespace scram::canopy::kernel {
             const size_t bitpack_id = item.get_global_id(2);
 
             // Bounds check
-            if (tally_id >= num_tallies_ ||
+            if (tally_id >= tallies_block_.count ||
                 batch_id >= sample_shape_.batch_size ||
                 bitpack_id >= sample_shape_.bitpacks_per_batch) {
                 return;
@@ -342,7 +336,7 @@ namespace scram::canopy::kernel {
 
             // Each work-item processes exactly one bitpack for this tally
             const std::size_t idx = batch_id * sample_shape_.bitpacks_per_batch + bitpack_id;
-            const std::size_t local_sum = sycl::popcount(tally_nodes_[tally_id].buffer[idx]);
+            const std::size_t local_sum = sycl::popcount(tallies_block_.data[tally_id].buffer[idx]);
 
             // Use an intra-group reduction so we only do one atomic add per group
             const std::size_t group_sum = sycl::reduce_over_group(item.get_group(), local_sum, sycl::plus<>());
@@ -354,7 +348,7 @@ namespace scram::canopy::kernel {
                         sycl::memory_order::relaxed,
                         sycl::memory_scope::device,
                         sycl::access::address_space::global_space>(
-                        tally_nodes_[tally_id].num_one_bits);
+                        tallies_block_.data[tally_id].num_one_bits);
                 atomic_bits.fetch_add(group_sum);
             }
 
@@ -375,7 +369,7 @@ namespace scram::canopy::kernel {
                               * static_cast<std::size_t>(sample_shape_.bitpacks_per_batch)
                               * static_cast<std::size_t>(num_bits_in_dtype_);
 
-            update_tally_stats<sycl::double4>(tally_nodes_[tally_id], static_cast<prob_t_>(total_bits));
+            update_tally_stats<sycl::double4>(tallies_block_.data[tally_id], static_cast<prob_t_>(total_bits));
         }
     };
 

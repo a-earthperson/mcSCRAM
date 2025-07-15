@@ -51,9 +51,3 @@ generate_embedded_schema(
     "${GENERATED_DIR}/report_schema.cpp"
     "REPORT_SCHEMA"
 )
-
-generate_embedded_schema(
-    "${SHARE_DIR}/gui.rng"
-    "${GENERATED_DIR}/gui_schema.cpp"
-    "GUI_SCHEMA"
-) 
