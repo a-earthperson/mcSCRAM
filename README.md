@@ -1,10 +1,10 @@
-# mc-SCRAM: Monte Carlo Enhancement for SCRAM Probabilistic Risk Assessment
+# mcSCRAM: Monte Carlo Enhancement for SCRAM Probabilistic Risk Assessment
 
 > **⚠️ RESEARCH TOOL - ALPHA STAGE**  
 > This is an experimental research implementation with unstable APIs subject to frequent changes.  
-> Not recommended for production use. Interfaces may change without notice between versions.
+> Interfaces may change without notice between versions.
 
-**mc-SCRAM** is a research fork of [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with GPU-accelerated Monte Carlo simulation capabilities using SYCL and AdaptiveCpp.
+**mcSCRAM** is a research fork of [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with GPU-accelerated Monte Carlo simulation capabilities using SYCL and AdaptiveCpp.
 
 ## Project Origin
 
@@ -130,43 +130,44 @@ Please see `CONTRIBUTING.md` for development guidelines and `ICLA.md` for contri
 
 ## Licensing
 
-This program is free software distributed under the **GNU General Public License v3.0** (GPL v3).
+This program is free software distributed under the **GNU Affero General Public License v3.0** (AGPL v3).
 
-**Key implications of GPL v3:**
+**Important Note:** The original SCRAM code (from Olzhas Rakhimov) remains under GPL v3, while mcSCRAM enhancements and new code are licensed under AGPL v3. When combined, the entire project is governed by AGPL v3 terms.
+
+**Key implications of AGPL v3:**
 - ✅ **Freedom to use** for any purpose, including research and commercial applications
 - ✅ **Freedom to study and modify** the source code
 - ✅ **Freedom to distribute** copies and modifications
-- ⚠️ **Copyleft requirement**: Derivative works must also be licensed under GPL v3
+- ⚠️ **Copyleft requirement**: Derivative works must also be licensed under AGPL v3
 - ⚠️ **Source disclosure**: Distributed binaries must include or provide access to source code
+- ⚠️ **Network provision**: If you run AGPL code on a server accessible over a network, you must provide source code to users
 
 **For users and researchers:**
-- No restrictions on using the software for research or analysis
-- Publication of results does not require GPL compliance
+- Publication of results does not require AGPL compliance
 - Modifications for personal research do not require public release
+- If you provide the software as a network service, users must be able to access the source code
 
 **For developers and redistributors:**
 - Must preserve copyright notices and license terms
 - Must provide source code when distributing binaries
-- Cannot incorporate into proprietary software without GPL compliance
+- Must provide source code when offering the software as a network service
+- Cannot incorporate into proprietary software without AGPL compliance
 
 **For commercial users:**
-- Free to use for internal business operations
-- Must comply with GPL if distributing the software
-- Consider consulting legal counsel for complex integration scenarios
+- Must comply with AGPL if distributing the software or offering it as a service
+- Network-accessible deployments require source code provision to users
 
-**Educational resources on GPL v3:**
-- [Official GPL v3 Text](https://www.gnu.org/licenses/gpl-3.0.html)
-- [GPL v3 Quick Guide](https://www.gnu.org/licenses/quick-guide-gplv3.html)
-- [GPL v3 FAQ](https://www.gnu.org/licenses/gpl-faq.html)
+**Educational resources on AGPL v3:**
+- [Official AGPL v3 Text](https://www.gnu.org/licenses/agpl-3.0.html)
+- [AGPL v3 Quick Guide](https://www.gnu.org/licenses/quick-guide-gplv3.html)
+- [AGPL v3 FAQ](https://www.gnu.org/licenses/gpl-faq.html)
 - [Understanding Copyleft](https://copyleft.org/guide/)
+- [Why AGPL?](https://www.gnu.org/licenses/why-affero-gpl.html)
 
 ## Acknowledgments
 
 - **Original SCRAM**: Copyright (C) 2014-2018 Olzhas Rakhimov  
   Repository: https://github.com/rakhimov/scram
-- **mc-SCRAM Enhancements**: Copyright (C) 2025 Arjun Earthperson
+- **mcSCRAM**: Copyright (C) 2025 Arjun Earthperson
 - **Synthetic Models**: OpenPRA Initiative contributors
 - **Testing Infrastructure**: Fault tree benchmarks from various PRA research groups
-
-For questions about this research or potential collaborations, please open an issue or discussion in this repository.
- 
