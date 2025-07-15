@@ -1614,6 +1614,9 @@ bool Preprocessor::DetectDistributivity(const GatePtr& gate) noexcept {
     //case kXnor:
       distr_type = kXor;
       break;
+  case kAtleast:
+      distr_type = kAtleast;
+      break;
     default:
       distr_type = kNull;
   }
@@ -1623,7 +1626,7 @@ bool Preprocessor::DetectDistributivity(const GatePtr& gate) noexcept {
     const GatePtr& child_gate = arg.second;
     changed |= DetectDistributivity(child_gate);
     assert(!child_gate->constant() && "Impossible state.");
-    if (distr_type == kNull)
+    if (distr_type == kNull || distr_type == kAtleast || distr_type == kXor)
       continue;  // Distributivity is not possible.
     if (arg.first < 0)
       continue;  // Does not work on negation.
