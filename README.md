@@ -1,6 +1,6 @@
 # mcSCRAM: Monte Carlo SCRAM
 
-> **⚠️ RESEARCH TOOL - ALPHA STAGE**  
+> **⚠️ ALPHA STAGE**  
 > This is an experimental implementation with unstable APIs subject to frequent changes.  
 > Interfaces may change without notice between versions.
 
@@ -31,6 +31,57 @@ The core contribution lies in the parallel Monte Carlo implementation featuring:
 - **SYCL Backend**: Cross-platform acceleration via AdaptiveCpp supporting CUDA, ROCm, Intel oneAPI, and OpenCL
 - **Work-group Optimization**: Dynamic kernel configuration adaptation for different hardware architectures
 - **Memory Coalescing**: Optimized access patterns for GPU memory hierarchies
+
+### Memory Management Architecture
+
+mcSCRAM implements a **strict USM-only memory strategy** that eliminates SYCL buffers entirely, following AdaptiveCpp performance recommendations:
+
+#### Device USM for High-Throughput Data
+```cpp
+// Large contiguous allocations for computational data
+bitpack_t_* buffer_block = sycl::malloc_device<bitpack_t_>(
+    num_events * num_bitpacks, queue);
+```
+- **Sample Data**: All Monte Carlo sample data resides in device memory
+- **Contiguous Layout**: Single large allocations reduce fragmentation
+- **Zero-Copy**: Computational kernels access data directly without transfers
+
+#### Shared USM for Metadata and Control
+```cpp
+// Small metadata structures accessible from host
+gate_t* gates = sycl::malloc_shared<gate_t>(num_gates, queue);
+```
+- **Graph Metadata**: Event and gate configurations in shared memory
+- **Pointer Arrays**: Input/output buffer references for kernel dispatch
+- **Host Access**: Configuration and results accessible without explicit copies
+
+#### Performance Benefits
+- **Eliminated Buffer Overhead**: No accessor creation or runtime dependency analysis
+- **Predictable Memory Layout**: Static allocation patterns enable optimal caching
+- **Reduced Host Latency**: Direct pointer access vs. buffer submission queues
+
+### Bit-Packing Optimization
+
+Monte Carlo simulations are memory bandwidth-bound. mcSCRAM addresses this through aggressive bit-packing:
+
+```cpp
+template<typename bitpack_t_>  // typically uint64_t
+static bitpack_t_ generate_samples(const sampler_args &args) {
+    constexpr uint8_t bits_in_bitpack = sizeof(bitpack_t_) * 8;  // 64 bits
+    constexpr uint8_t samples_per_pack = bits_in_bitpack / bernoulli_bits_per_generation;
+    // Pack 64 boolean samples into single 64-bit integer
+}
+```
+
+#### Memory Bandwidth Optimization
+- **64:1 Compression**: 64 boolean samples packed into single `uint64_t`
+- **Coalesced Access**: Contiguous memory layout maximizes GPU memory throughput
+- **Cache Efficiency**: Reduced memory footprint improves L1/L2 cache utilization
+
+#### Configurable Dimensions
+- **Batch Size**: Number of simulation trials processed simultaneously
+- **Sample Size**: Bit-packs per batch (configurable: 16, 32, 64 typical)
+- **Dynamic Sizing**: Runtime optimization based on device memory and compute capabilities
 
 ## Build and Installation
 
@@ -119,6 +170,72 @@ docker run --rm --gpus all \
 | `--batch-size` | Samples per kernel launch | 1,024 |
 | `--sample-size` | Bit-packs per batch | 16 |
 | `--confidence-intervals` | Statistical bounds (95%, 99%) | disabled |
+
+## Runtime Environment Variables
+
+AdaptiveCpp environment variables control hardware acceleration behavior, debugging output, and performance tuning. For detailed performance optimization guidance, see the [AdaptiveCpp Performance Tuning Guide](https://github.com/AdaptiveCpp/AdaptiveCpp/blob/develop/doc/performance.md).
+
+| Variable | Description | Values | Default |
+|----------|-------------|--------|---------|
+| `ACPP_VISIBILITY_MASK` | Controls which backends are available for execution | `cuda`, `rocm`, `opencl`, `lz`, `omp`, combinations (e.g., `cuda,opencl`), or `all` | `all` |
+| `ACPP_DEBUG_LEVEL` | Controls runtime debug output verbosity | `0` (silent), `1` (fatal), `2` (errors/warnings), `3` (info) | `0` |
+| `ACPP_ADAPTIVITY_LEVEL` | Controls JIT kernel optimization and runtime adaptivity | `0` (static), `1` (basic), `2` (standard) | `2` |
+| `ACPP_ALLOCATION_TRACKING` | Enables memory allocation tracking for debugging | `0` (disabled), `1` (enabled) | `0` |
+
+### Usage Examples
+
+```bash
+# Production: CUDA backend with minimal output
+export ACPP_VISIBILITY_MASK=cuda ACPP_DEBUG_LEVEL=0
+./scram --monte-carlo input/model.xml
+
+# Development: Multiple backends with error reporting and memory tracking
+export ACPP_VISIBILITY_MASK=cuda,opencl ACPP_DEBUG_LEVEL=2 ACPP_ALLOCATION_TRACKING=1
+./scram --monte-carlo input/model.xml
+
+# Container usage with environment variables
+docker run --rm --gpus all \
+  -e ACPP_VISIBILITY_MASK=cuda \
+  -e ACPP_DEBUG_LEVEL=1 \
+  -v $(pwd)/input:/input \
+  mc-scram:runtime --monte-carlo /input/model.xml
+```
+
+## Performance Considerations
+
+### JIT Optimization and Warm-up
+mcSCRAM uses AdaptiveCpp's `generic` compilation target, which performs **runtime JIT optimization**:
+
+- **First Run**: Kernels compile and optimize for your specific hardware
+- **Subsequent Runs**: Optimized kernels load from cache (`~/.acpp/apps/`)
+- **Recommendation**: Run **3-4 iterations** to reach peak performance
+- **Adaptivity Level ≥ 2**: Enables aggressive optimizations including constant propagation for invariant kernel arguments
+
+```bash
+# First run - includes JIT compilation time
+time ./scram --monte-carlo --num-trials 1000000 input/model.xml
+
+# Subsequent runs - optimized kernel execution
+time ./scram --monte-carlo --num-trials 1000000 input/model.xml
+```
+
+### Cache Management
+When upgrading AdaptiveCpp or GPU drivers, clear the kernel cache to benefit from improvements:
+```bash
+# Clear JIT kernel cache
+rm -rf ~/.acpp/apps/*
+```
+
+### Memory Layout Optimization
+For large models with memory constraints:
+- **Reduce Sample Size**: `--sample-size 8` (vs. default 16) for memory-limited devices
+- **Adjust Batch Size**: `--batch-size 512` (vs. default 1024) for smaller GPUs
+- **Monitor VRAM**: Use `nvidia-smi` or similar tools to track memory usage
+
+### Backend-Specific Tuning
+- **CUDA/HIP**: Optimal for discrete GPUs with high memory bandwidth
+- **OpenCL**: Cross-platform compatibility, may require driver-specific tuning
+- **Level Zero**: Optimized for Intel discrete GPUs, experimental for integrated GPUs
 
 ## Contributing
 
