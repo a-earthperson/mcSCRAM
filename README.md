@@ -6,6 +6,10 @@
 
 **mcSCRAM** is a fork of [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with multicore CPU, GPU-accelerated Monte Carlo simulation capabilities AdaptiveCpp's SYCL backend.
 
+## Table of Contents
+
+[[TOC]]
+
 ## Project Origin
 
 This repository is forked from Olzhas Rakhimov's [SCRAM](https://github.com/rakhimov/scram) (System for Command-line Risk Analysis Multi-tool). The original SCRAM provides comprehensive fault tree and event tree analysis capabilities. This fork specifically focuses on enhancing Monte Carlo simulation performance through hardware acceleration.
@@ -15,11 +19,16 @@ This repository is forked from Olzhas Rakhimov's [SCRAM](https://github.com/rakh
 The primary goals of this project include:
 
 - **Parallel Monte Carlo Implementation**: Developing SYCL-based kernels for massively parallel sampling across GPU compute units
-- **Statistical Precision Enhancement**: Implementing advanced uncertainty quantification with confidence interval estimation
+- **Statistical Precision**: Implementing advanced uncertainty quantification with confidence interval estimation
 - **Hardware Optimization**: Exploring memory-efficient data structures and optimal kernel configurations for various accelerator architectures
 - **Performance Characterization**: Benchmarking scalability and computational efficiency improvements over traditional CPU-based approaches
 
+<details>
+<summary>
+
 ## Technical Implementation
+
+</summary>
 
 ### Monte Carlo Engine
 The core contribution lies in the parallel Monte Carlo implementation featuring:
@@ -82,6 +91,8 @@ static bitpack_t_ generate_samples(const sampler_args &args) {
 - **Batch Size**: Number of simulation trials processed simultaneously
 - **Sample Size**: Bit-packs per batch (configurable: 16, 32, 64 typical)
 - **Dynamic Sizing**: Runtime optimization based on device memory and compute capabilities
+
+</details>
 
 ## Build and Installation
 
@@ -228,9 +239,7 @@ rm -rf ~/.acpp/apps/*
 
 ### Memory Layout Optimization
 For large models with memory constraints:
-- **Reduce Sample Size**: `--sample-size 8` (vs. default 16) for memory-limited devices
-- **Adjust Batch Size**: `--batch-size 512` (vs. default 1024) for smaller GPUs
-- **Monitor VRAM**: Use `nvidia-smi` or similar tools to track memory usage
+- **Monitor VRAM**: Use `nvidia-smi`, `nvtop` or similar tools to track memory usage
 
 ### Backend-Specific Tuning
 - **CUDA/HIP**: Optimal for discrete GPUs with high memory bandwidth
