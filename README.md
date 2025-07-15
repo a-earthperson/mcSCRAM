@@ -40,7 +40,7 @@ mcSCRAM implements a **strict USM-only memory strategy** that eliminates SYCL bu
 #### Device USM for High-Throughput Data
 ```cpp
 // Large contiguous allocations for computational data
-bitpack_t_* buffer_block = sycl::malloc_device<bitpack_t_>(
+bitpack_t* buffer_block = sycl::malloc_device<bitpack_t>(
     num_events * num_bitpacks, queue);
 ```
 - **Sample Data**: All Monte Carlo sample data resides in device memory
@@ -66,9 +66,9 @@ gate_t* gates = sycl::malloc_shared<gate_t>(num_gates, queue);
 Monte Carlo simulations are memory bandwidth-bound. mcSCRAM addresses this through aggressive bit-packing:
 
 ```cpp
-template<typename bitpack_t_>  // typically uint64_t
-static bitpack_t_ generate_samples(const sampler_args &args) {
-    constexpr uint8_t bits_in_bitpack = sizeof(bitpack_t_) * 8;  // 64 bits
+template<typename bitpack_t>  // typically uint64_t
+static bitpack_t generate_samples(const sampler_args &args) {
+    constexpr uint8_t bits_in_bitpack = sizeof(bitpack_t) * 8;  // 64 bits
     constexpr uint8_t samples_per_pack = bits_in_bitpack / bernoulli_bits_per_generation;
     // Pack 64 boolean samples into single 64-bit integer
 }
@@ -84,6 +84,29 @@ static bitpack_t_ generate_samples(const sampler_args &args) {
 - **Sample Size**: Bit-packs per batch (configurable: 16, 32, 64 typical)
 - **Dynamic Sizing**: Runtime optimization based on device memory and compute capabilities
 
+### Optimized ATLEAST Gate Implementation
+
+mcSCRAM implements a **direct bit-counting algorithm** for ATLEAST gates (k-out-of-n logic) that significantly outperforms traditional AND/OR expansion methods.
+For example, a 3-out-of-5 ATLEAST gate, if expanded, requires 10 intermediate AND/OR gates. 
+mcSCRAM's implementation uses a single kernel with 5 input reads and parallel bit accumulation.
+
+```cpp
+// Per-bit accumulation instead of combinatorial expansion
+sycl::marray<bitpack_t, NUM_BITS> accumulated_counts(0);
+for (auto i = 0; i < num_inputs; ++i) {
+    const bitpack_t val = inputs[i][index];
+    #pragma unroll
+    for (auto bit_idx = 0; bit_idx < NUM_BITS; ++bit_idx) {
+        accumulated_counts[bit_idx] += ((val >> bit_idx) & 1);
+    }
+}
+```
+- **No Combinatorial Explosion**: Traditional ATLEAST implementations expand k-out-of-n into complex trees of AND/OR gates (C(n,k) combinations)
+- **Parallel Bit Processing**: All 64 bits processed simultaneously vs. sequential popcount operations  
+- **Memory Efficiency**: Single pass through inputs vs. multiple intermediate gate evaluations
+- **Optimal GPU Utilization**: Vectorized accumulation operations match GPU SIMD architecture
+
+**Example**: 
 </details>
 
 ## Build and Installation
