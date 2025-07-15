@@ -1,12 +1,11 @@
 # mcSCRAM: Monte Carlo SCRAM
 
-**mcSCRAM** is a fork of [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with multicore CPU, GPU-accelerated Monte Carlo simulation capabilities AdaptiveCpp's SYCL backend.
+**mcSCRAM** is a fork of @rakhimov Olzhas Rakhimov's [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with multicore CPU, GPU-accelerated Monte Carlo simulation capabilities using AdaptiveCpp's SYCL backend.
 
 > [!CAUTION]
 > **⚠️ ALPHA STAGE** This is an experimental implementation with unstable APIs subject to frequent changes.  
 > Interfaces may change without notice between versions.
 
-This repository is forked from @rakhimov Olzhas Rakhimov's [SCRAM](https://github.com/rakhimov/scram) (System for Command-line Risk Analysis Multi-tool). The original SCRAM provides comprehensive fault tree and event tree analysis capabilities.
 ## Objectives
 
 The primary goals of this project include:
