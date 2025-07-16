@@ -320,24 +320,26 @@ RUN ldconfig
 # These can be overridden at runtime using docker run -e VARIABLE=value
 
 # ACPP_VISIBILITY_MASK: Controls which backends are available
-# Values: cuda, rocm, opencl, level_zero, omp, or comma-separated combinations
+# Values: cuda, hip, opencl, lz, omp, or comma-separated combinations
 # Default: cuda (NVIDIA GPU backend only for container optimization)
 ENV ACPP_VISIBILITY_MASK=cuda
 
 # ACPP_DEBUG_LEVEL: Controls debug output verbosity  
-# Values: 0=Silent, 1=Fatal, 2=Errors, 3=Info, 4=Debug, 5=Verbose, 6=Trace
+# Values: 0=Silent, 1=Fatal, 2=Errors, 3=Info, 4=All
 # Default: 0 (silent for production use)
 ENV ACPP_DEBUG_LEVEL=0
 
 # ACPP_ADAPTIVITY_LEVEL: Controls runtime optimization level
-# Values: 0=Static, 1=Basic, 2=Standard, 3=Aggressive, 4=Maximum
+# Values: 0=jit off, 1=less, 2=more
 # Default: 2 (balanced performance and stability)
 ENV ACPP_ADAPTIVITY_LEVEL=2
 
 # ACPP_ALLOCATION_TRACKING: Enables memory allocation monitoring
-# Values: 0=Disabled, 1=Basic, 2=Detailed, 3=Leak Detection, 4=Full Debug
+# Values: 0=Disabled, 1=Enabled
 # Default: 1 (basic tracking for memory usage awareness)
 ENV ACPP_ALLOCATION_TRACKING=1
+
+ENV ACPP_PERSISTENT_RUNTIME=1
 
 # Set the entrypoint to the SCRAM binary
 ENTRYPOINT ["/usr/local/bin/scram-cli"]

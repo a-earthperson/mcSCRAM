@@ -3,8 +3,8 @@
 **mcSCRAM** is a fork of @rakhimov Olzhas Rakhimov's [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with multicore CPU, GPU-accelerated Monte Carlo simulation capabilities using AdaptiveCpp's SYCL backend.
 
 > [!CAUTION]
-> **⚠️ ALPHA STAGE** This is an experimental implementation with unstable APIs subject to frequent changes.  
-> Interfaces may change without notice between versions.
+> **⚠️ ALPHA ** This project is under active development. The APIs are unstable, interfaces may change without notice
+> until the first release.
 
 ## Objectives
 
@@ -26,7 +26,7 @@ The primary goals of this project include:
 The core contribution lies in the parallel Monte Carlo implementation featuring:
 - **Philox PRNG**: Counter-based pseudorandom number generation enabling perfect parallelization without synchronization overhead
 - **Bit-packed Sampling**: Memory-efficient boolean storage minimizing bandwidth requirements during GPU execution
-- **Layered Graph Execution**: Topologically sorted fault tree evaluation with dependency-aware scheduling
+- **Layered Graph Execution**: Topologically sorted PRA model evaluation with dependency-aware scheduling
 
 ### Hardware Acceleration
 - **SYCL Backend**: Cross-platform acceleration via AdaptiveCpp supporting CUDA, ROCm, Intel oneAPI, and OpenCL
@@ -113,12 +113,19 @@ for (auto i = 0; i < num_inputs; ++i) {
 
 ### Container-based Development (Recommended)
 
-The project provides multi-stage Docker builds for different phases:
+The project provides multi-stage Docker builds for different phases. 
 
+- For CUDA runtime support, install the [NVIDIA Container Toolkit](https://github.com/NVIDIA/nvidia-container-toolkit).
+- For AMD/ROCm runtime support, install the [AMD Container Toolkit](https://instinct.docs.amd.com/projects/container-toolkit/en/latest/container-runtime/docker-compose.html).
+ -- alternatively, you can try mapping devices `/dev/dri`, `/dev/kfd`, but ymmw.
+- For Intel GPUs (discrete or embedded), you just need to map devices `/dev/dri`.
 ```bash
 # Development environment with full toolchain
 docker build --target devimage -t mc-scram:dev .
 docker run -it --rm --gpus all -v $(pwd):/workspace mc-scram:dev
+
+## for intel, amd 
+docker run -it --rm --device=/dev/dri -v $(pwd):/workspace mc-scram:dev
 
 # Production runtime (minimal dependencies)
 docker build --target scramruntime -t mc-scram:runtime .
@@ -166,15 +173,15 @@ make -j$(nproc)
 
 ### CMake Build Options
 
-| Option | Description | Default | Values |
-|--------|-------------|---------|--------|
-| `CMAKE_BUILD_TYPE` | Build configuration | Release | Debug, Release, RelWithDebInfo, MinSizeRel |
-| `MALLOC_TYPE` | Memory allocator | tcmalloc | tcmalloc, jemalloc, malloc |
-| `BUILD_TESTS` | Build test suite | ON | ON, OFF |
-| `WITH_COVERAGE` | Enable coverage instrumentation | OFF | ON, OFF |
-| `WITH_PROFILE` | Enable profiling instrumentation | OFF | ON, OFF |
-| `OPTIMIZE_FOR_NATIVE` | Build with -march=native | ON | ON, OFF |
-| `BUILD_SHARED_LIBS` | Build shared libraries | OFF | ON, OFF |
+| Option                | Description                      | Default  | Values                                     |
+|-----------------------|----------------------------------|----------|--------------------------------------------|
+| `CMAKE_BUILD_TYPE`    | Build configuration              | Release  | Debug, Release, RelWithDebInfo, MinSizeRel |
+| `MALLOC_TYPE`         | Memory allocator                 | tcmalloc | tcmalloc, jemalloc, malloc                 |
+| `BUILD_TESTS`         | Build test suite                 | ON       | ON, OFF                                    |
+| `WITH_COVERAGE`       | Enable coverage instrumentation  | OFF      | ON, OFF                                    |
+| `WITH_PROFILE`        | Enable profiling instrumentation | OFF      | ON, OFF                                    |
+| `OPTIMIZE_FOR_NATIVE` | Build with -march=native         | ON       | ON, OFF                                    |
+| `BUILD_SHARED_LIBS`   | Build shared libraries           | OFF      | ON, OFF                                    |
 
 ## Usage
 
@@ -190,23 +197,24 @@ docker run --rm --gpus all \
 ```
 
 ### Parameters
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--num-trials` | Monte Carlo iterations | 1,000,000 |
-| `--batch-size` | Samples per kernel launch | 1,024 |
-| `--sample-size` | Bit-packs per batch | 16 |
-| `--confidence-intervals` | Statistical bounds (95%, 99%) | disabled |
+| Parameter                | Description                   | Default   |
+|--------------------------|-------------------------------|-----------|
+| `--num-trials`           | Monte Carlo iterations        | 1,000,000 |
+| `--batch-size`           | Samples per kernel launch     | 1,024     |
+| `--sample-size`          | Bit-packs per batch           | 16        |
+| `--confidence-intervals` | Statistical bounds (95%, 99%) | disabled  |
 
 ## Runtime Environment Variables
 
 AdaptiveCpp environment variables control hardware acceleration behavior, debugging output, and performance tuning. For detailed performance optimization guidance, see the [AdaptiveCpp Performance Tuning Guide](https://github.com/AdaptiveCpp/AdaptiveCpp/blob/develop/doc/performance.md).
 
-| Variable | Description | Values | Default |
-|----------|-------------|--------|---------|
-| `ACPP_VISIBILITY_MASK` | Controls which backends are available for execution | `cuda`, `rocm`, `opencl`, `lz`, `omp`, combinations (e.g., `cuda,opencl`), or `all` | `all` |
-| `ACPP_DEBUG_LEVEL` | Controls runtime debug output verbosity | `0` (silent), `1` (fatal), `2` (errors/warnings), `3` (info) | `0` |
-| `ACPP_ADAPTIVITY_LEVEL` | Controls JIT kernel optimization and runtime adaptivity | `0` (static), `1` (basic), `2` (standard) | `2` |
-| `ACPP_ALLOCATION_TRACKING` | Enables memory allocation tracking for debugging | `0` (disabled), `1` (enabled) | `0` |
+| Variable                   | Description                                             | Values                                                                              | Default |
+|----------------------------|---------------------------------------------------------|-------------------------------------------------------------------------------------|---------|
+| `ACPP_VISIBILITY_MASK`     | Controls which backends are available for execution     | `cuda`, `rocm`, `opencl`, `lz`, `omp`, combinations (e.g., `cuda,opencl`), or `all` | `all`   |
+| `ACPP_DEBUG_LEVEL`         | Controls runtime debug output verbosity                 | `0` (silent), `1` (fatal), `2` (errors/warnings), `3` (info), `4` extra             | `0`     |
+| `ACPP_ADAPTIVITY_LEVEL`    | Controls JIT kernel optimization and runtime adaptivity | `0` (static), `1` (basic), `2` (standard)                                           | `2`     |
+| `ACPP_ALLOCATION_TRACKING` | Enables memory allocation tracking for debugging        | `0` (disabled), `1` (enabled)                                                       | `0`     |
+| `ACPP_PERSISTENT_RUNTIME`  | Keeps the runtime running between successive calls      | `0` (disabled), `1` (enabled)                                                       | `1`     |
 
 ### Usage Examples
 
