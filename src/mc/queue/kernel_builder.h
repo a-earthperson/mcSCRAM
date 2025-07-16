@@ -394,8 +394,8 @@ namespace scram::mc::queue {
         std::shared_ptr<queueable_base> queueable_partition;
 
         if constexpr (gate_type_ == core::Connective::kAtleast) {
-            event::atleast_gate<bitpack_t_, size_t_>* allocated_gates = event::create_atleast_gates<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, atleast_args_by_gate, sample_shape_.num_bitpacks());
-            kernel_type typed_kernel(allocated_gates, num_events_in_layer, sample_shape_);
+            auto gate_blk = event::create_atleast_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, atleast_args_by_gate, sample_shape_.num_bitpacks());
+            kernel_type typed_kernel(gate_blk, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
             queueable<kernel_type, 3> partition(queue_, typed_kernel, nd_range, layer_dependencies);
             queueable_partition = std::make_shared<decltype(partition)>(partition);
@@ -403,7 +403,7 @@ namespace scram::mc::queue {
             // 4) Record the newly allocated gate pointers and queueables
             for (std::size_t i = 0; i < num_events_in_layer; ++i)
             {
-                allocated_gates_by_index_[indices[i]] = (allocated_gates + i);
+                allocated_gates_by_index_[indices[i]] = &gate_blk[i];
                 queueables_by_index_[indices[i]] = queueable_partition;
             }
         } else {

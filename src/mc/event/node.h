@@ -243,63 +243,22 @@ namespace scram::mc::event {
     };
 
     /**
-     * @brief Factory function for creating device-allocated at-least gates
+     * @brief Destroys a gate and frees associated device memory.
      * 
-     * @details Creates an array of atleast_gate structures with optimized memory layout
-     * for parallel processing. Allocates both the gate structures and their associated
-     * buffers in contiguous memory blocks, and sets up input pointer arrays for each gate.
+     * @details Properly releases device memory allocated for a gate structure.
+     * This function should be called for all gates created with create_atleast_gates()
+     * to prevent memory leaks.
      * 
      * @tparam bitpack_t_ Integer type for bit-packed data storage
-     * @tparam size_t_ Integer type for size and indexing
      * 
-     * @param queue SYCL queue for memory allocation and device context
-     * @param inputs_per_gate Vector of input configurations, each containing input buffers and negated input count
-     * @param atleast_per_gate Vector of at-least thresholds for each gate
-     * @param num_bitpacks Number of bitpacks to allocate per gate output buffer
-     * 
-     * @return Pointer to array of allocated at-least gates
-     * 
-     * @throws std::bad_alloc if device memory allocation fails
-     * 
-     * @note Gate buffers are allocated as a single contiguous block for efficiency
-     * @note Input pointer arrays are allocated separately for each gate
-     * 
-     * @example
-     * @code
-     * std::vector<std::pair<std::vector<std::uint64_t*>, std::uint32_t>> inputs = {
-     *     {{buffer1, buffer2, buffer3}, 1},  // 3 inputs, 1 negated
-     *     {{buffer4, buffer5}, 0}            // 2 inputs, 0 negated
-     * };
-     * std::vector<std::uint32_t> thresholds = {2, 1};  // 2-out-of-3, 1-out-of-2
-     * auto gates = create_atleast_gates(queue, inputs, thresholds, 1024);
-     * @endcode
+     * @param queue SYCL queue for memory deallocation
+     * @param event Pointer to gate to destroy
      */
-    template<typename bitpack_t_, typename size_t_>
-    atleast_gate<bitpack_t_, size_t_> *create_atleast_gates(const sycl::queue &queue, const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>> &inputs_per_gate, const std::vector<size_t_> &atleast_per_gate, const std::size_t num_bitpacks) {
-        const auto num_gates = inputs_per_gate.size();
-        const auto buffer_size = num_gates * num_bitpacks;
-
-        // allocate all the gate objects contiguously
-        using data_t = atleast_gate<bitpack_t_, size_t_>;
-        const auto align = queue.get_device().get_info<cache_line_bytes>();
-        data_t *gates = sycl::aligned_alloc_shared<data_t>(align, num_gates, queue);
-        bitpack_t_* buffers = sycl::aligned_alloc_device<bitpack_t_>(align, buffer_size, queue);
-
-        for (auto i = 0; i < num_gates; ++i) {
-            const auto gate_input_buffers = inputs_per_gate[i].first;
-            const auto num_inputs = gate_input_buffers.size();
-            const auto num_negated_inputs = inputs_per_gate[i].second;
-            gates[i].num_inputs = static_cast<size_t_>(num_inputs);
-            gates[i].negated_inputs_offset = static_cast<size_t_>(num_inputs - num_negated_inputs);
-            gates[i].inputs = sycl::aligned_alloc_shared<bitpack_t_*>(align, num_inputs, queue);
-            gates[i].buffer = buffers + i * num_bitpacks;
-            for (auto j = 0; j < num_inputs; ++j) {
-                gates[i].inputs[j] = gate_input_buffers[j];
-            }
-            gates[i].at_least = static_cast<size_t_>(atleast_per_gate[i]);
-        }
-        return gates;
-    }
+     template<typename bitpack_t_, typename size_t_>
+     void destroy_gate(const sycl::queue queue, gate<bitpack_t_, size_t_> *gate) {
+         sycl::free(gate->inputs, queue);
+         sycl::free(gate, queue);
+     }
 
     /**
      * @struct sample_shape
@@ -623,6 +582,131 @@ namespace scram::mc::event {
     template<typename bitpack_t_, typename size_t_>
     void destroy_gate_block(const sycl::queue                     &queue,
                             gate_block<bitpack_t_, size_t_>       &blk) {
+        if (blk.all_inputs) {
+            sycl::free(blk.all_inputs, queue);
+            blk.all_inputs = nullptr;
+        }
+
+        if (blk.buffers) {
+            sycl::free(blk.buffers, queue);
+            blk.buffers = nullptr;
+        }
+
+        if (blk.data) {
+            sycl::free(blk.data, queue);
+            blk.data = nullptr;
+        }
+
+        blk.count = 0;
+        blk.total_inputs = 0;
+        blk.bitpacks_per_gate = 0;
+    }
+
+    // ---------------------------------------------------------------------------------
+    //  At-least gate block wrappers (one contiguous allocation of at-least gates)
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * @brief Thin wrapper describing one contiguous allocation of `atleast_gate` nodes.
+     *
+     * In addition to the base `node_block` data/size pair, a `atleast_gate_block` owns
+     * a single device allocation that stores all bit-packed output buffers for
+     * every gate in the block.  Each individual gate’s `buffer` member points
+     * somewhere *inside* this big allocation at an offset of
+     * `gate_index * bitpacks_per_gate`.
+     */
+    template<typename bitpack_t_, typename size_t_>
+    struct atleast_gate_block : public node_block<atleast_gate<bitpack_t_, size_t_>> {
+        /* contiguous device block that stores every gate’s computed output */
+        bitpack_t_   *buffers           = nullptr;
+
+        /* single USM-shared array containing *all* input buffer pointers
+         * for *every* gate in this block.  Each gate’s `inputs` member is
+         * simply a slice into this big array.                           */
+        bitpack_t_  **all_inputs        = nullptr;
+        std::size_t   total_inputs      = 0;        ///< length of all_inputs
+
+        std::size_t   bitpacks_per_gate = 0;        ///< stride between successive gate buffers
+    };
+
+    /**
+     * @brief Allocates and initialises a contiguous block of `atleast_gate` objects and
+     * their shared output-buffer block.
+     *
+     * `inputs_per_gate` follows the same convention used previously in
+     * `create_gates`: each entry is a pair whose first element is the *ordered*
+     * vector of input buffers and whose second element is the number of *negated*
+     * inputs at the tail of that vector.
+     */
+    template<typename bitpack_t_, typename size_t_>
+    [[nodiscard]]
+    atleast_gate_block<bitpack_t_, size_t_>
+    create_atleast_gate_block(const sycl::queue                                                      &queue,
+                              const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>>       &inputs_per_gate,
+                              const std::vector<size_t_>                                             &atleast_per_gate,
+                              const std::size_t                                                      num_bitpacks) {
+        const std::size_t num_gates = inputs_per_gate.size();
+
+        using gate_t = atleast_gate<bitpack_t_, size_t_>;
+
+        /* First pass: count total unique pointer slots needed */
+        std::size_t total_input_ptrs = 0;
+        for (const auto &g : inputs_per_gate) {
+            total_input_ptrs += g.first.size();
+        }
+
+        const auto align = queue.get_device().get_info<cache_line_bytes>();
+
+        // 1) Allocate primary USM-shared structures.
+        gate_t      *gates        = sycl::aligned_alloc_shared<gate_t>(align, num_gates, queue);
+        bitpack_t_ **all_inputs   = sycl::aligned_alloc_shared<bitpack_t_ *>(align, total_input_ptrs, queue);
+
+        // 2) Allocate single device block for all gate outputs.
+        bitpack_t_  *buffer_block = sycl::aligned_alloc_device<bitpack_t_>(align, num_gates * num_bitpacks, queue);
+
+        // 3) Populate gate structs and fill the all_inputs array.
+        std::size_t cursor = 0;
+        for (std::size_t i = 0; i < num_gates; ++i) {
+            const auto &gate_inputs   = inputs_per_gate[i].first;
+            const std::size_t n_in    = gate_inputs.size();
+            const std::size_t n_neg   = inputs_per_gate[i].second;
+
+            assert(n_neg <= n_in);
+
+            // Slice in all_inputs where this gate’s pointers will live.
+            gates[i].inputs                = all_inputs + cursor;
+            gates[i].num_inputs            = static_cast<size_t_>(n_in);
+            gates[i].negated_inputs_offset = static_cast<size_t_>(n_in - n_neg);
+            gates[i].buffer                = buffer_block + i * num_bitpacks;
+            gates[i].at_least              = static_cast<uint8_t>(atleast_per_gate[i]);
+
+            // Copy actual buffer pointers.
+            std::copy(gate_inputs.begin(), gate_inputs.end(), all_inputs + cursor);
+            cursor += n_in;
+        }
+
+        // 4) Wrap and return.
+        atleast_gate_block<bitpack_t_, size_t_> blk;
+        blk.data               = gates;
+        blk.count              = num_gates;
+        blk.buffers            = buffer_block;
+        blk.all_inputs         = all_inputs;
+        blk.total_inputs       = total_input_ptrs;
+        blk.bitpacks_per_gate  = num_bitpacks;
+        return blk;
+    }
+
+    /**
+     * @brief Releases all device memory owned by a `atleast_gate_block`.
+     *
+     * Frees, in order:
+     *   1. Each per-gate `inputs` array
+     *   2. The shared output-buffer block
+     *   3. The contiguous array of `gate` structures
+     */
+    template<typename bitpack_t_, typename size_t_>
+    void destroy_atleast_gate_block(const sycl::queue                         &queue,
+                                    atleast_gate_block<bitpack_t_, size_t_>   &blk) {
         if (blk.all_inputs) {
             sycl::free(blk.all_inputs, queue);
             blk.all_inputs = nullptr;

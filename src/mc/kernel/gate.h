@@ -414,10 +414,7 @@ namespace scram::mc::kernel {
     class op<core::Connective::kAtleast, bitpack_t_, size_t_> {
     protected:
         /// @brief Pointer to array of at-least gates to be processed
-        event::atleast_gate<bitpack_t_, size_t_> *gates_;
-        
-        /// @brief Number of at-least gates in the array
-        const size_t_ num_gates_;
+        event::atleast_gate_block<bitpack_t_, size_t_> gates_block_;
         
         /// @brief Configuration for sample batch dimensions and bit-packing
         const event::sample_shape<size_t_> sample_shape_;
@@ -443,9 +440,8 @@ namespace scram::mc::kernel {
          * op<core::Connective::kAtleast, uint64_t, uint32_t> atleast_kernel(gates, num_gates, shape);
          * @endcode
          */
-        op(event::atleast_gate<bitpack_t_, size_t_> *gates, const size_t_ &num_gates, const event::sample_shape<size_t_> &sample_shape)
-            : gates_(gates),
-              num_gates_(num_gates),
+        op(const event::atleast_gate_block<bitpack_t_, size_t_> &gates, const event::sample_shape<size_t_> &sample_shape)
+            : gates_block_(gates),
               sample_shape_(sample_shape) {}
 
         /**
@@ -533,7 +529,7 @@ namespace scram::mc::kernel {
             const auto bitpack_idx = static_cast<std::uint32_t>(item.get_global_id(2));
 
             // Bounds checking
-            if (gate_id >= this->num_gates_ || batch_id >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
+            if (gate_id >= this->gates_block_.count || batch_id >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
                 return;
             }
 
@@ -541,7 +537,7 @@ namespace scram::mc::kernel {
             const std::uint32_t index = batch_id * sample_shape_.bitpacks_per_batch + bitpack_idx;
 
             // Get gate
-            const auto &g = gates_[gate_id];
+            const auto &g = gates_block_[gate_id];
             const auto num_inputs = g.num_inputs;
             const auto negations_offset = g.negated_inputs_offset;
 
