@@ -432,6 +432,39 @@ namespace scram::mc::kernel {
          * retrieves event parameters, and generates random samples for the assigned
          * event-batch-bitpack combination.
          *
+         * ---------------------------------------------------------------------
+         *  Mapping of the 3-D ND-range to the sampling problem
+         * ---------------------------------------------------------------------
+         * Global indices (gX, gY, gZ)
+         *   gX → **event id**    (0 … num_events-1)
+         *   gY → **batch id**    (0 … sample_shape.batch_size-1)
+         *   gZ → **bit-pack id** (0 … sample_shape.bitpacks_per_batch-1)
+         *
+         * Local range (lX, lY, lZ) is chosen by `working_set::compute_optimal_*()`
+         * so that:
+         *   • lX ⋅ lY ⋅ lZ ≤ device max_work_group_size (1024 on most GPUs)
+         *   • lX  is a power-of-2 ≤ max_work_item_sizes_3d[0] (≤64 on NVIDIA)
+         *   • lY, lZ are powers-of-2 that tile the very large batch/bitpack axes, e.g. (64,16,1)
+         *
+         *   Example:
+         *     events  = 121  → gX = 121, lX = 64  ⇒ two work-groups along X
+         *     batches = 524288 → gY = 524288, lY = 16 ⇒ 32 768 work-groups along Y
+         *     bitpacks_per_batch = 2 → gZ = 2, lZ = 1 ⇒ 2  work-groups along Z
+         *   So each work-group handles at most 64 events × 16 batches × 1 word.
+         *
+         * Subgroup layout (warp / wavefront) is backend-specific.
+         * On CUDA back-ends, a subgroup is 32 consecutive threads in the *X* dimension;
+         * thus the 64-wide work-group maps to exactly two warps, each processing
+         * a different event id (gX) but **sharing the same batch & bit-pack**
+         * coordinates.
+         *
+         * IMPORTANT for caching decisions:
+         *   – Per-event data (probability_threshold, buffer ptr, index) is
+         *     invariant *only* when lX == 1 (one event per work-group).  When
+         *     lX > 1 each thread refers to a distinct event, so any local or
+         *     shared caching must be scoped per-thread or guarded accordingly.
+         * ---------------------------------------------------------------------
+         *
          * The kernel operates in a 3D thread space:
          * - X dimension: Event index (different basic events)
          * - Y dimension: Batch index (different sample batches)

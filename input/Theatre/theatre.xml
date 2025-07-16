@@ -3,6 +3,8 @@
 This is a scenario for benchmarking taken from OpenFTA.
 This tree represents a failure of an electrical supply to an operating
 theatre.
+
+M & (G | R)
 -->
 <opsa-mef>
   <define-fault-tree name="Theatre">
@@ -19,13 +21,13 @@ theatre.
       </or>
     </define-gate>
     <define-basic-event name="Mains_Fail">
-      <float value="3e-2"/>
+      <float value="1"/>
     </define-basic-event>
     <define-basic-event name="Gen_Fail">
-      <float value="2e-2"/>
+      <float value="0"/>
     </define-basic-event>
     <define-basic-event name="Relay_Fail">
-      <float value="5e-2"/>
+      <float value="5e-1"/>
     </define-basic-event>
   </define-fault-tree>
 </opsa-mef>

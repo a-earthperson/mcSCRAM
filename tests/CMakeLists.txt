@@ -1,10 +1,8 @@
 # vim: set foldmarker={{{,}}} foldlevel=0 foldmethod=marker:
 ######################## Begin find Catch2 ###################### {{{
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/catch2/single_include/")
-  message(FATAL_ERROR "Catch2 submodule is not present.")
-endif()
-
-include_directories(SYSTEM "catch2/single_include")
+# Catch2 is fetched via FetchContent in the main CMakeLists.txt
+# find_package is called in the main CMakeLists.txt before this subdirectory
+#include(Catch)
 ######################## End find Catch2 ###################### }}}
 
 ######################## Begin SCRAM test config ###################### {{{
@@ -55,7 +53,7 @@ set(SCRAM_CORE_TEST_SOURCE
 configure_file(scram_unit_test_driver.cc.in scram_unit_test_driver.cc @ONLY)
 
 add_executable(scram_tests ${CMAKE_CURRENT_BINARY_DIR}/scram_unit_test_driver.cc ${SCRAM_CORE_TEST_SOURCE})
-target_link_libraries(scram_tests ${LIBS} scram)
+target_link_libraries(scram_tests ${LIBS} scram Catch2::Catch2WithMain)
 target_compile_options(scram_tests PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
 
 install(
@@ -80,3 +78,75 @@ install(
   )
 endif()
 ######################## End Dummy DLL config ###################### }}}
+
+# Add the Philox PRNG test files to the existing test suite
+
+# Philox Statistical Tests
+add_executable(philox_statistical_tests
+    philox_statistical_tests.cc
+    ${CMAKE_SOURCE_DIR}/src/mc/kernel/basic_event.h
+    ${CMAKE_SOURCE_DIR}/src/mc/event/node.h
+)
+
+target_link_libraries(philox_statistical_tests
+    Catch2::Catch2WithMain
+    ${SYCL_LIBRARIES}
+)
+
+target_include_directories(philox_statistical_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/tests
+)
+
+# Philox Benchmark Tests
+add_executable(philox_benchmark_tests
+    philox_benchmark_tests.cc
+    ${CMAKE_SOURCE_DIR}/src/mc/kernel/basic_event.h
+    ${CMAKE_SOURCE_DIR}/src/mc/event/node.h
+)
+
+target_link_libraries(philox_benchmark_tests
+    Catch2::Catch2WithMain
+    ${SYCL_LIBRARIES}
+)
+
+target_include_directories(philox_benchmark_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/tests
+)
+
+# Philox Seeding Tests
+add_executable(philox_seeding_tests
+    philox_seeding_tests.cc
+    ${CMAKE_SOURCE_DIR}/src/mc/kernel/basic_event.h
+    ${CMAKE_SOURCE_DIR}/src/mc/event/node.h
+)
+
+target_link_libraries(philox_seeding_tests
+    Catch2::Catch2WithMain
+    ${SYCL_LIBRARIES}
+)
+
+target_include_directories(philox_seeding_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/tests
+)
+
+# Add tests to CTest using Catch2 discovery
+include(Catch)
+
+# Discover tests for each executable
+catch_discover_tests(philox_statistical_tests
+    TEST_PREFIX "philox_statistical_"
+    PROPERTIES TIMEOUT 300
+)
+
+catch_discover_tests(philox_benchmark_tests
+    TEST_PREFIX "philox_benchmark_"
+    PROPERTIES TIMEOUT 300
+)
+
+catch_discover_tests(philox_seeding_tests
+    TEST_PREFIX "philox_seeding_"
+    PROPERTIES TIMEOUT 300
+)
