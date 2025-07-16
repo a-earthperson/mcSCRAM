@@ -40,6 +40,7 @@
 #include "mc/event/node.h"
 
 #include <sycl/sycl.hpp>
+#include <functional> // for std::bit_or used in subgroup reduction
 
 namespace scram::mc::kernel {
 
@@ -212,39 +213,88 @@ namespace scram::mc::kernel {
         }
 
         void operator()(const sycl::nd_item<3> &item, const uint32_t iteration) const {
-            const auto blk_idx = static_cast<uint32_t>(item.get_global_id(0));
+            // Sub-group handle and lane info
+            const auto sg = item.get_sub_group();
+            const uint32_t lane = sg.get_local_id();
+            const uint32_t sg_size = sg.get_local_range().size();
+
+            const auto basic_event_pos_in_block = static_cast<uint32_t>(item.get_global_id(0));
             sampler_args args = {
-                .index_id    = static_cast<uint32_t>(basic_events_block_[blk_idx].index),
-                .event_id    = static_cast<uint32_t>(item.get_global_id(0)),
-                .batch_id    = static_cast<uint32_t>(item.get_global_id(1)),
-                .bitpack_idx = static_cast<uint32_t>(item.get_global_id(2)),
+                .index_id    = static_cast<uint32_t>(basic_events_block_[basic_event_pos_in_block].index),
+                .event_id    = static_cast<uint32_t>(item.get_global_id(0)),  // Global-X, the basic_event being processed
+                .batch_id    = static_cast<uint32_t>(item.get_global_id(1)),  // Global-Y, first dim offset for sample_shape
+                .bitpack_idx = static_cast<uint32_t>(item.get_global_id(2)),  // Global-Z, second dim offset for sample_shape
                 .iteration = iteration,
-                .prob_threshold = basic_events_block_[blk_idx].probability_threshold,
+                .prob_threshold = basic_events_block_[basic_event_pos_in_block].probability_threshold, // the basic_event's probability
             };
 
-            // Bounds checking
-            if (args.event_id >= basic_events_block_.count || args.batch_id >= sample_shape_.batch_size || args.bitpack_idx >= sample_shape_.bitpacks_per_batch) {
+            // Global-X: event id (as before)
+
+            // Global-Z now encodes (bitpack_idx * sg_size + generation)
+            const uint32_t bitpack_linear = args.bitpack_idx;
+            const uint32_t bitpack_idx    = bitpack_linear / sg_size;   // which bit-pack within the batch
+            const uint32_t generation_start = bitpack_linear % sg_size; // which generation this lane is responsible for
+
+            // Bounds checking (kept fast – most lanes will be valid)
+            if (args.event_id >= basic_events_block_.count ||
+                args.batch_id >= sample_shape_.batch_size  ||
+                bitpack_idx >= sample_shape_.bitpacks_per_batch) {
                 return;
             }
 
-            // Calculate the index within the generated_samples buffer
-            const size_t_ index = args.batch_id * sample_shape_.bitpacks_per_batch + args.bitpack_idx;
+            // Extract frequently-used metadata
+            const auto &basic_event   = basic_events_block_[basic_event_pos_in_block];
 
-            // Store the bitpacked samples into the buffer
-            bitpack_t_ *output = basic_events_block_[args.event_id].buffer;
-            const bitpack_t_ bitpack_value = generate(args);
-            output[index] = bitpack_value;
+            // Constant expressions reused below
+            static constexpr std::uint8_t BERNOULLI_BITS_PER_GEN = 4;
+            static constexpr std::uint32_t NUM_GENERATIONS = sizeof(bitpack_t_) * 8 / BERNOULLI_BITS_PER_GEN;
+
+            // Construct Philox seed base (identical for all lanes of the subgroup)
+            const philox128_state seed_base = {
+                .x = {
+                    args.index_id + 1,
+                    args.event_id + 1,
+                    args.batch_id + 1,
+                    (args.bitpack_idx + args.iteration + 1) << 6,  // spare 6 bits to store generation count (i)
+                },
+            };
+
+            // Each lane computes 1 or more generations in a strided loop
+            bitpack_t_ local_bits = bitpack_t_(0);
+            for (std::uint32_t g = generation_start; g < NUM_GENERATIONS; g += sg_size) {
+                local_bits |= sample(&seed_base, args.prob_threshold, g);
+            }
+
+            // Warp / subgroup OR reduction
+            bitpack_t_ packed_bits = sycl::reduce_over_group(
+                sg,
+                local_bits,
+                bitpack_t_(0),
+                std::bit_or<bitpack_t_>()
+            );
+
+            // Leader lane writes the final bit-pack to global memory
+            if (lane == 0) {
+                // num_bitpacks = sample_shape.batch_size * sample_shape.bitpacks_per_batch, the buffer size
+                // todo:: use basic_events_block_.buffers[basic_event_pos_in_block * num_bitpacks] instead of
+                // basic_events_block_[args.event_id].buffer for better cache locality (potentially).
+                bitpack_t_ *output = basic_events_block_[args.event_id].buffer;
+                const size_t_ index = args.batch_id * sample_shape_.bitpacks_per_batch + bitpack_idx;
+                output[index] = packed_bits;
+            }
         }
 
         static sycl::nd_range<3> get_range(const size_t_ num_events,
                                            const sycl::range<3> &local_range,
                                            const event::sample_shape<size_t_> &sample_shape_) {
-            // Compute global range
+            // In the revised kernel we launch one work-item per generation.
+            // Therefore the Z dimension is (bitpacks_per_batch * local_range[2]).
+
             size_t global_size_x = num_events;
             size_t global_size_y = sample_shape_.batch_size;
-            size_t global_size_z = sample_shape_.bitpacks_per_batch;
+            size_t global_size_z = sample_shape_.bitpacks_per_batch * local_range[2]; // local_range[2] == subgroup size
 
-            // Adjust global sizes to be multiples of the corresponding local sizes
+            // Round up to the next multiple of the local size in each dimension
             global_size_x = ((global_size_x + local_range[0] - 1) / local_range[0]) * local_range[0];
             global_size_y = ((global_size_y + local_range[1] - 1) / local_range[1]) * local_range[1];
             global_size_z = ((global_size_z + local_range[2] - 1) / local_range[2]) * local_range[2];
