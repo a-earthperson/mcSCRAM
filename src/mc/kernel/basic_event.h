@@ -102,6 +102,7 @@ namespace scram::mc::kernel {
         /// @brief Configuration for sample batch dimensions and bit-packing
         const event::sample_shape<size_t_> sample_shape_;
 
+        static constexpr std::uint8_t BITS_PER_SAMPLE = 4;
     public:
         /**
          * @brief Constructs a basic event sampling kernel
@@ -128,22 +129,19 @@ namespace scram::mc::kernel {
                 : basic_events_block_(basic_events_block),
                   sample_shape_(sample_shape) {}
 
-        /// @name Philox PRNG Constants
-        /// @{
+        template<typename T>
+        struct Vec2 {
+            T x0;
+            T x1;
+        };
 
-        /// @brief Philox round constant A for 32-bit operations
-        static constexpr uint32_t PHILOX_W32A = 0x9E3779B9;
-
-        /// @brief Philox round constant B for 32-bit operations
-        static constexpr uint32_t PHILOX_W32B = 0xBB67AE85;
-
-        /// @brief Philox multiplication constant A for 4x32 variant
-        static constexpr uint32_t PHILOX_M4x32A = 0xD2511F53;
-
-        /// @brief Philox multiplication constant B for 4x32 variant
-        static constexpr uint32_t PHILOX_M4x32B = 0xCD9E8D57;
-
-        /// @}
+        template<typename T>
+        struct Vec4 {
+            T x0;
+            T x1;
+            T x2;
+            T x3;
+        };
 
         /**
          * @struct philox128_state
@@ -160,23 +158,11 @@ namespace scram::mc::kernel {
          *
          * @note The state is designed to be efficiently processed by GPU threads
          * @note All 128 bits of entropy are utilized in the generation process
-         *
-         * @example
-         * @code
-         * philox128_state seeds;
-         * seeds.x[0] = event_id;
-         * seeds.x[1] = batch_id;
-         * seeds.x[2] = bitpack_id;
-         * seeds.x[3] = iteration;
-         *
-         * philox128_state results;
-         * philox_generate(&seeds, &results);
-         * @endcode
          */
-        struct philox128_state {
-            /// @brief Four 32-bit state values forming the complete 128-bit state
-            uint32_t x[4];
-        };
+        using philox128_state = Vec4<std::uint32_t>;
+
+        using products = Vec2<std::uint64_t>;
+        using keys = Vec2<std::uint32_t>;
 
         /**
          * @brief Performs one round of the Philox 4x32 algorithm
@@ -201,27 +187,49 @@ namespace scram::mc::kernel {
          * philox_round(k0, k1, &state);  // Performs one round
          * @endcode
          */
-        [[gnu::always_inline]] static void philox_round(uint32_t &k0, uint32_t &k1, philox128_state *counters) {
-            // Multiply
-            const uint64_t product0 = static_cast<uint64_t>(PHILOX_M4x32A) * counters->x[0];
-            const uint64_t product1 = static_cast<uint64_t>(PHILOX_M4x32B) * counters->x[2];
+        [[gnu::always_inline]] static void philox_round(keys &k, philox128_state &counters) {
+
+            // Philox multiply constants for 32-bit operations, stored as 64-bit values
+            static constexpr Vec2<std::uint64_t> PHILOX_M4x32 = {
+                .x0 = static_cast<std::uint64_t>(0xD2511F53),
+                .x1 = static_cast<std::uint64_t>(0xCD9E8D57)
+            };
+
+            const Vec2<std::uint64_t> products = {
+                .x0 = PHILOX_M4x32.x0 * counters.x0,
+                .x1 = PHILOX_M4x32.x1 * counters.x2
+            };
 
             // Split into high and low parts
-            philox128_state hi_lo;
-            hi_lo.x[0] = static_cast<uint32_t>(product0 >> 32);
-            hi_lo.x[1] = static_cast<uint32_t>(product0);
-            hi_lo.x[2] = static_cast<uint32_t>(product1 >> 32);
-            hi_lo.x[3] = static_cast<uint32_t>(product1);
+            const Vec4<std::uint32_t> hi_lo = {
+                .x0 = static_cast<uint32_t>(products.x0 >> 32),
+                .x1 = static_cast<uint32_t>(products.x0 >> 0),
+                .x2 = static_cast<uint32_t>(products.x1 >> 32),
+                .x3 = static_cast<uint32_t>(products.x1 >> 0),
+            };
 
             // Mix in the key
-            counters->x[0] = hi_lo.x[2] ^ counters->x[1] ^ k0;
-            counters->x[1] = hi_lo.x[3];
-            counters->x[2] = hi_lo.x[0] ^ counters->x[3] ^ k1;
-            counters->x[3] = hi_lo.x[1];
+            const Vec4<std::uint32_t> updated_counters = {
+                .x0 = hi_lo.x2 ^ counters.x1 ^ k.x0,
+                .x1 = hi_lo.x3,
+                .x2 = hi_lo.x0 ^ counters.x3 ^ k.x1,
+                .x3 = hi_lo.x1,
+            };
+
+            counters = updated_counters;
 
             // Bump the key
-            k0 += PHILOX_W32A;
-            k1 += PHILOX_W32B;
+            static constexpr Vec2<std::uint32_t> PHILOX_W32 = {
+                .x0 = 0xD2511F53,
+                .x1 = 0xCD9E8D57
+            };
+
+            const Vec2<std::uint32_t> updated_keys = {
+                k.x0 + PHILOX_W32.x0,
+                k.x1 + PHILOX_W32.x1,
+            };
+
+            k = updated_keys;
         }
 
         /**
@@ -254,20 +262,22 @@ namespace scram::mc::kernel {
          * double rand_val = static_cast<double>(results.x[0]) / UINT32_MAX;
          * @endcode
          */
-        [[gnu::always_inline]] static void philox_generate(const philox128_state *seeds, philox128_state *results) {
+        [[gnu::always_inline]] static void philox_generate(philox128_state &copy_then_write) {
             // Key
-            uint32_t k0 = 382307844;
-            uint32_t k1 = 293830103;
+            keys k = {
+                .x0 = 382307844,
+                .x1 = 293830103
+            };
 
             // Counter
-            philox128_state counters = *seeds;
+            philox128_state counters = copy_then_write;
 
             // Number of rounds; Philox 4x32 uses 10 rounds
             #pragma unroll
             for(auto i=0; i<10;i++){
-                philox_round(k0, k1, &counters);
+                philox_round(k, counters);
             }
-            *results = counters;
+            copy_then_write = counters;
         }
 
         /**
@@ -309,16 +319,22 @@ namespace scram::mc::kernel {
          * bool bit3 = (samples >> 3) & 1;
          * @endcode
          */
-        static bitpack_t_ sample(const philox128_state *seeds, const uint32_t &threshold) {
-            philox128_state results;
-            philox_generate(seeds, &results);
+        static bitpack_t_ sample(const philox128_state &seeds, const std::uint32_t threshold, const std::uint8_t gen) {
+
+            philox128_state results = seeds;
+
+            results.x3 |= gen; // lowest 6 bits store the generation rounds.
+
+            philox_generate(results);
+
+            const std::uint8_t generation_offset = BITS_PER_SAMPLE * gen;
 
             bitpack_t_ out_bits = bitpack_t_(0);
-
-            out_bits |= (results.x[0] < threshold ? 1 : 0) << 0;
-            out_bits |= (results.x[1] < threshold ? 1 : 0) << 1;
-            out_bits |= (results.x[2] < threshold ? 1 : 0) << 2;
-            out_bits |= (results.x[3] < threshold ? 1 : 0) << 3;
+// todo test pragma unroll sycl array
+            out_bits |= (results.x0 < threshold ? 1 : 0) << (generation_offset + 0);
+            out_bits |= (results.x1 < threshold ? 1 : 0) << (generation_offset + 1);
+            out_bits |= (results.x2 < threshold ? 1 : 0) << (generation_offset + 2);
+            out_bits |= (results.x3 < threshold ? 1 : 0) << (generation_offset + 3);
             return out_bits;
         }
 
@@ -404,24 +420,29 @@ namespace scram::mc::kernel {
          * @endcode
          */
         static bitpack_t_ generate(const sampler_args &args) {
-            static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
             static constexpr std::uint8_t bits_in_bitpack = sizeof(bitpack_t_) * 8;
-            static constexpr std::uint8_t num_generations = bits_in_bitpack / bernoulli_bits_per_generation;
+            static constexpr std::uint8_t NUM_GENS = bits_in_bitpack / BITS_PER_SAMPLE;
 
-            philox128_state seeds;
-            seeds.x[0] = args.index_id + 1;
-            seeds.x[1] = args.event_id + 1;
-            seeds.x[2] = args.batch_id + 1;
-            seeds.x[3] = (args.bitpack_idx + args.iteration + 1) << 6; // spare 6 bits to store generation count (i)
+            const philox128_state seeds = {
+                .x0 = args.index_id + 1,
+                .x1 = args.event_id + 1,
+                .x2 = args.batch_id + 1,
+                .x3 = (args.bitpack_idx + args.iteration + 1) << 6, // spare 6 bits to store generation count (i)
+            };
 
-            bitpack_t_ bitpacked_sample = bitpack_t_(0);
+            sycl::vec<bitpack_t_, NUM_GENS> samples(bitpack_t_(0));
+
             #pragma unroll
-            for (auto i = 0; i < num_generations; ++i) {
-                seeds.x[3] += i;
-                const auto generation_offset = bernoulli_bits_per_generation * i;
-                bitpacked_sample |= sample(&seeds, args.prob_threshold) << generation_offset;
+            for (std::uint8_t i = 0; i < NUM_GENS; ++i) {
+                samples[i] = sample(seeds, args.prob_threshold, i);
             }
-            return bitpacked_sample;
+
+            #pragma unroll
+            for (std::uint8_t i = 0; i < NUM_GENS; ++i) {
+                samples[0] |= samples[i];
+            }
+
+            return samples[0];
         }
 
         /**
