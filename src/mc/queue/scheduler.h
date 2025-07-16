@@ -28,6 +28,8 @@
 #include "logger.h"
 
 #include <sycl/sycl.hpp>
+#include <algorithm>
+#include <limits>
 
 namespace scram::mc::queue {
 template<typename bitpack_t_>
@@ -63,10 +65,29 @@ struct scheduler {
         // but the resident memory will need to be split between each node's outputs
         target_bits_per_iteration_ = static_cast<std::size_t>(std::floor(max_device_bits_ / static_cast<std::double_t>(num_nodes_)));
 
-        // compute the optimal sample shape for each node's output per iteration
-        event::sample_shape<std::size_t> sample_shape = compute_optimal_sample_shape_for_bits(device, target_bits_per_iteration_);
-        sample_shape.batch_size *= sample_shape.bitpacks_per_batch / 2;
-        sample_shape.bitpacks_per_batch = 2;
+        // ------------------------------------------------------------------
+        //  pick a sample shape that is as close as possible to the
+        //  *requested* number of trials (rounded to a whole bit-pack)
+        //  while *also* respecting the per-iteration memory budget.
+        //
+        //  Rationale: the previous heuristic always maximized utilisation of
+        //  the available device memory which could lead to *massive* over-sampling
+        //  for small --num-trials values (e.g. requesting 1024
+        //  trials resulted in > 67 M sampled bits).  This updated logic preserves
+        //  the "num-trials is a *minimum*" guarantee but tries to converge on
+        //  the exact request so we neither under- nor grossly over-sample.
+        // ------------------------------------------------------------------
+
+        const std::size_t per_iteration_target_bits = std::min(total_bits_to_sample_, target_bits_per_iteration_);
+        event::sample_shape<std::size_t> sample_shape = compute_closest_sample_shape_for_bits(device,
+                                                                                              per_iteration_target_bits,
+                                                                                              target_bits_per_iteration_);
+
+        // Normalise to exactly two bit-packs per batch when the shape permits
+        if (sample_shape.bitpacks_per_batch > 2) {
+            sample_shape.batch_size *= sample_shape.bitpacks_per_batch / 2;
+            sample_shape.bitpacks_per_batch = 2;
+        }
 
         // Log working_set configuration
         LOG(DEBUG2) << working_set<std::size_t, bitpack_t_>(queue, num_nodes, sample_shape);
@@ -207,6 +228,88 @@ struct scheduler {
         return compute_optimal_sample_shape_for_bitpacks(device, rounded_bitpack_count);
     }
 
+    /* ---------------------------------------------------------------------
+     *  NEW: "closest-fit" search – minimize |product − target| instead of
+     *       maximizing utilization.  The search space and constraints are
+     *       identical to the original heuristic so this is strictly a
+     *       refinement, not a behavior change elsewhere in the code.
+     * -------------------------------------------------------------------*/
+    static event::sample_shape<std::size_t> compute_closest_sample_shape_for_bitpacks(const sycl::device &device,
+                                                                                      const std::size_t target_bitpack_count,
+                                                                                      const std::size_t max_bitpack_capacity) {
+        event::sample_shape<std::size_t> shape{1, 1};
+
+        const auto max_sizes = device.get_info<sycl::info::device::max_work_item_sizes<3>>();
+        const std::size_t limit_y = max_sizes[1];                      // Y-dimension (batch_size)
+        const std::size_t limit_z = max_sizes[2];                      // Z-dimension (bitpacks_per_batch)
+
+        std::vector<std::size_t> sg_sizes;
+        if (device.has(sycl::aspect::gpu)) {
+            sg_sizes = device.get_info<sycl::info::device::sub_group_sizes>();
+        }
+        const std::size_t subgroup = sg_sizes.empty() ? 1 : *std::max_element(sg_sizes.begin(), sg_sizes.end());
+
+        const auto highest_pow2_le = [](std::size_t v) -> std::size_t {
+            if (v == 0) return 0;
+            std::size_t p = 1; while ((p << 1) <= v) p <<= 1; return p;
+        };
+
+        std::size_t best_bs = 1;
+        std::size_t best_ss = 1;
+        std::size_t best_diff = std::numeric_limits<std::size_t>::max();
+
+        // Enumerate powers-of-two up to the HW limits and capacity.
+        for (std::size_t bs = 1; bs <= limit_y && bs <= max_bitpack_capacity; bs <<= 1) {
+            // Honour SIMD alignment if possible but relax for very small counts.
+            if (bs >= subgroup && bs % subgroup) continue;
+
+            const std::size_t max_ss_for_bs = std::min(limit_z, max_bitpack_capacity / bs);
+            for (std::size_t ss = 1; ss <= max_ss_for_bs; ss <<= 1) {
+                const std::size_t product = bs * ss;
+                if (product == 0) continue; // overflow guard (should never happen)
+
+                const std::size_t diff = (product > target_bitpack_count)
+                                            ? product - target_bitpack_count
+                                            : target_bitpack_count - product;
+
+                if (diff < best_diff || (diff == best_diff && product < best_bs * best_ss)) {
+                    best_diff = diff;
+                    best_bs   = bs;
+                    best_ss   = ss;
+                    if (best_diff == 0) break; // perfect match
+                }
+            }
+            if (best_diff == 0) break;
+        }
+
+        // Fallback: in pathological cases pick the smallest legal shape.
+        if (best_diff == std::numeric_limits<std::size_t>::max()) {
+            best_bs = std::clamp<std::size_t>(subgroup, 1, limit_y);
+            best_ss = 1;
+        }
+
+        shape.batch_size = best_bs;
+        shape.bitpacks_per_batch = best_ss;
+
+        // Never exceed per-iteration capacity.
+        assert(shape.num_bitpacks() <= max_bitpack_capacity);
+        return shape;
+    }
+
+    static event::sample_shape<std::size_t> compute_closest_sample_shape_for_bits(const sycl::device &device,
+                                                                                  const std::size_t target_bit_count,
+                                                                                  const std::size_t max_bit_count) {
+        constexpr std::size_t bits_in_bitpack = sizeof(bitpack_t_) * static_cast<std::size_t>(8);
+
+        // Round target up to whole bit-packs for simplicity.
+        const std::size_t rounded_target_bits = (target_bit_count + (bits_in_bitpack - 1)) & ~(bits_in_bitpack - 1);
+        const std::size_t target_bitpacks     = rounded_target_bits / bits_in_bitpack;
+
+        const std::size_t max_bitpacks = max_bit_count / bits_in_bitpack;
+
+        return compute_closest_sample_shape_for_bitpacks(device, target_bitpacks, max_bitpacks);
+    }
+    
 protected:
     // Input parameters
     std::size_t requested_num_trials_ = 0;

@@ -210,6 +210,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
           -DWITH_OPENCL_BACKEND=ON \
           -DWITH_ROCM_BACKEND=ON \
           -DWITH_LEVEL_ZERO_BACKEND=ON  \
+          -DACPP_USE_ACCELERATED_CPU=ON  \
           -DACPP_COMPILER_FEATURE_PROFILE="full" .. && \
     make -j && \
     make install
@@ -270,7 +271,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     apt-fast -y autoclean &&\
     mkdir -p /var/run/sshd /root/.ssh && \
     chmod 700 /root/.ssh && \
-    echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config && \
+    echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
     echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
     echo "root:root" | chpasswd
 

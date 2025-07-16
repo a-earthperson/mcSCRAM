@@ -1,3 +1,11 @@
+#Use add_definitions for now for older cmake versions
+cmake_policy(SET CMP0005 NEW)
+
+set(ACPP_COMPILER_FEATURE_PROFILE "full" CACHE STRING "AdaptiveCpp feature profile")
+set(ACPP_STDPAR "on" CACHE STRING "enables SYCL offloading of C++ standard parallel algorithms")
+set(ACPP_USE_ACCELERATED_CPU "on" CACHE STRING "enables SYCL offloading of C++ standard parallel algorithms")
+set(ACPP_TARGETS "generic" CACHE STRING "enables SYCL offloading of C++ standard parallel algorithms")
+
 find_package(AdaptiveCpp CONFIG REQUIRED)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -6,7 +14,7 @@ endif()
 
 if(NOT ACPP_DEBUG_LEVEL)
     if(CMAKE_BUILD_TYPE MATCHES "Debug")
-        set(ACPP_DEBUG_LEVEL 3 CACHE STRING
+        set(ACPP_DEBUG_LEVEL 4 CACHE STRING
                 "Choose the debug level, options are: 0 (no debug), 1 (print errors), 2 (also print warnings), 3 (also print general information)"
                 FORCE)
     else()
@@ -17,9 +25,6 @@ if(NOT ACPP_DEBUG_LEVEL)
 endif()
 
 add_definitions(-DHIPSYCL_DEBUG_LEVEL=${ACPP_DEBUG_LEVEL})
-
-#Use add_definitions for now for older cmake versions
-cmake_policy(SET CMP0005 NEW)
 
 if(WIN32)
     add_definitions(-D_USE_MATH_DEFINES)
@@ -38,11 +43,34 @@ endif()
 # work well for you. They can be disabled using --acpp-stdpar-unconditional-offload.
 #
 # Enable full feature profile for AdaptiveCpp
-set(ACPP_COMPILER_FEATURE_PROFILE "full" CACHE STRING "AdaptiveCpp feature profile")
-set(ACPP_STDPAR "on" CACHE STRING "enables SYCL offloading of C++ standard parallel algorithms")
 
 add_definitions(-DACPP_COMPILER_FEATURE_PROFILE=full)
 add_definitions(-DACPP_STDPAR=on)
+add_definitions(-DACPP_USE_ACCELERATED_CPU=on)
+add_definitions(-DACPP_TARGETS=generic)
+
+# ──────────────────────────────────────────────────────────────────────────
+# Make AdaptiveCpp targets available to the project
+# ──────────────────────────────────────────────────────────────────────────
+if(AdaptiveCpp_FOUND)
+    # Create an alias for backward compatibility with SYCL::SYCL
+    if(TARGET AdaptiveCpp::acpp-rt AND NOT TARGET SYCL::SYCL)
+        add_library(SYCL::SYCL ALIAS AdaptiveCpp::acpp-rt)
+    endif()
+    
+    # Set SYCL_LIBRARIES for compatibility with existing code
+    set(SYCL_LIBRARIES AdaptiveCpp::acpp-rt CACHE STRING "SYCL libraries from AdaptiveCpp")
+    
+    # Add AdaptiveCpp libraries to the global LIBS list
+    list(APPEND LIBS AdaptiveCpp::acpp-rt)
+    
+    # Include AdaptiveCpp headers - these should be available via the target
+    # but we can also add them explicitly if needed
+    get_target_property(ACPP_INCLUDE_DIRS AdaptiveCpp::acpp-rt INTERFACE_INCLUDE_DIRECTORIES)
+    if(ACPP_INCLUDE_DIRS)
+        include_directories(${ACPP_INCLUDE_DIRS})
+    endif()
+endif()
 
 # ──────────────────────────────────────────────────────────────────────────
 # Diagnostic output – everything that is relevant for AdaptiveCpp
@@ -66,6 +94,16 @@ if(AdaptiveCpp_FOUND)
     # A few other variables that are often useful to see
     message(STATUS "  SYCL_TARGETS        : ${SYCL_TARGETS}")
     message(STATUS "  HIPSYCL_TARGETS     : ${HIPSYCL_TARGETS}")
+    message(STATUS "  SYCL_LIBRARIES      : ${SYCL_LIBRARIES}")
+    if(TARGET AdaptiveCpp::acpp-rt)
+        message(STATUS "  AdaptiveCpp::acpp-rt: Available")
+        get_target_property(ACPP_INCLUDE_DIRS AdaptiveCpp::acpp-rt INTERFACE_INCLUDE_DIRECTORIES)
+        if(ACPP_INCLUDE_DIRS)
+            message(STATUS "  ACPP Include Dirs   : ${ACPP_INCLUDE_DIRS}")
+        endif()
+    else()
+        message(WARNING "  AdaptiveCpp::acpp-rt: NOT FOUND!")
+    endif()
     message(STATUS "====================================================")
     message(STATUS "")
 endif()

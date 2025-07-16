@@ -42,47 +42,49 @@
 
 #include <sycl/sycl.hpp>
 
+namespace jit = sycl::AdaptiveCpp_jit;
+
 namespace scram::mc::kernel {
 
     /**
      * @class basic_event
      * @brief SYCL kernel class for parallel random sampling of basic events
-     * 
+     *
      * @details This class implements a high-performance SYCL kernel that generates
      * random samples for basic events using the Philox counter-based pseudorandom
      * number generator. The kernel is designed for massive parallelization across
      * GPU threads, with each thread responsible for generating samples for specific
      * event-batch-bitpack combinations.
-     * 
+     *
      * The implementation uses the Philox 4x32-10 PRNG algorithm, which provides
      * cryptographic-quality randomness with excellent parallelization properties.
      * Unlike linear congruential generators, Philox is counter-based, allowing
      * any sequence position to be computed directly without iterating through
      * previous values.
-     * 
+     *
      * Key architectural features:
      * - Counter-based PRNG for perfect parallelization
      * - Deterministic seeding for reproducible results
      * - Bit-packed output for memory efficiency
      * - Configurable sampling bit widths
      * - Optimal work-group sizing for different GPU architectures
-     * 
+     *
      * @tparam prob_t_ Floating-point type for probability values (typically float or double)
      * @tparam bitpack_t_ Integer type for bit-packed result storage (typically uint32_t or uint64_t)
      * @tparam size_t_ Integer type for indexing and sizes (typically uint32_t)
-     * 
+     *
      * @note The kernel assumes basic_events_ array is allocated in unified shared memory
      * @note All random number generation is deterministic based on thread indices
      * @warning This class is designed for GPU execution; CPU performance may be suboptimal
-     * 
+     *
      * @example Basic usage:
      * @code
      * // Create basic events array
      * auto events = create_basic_events<double, uint64_t>(queue, probabilities, indices, 1024);
-     * 
+     *
      * // Create kernel instance
      * basic_event<double, uint64_t, uint32_t> kernel(events, num_events, sample_shape);
-     * 
+     *
      * // Submit kernel for execution
      * queue.submit([&](sycl::handler& h) {
      *     auto range = kernel.get_range(num_events, local_range, sample_shape);
@@ -103,17 +105,17 @@ namespace scram::mc::kernel {
     public:
         /**
          * @brief Constructs a basic event sampling kernel
-         * 
+         *
          * @details Initializes the kernel with the basic events array and sampling
          * configuration. The kernel instance can be used multiple times for different
          * iterations of the sampling process.
-         * 
+         *
          * @param basic_events_block reference to basic events block (must be in unified shared memory)
          * @param sample_shape Configuration defining batch size and bit-packing dimensions
-         * 
+         *
          * @note The basic_events array must remain valid for the lifetime of the kernel
          * @note All parameters are stored by value/reference and should not be modified after construction
-         * 
+         *
          * @example
          * @code
          * sample_shape<uint32_t> shape{1024, 16};
@@ -128,37 +130,37 @@ namespace scram::mc::kernel {
 
         /// @name Philox PRNG Constants
         /// @{
-        
+
         /// @brief Philox round constant A for 32-bit operations
         static constexpr uint32_t PHILOX_W32A = 0x9E3779B9;
-        
-        /// @brief Philox round constant B for 32-bit operations  
+
+        /// @brief Philox round constant B for 32-bit operations
         static constexpr uint32_t PHILOX_W32B = 0xBB67AE85;
-        
+
         /// @brief Philox multiplication constant A for 4x32 variant
         static constexpr uint32_t PHILOX_M4x32A = 0xD2511F53;
-        
+
         /// @brief Philox multiplication constant B for 4x32 variant
         static constexpr uint32_t PHILOX_M4x32B = 0xCD9E8D57;
-        
+
         /// @}
 
         /**
          * @struct philox128_state
          * @brief State structure for Philox 4x32 PRNG algorithm
-         * 
+         *
          * @details Contains the 128-bit state for the Philox pseudorandom number generator.
          * The state consists of four 32-bit values that are transformed through multiple
          * rounds of the Philox algorithm to produce high-quality random numbers.
-         * 
+         *
          * This state can represent either:
          * - Input seeds/counters for initialization
          * - Intermediate state during round computations
          * - Final output containing 4 independent 32-bit random values
-         * 
+         *
          * @note The state is designed to be efficiently processed by GPU threads
          * @note All 128 bits of entropy are utilized in the generation process
-         * 
+         *
          * @example
          * @code
          * philox128_state seeds;
@@ -166,7 +168,7 @@ namespace scram::mc::kernel {
          * seeds.x[1] = batch_id;
          * seeds.x[2] = bitpack_id;
          * seeds.x[3] = iteration;
-         * 
+         *
          * philox128_state results;
          * philox_generate(&seeds, &results);
          * @endcode
@@ -178,24 +180,20 @@ namespace scram::mc::kernel {
 
         /**
          * @brief Performs one round of the Philox 4x32 algorithm
-         * 
-         * @details Executes a single round of the Philox transformation, which consists
-         * of multiplication, bit manipulation, and key mixing operations. The Philox
-         * algorithm uses 10 rounds total to achieve cryptographic-quality randomness.
-         * 
+         *
          * Each round performs:
          * 1. Multiply two state values by the Philox multiplication constants
          * 2. Split the 64-bit products into high and low 32-bit parts
          * 3. Mix the results with the remaining state values and round keys
          * 4. Advance the round keys for the next round
-         * 
+         *
          * @param k0 [in,out] First round key, incremented after use
          * @param k1 [in,out] Second round key, incremented after use
          * @param counters [in,out] State values to be transformed
-         * 
+         *
          * @note This is a static inline function for optimal performance
          * @note Round keys are automatically advanced for the next round
-         * 
+         *
          * @example
          * @code
          * uint32_t k0 = 382307844, k1 = 293830103;
@@ -203,7 +201,7 @@ namespace scram::mc::kernel {
          * philox_round(k0, k1, &state);  // Performs one round
          * @endcode
          */
-        static inline void philox_round(uint32_t &k0, uint32_t &k1, philox128_state *counters) {
+        [[gnu::always_inline]] static void philox_round(uint32_t &k0, uint32_t &k1, philox128_state *counters) {
             // Multiply
             const uint64_t product0 = static_cast<uint64_t>(PHILOX_M4x32A) * counters->x[0];
             const uint64_t product1 = static_cast<uint64_t>(PHILOX_M4x32B) * counters->x[2];
@@ -228,35 +226,35 @@ namespace scram::mc::kernel {
 
         /**
          * @brief Generates 4 random uint32_t values using Philox 4x32-10 algorithm
-         * 
+         *
          * @details Implements the complete Philox 4x32-10 pseudorandom number generator,
          * which applies 10 rounds of the Philox transformation to convert input seeds
          * into high-quality random numbers. The algorithm is designed for parallel
          * execution and produces cryptographically secure random values.
-         * 
+         *
          * The function uses fixed round keys and applies the Philox round function
          * exactly 10 times to ensure proper mixing and randomness quality. The output
          * consists of four independent 32-bit random values that can be used for
          * sampling or further processing.
-         * 
+         *
          * @param seeds Input seeds/counters for random generation
          * @param results [out] Output structure containing 4 random uint32_t values
-         * 
+         *
          * @note Uses fixed round keys for consistent results across all threads
          * @note The algorithm is counter-based, allowing direct computation of any sequence position
          * @note All 128 bits of output are statistically independent and high-quality
-         * 
+         *
          * @example
          * @code
          * philox128_state seeds = {{event_id, batch_id, bitpack_id, iteration}};
          * philox128_state results;
          * philox_generate(&seeds, &results);
-         * 
+         *
          * // results.x[0..3] now contain 4 independent 32-bit random values
          * double rand_val = static_cast<double>(results.x[0]) / UINT32_MAX;
          * @endcode
          */
-        static void philox_generate(const philox128_state *seeds, philox128_state *results) {
+        [[gnu::always_inline]] static void philox_generate(const philox128_state *seeds, philox128_state *results) {
             // Key
             uint32_t k0 = 382307844;
             uint32_t k1 = 293830103;
@@ -274,36 +272,36 @@ namespace scram::mc::kernel {
 
         /**
          * @brief Generates bit-packed random samples based on probability threshold
-         * 
+         *
          * @details Converts the four 32-bit random values from Philox into binary
          * samples by comparing normalized floating-point values against the given
          * probability threshold. Each comparison produces a single bit (0 or 1),
          * and multiple bits are packed together for efficient storage.
-         * 
+         *
          * The function normalizes each 32-bit random value to the range [0, 1) and
          * compares it against the probability. If the random value is less than the
          * probability, the corresponding bit is set to 1, otherwise 0. This implements
          * the standard inverse transform method for Bernoulli sampling.
-         * 
+         *
          * @tparam width Bit width specifying how many samples to generate (default: 4 bits)
-         * 
+         *
          * @param seeds Input seeds for random number generation
          * @param threshold Threshold probability for Bernoulli sampling (range: [0, UINT32MAX])
-         * 
+         *
          * @return Bit-packed samples with the specified bit width
-         * 
+         *
          * @note The default 4-bit width utilizes all 4 random values from Philox
          * @note Normalization uses high-precision arithmetic to avoid bias
          * @note Results are deterministic given the same seeds and probability
-         * 
+         *
          * @example
          * @code
          * philox128_state seeds = {{1, 2, 3, 4}};
          * double prob = 0.1;  // 10% probability
-         * 
+         *
          * // Generate 4 bit-packed samples
          * auto samples = sample<four_bits>(&seeds, prob);
-         * 
+         *
          * // Extract individual bits
          * bool bit0 = samples & 1;
          * bool bit1 = (samples >> 1) & 1;
@@ -327,20 +325,20 @@ namespace scram::mc::kernel {
         /**
          * @struct sampler_args
          * @brief Argument structure for the random sample generation process
-         * 
+         *
          * @details Encapsulates all parameters needed for deterministic random sample
          * generation. These arguments are used to construct unique seeds for the Philox
          * PRNG, ensuring that each thread generates independent random sequences while
          * maintaining reproducibility across runs.
-         * 
+         *
          * The structure contains both identification parameters (for seeding) and
          * computational parameters (for the sampling process). The identification
          * parameters ensure that each unique combination of event, batch, and bitpack
          * produces a different random sequence.
-         * 
+         *
          * @note All ID fields should be unique within their respective domains
          * @note The iteration parameter allows for multiple independent sampling rounds
-         * 
+         *
          * @example
          * @code
          * sampler_args args = {
@@ -357,16 +355,16 @@ namespace scram::mc::kernel {
         struct sampler_args {
             /// @brief Unique index identifier for the event (used for seeding)
             uint32_t index_id;
-            
+
             /// @brief Event identifier within the current batch
             uint32_t event_id;
-            
+
             /// @brief Batch identifier for the current sampling round
             uint32_t batch_id;
-            
+
             /// @brief Bitpack index within the current batch
             uint32_t bitpack_idx;
-            
+
             /// @brief Iteration number for multiple sampling rounds
             uint32_t iteration;
 
@@ -376,29 +374,29 @@ namespace scram::mc::kernel {
 
         /**
          * @brief Generates a complete bitpack of random samples for a single event
-         * 
+         *
          * @details Produces a full bitpack of random samples by performing multiple
          * rounds of Philox generation and bit-packing. The function automatically
          * calculates the number of rounds needed based on the bitpack type size
          * and the sampling bit width.
-         * 
+         *
          * Each round generates 4 bits of samples, which are then combined to fill
          * the complete bitpack. The seeding is carefully constructed to ensure
          * each round produces independent random values while maintaining overall
          * sequence reproducibility.
-         * 
+         *
          * @param args Sampling arguments containing all necessary parameters
-         * 
+         *
          * @return Complete bitpack containing random samples
-         * 
+         *
          * @note The function uses compile-time constants for optimal performance
          * @note Seeding incorporates all argument fields to ensure unique sequences
          * @note The loop is unrolled for better GPU performance
-         * 
+         *
          * @example
          * @code
          * sampler_args args = {
-         *     .index_id = 1, .event_id = 0, .batch_id = 0, 
+         *     .index_id = 1, .event_id = 0, .batch_id = 0,
          *     .bitpack_idx = 0, .iteration = 0, .probability = 0.1
          * };
          * uint64_t samples = generate(args);
@@ -428,24 +426,24 @@ namespace scram::mc::kernel {
 
         /**
          * @brief SYCL kernel operator for parallel basic event sampling
-         * 
+         *
          * @details This is the main kernel function executed by each SYCL thread.
          * It extracts thread indices from the nd_item, performs bounds checking,
          * retrieves event parameters, and generates random samples for the assigned
          * event-batch-bitpack combination.
-         * 
+         *
          * The kernel operates in a 3D thread space:
          * - X dimension: Event index (different basic events)
          * - Y dimension: Batch index (different sample batches)
          * - Z dimension: Bitpack index (different bitpacks within a batch)
-         * 
+         *
          * Each thread is responsible for generating one bitpack worth of samples
          * for its assigned event-batch-bitpack combination. The results are stored
          * directly in the event's output buffer.
-         * 
+         *
          * @param item SYCL nd_item providing thread indices and group information
          * @param iteration Iteration number for this sampling round
-         * 
+         *
          * @note Performs bounds checking to handle over-provisioned thread grids
          * @note Accesses unified shared memory for basic event parameters
          * @note Stores results directly in device memory buffers
@@ -544,3 +542,48 @@ namespace scram::mc::kernel {
         }
     };
 }// namespace scram::mc::kernel
+
+        // [[gnu::always_inline]] static void philox_round(uint32_t &k0, uint32_t &k1, philox128_state *counters) {
+        //     uint32_t hi0, lo0, hi1, lo1;
+        //
+        //     jit::compile_if_else(
+        //         jit::reflect<jit::reflection_query::target_vendor_id>() ==
+        //             jit::vendor_id::nvidia,
+        //         [&](){
+        //             // Will only be included in the JIT-compiled kernel if the target is NVIDIA hardware.
+        //             // The branching will be evaluated at JIT-time; there will be no runtime overhead
+        //             // in the generated kernel.
+        //             //
+        //             // As such, this mechanism can also be used to guard code that is unsupported or
+        //             // does not compile correctly on other hardware.
+        //             // Fast 32×32→64 multiplications.
+        //             // On CUDA targets, use the `__umulhi` intrinsic to obtain the upper 32-bits
+        //             // of the 64-bit product directly. This avoids the more expensive 64-bit
+        //             // multiplication and shift sequence used on the host path.
+        //
+        //             lo0 = PHILOX_M4x32A * counters->x[0];
+        //             hi0 = __umulhi(PHILOX_M4x32A, counters->x[0]);
+        //
+        //             lo1 = PHILOX_M4x32B * counters->x[2];
+        //             hi1 = __umulhi(PHILOX_M4x32B, counters->x[2]);
+        //         },
+        //         [&](){
+        //             const uint64_t product0 = static_cast<uint64_t>(PHILOX_M4x32A) * counters->x[0];
+        //             const uint64_t product1 = static_cast<uint64_t>(PHILOX_M4x32B) * counters->x[2];
+        //
+        //             hi0 = static_cast<uint32_t>(product0 >> 32);
+        //             lo0 = static_cast<uint32_t>(product0);
+        //             hi1 = static_cast<uint32_t>(product1 >> 32);
+        //             lo1 = static_cast<uint32_t>(product1);
+        //         });
+        //
+        //     // Mix in the key (follows original Philox permutation pattern)
+        //     counters->x[0] = hi1 ^ counters->x[1] ^ k0;
+        //     counters->x[1] = lo1;
+        //     counters->x[2] = hi0 ^ counters->x[3] ^ k1;
+        //     counters->x[3] = lo0;
+        //
+        //     // Bump the key
+        //     k0 += PHILOX_W32A;
+        //     k1 += PHILOX_W32B;
+        // }

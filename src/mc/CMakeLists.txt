@@ -18,6 +18,10 @@ set(MC_HEADERS
         queue/queueable.h
 )
 
+find_package(_adaptivecpp)
+# Add AdaptiveCpp libraries to the global LIBS list
+list(APPEND LIBS AdaptiveCpp::acpp-rt)
+
 # Build mc as shared library explicitly (dependencies are static)
 add_library(mc SHARED ${MC_SRC} ${MC_HEADERS})
 

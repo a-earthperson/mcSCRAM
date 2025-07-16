@@ -31,11 +31,13 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <sycl/sycl.hpp>
 #include <vector>
-#include <cstddef>
-#include <cassert>
-#include <algorithm>
+
+using cache_line_bytes = sycl::info::device::global_mem_cache_line_size;
 
 namespace scram::mc::event {
 
@@ -56,7 +58,7 @@ namespace scram::mc::event {
      * @code
      * // Basic node with 64-bit packing
      * node<std::uint64_t> basic_node;
-     * basic_node.buffer = sycl::malloc_device<std::uint64_t>(1024, queue);
+     * basic_node.buffer = working_set<std::size_t, std::uint64_t>::smart_alloc_device<std::uint64_t>(queue, 1024);
      * @endcode
      */
     template<typename bitpack_t_>
@@ -86,7 +88,7 @@ namespace scram::mc::event {
      * basic_event<double, std::uint64_t> pump_failure;
      * pump_failure.probability = 0.01;
      * pump_failure.index = 42;
-     * pump_failure.buffer = sycl::malloc_device<std::uint64_t>(num_bitpacks, queue);
+     * pump_failure.buffer = working_set<std::size_t, std::uint64_t>::smart_alloc_device<std::uint64_t>(queue, num_bitpacks);
      * @endcode
      */
     template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
@@ -140,46 +142,6 @@ namespace scram::mc::event {
         /// @brief Confidence intervals: [lower_95, upper_95, lower_99, upper_99]
         sycl::double4 ci = {0., 0., 0., 0.};
     };
-
-    /**
-     * @brief Factory function for creating device-allocated tally events
-     * 
-     * @details Creates an array of tally_event structures with unified shared memory
-     * allocation for efficient host-device access. Each tally event is initialized
-     * with the corresponding buffer and initial count values.
-     * 
-     * @tparam bitpack_t_ Integer type for bit-packed data storage
-     * 
-     * @param queue SYCL queue for memory allocation and device context
-     * @param buffers Vector of device buffer pointers to associate with each tally
-     * @param initial_values Vector of initial count values for each tally event
-     * 
-     * @return Pointer to array of allocated tally events
-     * 
-     * @note Uses unified shared memory for seamless host-device access
-     * @note Caller is responsible for calling destroy_tally_event() for cleanup
-     * 
-     * @example
-     * @code
-     * std::vector<std::uint64_t*> buffers = {buffer1, buffer2, buffer3};
-     * std::vector<std::size_t> initial_counts = {0, 0, 0};
-     * auto tallies = create_tally_events(queue, buffers, initial_counts);
-     * // Use tallies...
-     * destroy_tally_event(queue, tallies);
-     * @endcode
-     */
-    template<typename bitpack_t_>
-    tally<bitpack_t_> *create_tally_events(const sycl::queue &queue, const std::vector<bitpack_t_ *> &buffers) {
-        const auto num_tallies = buffers.size();
-        tally<bitpack_t_> *tallies = sycl::malloc_shared<tally<bitpack_t_>>(num_tallies, queue);
-        for (auto i = 0; i < num_tallies; ++i) {
-            tallies[i].buffer = buffers[i];
-            tallies[i].num_one_bits = 0;
-            tallies[i].mean = 0.0;
-            tallies[i].std_err = 0.0;
-        }
-        return tallies;
-    }
 
     /**
      * @brief Destroys a tally event and frees associated device memory
@@ -315,9 +277,13 @@ namespace scram::mc::event {
     template<typename bitpack_t_, typename size_t_>
     atleast_gate<bitpack_t_, size_t_> *create_atleast_gates(const sycl::queue &queue, const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>> &inputs_per_gate, const std::vector<size_t_> &atleast_per_gate, const std::size_t num_bitpacks) {
         const auto num_gates = inputs_per_gate.size();
+        const auto buffer_size = num_gates * num_bitpacks;
+
         // allocate all the gate objects contiguously
-        atleast_gate<bitpack_t_, size_t_> *gates = sycl::malloc_shared<atleast_gate<bitpack_t_, size_t_>>(num_gates, queue);
-        bitpack_t_* buffers = sycl::malloc_device<bitpack_t_>(num_gates * num_bitpacks, queue);
+        using data_t = atleast_gate<bitpack_t_, size_t_>;
+        const auto align = queue.get_device().get_info<cache_line_bytes>();
+        data_t *gates = sycl::aligned_alloc_shared<data_t>(align, num_gates, queue);
+        bitpack_t_* buffers = sycl::aligned_alloc_device<bitpack_t_>(align, buffer_size, queue);
 
         for (auto i = 0; i < num_gates; ++i) {
             const auto gate_input_buffers = inputs_per_gate[i].first;
@@ -325,7 +291,7 @@ namespace scram::mc::event {
             const auto num_negated_inputs = inputs_per_gate[i].second;
             gates[i].num_inputs = static_cast<size_t_>(num_inputs);
             gates[i].negated_inputs_offset = static_cast<size_t_>(num_inputs - num_negated_inputs);
-            gates[i].inputs = sycl::malloc_shared<bitpack_t_*>(num_inputs, queue);
+            gates[i].inputs = sycl::aligned_alloc_shared<bitpack_t_*>(align, num_inputs, queue);
             gates[i].buffer = buffers + i * num_bitpacks;
             for (auto j = 0; j < num_inputs; ++j) {
                 gates[i].inputs[j] = gate_input_buffers[j];
@@ -333,93 +299,6 @@ namespace scram::mc::event {
             gates[i].at_least = static_cast<size_t_>(atleast_per_gate[i]);
         }
         return gates;
-    }
-
-    /**
-     * @brief Factory function for creating device-allocated standard gates
-     * 
-     * @details Creates an array of standard gate structures with optimized memory layout
-     * for parallel processing. These gates perform basic logical operations (AND, OR, etc.)
-     * without the specialized at-least-k logic.
-     * 
-     * @tparam bitpack_t_ Integer type for bit-packed data storage
-     * @tparam size_t_ Integer type for size and indexing
-     * 
-     * @param queue SYCL queue for memory allocation and device context
-     * @param inputs_per_gate Vector of input configurations, each containing input buffers and negated input count
-     * @param num_bitpacks Number of bitpacks to allocate per gate output buffer
-     * 
-     * @return Pointer to array of allocated standard gates
-     * 
-     * @throws std::bad_alloc if device memory allocation fails
-     * 
-     * @note Gate buffers are allocated as a single contiguous block for efficiency
-     * @note Input pointer arrays are allocated separately for each gate
-     * 
-     * @example
-     * @code
-     * std::vector<std::pair<std::vector<std::uint64_t*>, std::uint32_t>> inputs = {
-     *     {{buffer1, buffer2}, 0},           // AND gate with 2 positive inputs
-     *     {{buffer3, buffer4, buffer5}, 2}   // OR gate with 1 positive, 2 negated inputs
-     * };
-     * auto gates = create_gates(queue, inputs, 1024);
-     * @endcode
-     */
-    template<typename bitpack_t_, typename size_t_>
-    gate<bitpack_t_, size_t_> *create_gates(const sycl::queue &queue, const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>> &inputs_per_gate, const std::size_t num_bitpacks) {
-        const auto num_gates = inputs_per_gate.size();
-        // allocate all the gate objects in a contiguous (shared) block
-        gate<bitpack_t_, size_t_> *gates = sycl::malloc_shared<gate<bitpack_t_, size_t_>>(num_gates, queue);
-
-        // allocate the actual buffers in a contiguous (device) block
-        bitpack_t_* buffers = sycl::malloc_device<bitpack_t_>(num_gates * num_bitpacks, queue);
-
-        for (auto i = 0; i < num_gates; ++i) {
-            const std::vector<bitpack_t_ *> gate_input_buffers = inputs_per_gate[i].first;
-            const auto num_inputs = gate_input_buffers.size();
-            const auto num_negated_inputs = inputs_per_gate[i].second;
-            assert(num_negated_inputs <= num_inputs);
-            gates[i].num_inputs = static_cast<size_t_>(num_inputs);
-            gates[i].negated_inputs_offset = static_cast<size_t_>(num_inputs - num_negated_inputs);
-            gates[i].inputs = sycl::malloc_shared<bitpack_t_*>(num_inputs, queue);
-            gates[i].buffer = buffers + i * num_bitpacks;
-            for (auto j = 0; j < num_inputs; ++j) {
-                gates[i].inputs[j] = gate_input_buffers[j];
-            }
-        }
-        return gates;
-    }
-
-    /**
-     * @brief Destroys a gate and frees all associated device memory
-     * 
-     * @details Properly releases device memory allocated for a gate structure,
-     * including its input pointer array and output buffer. This function handles
-     * the complete cleanup of gate-related memory allocations.
-     * 
-     * @tparam bitpack_t_ Integer type for bit-packed data storage
-     * @tparam size_t_ Integer type for size and indexing
-     * 
-     * @param queue SYCL queue for memory deallocation
-     * @param gate_ptr Pointer to gate structure to destroy
-     * 
-     * @note This function frees the inputs array, buffer, and gate structure itself
-     * @note Input buffers referenced by the inputs array are NOT freed (they belong to other nodes)
-     * 
-     * @example
-     * @code
-     * auto gates = create_gates(queue, inputs, 1024);
-     * // Use gates...
-     * for (int i = 0; i < num_gates; ++i) {
-     *     destroy_gate(queue, &gates[i]);
-     * }
-     * @endcode
-     */
-    template<typename bitpack_t_, typename size_t_>
-    void destroy_gate(const sycl::queue &queue, gate<bitpack_t_, size_t_> *gate_ptr) {
-        sycl::free(gate_ptr->inputs, queue);// Free the inputs array
-        sycl::free(gate_ptr->buffer, queue);// Free the output array
-        sycl::free(gate_ptr, queue);        // Free the gate object
     }
 
     /**
@@ -471,7 +350,7 @@ namespace scram::mc::event {
          * @code
          * sample_shape<std::uint32_t> shape{1024, 16};
          * auto total = shape.num_bitpacks();  // Returns 16384
-         * auto buffer = sycl::malloc_device<std::uint64_t>(total, queue);
+         * auto buffer = working_set<std::size_t, std::uint64_t>::smart_alloc_device<std::uint64_t>(queue, total);
          * @endcode
          */
         size_t_ num_bitpacks() const { return batch_size * bitpacks_per_batch; }
@@ -534,15 +413,15 @@ namespace scram::mc::event {
 
         // 1. Allocate host-visible node array (USM shared memory).
         using event_t = basic_event<prob_t_, bitpack_t_, index_t_>;
-        event_t *events = sycl::malloc_shared<event_t>(num_events, queue);
+        const auto align = queue.get_device().get_info<cache_line_bytes>();
+        event_t *events = sycl::aligned_alloc_shared<event_t>(align, num_events, queue);
 
         // 2. Allocate device-side bit-packed buffer for *all* events.
-        bitpack_t_ *buffer_block = sycl::malloc_device<bitpack_t_>(num_events * num_bitpacks, queue);
+        bitpack_t_ *buffer_block = sycl::aligned_alloc_device<bitpack_t_>(align, num_events * num_bitpacks, queue);
 
         // 3. Populate per-event fields.
         for (std::size_t i = 0; i < num_events; ++i) {
-            //events[i].probability = indexed_probabilities[i].second;
-            // NEW: pre-compute 32-bit Bernoulli threshold to avoid FP math in kernels
+            // pre-compute 32-bit Bernoulli threshold to avoid FP math in kernels
             events[i].probability_threshold = static_cast<std::uint32_t>(static_cast<std::double_t>(indexed_probabilities[i].second) * static_cast<std::double_t>(UINT32_MAX));
             events[i].index       = indexed_probabilities[i].first;
             events[i].buffer      = buffer_block + i * num_bitpacks;
@@ -608,7 +487,8 @@ namespace scram::mc::event {
                        const std::vector<bitpack_t_ *>      &source_buffers) {
         const std::size_t n = source_buffers.size();
         using tally_t = tally<bitpack_t_>;
-        tally_t *tallies = sycl::malloc_shared<tally_t>(n, queue);
+        const auto align = queue.get_device().get_info<cache_line_bytes>();
+        tally_t *tallies = sycl::aligned_alloc_shared<tally_t>(align, n, queue);
 
         for (std::size_t i = 0; i < n; ++i) {
             tallies[i].buffer       = source_buffers[i];
@@ -692,12 +572,14 @@ namespace scram::mc::event {
             total_input_ptrs += g.first.size();
         }
 
+        const auto align = queue.get_device().get_info<cache_line_bytes>();
+
         // 1) Allocate primary USM-shared structures.
-        gate_t      *gates        = sycl::malloc_shared<gate_t>(num_gates, queue);
-        bitpack_t_ **all_inputs   = sycl::malloc_shared<bitpack_t_ *>(total_input_ptrs, queue);
+        gate_t      *gates        = sycl::aligned_alloc_shared<gate_t>(align, num_gates, queue);
+        bitpack_t_ **all_inputs   = sycl::aligned_alloc_shared<bitpack_t_ *>(align, total_input_ptrs, queue);
 
         // 2) Allocate single device block for all gate outputs.
-        bitpack_t_  *buffer_block = sycl::malloc_device<bitpack_t_>(num_gates * num_bitpacks, queue);
+        bitpack_t_  *buffer_block = sycl::aligned_alloc_device<bitpack_t_>(align, num_gates * num_bitpacks, queue);
 
         // 3) Populate gate structs and fill the all_inputs array.
         std::size_t cursor = 0;

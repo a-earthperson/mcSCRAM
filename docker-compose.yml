@@ -1,0 +1,14 @@
+services:
+  ssh_debugger:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ssh-devimage
+    ports:
+      - "2222:22"
+    devices:
+      - /dev/dri
+    privileged: true
+    runtime: "nvidia"
+    shm_size: "1G"
+    restart: unless-stopped

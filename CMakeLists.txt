@@ -247,7 +247,7 @@ list(APPEND LIBS
     Boost::unit_test_framework
 )
 
-find_package(_adaptivecpp)
+
 ########################## End of find libraries ######################## }}}
 ########################## Begin includes ############################### {{{
 
@@ -265,8 +265,23 @@ add_subdirectory(src)
 
 add_subdirectory(targets/scram)
 
-if(BUILD_TESTS)
-  include(CTest)
-  enable_testing()
+#if(BUILD_TESTS)
+#  # Fetch Catch2 for testing
+#  include(FetchContent)
+#  FetchContent_Declare(
+#    Catch2
+#    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+#    GIT_TAG        v3.4.0  # Use latest stable version
+#  )
+#  FetchContent_MakeAvailable(Catch2)
+#
+#  # Add Catch2 CMake modules to path
+#  list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+#
+#  # Ensure Catch2 is available before including tests
+#  find_package(Catch2 REQUIRED)
+#  include(CTest)
+#  include(Catch)
+#  enable_testing()
 #  add_subdirectory(tests)
-endif()
+#endif()

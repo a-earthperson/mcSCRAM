@@ -56,131 +56,6 @@
 namespace scram::mc {
 
     /**
-     * @brief Computes target occupancy rate for OpenCL CPU devices
-     * 
-     * @details Calculates the optimal number of work-items per compute unit for
-     * OpenCL CPU devices using a power-law scaling formula. This heuristic is
-     * based on empirical performance measurements across various CPU architectures.
-     * 
-     * The formula accounts for the fact that CPU cores benefit from higher
-     * occupancy rates compared to GPU cores, but with diminishing returns as
-     * the number of threads increases due to memory bandwidth limitations.
-     * 
-     * @param threads Number of available CPU threads (default: 1)
-     * @return Optimal occupancy rate for the given thread count
-     * 
-     * @note The formula uses a 4/3 power scaling to model CPU performance characteristics
-     * @note Base value of 6400 is derived from empirical testing on various CPU architectures
-     * 
-     * @example
-     * @code
-     * // For an 8-core CPU with 16 threads
-     * auto occupancy = TARGET_OCCUPANCY_RATE_OPENCL_CPU(16);
-     * std::cout << "Optimal occupancy: " << occupancy << std::endl;  // ~1600
-     * @endcode
-     */
-    static constexpr size_t TARGET_OCCUPANCY_RATE_OPENCL_CPU(const size_t threads = 1) {
-        return static_cast<size_t>(6400.0 * std::pow((128.0 / static_cast<double_t>(threads)), 4.0 / 3.0));
-    }
-
-    /**
-     * @brief Computes target occupancy rate for OpenMP CPU devices
-     * 
-     * @details Calculates the optimal number of work-items per compute unit for
-     * OpenMP CPU devices. OpenMP typically benefits from higher occupancy rates
-     * than OpenCL due to better thread scheduling and reduced overhead.
-     * 
-     * This function provides a 2x multiplier over the OpenCL CPU rate based on
-     * performance measurements showing OpenMP's superior thread utilization.
-     * 
-     * @param threads Number of available CPU threads (default: 1)
-     * @return Optimal occupancy rate for OpenMP (2x OpenCL CPU rate)
-     * 
-     * @note Higher occupancy compensates for OpenMP's thread scheduling overhead
-     * @note Performance tested on systems with 8-128 CPU threads
-     * 
-     * @example
-     * @code
-     * // For a 64-core CPU with 128 threads
-     * auto occupancy = TARGET_OCCUPANCY_RATE_OPENMP(128);
-     * std::cout << "OpenMP occupancy: " << occupancy << std::endl;  // ~12800
-     * @endcode
-     */
-    static constexpr size_t TARGET_OCCUPANCY_RATE_OPENMP(const size_t threads = 1) {
-        return static_cast<size_t>(2 * TARGET_OCCUPANCY_RATE_OPENCL_CPU(threads));
-    }
-
-    /**
-     * @brief Computes target occupancy rate for CUDA/HIP GPU devices
-     * 
-     * @details Returns the optimal number of work-items per compute unit for
-     * CUDA and HIP GPU devices. This constant is derived from extensive
-     * performance testing across different GPU architectures including Pascal,
-     * Turing, and newer generations.
-     * 
-     * GPU devices typically benefit from very high occupancy rates due to their
-     * massive parallelism and ability to hide memory latency through thread switching.
-     * 
-     * @param threads Number of available GPU threads (unused for GPUs)
-     * @return Fixed optimal occupancy rate for GPU devices (204800)
-     * 
-     * @note Constant value optimized for modern GPU architectures
-     * @note Performance validated on Tesla P4, GTX 1660 Super, and similar GPUs
-     * 
-     * @example
-     * @code
-     * // For any CUDA/HIP GPU
-     * auto occupancy = TARGET_OCCUPANCY_RATE_CUDA();
-     * std::cout << "GPU occupancy: " << occupancy << std::endl;  // 204800
-     * @endcode
-     */
-    static constexpr size_t TARGET_OCCUPANCY_RATE_CUDA(const size_t threads = 1) {
-        return 204800;
-    }
-
-    /**
-     * @brief Computes optimal occupancy rate based on SYCL backend type
-     * 
-     * @details Selects the appropriate occupancy rate heuristic based on the
-     * underlying SYCL backend. This function automatically chooses the best
-     * occupancy configuration for the target hardware architecture.
-     * 
-     * Different backends have vastly different optimal occupancy characteristics:
-     * - CUDA/HIP: High fixed occupancy for GPU parallelism
-     * - OpenCL/Level Zero: Variable occupancy based on CPU thread count
-     * - OpenMP: Enhanced occupancy for better thread utilization
-     * 
-     * @param backend SYCL backend identifier (CUDA, OpenCL, OpenMP, etc.)
-     * @param threads Number of available threads for CPU backends
-     * @return Optimal occupancy rate for the specified backend
-     * 
-     * @note Automatically handles backend-specific optimizations
-     * @note Falls back to OpenMP configuration for unknown backends
-     * 
-     * @example
-     * @code
-     * // Automatic backend detection
-     * sycl::queue queue;
-     * auto backend = queue.get_device().get_backend();
-     * auto occupancy = compute_desired_occupancy_rate_heuristic(backend, 16);
-     * std::cout << "Optimal occupancy: " << occupancy << std::endl;
-     * @endcode
-     */
-    static constexpr size_t compute_desired_occupancy_rate_heuristic(const hipsycl::rt::backend_id backend, const size_t threads = 1) {
-        switch (backend) {
-            case hipsycl::rt::backend_id::cuda:
-            case hipsycl::rt::backend_id::hip:
-                return TARGET_OCCUPANCY_RATE_CUDA(threads);
-            case hipsycl::rt::backend_id::ocl:
-            case hipsycl::rt::backend_id::level_zero:
-                return TARGET_OCCUPANCY_RATE_OPENCL_CPU(threads);
-            case hipsycl::rt::backend_id::omp:
-            default:
-                return TARGET_OCCUPANCY_RATE_OPENMP(threads);
-        }
-    }
-
-    /**
      * @struct working_set
      * @brief Comprehensive SYCL device working-set configuration and optimization
      * 
@@ -192,7 +67,7 @@ namespace scram::mc {
      * The working set analysis considers:
      * - Device type and compute capabilities
      * - Memory hierarchy and allocation limits
-     * - Work-group and sub-group constraints
+     * - Work-group and subgroup constraints
      * - Sample buffer organization and bit-packing
      * - Backend-specific performance characteristics
      * 
@@ -238,6 +113,33 @@ namespace scram::mc {
         // Device capabilities and constraints
         /// @brief Type of SYCL device (CPU, GPU, accelerator, etc.)
         sycl::info::device_type device_type;
+        
+        /// @brief Device name
+        std::string name;
+        
+        /// @brief Vendor ID of the device
+        sycl::detail::u_int vendor_id;
+        
+        /// @brief Vendor name of the device
+        std::string vendor;
+        
+        /// @brief Driver version string
+        std::string driver_version;
+        
+        /// @brief Device profile string
+        std::string profile;
+        
+        /// @brief Device version string
+        std::string version;
+        
+        /// @brief OpenCL C version string
+        std::string opencl_c_version;
+        
+        /// @brief Supported aspects on this device
+        std::vector<sycl::aspect> aspects;
+        
+        /// @brief Supported extensions on this device
+        std::vector<std::string> extensions;
         
         /// @brief Maximum number of compute units on the device
         sycl::detail::u_int max_compute_units;
@@ -347,9 +249,17 @@ namespace scram::mc {
             samples_in_bytes_ = samples_per_event_in_bytes_ * num_events_;
 
             device_type = device.get_info<sycl::info::device::device_type>();
+            name = device.get_info<sycl::info::device::name>();
+            vendor_id = device.get_info<sycl::info::device::vendor_id>();
+            vendor = device.get_info<sycl::info::device::vendor>();
+            driver_version = device.get_info<sycl::info::device::driver_version>();
+            profile = device.get_info<sycl::info::device::profile>();
+            version = device.get_info<sycl::info::device::version>();
+            opencl_c_version = device.get_info<sycl::info::device::opencl_c_version>();
+            aspects = device.get_info<sycl::info::device::aspects>();
+            extensions = device.get_info<sycl::info::device::extensions>();
             max_compute_units = device.get_info<sycl::info::device::max_compute_units>();
             max_clock_frequency = device.get_info<sycl::info::device::max_clock_frequency>();
-            desired_occupancy = compute_desired_occupancy_rate_heuristic(device.get_backend(), max_compute_units);
 
             max_work_item_dimensions = device.get_info<sycl::info::device::max_work_item_dimensions>();
             max_work_item_sizes_1d = device.get_info<sycl::info::device::max_work_item_sizes<1>>();
@@ -455,9 +365,25 @@ namespace scram::mc {
                 case sycl::info::device_type::host: os << "host"; break;
                 default: os << "unknown"; break;
             } os << std::endl;
+            os  << "name: " << ws.name << std::endl
+                << "vendor_id: " << ws.vendor_id << std::endl
+                << "vendor: " << ws.vendor << std::endl
+                << "driver_version: " << ws.driver_version << std::endl
+                << "profile: " << ws.profile << std::endl
+                << "version: " << ws.version << std::endl
+                << "opencl_c_version: " << ws.opencl_c_version << std::endl
+                << "aspects: ";
+            for (const auto &aspect : ws.aspects) { 
+                os << static_cast<int>(aspect) << ", "; 
+            } 
+            os << std::endl
+                << "extensions: ";
+            for (const auto &ext : ws.extensions) { 
+                os << ext << ", "; 
+            } 
+            os << std::endl;
             os  << "max_compute_units: " << ws.max_compute_units << std::endl
                 << "max_clock_frequency: " << ws.max_clock_frequency << std::endl
-                << "desired_occupancy: " << ws.desired_occupancy << std::endl
                 << "------------------------------------------------" << std::endl;
             os  << "max_work_item_dimensions: " << ws.max_work_item_dimensions << std::endl
                 << "max_work_item_sizes_1d: " << ws.max_work_item_sizes_1d[0] << std::endl
