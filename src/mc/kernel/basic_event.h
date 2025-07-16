@@ -80,7 +80,13 @@ namespace scram::mc::kernel {
             uint32_t x[4];
         };
 
-        [[gnu::always_inline]] static void philox_round(uint32_t &k0, uint32_t &k1, philox128_state *counters) {
+        template<typename T>
+        struct Vec2 {
+            T A;
+            T B;
+        };
+
+        [[gnu::always_inline]] static void philox_round(Vec2<uint32_t> &key, philox128_state *counters) {
             // Multiply
             const uint64_t product0 = static_cast<uint64_t>(PHILOX_M4x32A) * counters->x[0];
             const uint64_t product1 = static_cast<uint64_t>(PHILOX_M4x32B) * counters->x[2];
@@ -93,20 +99,20 @@ namespace scram::mc::kernel {
             hi_lo.x[3] = static_cast<uint32_t>(product1);
 
             // Mix in the key
-            counters->x[0] = hi_lo.x[2] ^ counters->x[1] ^ k0;
+            counters->x[0] = hi_lo.x[2] ^ counters->x[1] ^ key.A;
             counters->x[1] = hi_lo.x[3];
-            counters->x[2] = hi_lo.x[0] ^ counters->x[3] ^ k1;
+            counters->x[2] = hi_lo.x[0] ^ counters->x[3] ^ key.B;
             counters->x[3] = hi_lo.x[1];
 
+            static constexpr Vec2<uint32_t> PHILOX_W32{0xD2511F53, 0xCD9E8D57};
             // Bump the key
-            k0 += PHILOX_W32A;
-            k1 += PHILOX_W32B;
+            key.A += PHILOX_W32.A;
+            key.B += PHILOX_W32.B;
         }
 
         [[gnu::always_inline]] static void philox_generate(const philox128_state *seeds, philox128_state *results) {
-            // Key
-            uint32_t k0 = 382307844;
-            uint32_t k1 = 293830103;
+            // Key as Vec2
+            Vec2<uint32_t> key{382307844u, 293830103u};
 
             // Counter
             philox128_state counters = *seeds;
@@ -114,7 +120,7 @@ namespace scram::mc::kernel {
             // Number of rounds; Philox 4x32 uses 10 rounds
             #pragma unroll
             for(auto i=0; i<10;i++){
-                philox_round(k0, k1, &counters);
+                philox_round(key, &counters);
             }
             *results = counters;
         }
