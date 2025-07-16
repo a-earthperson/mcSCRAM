@@ -87,24 +87,37 @@ namespace scram::mc::kernel {
         };
 
         [[gnu::always_inline]] static void philox_round(Vec2<uint32_t> &key, philox128_state *counters) {
-            // Multiply
-            const uint64_t product0 = static_cast<uint64_t>(PHILOX_M4x32A) * counters->x[0];
-            const uint64_t product1 = static_cast<uint64_t>(PHILOX_M4x32B) * counters->x[2];
+            static constexpr Vec2<uint64_t> PHILOX_M4x32 = {
+                .A = 0xD2511F53ull,
+                .B = 0xCD9E8D57ull,
+            };
+            const Vec2<uint64_t> product = {
+                .A = PHILOX_M4x32.A * counters->x[0],
+                .B = PHILOX_M4x32.B * counters->x[2]
+            };
 
             // Split into high and low parts
-            philox128_state hi_lo;
-            hi_lo.x[0] = static_cast<uint32_t>(product0 >> 32);
-            hi_lo.x[1] = static_cast<uint32_t>(product0);
-            hi_lo.x[2] = static_cast<uint32_t>(product1 >> 32);
-            hi_lo.x[3] = static_cast<uint32_t>(product1);
+            const Vec2<uint32_t> hi = {
+                .A = static_cast<uint32_t>(product.A >> 32),
+                .B = static_cast<uint32_t>(product.A),
+            };
+
+            const Vec2<uint32_t> lo = {
+                .A = static_cast<uint32_t>(product.B >> 32),
+                .B = static_cast<uint32_t>(product.B),
+            };
 
             // Mix in the key
-            counters->x[0] = hi_lo.x[2] ^ counters->x[1] ^ key.A;
-            counters->x[1] = hi_lo.x[3];
-            counters->x[2] = hi_lo.x[0] ^ counters->x[3] ^ key.B;
-            counters->x[3] = hi_lo.x[1];
+            counters->x[0] = lo.A ^ counters->x[1] ^ key.A;
+            counters->x[1] = lo.B;
+            counters->x[2] = hi.A ^ counters->x[3] ^ key.B;
+            counters->x[3] = hi.B;
 
-            static constexpr Vec2<uint32_t> PHILOX_W32{0xD2511F53, 0xCD9E8D57};
+            static constexpr Vec2<uint32_t> PHILOX_W32 = {
+                .A = 0xD2511F53u,
+                .B = 0xCD9E8D57u
+            };
+
             // Bump the key
             key.A += PHILOX_W32.A;
             key.B += PHILOX_W32.B;
@@ -112,7 +125,10 @@ namespace scram::mc::kernel {
 
         [[gnu::always_inline]] static void philox_generate(const philox128_state *seeds, philox128_state *results) {
             // Key as Vec2
-            Vec2<uint32_t> key{382307844u, 293830103u};
+            Vec2<uint32_t> key = {
+                .A = 382307844u,
+                .B = 293830103u,
+            };
 
             // Counter
             philox128_state counters = *seeds;
