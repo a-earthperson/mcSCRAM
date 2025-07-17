@@ -28,7 +28,7 @@
 
 #include "mc/event/node.h"
 #include "mc/queue/queueable.h"
-#include "mc/queue/scheduler.h"
+#include "mc/queue/sample_shaper.h"
 
 #include "pdag.h"
 
@@ -86,7 +86,7 @@ class layer_manager {
     /// @brief Sample shape configuration defining batch size and bitpack dimensions
     event::sample_shape<size_t_> sample_shape_;
 
-    scheduler<bitpack_t_> scheduler_{};
+    sample_shaper<bitpack_t_> sample_shaper_{};
 
     /// @brief Vector containing all PDAG nodes in topological order
     std::vector<std::shared_ptr<core::Node>> pdag_nodes_;
@@ -236,6 +236,7 @@ class layer_manager {
      */
     void map_nodes_by_layer(const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer);
 
+    event::tally<bitpack_t_> fetch_tally_for_event_with_index(const index_t_ evt_idx);
     /**
      * @brief Fetches and logs tally results from all allocated tally events
      * 
@@ -291,12 +292,12 @@ class layer_manager {
      * manager.submit_all().wait_and_throw();
      * 
      * // Submit asynchronously
-     * auto queue = manager.submit_all();
+     * auto queue = manager.single_pass();
      * // Do other work...
      * queue.wait_and_throw();
      * @endcode
      */
-    sycl::queue submit_all();
+    sycl::queue single_pass();
 
     /**
      * @brief Computes tally statistics for a specific event
@@ -330,7 +331,7 @@ class layer_manager {
      * }
      * @endcode
      */
-    event::tally<bitpack_t_> tally(index_t_ evt_idx, double eps = 0.0, double confidence = 0.0);
+    event::tally<bitpack_t_> single_pass_and_tally(index_t_ evt_idx);
 
     /**
      * @brief Destructor that cleans up allocated device memory

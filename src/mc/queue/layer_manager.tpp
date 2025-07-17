@@ -169,19 +169,34 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::map_nodes_by_layer(
     const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer) {
     for (const auto &nodes_in_layer : nodes_by_layer) {
         build_kernels_for_layer(nodes_in_layer);
-        // build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(nodes_in_layer, queue_, sample_shape_,
-        // queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_,
-        // allocated_tally_events_by_index_);
+        build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
+            nodes_in_layer, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_,
+            allocated_gates_by_index_, allocated_tally_events_by_index_);
     }
     // last layer gets tallied
-    build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
-        nodes_by_layer.back(), queue_, sample_shape_, queueables_, queueables_by_index_,
-        allocated_basic_events_by_index_, allocated_gates_by_index_, allocated_tally_events_by_index_);
+    // build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
+    //     nodes_by_layer.back(), queue_, sample_shape_, queueables_, queueables_by_index_,
+    //     allocated_basic_events_by_index_, allocated_gates_by_index_, allocated_tally_events_by_index_);
+}
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tally_for_event_with_index(const index_t_ evt_idx) {
+    event::tally<bitpack_t_> to_tally;
+    if (!allocated_tally_events_by_index_.contains(evt_idx)) {
+        LOG(ERROR) << "Unable to fetch tally for unknown event with index " << evt_idx;
+        return std::move(to_tally);
+    }
+    const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
+    to_tally.num_one_bits = computed_tally->num_one_bits;
+    to_tally.mean = computed_tally->mean;
+    to_tally.std_err = computed_tally->std_err;
+    to_tally.ci = computed_tally->ci;
+    return std::move(to_tally);
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies(double eps, double confidence) {
-    submit_all().wait_and_throw();
+    single_pass().wait_and_throw();
     for (auto &pair : allocated_tally_events_by_index_) {
         const index_t_ idx = pair.first;
         const event::tally<bitpack_t_> *tally = pair.second;
@@ -206,17 +221,17 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, con
     // create and sort layers
     layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
     const auto num_nodes = pdag_nodes_.size();
-    scheduler_ = scheduler<bitpack_t_>(queue_, num_trials, num_nodes);
-    sample_shape_ = scheduler_.SAMPLE_SHAPE;
+    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, num_nodes);
+    sample_shape_ = sample_shaper_.SAMPLE_SHAPE;
     
-    // Log scheduler configuration
-    LOG(DEBUG2) << scheduler_;
+    // Log sample_shaper configuration
+    LOG(DEBUG2) << sample_shaper_;
     
     map_nodes_by_layer(pdag_nodes_by_layer_);
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::submit_all() {
+sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::single_pass() {
     for (const auto &queueable : queueables_) {
         queueable->submit();
     }
@@ -224,43 +239,30 @@ sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::submit_all() {
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(const index_t_ evt_idx,
-                                                                             double eps,
-                                                                             double confidence) {
-    event::tally<bitpack_t_> to_tally;
-    if (!allocated_tally_events_by_index_.contains(evt_idx)) {
-        LOG(ERROR) << "Unable to tally probability for unknown event with index " << evt_idx;
-        return std::move(to_tally);
-    }
-    LOG(DEBUG1) << "Counting " << scheduler_.TOTAL_ITERATIONS << " tallies for event with index " << evt_idx;
-
-    // Early-stop parameters
-    const bool use_early_stop = (eps > 0.0) && (confidence > 0.0);
-    const double z = use_early_stop ? scram::mc::stats::z_score(confidence) : 0.0;
-
-    for (std::size_t i = 0; i < scheduler_.TOTAL_ITERATIONS; ++i) {
-        fetch_all_tallies(eps, confidence);
-
-        if (use_early_stop) {
-            const event::tally<bitpack_t_> *current = allocated_tally_events_by_index_[evt_idx];
-            const double half_width = z * current->std_err;
-            const std::size_t bits_so_far = (i + 1) * scheduler_.SAMPLE_SHAPE.num_bitpacks() * sizeof(bitpack_t_) * 8;
-
-            if (half_width <= eps && scram::mc::stats::clt_ok(bits_so_far, current->mean)) {
-                LOG(WARNING) << "Early stop after " << (i + 1)
-                            << " iterations: half-width=" << half_width;
-                break;
-            }
-        }
-    }
-
-    const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
-    to_tally.num_one_bits = computed_tally->num_one_bits;
-    to_tally.mean = computed_tally->mean;
-    to_tally.std_err = computed_tally->std_err;
-    to_tally.ci = computed_tally->ci;
-    return to_tally;
+event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::single_pass_and_tally(const index_t_ evt_idx) {
+    single_pass().wait_and_throw();
+    const event::tally<bitpack_t_> computed_tally = fetch_tally_for_event_with_index(evt_idx);
+    return computed_tally;
 }
+    // Early-stop parameters
+    // const bool use_early_stop = (eps > 0.0) && (confidence > 0.0);
+    // const double z = use_early_stop ? scram::mc::stats::z_score(confidence) : 0.0;
+    //
+    // for (std::size_t i = 0; i < sample_shaper_.TOTAL_ITERATIONS; ++i) {
+    //     fetch_all_tallies(eps, confidence);
+    //
+    //     if (use_early_stop) {
+    //         const event::tally<bitpack_t_> *current = allocated_tally_events_by_index_[evt_idx];
+    //         const double half_width = z * current->std_err;
+    //         const std::size_t bits_so_far = (i + 1) * sample_shaper_.SAMPLE_SHAPE.num_bitpacks() * sizeof(bitpack_t_) * 8;
+    //
+    //         if (half_width <= eps && scram::mc::stats::clt_ok(bits_so_far, current->mean)) {
+    //             LOG(WARNING) << "Early stop after " << (i + 1)
+    //                         << " iterations: half-width=" << half_width;
+    //             break;
+    //         }
+    //     }
+    // }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {

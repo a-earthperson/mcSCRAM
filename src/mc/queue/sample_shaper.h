@@ -33,14 +33,14 @@
 
 namespace scram::mc::queue {
 template<typename bitpack_t_>
-struct scheduler {
+struct sample_shaper {
 
     std::size_t TOTAL_ITERATIONS = 0;
     event::sample_shape<std::size_t> SAMPLE_SHAPE{};
 
-    explicit scheduler()= default;
+    explicit sample_shaper()= default;
 
-    scheduler(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes) 
+    sample_shaper(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes)
         : requested_num_trials_(requested_num_trials), num_nodes_(num_nodes) {
 
         const sycl::device device = queue.get_device();
@@ -117,7 +117,7 @@ struct scheduler {
      * std::cout << sched << std::endl;
      * @endcode
      */
-    friend std::ostream &operator<<(std::ostream &os, const scheduler &sched) {
+    friend std::ostream &operator<<(std::ostream &os, const sample_shaper &sched) {
         os << "requested_num_trials: " << sched.requested_num_trials_ << std::endl
            << "num_nodes: " << sched.num_nodes_ << std::endl
            << "------------------------------------------------" << std::endl
