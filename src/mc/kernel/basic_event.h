@@ -95,37 +95,35 @@ namespace scram::mc::kernel {
             T W;
         };
 
+        template<typename DW = std::uint64_t, typename W = std::uint32_t>
+        [[gnu::always_inline]] static inline W mulhilo(const W a, const W b, W* hi) {
+            DW product = static_cast<DW>(a) * static_cast<DW>(b);
+            *hi = product >> (sizeof(W) * 8);
+            return static_cast<W>(product);
+        }
 
-        static void philox_round(Vec2<uint32_t> &key, philox128_state &counters) {
-            static constexpr Vec2<uint64_t> PHILOX_M4x32 = {
-                .A = 0xD2511F53ull,
-                .B = 0xCD9E8D57ull,
+        [[gnu::always_inline]] static void philox_round(philox128_state &counters, Vec2<uint32_t> &key) {
+            static constexpr Vec2<uint32_t> PHILOX_M4x32 = {
+                .A = 0xD2511F53u,
+                .B = 0xCD9E8D57u,
             };
-            const Vec2<uint64_t> product = {
-                .A = PHILOX_M4x32.A * counters.x[0],
-                .B = PHILOX_M4x32.B * counters.x[2]
-            };
-
             // Split into high and low parts
-            const Vec2<uint32_t> hi = {
-                .A = static_cast<uint32_t>(product.A >> 32),
-                .B = static_cast<uint32_t>(product.A),
-            };
+            Vec2<uint32_t> hi{};
 
             const Vec2<uint32_t> lo = {
-                .A = static_cast<uint32_t>(product.B >> 32),
-                .B = static_cast<uint32_t>(product.B),
+                .A = mulhilo(PHILOX_M4x32.A, counters.x[0], &hi.A),
+                .B = mulhilo(PHILOX_M4x32.B, counters.x[2], &hi.B),
             };
 
             // Mix in the key
-            counters.x[0] = lo.A ^ counters.x[1] ^ key.A;
+            counters.x[0] = hi.B ^ counters.x[1] ^ key.A;
             counters.x[1] = lo.B;
             counters.x[2] = hi.A ^ counters.x[3] ^ key.B;
-            counters.x[3] = hi.B;
+            counters.x[3] = lo.B;
 
             static constexpr Vec2<uint32_t> PHILOX_W32 = {
-                .A = 0xD2511F53u,
-                .B = 0xCD9E8D57u
+                .A = 0x9E3779B9u,
+                .B = 0xBB67AE85u,
             };
 
             // Bump the key
@@ -133,7 +131,7 @@ namespace scram::mc::kernel {
             key.B += PHILOX_W32.B;
         }
 
-        static void philox128_generate(const philox128_state *seeds, philox128_state *results, const uint8_t generation) {
+        [[gnu::always_inline]] static void philox128_generate(const philox128_state *seeds, philox128_state *results, const uint8_t generation) {
             // Key as Vec2
             Vec2<uint32_t> key = {
                 .A = 382307844u,
@@ -144,15 +142,15 @@ namespace scram::mc::kernel {
             philox128_state counters = *seeds;
             counters.x[3] += generation;
 
-            // Number of rounds; Philox 4x32 uses 10 rounds
+            #define PHILOX4x32_DEFAULT_ROUNDS 10
             #pragma unroll
-            for(auto i=0; i<10;i++){
-                philox_round(key, counters);
+            for(auto i=0; i < PHILOX4x32_DEFAULT_ROUNDS; i++){
+                philox_round(counters, key);
             }
             *results = counters;
         }
 
-        static bitpack_t_ sample(const philox128_state *seeds, const uint32_t &threshold, const std::uint32_t generation) {
+        [[gnu::always_inline]] static bitpack_t_ sample(const philox128_state *seeds, const uint32_t &threshold, const std::uint32_t generation) {
             philox128_state results;
             philox128_generate(seeds, &results, generation);
 
@@ -188,9 +186,11 @@ namespace scram::mc::kernel {
 
             /// @brief 32-bit fixed-point threshold p·2^32 for Bernoulli sampling
             uint32_t prob_threshold;
+
+            uint32_t generation;
         };
 
-        static bitpack_t_ generate(const sampler_args &args) {
+        [[gnu::always_inline]] static bitpack_t_ generate(const sampler_args &args) {
             static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
             static constexpr std::uint8_t num_generations = sizeof(bitpack_t_) * 8 / bernoulli_bits_per_generation;
 
@@ -213,75 +213,28 @@ namespace scram::mc::kernel {
         }
 
         void operator()(const sycl::nd_item<3> &item, const uint32_t iteration) const {
-            // Sub-group handle and lane info
-            const auto sg = item.get_sub_group();
-            const uint32_t lane = sg.get_local_id();
-            const uint32_t sg_size = sg.get_local_range().size();
-
-            const auto basic_event_pos_in_block = static_cast<uint32_t>(item.get_global_id(0));
+            const auto blk_idx = static_cast<uint32_t>(item.get_global_id(0));
             sampler_args args = {
-                .index_id    = static_cast<uint32_t>(basic_events_block_[basic_event_pos_in_block].index),
-                .event_id    = static_cast<uint32_t>(item.get_global_id(0)),  // Global-X, the basic_event being processed
-                .batch_id    = static_cast<uint32_t>(item.get_global_id(1)),  // Global-Y, first dim offset for sample_shape
-                .bitpack_idx = static_cast<uint32_t>(item.get_global_id(2)),  // Global-Z, second dim offset for sample_shape
+                .index_id    = static_cast<uint32_t>(basic_events_block_[blk_idx].index),
+                .event_id    = static_cast<uint32_t>(item.get_global_id(0)),
+                .batch_id    = static_cast<uint32_t>(item.get_global_id(1)),
+                .bitpack_idx = static_cast<uint32_t>(item.get_global_id(2)),
                 .iteration = iteration,
-                .prob_threshold = basic_events_block_[basic_event_pos_in_block].probability_threshold, // the basic_event's probability
+                .prob_threshold = basic_events_block_[blk_idx].probability_threshold,
             };
 
-            // Global-X: event id (as before)
-
-            // Global-Z now encodes (bitpack_idx * sg_size + generation)
-            const uint32_t bitpack_linear = args.bitpack_idx;
-            const uint32_t bitpack_idx    = bitpack_linear / sg_size;   // which bit-pack within the batch
-            const uint32_t generation_start = bitpack_linear % sg_size; // which generation this lane is responsible for
-
-            // Bounds checking (kept fast – most lanes will be valid)
-            if (args.event_id >= basic_events_block_.count ||
-                args.batch_id >= sample_shape_.batch_size  ||
-                bitpack_idx >= sample_shape_.bitpacks_per_batch) {
+            // Bounds checking
+            if (args.event_id >= basic_events_block_.count || args.batch_id >= sample_shape_.batch_size || args.bitpack_idx >= sample_shape_.bitpacks_per_batch) {
                 return;
             }
 
-            // Extract frequently-used metadata
-            const auto &basic_event   = basic_events_block_[basic_event_pos_in_block];
+            // Calculate the index within the generated_samples buffer
+            const size_t_ index = args.batch_id * sample_shape_.bitpacks_per_batch + args.bitpack_idx;
 
-            // Constant expressions reused below
-            static constexpr std::uint8_t BERNOULLI_BITS_PER_GEN = 4;
-            static constexpr std::uint32_t NUM_GENERATIONS = sizeof(bitpack_t_) * 8 / BERNOULLI_BITS_PER_GEN;
-
-            // Construct Philox seed base (identical for all lanes of the subgroup)
-            const philox128_state seed_base = {
-                .x = {
-                    args.index_id + 1,
-                    args.event_id + 1,
-                    args.batch_id + 1,
-                    (args.bitpack_idx + args.iteration + 1) << 6,  // spare 6 bits to store generation count (i)
-                },
-            };
-
-            // Each lane computes 1 or more generations in a strided loop
-            bitpack_t_ local_bits = bitpack_t_(0);
-            for (std::uint32_t g = generation_start; g < NUM_GENERATIONS; g += sg_size) {
-                local_bits |= sample(&seed_base, args.prob_threshold, g);
-            }
-
-            // Warp / subgroup OR reduction
-            bitpack_t_ packed_bits = sycl::reduce_over_group(
-                sg,
-                local_bits,
-                bitpack_t_(0),
-                std::bit_or<bitpack_t_>()
-            );
-
-            // Leader lane writes the final bit-pack to global memory
-            if (lane == 0) {
-                // num_bitpacks = sample_shape.batch_size * sample_shape.bitpacks_per_batch, the buffer size
-                // todo:: use basic_events_block_.buffers[basic_event_pos_in_block * num_bitpacks] instead of
-                // basic_events_block_[args.event_id].buffer for better cache locality (potentially).
-                bitpack_t_ *output = basic_events_block_[args.event_id].buffer;
-                const size_t_ index = args.batch_id * sample_shape_.bitpacks_per_batch + bitpack_idx;
-                output[index] = packed_bits;
-            }
+            // Store the bitpacked samples into the buffer
+            bitpack_t_ *output = basic_events_block_[args.event_id].buffer;
+            const bitpack_t_ bitpack_value = generate(args);
+            output[index] = bitpack_value;
         }
 
         static sycl::nd_range<3> get_range(const size_t_ num_events,
@@ -300,7 +253,7 @@ namespace scram::mc::kernel {
             global_size_z = ((global_size_z + local_range[2] - 1) / local_range[2]) * local_range[2];
 
             sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
-
+            LOG(DEBUG3) << "kernel::basic_event:: local_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\t global_range{x,y,z}:(" << "events:"<< global_size_x <<", batch_size:"<< global_size_y <<", sample_shape_.bitpacks_per_batch * local_range[2]:"<<global_size_z<<")";
             return {global_range, local_range};
         }
     };

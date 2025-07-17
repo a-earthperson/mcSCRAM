@@ -85,8 +85,8 @@ struct scheduler {
 
         // Normalise to exactly two bit-packs per batch when the shape permits
         if (sample_shape.bitpacks_per_batch > 2) {
-            sample_shape.batch_size *= sample_shape.bitpacks_per_batch / 2;
-            sample_shape.bitpacks_per_batch = 2;
+            sample_shape.batch_size = 1;//sample_shape.bitpacks_per_batch / 2;
+            sample_shape.bitpacks_per_batch = 1048576;
         }
 
         // Log working_set configuration
