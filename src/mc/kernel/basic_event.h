@@ -240,12 +240,10 @@ namespace scram::mc::kernel {
         static sycl::nd_range<3> get_range(const size_t_ num_events,
                                            const sycl::range<3> &local_range,
                                            const event::sample_shape<size_t_> &sample_shape_) {
-            // In the revised kernel we launch one work-item per generation.
-            // Therefore the Z dimension is (bitpacks_per_batch * local_range[2]).
 
             size_t global_size_x = num_events;
             size_t global_size_y = sample_shape_.batch_size;
-            size_t global_size_z = sample_shape_.bitpacks_per_batch * local_range[2]; // local_range[2] == subgroup size
+            size_t global_size_z = sample_shape_.bitpacks_per_batch;
 
             // Round up to the next multiple of the local size in each dimension
             global_size_x = ((global_size_x + local_range[0] - 1) / local_range[0]) * local_range[0];
@@ -253,7 +251,7 @@ namespace scram::mc::kernel {
             global_size_z = ((global_size_z + local_range[2] - 1) / local_range[2]) * local_range[2];
 
             sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
-            LOG(DEBUG3) << "kernel::basic_event:: local_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\t global_range{x,y,z}:(" << "events:"<< global_size_x <<", batch_size:"<< global_size_y <<", sample_shape_.bitpacks_per_batch * local_range[2]:"<<global_size_z<<")";
+            LOG(DEBUG3) << "kernel::basic_event:: local_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\t global_range{x,y,z}:(" << "events:"<< global_size_x <<", batch_size:"<< global_size_y <<", sample_shape_.bitpacks_per_batch:"<<global_size_z<<")";
             return {global_range, local_range};
         }
     };

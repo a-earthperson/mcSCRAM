@@ -99,6 +99,8 @@
 #include "logger.h"
 #include "probability_analysis.h"
 #include "queue/layer_manager.h"
+#include "mc/stats/ci_utils.h"  // NEW: statistical helper utilities
+#include <algorithm>
 
 namespace scram::core {
 
@@ -310,22 +312,55 @@ namespace scram::core {
      */
     double ProbabilityAnalyzer<DirectEval>::CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept {
         CLOCK(calc_time);
-        LOG(DEBUG4) << "Calculating probability using monte carlo sampling...";
-        
-        // Extract sampling configuration from analysis settings
-        const auto num_trials = this->settings().num_trials();
-        
-        // Get the PDAG for computation
-        auto pdag = this->graph();
-        
-        // Create and configure the SYCL-based layer manager
+        LOG(WARNING) << "Calculating probability using monte carlo sampling...";
+
         using bitpack_t_ = std::uint64_t;
-        mc::queue::layer_manager<bitpack_t_> manager(pdag, num_trials);
-        
-        // Perform Monte Carlo sampling and compute statistics
-        const auto tally = manager.tally(pdag->root()->index());
-        
-        LOG(DEBUG4) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
+
+        // ---------------------------------------------------------------------
+        // 0) Gather user-supplied sampling preferences.
+        // ---------------------------------------------------------------------
+        auto &st         = this->settings();
+        const double eps = st.ci_margin_error();     // half-width ε
+        const double conf= st.ci_confidence();       // confidence level (two-sided)
+        const bool autotune = st.ci_autotune_trials() && eps > 0.0 && conf > 0.0 && conf < 1.0;
+
+        // ---------------------------------------------------------------------
+        // 1) Decide on the total number of Bernoulli trials.
+        // ---------------------------------------------------------------------
+        std::size_t trials = st.num_trials();
+        auto *pdag = this->graph();
+
+        if (autotune) {
+            // --- Pilot run ----------------------------------------------------
+            const std::size_t pilot_trials = std::max<std::size_t>(64, std::max<std::size_t>(trials, 4096));
+            mc::queue::layer_manager<bitpack_t_> pilot_mgr(pdag, pilot_trials);
+            const auto pilot_tally = pilot_mgr.tally(pdag->root()->index(), eps, conf); // early-stop allowed even for pilot
+            const double phat      = pilot_tally.mean;
+
+            trials = std::max<std::size_t>(
+                        scram::mc::stats::required_trials(phat, eps, conf),
+                        scram::mc::stats::worst_case_trials(eps, conf));
+
+            // Round up to whole bit-packs so the scheduler is happy.
+            constexpr std::size_t bits_in_pack = sizeof(bitpack_t_) * 8;
+            trials = ((trials + bits_in_pack - 1) / bits_in_pack) * bits_in_pack;
+
+            LOG(WARNING) << "[MC] auto-selected num_trials=" << trials
+                      << " (pilot p̂=" << phat << ", ε=" << eps
+                      << ", confidence=" << conf << ")";
+
+            // Persist the choice so that downstream code sees the final value.
+            st.num_trials(trials);
+        }
+
+        // ---------------------------------------------------------------------
+        // 2) Full simulation with (possibly) auto-tuned sample size.
+        // ---------------------------------------------------------------------
+        mc::queue::layer_manager<bitpack_t_> manager(pdag, trials);
+
+        const auto tally = manager.tally(pdag->root()->index(), eps, conf);
+
+        LOG(WARNING) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
         return tally.mean;
     }
 }// namespace scram::core

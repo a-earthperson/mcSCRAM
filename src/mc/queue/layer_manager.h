@@ -252,7 +252,7 @@ class layer_manager {
      * // Check logs for: "tally[index] :: [std_err] :: [p05, mean, p95]"
      * @endcode
      */
-    void fetch_all_tallies();
+    void fetch_all_tallies(double eps, double confidence);
 
   public:
     /**
@@ -330,7 +330,7 @@ class layer_manager {
      * }
      * @endcode
      */
-    event::tally<bitpack_t_> tally(index_t_ evt_idx);
+    event::tally<bitpack_t_> tally(index_t_ evt_idx, double eps = 0.0, double confidence = 0.0);
 
     /**
      * @brief Destructor that cleans up allocated device memory

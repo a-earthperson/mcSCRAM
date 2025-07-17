@@ -326,6 +326,31 @@ class Settings {
     return *this;
   }
 
+  /// @returns The desired confidence level for automatic CI tuning (0 disables).
+  double ci_confidence() const { return ci_confidence_; }
+
+  /// Sets the confidence level (two-sided) used when automatically choosing
+  /// the number of Monte-Carlo trials.  Accepts values in (0,1).
+  Settings& ci_confidence(double p) {
+    ci_confidence_ = p; return *this;
+  }
+
+  /// @returns The target half-width (margin of error) for the estimated mean.
+  double ci_margin_error() const { return ci_margin_error_; }
+
+  /// Sets the target margin of error ε for automatic sampling.  ε must be
+  /// positive and typically ≤ 0.5.
+  Settings& ci_margin_error(double eps) {
+    ci_margin_error_ = eps; return *this;
+  }
+
+  /// @returns true if the analyzer should derive num_trials automatically.
+  bool ci_autotune_trials() const { return ci_autotune_trials_; }
+
+  /// Enables / disables the automatic sample-size selection.  When disabled
+  /// the value in num_trials() is taken verbatim.
+  Settings& ci_autotune_trials(bool on) { ci_autotune_trials_ = on; return *this; }
+
   bool preprocessor = false;  ///< Stop analysis after preprocessor.
   bool print = false;  ///< Print analysis results in a terminal friendly way.
 
@@ -349,6 +374,11 @@ class Settings {
   double mission_time_ = 8760;                        ///< System mission time.
   double time_step_ = 0;                              ///< The time step for probability analyses.
   double cut_off_ = 1e-8;                             ///< The cut-off probability for products.
+  
+  // --- NEW: adaptive Monte-Carlo CI tuning ---------------------------------
+  double ci_confidence_      = 0.0;   ///< two-sided confidence level (0 → off)
+  double ci_margin_error_    = 0.0;   ///< desired half-width ε (0 → off)
+  bool   ci_autotune_trials_ = true;  ///< derive num_trials automatically
 };
 
 }  // namespace scram::core

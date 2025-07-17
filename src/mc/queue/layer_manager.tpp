@@ -25,6 +25,7 @@
 #include "mc/event/node.h"
 #include "mc/working_set.h"
 #include "preprocessor.h"
+#include "mc/stats/ci_utils.h"
 
 #include "mc/queue/kernel_builder.h"
 
@@ -179,14 +180,24 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::map_nodes_by_layer(
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies() {
+void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies(double eps, double confidence) {
     submit_all().wait_and_throw();
     for (auto &pair : allocated_tally_events_by_index_) {
-        const index_t_ index = pair.first;
+        const index_t_ idx = pair.first;
         const event::tally<bitpack_t_> *tally = pair.second;
-        LOG(DEBUG1) << "tally[" << index << "][" << pdag_nodes_by_index_[index].get()->index()
-                    << "] :: [std_err] :: [p05, mean, p95] :: " << "[" << tally->std_err << "] :: " << "["
-                    << tally->ci[0] << ", " << tally->mean << ", " << tally->ci[1] << "]";
+
+        // ------------------------------------------------------------------
+        //  Compose human-readable statistics line.
+        //   format:  tally[idx] :: [std_err] :: [p05, mean, p95] :: CI(x%) :: ε[val]
+        // ------------------------------------------------------------------
+        const double conf_used = (confidence > 0.0) ? confidence : 0.95; // default to 95 %
+        const double z_used    = scram::mc::stats::z_score(conf_used);
+        const double half_width= z_used * tally->std_err;
+
+        LOG(WARNING) << "tally[" << idx << "] :: [std_err] :: [p05, mean, p95] :: [" << tally->std_err << "] :: ["
+                    << tally->ci[0] << ", " << tally->mean << ", "
+                    << tally->ci[1] << "] :: CI(" << conf_used * 100.0 << "%) :: ε["
+                    << half_width << "]";
     }
 }
 
@@ -213,7 +224,9 @@ sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::submit_all() {
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(const index_t_ evt_idx) {
+event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(const index_t_ evt_idx,
+                                                                             double eps,
+                                                                             double confidence) {
     event::tally<bitpack_t_> to_tally;
     if (!allocated_tally_events_by_index_.contains(evt_idx)) {
         LOG(ERROR) << "Unable to tally probability for unknown event with index " << evt_idx;
@@ -221,9 +234,26 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::tally(cons
     }
     LOG(DEBUG1) << "Counting " << scheduler_.TOTAL_ITERATIONS << " tallies for event with index " << evt_idx;
 
-    for (auto i = 0; i < scheduler_.TOTAL_ITERATIONS; i++) {
-        fetch_all_tallies();
+    // Early-stop parameters
+    const bool use_early_stop = (eps > 0.0) && (confidence > 0.0);
+    const double z = use_early_stop ? scram::mc::stats::z_score(confidence) : 0.0;
+
+    for (std::size_t i = 0; i < scheduler_.TOTAL_ITERATIONS; ++i) {
+        fetch_all_tallies(eps, confidence);
+
+        if (use_early_stop) {
+            const event::tally<bitpack_t_> *current = allocated_tally_events_by_index_[evt_idx];
+            const double half_width = z * current->std_err;
+            const std::size_t bits_so_far = (i + 1) * scheduler_.SAMPLE_SHAPE.num_bitpacks() * sizeof(bitpack_t_) * 8;
+
+            if (half_width <= eps && scram::mc::stats::clt_ok(bits_so_far, current->mean)) {
+                LOG(WARNING) << "Early stop after " << (i + 1)
+                            << " iterations: half-width=" << half_width;
+                break;
+            }
+        }
     }
+
     const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.mean = computed_tally->mean;

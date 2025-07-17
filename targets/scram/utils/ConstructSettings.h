@@ -80,6 +80,11 @@ namespace ScramCLI {
         SET("sample-size", std::size_t, sample_size);
         SET("num-quantiles", int, num_quantiles);
         SET("num-bins", int, num_bins);
+        SET("ci-confidence", double, ci_confidence);
+        SET("ci-epsilon", double, ci_margin_error);
+        if (vm.count("no-ci-autotune")) {
+            settings->ci_autotune_trials(false);
+        }
         settings->preprocessor = vm.count("preprocessor");
         settings->print = vm.count("print");
     }

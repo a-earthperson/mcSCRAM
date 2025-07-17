@@ -82,11 +82,9 @@ struct scheduler {
         event::sample_shape<std::size_t> sample_shape = compute_closest_sample_shape_for_bits(device,
                                                                                               per_iteration_target_bits,
                                                                                               target_bits_per_iteration_);
-
-        // Normalise to exactly two bit-packs per batch when the shape permits
-        if (sample_shape.bitpacks_per_batch > 2) {
-            sample_shape.batch_size = 1;//sample_shape.bitpacks_per_batch / 2;
-            sample_shape.bitpacks_per_batch = 1048576;
+        if (sample_shape.bitpacks_per_batch) {
+            sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
+            sample_shape.batch_size = 1;
         }
 
         // Log working_set configuration

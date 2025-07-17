@@ -54,14 +54,10 @@ namespace ScramCLI {
             ("sil", "Compute the Safety Integrity Level metrics")
             ("rare-event", "Use the rare event approximation")
             ("mcub", "Use the MCUB approximation")
-            ("monte-carlo", "Use the monte carlo sampling approximation")
             ("limit-order,l", OPT_VALUE(int), "Upper limit for the product order")
             ("cut-off", OPT_VALUE(double), "Cut-off probability for products")
             ("mission-time", OPT_VALUE(double), "System mission time in hours")
             ("time-step", OPT_VALUE(double), "Time step in hours for probability analysis")
-            ("num-trials", OPT_VALUE(std::size_t),"Number of trials for Monte Carlo simulations")
-            ("batch-size", OPT_VALUE(std::size_t),"Batch size for Monte Carlo simulations")
-            ("sample-size", OPT_VALUE(std::size_t),"Sample size for Monte Carlo simulations")
             ("num-quantiles", OPT_VALUE(int),"Number of quantiles for distributions")
             ("num-bins", OPT_VALUE(int), "Number of bins for histograms")
             ("seed", OPT_VALUE(int), "Seed for the pseudo-random number generator")
@@ -69,13 +65,34 @@ namespace ScramCLI {
             ("no-indent", "Omit indentation whitespace in output XML")
             ("verbosity", OPT_VALUE(int), "Set log verbosity");
 
+        // ------------------------------------------------------------------
+        //  Monte-Carlo specific options
+        // ------------------------------------------------------------------
+        po::options_description mc("Monte Carlo Options");
+        mc.add_options()
+            ("monte-carlo", "Use the monte-carlo sampling approximation")
+            ("num-trials", OPT_VALUE(std::size_t),
+                "Number of Bernoulli trials (overrides auto-tuning if given)")
+            ("batch-size", OPT_VALUE(std::size_t),
+                "Batch size (work-group Y dimension)")
+            ("sample-size", OPT_VALUE(std::size_t),
+                "Sample size (work-group Z dimension)")
+            ("ci-confidence", OPT_VALUE(double),
+                "Two-sided confidence level used for automatic trial tuning")
+            ("ci-epsilon", OPT_VALUE(double),
+                "Target margin of error (half-width) for automatic CI")
+            ("no-ci-autotune", "Disable automatic trial tuning even if CI parameters set");
+
+        // ------------------------------------------------------------------
+        //  Debug options
+        // ------------------------------------------------------------------
         po::options_description debug("Debug Options");
         debug.add_options()
             ("serialize", "Serialize the input model without further analysis")
             ("preprocessor", "Stop analysis after the preprocessing step")
             ("print", "Print analysis results in a terminal friendly way")
             ("no-report", "Don't generate analysis report");
-        desc.add(debug);
+        desc.add(mc).add(debug);
         // clang-format on
         return desc;
     }
