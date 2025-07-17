@@ -378,7 +378,7 @@ class Settings {
   // --- NEW: adaptive Monte-Carlo CI tuning ---------------------------------
   double ci_confidence_      = 0.0;   ///< two-sided confidence level (0 → off)
   double ci_margin_error_    = 0.0;   ///< desired half-width ε (0 → off)
-  bool   ci_autotune_trials_ = true;  ///< derive num_trials automatically
+  bool   ci_autotune_trials_ = false;  ///< derive num_trials automatically
 };
 
 }  // namespace scram::core

@@ -82,8 +82,8 @@ namespace ScramCLI {
         SET("num-bins", int, num_bins);
         SET("ci-confidence", double, ci_confidence);
         SET("ci-epsilon", double, ci_margin_error);
-        if (vm.count("no-ci-autotune")) {
-            settings->ci_autotune_trials(false);
+        if (vm.count("ci-autotune")) {
+            settings->ci_autotune_trials(true);
         }
         settings->preprocessor = vm.count("preprocessor");
         settings->print = vm.count("print");

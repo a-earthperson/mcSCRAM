@@ -244,25 +244,6 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::single_pas
     const event::tally<bitpack_t_> computed_tally = fetch_tally_for_event_with_index(evt_idx);
     return computed_tally;
 }
-    // Early-stop parameters
-    // const bool use_early_stop = (eps > 0.0) && (confidence > 0.0);
-    // const double z = use_early_stop ? scram::mc::stats::z_score(confidence) : 0.0;
-    //
-    // for (std::size_t i = 0; i < sample_shaper_.TOTAL_ITERATIONS; ++i) {
-    //     fetch_all_tallies(eps, confidence);
-    //
-    //     if (use_early_stop) {
-    //         const event::tally<bitpack_t_> *current = allocated_tally_events_by_index_[evt_idx];
-    //         const double half_width = z * current->std_err;
-    //         const std::size_t bits_so_far = (i + 1) * sample_shaper_.SAMPLE_SHAPE.num_bitpacks() * sizeof(bitpack_t_) * 8;
-    //
-    //         if (half_width <= eps && scram::mc::stats::clt_ok(bits_so_far, current->mean)) {
-    //             LOG(WARNING) << "Early stop after " << (i + 1)
-    //                         << " iterations: half-width=" << half_width;
-    //             break;
-    //         }
-    //     }
-    // }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {

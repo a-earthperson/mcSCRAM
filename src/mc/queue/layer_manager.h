@@ -334,6 +334,17 @@ class layer_manager {
     event::tally<bitpack_t_> single_pass_and_tally(index_t_ evt_idx);
 
     /**
+     * @brief Accessor for the internal sample shaper configuration
+     *
+     * @details Returns a const reference to the sample_shaper instance that
+     * controls how the requested number of trials is split across device
+     * iterations.  External convergence-management utilities can rely on
+     * this accessor to obtain TOTAL_ITERATIONS as well as the chosen
+     * SAMPLE_SHAPE.
+     */
+    [[nodiscard]] inline const sample_shaper<bitpack_t_> &shaper() const noexcept { return sample_shaper_; }
+
+    /**
      * @brief Destructor that cleans up allocated device memory
      * 
      * @details Properly releases all allocated device-side memory for basic events,

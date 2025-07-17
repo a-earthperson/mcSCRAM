@@ -97,9 +97,10 @@
 
 #include "direct_eval.h"
 #include "logger.h"
+#include "mc/stats/ci_utils.h"
 #include "probability_analysis.h"
-#include "queue/layer_manager.h"
-#include "mc/stats/ci_utils.h"  // NEW: statistical helper utilities
+#include "mc/queue/layer_manager.h"
+#include "mc/scheduler/convergence_controller.h"
 #include <algorithm>
 
 namespace scram::core {
@@ -332,9 +333,10 @@ namespace scram::core {
 
         if (autotune) {
             // --- Pilot run ----------------------------------------------------
-            const std::size_t pilot_trials = std::max<std::size_t>(64, std::max<std::size_t>(trials, 4096));
+            const std::size_t pilot_trials = std::max<std::size_t>(64, std::min<std::size_t>(trials, 4096));
             mc::queue::layer_manager<bitpack_t_> pilot_mgr(pdag, pilot_trials);
-            const auto pilot_tally = pilot_mgr.tally(pdag->root()->index(), eps, conf); // early-stop allowed even for pilot
+            mc::queue::convergence_controller<bitpack_t_> pilot_conv(pilot_mgr, pdag->root()->index(), eps, conf);
+            const auto pilot_tally = pilot_conv.run_to_convergence();
             const double phat      = pilot_tally.mean;
 
             trials = std::max<std::size_t>(
@@ -356,9 +358,11 @@ namespace scram::core {
         // ---------------------------------------------------------------------
         // 2) Full simulation with (possibly) auto-tuned sample size.
         // ---------------------------------------------------------------------
-        mc::queue::layer_manager<bitpack_t_> manager(pdag, trials);
 
-        const auto tally = manager.tally(pdag->root()->index(), eps, conf);
+        mc::queue::layer_manager<bitpack_t_> manager(pdag, trials);
+        mc::queue::convergence_controller<bitpack_t_> conv(manager, pdag->root()->index(), eps, conf);
+
+        const auto tally = conv.run_to_convergence();
 
         LOG(WARNING) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
         return tally.mean;

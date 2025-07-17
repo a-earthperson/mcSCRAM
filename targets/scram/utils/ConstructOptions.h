@@ -81,7 +81,7 @@ namespace ScramCLI {
                 "Two-sided confidence level used for automatic trial tuning")
             ("ci-epsilon", OPT_VALUE(double),
                 "Target margin of error (half-width) for automatic CI")
-            ("no-ci-autotune", "Disable automatic trial tuning even if CI parameters set");
+            ("ci-autotune", "Enable automatic trial tuning when CI parameters set");
 
         // ------------------------------------------------------------------
         //  Debug options
