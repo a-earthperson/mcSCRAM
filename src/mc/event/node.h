@@ -75,6 +75,26 @@ namespace scram::mc::event {
      * to higher-level gate operations. They are processed in parallel using SYCL
      * kernels to generate random samples based on their failure probabilities.
      * 
+     * @par Probability-threshold mapping
+     * The Monte Carlo kernels do not compare floating-point probabilities
+     * directly.  Instead, each basic event stores an *integer*
+     * `probability_threshold` in the closed range \f$[0,2^{32}]\f$ that is
+     * pre-computed from the user-supplied probability \f$p\in[0,1]\f$ as
+     * \f[\text{threshold} = p\,\cdot\,2^{32}.\f]
+     * During sampling the kernel draws a uniform 32-bit integer
+     * \f$u\sim\text{Unif}\{0,\dots,2^{32}-1\}\f$ (from either Philox or
+     * Xorshift) and returns \f$u < \text{threshold}\f$.
+     *
+     * Properties of this mapping:
+     *   • Resolution: one part in \f$2^{32}\approx2.33\times10^{-10}\f$.
+     *   • Representable set: all probabilities \f$n/2^{32}\f$ with integer
+     *     \f$n\in\{0,\dots,2^{32}\}\f$.
+     *   • The edge case \f$p=1\f$ maps to threshold \f$=2^{32}\f$ and is
+     *     **always** satisfied because \f$u\le 2^{32}-1\f$.
+     *
+     * The kernel casts the 32-bit PRNG output to 64 bits before the
+     * comparison so the full threshold range is honoured without overflow.
+     *
      * @tparam prob_t_ Floating-point type for probability values
      * @tparam bitpack_t_ Integer type for bit-packed result storage
      * * @tparam index_t_ Signed integer type for the node index.
@@ -96,7 +116,7 @@ namespace scram::mc::event {
         /// @brief Unique identifier for this event within the computation graph
         index_t_ index;
 
-        std::uint32_t probability_threshold{};
+        std::uint64_t probability_threshold{};
     };
 
     /**
@@ -383,8 +403,12 @@ namespace scram::mc::event {
 
         // 3. Populate per-event fields.
         for (std::size_t i = 0; i < num_events; ++i) {
-            // pre-compute 32-bit Bernoulli threshold to avoid FP math in kernels
-            events[i].probability_threshold = static_cast<std::uint32_t>(static_cast<std::double_t>(indexed_probabilities[i].second) * static_cast<std::double_t>(UINT32_MAX));
+            // Pre-compute Bernoulli threshold in the range [0, 2^32].
+            // We use 64-bit storage so that a probability of 1.0 maps to
+            // the *inclusive* upper bound 2^32, guaranteeing that
+            // `u < threshold` is always true.
+            constexpr double two_to_32 = static_cast<double>(UINT64_C(1) << 32); // 4,294,967,296
+            events[i].probability_threshold = static_cast<std::uint64_t>(indexed_probabilities[i].second * two_to_32);
             events[i].index       = indexed_probabilities[i].first;
             events[i].buffer      = buffer_block + i * num_bitpacks;
         }
