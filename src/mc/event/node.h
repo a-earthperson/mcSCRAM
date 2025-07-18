@@ -132,6 +132,9 @@ namespace scram::mc::event {
     struct tally : node<bitpack_t_> {
         /// @brief Count of positive outcomes (1-bits) across all samples
         std::size_t num_one_bits = 0;
+
+        /// @brief Count of total outcomes evaluated so far
+        std::size_t total_bits = 0;
         
         /// @brief Estimated mean probability based on sample proportion
         std::double_t mean = 0.;
@@ -452,6 +455,7 @@ namespace scram::mc::event {
         for (std::size_t i = 0; i < n; ++i) {
             tallies[i].buffer       = source_buffers[i];
             tallies[i].num_one_bits = 0;
+            tallies[i].total_bits   = 0;
             tallies[i].mean         = 0.0;
             tallies[i].std_err      = 0.0;
             tallies[i].ci           = {0.0, 0.0, 0.0, 0.0};

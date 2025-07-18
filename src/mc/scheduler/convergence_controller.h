@@ -30,51 +30,68 @@ class convergence_controller {
   public:
     using index_t_ = std::int32_t;
 
+    static std::size_t cumulative_bits(const event::sample_shape<std::size_t> &shape, const size_t &iteration) {
+        return iteration * shape.num_bitpacks() * sizeof(bitpack_t_) * 8;
+    }
+
+    bool iteration_limit_reached() const {
+        return iteration_ >= max_iterations_ && (max_iterations_ > 0);
+    }
+
     /**
      * @param mgr        Reference to a fully initialised layer_manager.
      * @param evt_idx    Index of the event whose probability we track.
-     * @param eps        Desired half-width of the confidence interval.  If 0 the
-     *                   controller will *not* early-stop.
-     * @param confidence Confidence level (two-sided) requested by the user –
-     *                   e.g. 0.95 for a 95 % CI.
+     * @param settings   Settings
      */
-    convergence_controller(layer_manager<bitpack_t_, prob_t_, size_t_> &mgr, const index_t_ evt_idx, const double eps,
-                           const double confidence)
-        : manager_(mgr), evt_idx_(evt_idx), eps_(eps), confidence_(confidence) {
-        use_early_stop_ = (eps_ > 0.0) && (confidence_ > 0.0);
-        z_ = scram::mc::stats::z_score(confidence_);
-        max_iterations_ = manager_.shaper().TOTAL_ITERATIONS;
+    convergence_controller(layer_manager<bitpack_t_, prob_t_, size_t_> &mgr, const index_t_ evt_idx, const core::Settings &settings)
+        : manager_(mgr), evt_idx_(evt_idx), max_iterations_(mgr.shaper().TOTAL_ITERATIONS) {
+
+        target_epsilon_ = std::abs(settings.ci_margin_error());                    // half-width ε
+        confidence_ = std::clamp(settings.ci_confidence(), 0.0, 1.0);       // confidence level (two-sided)
+        z_score_ = scram::mc::stats::z_score(confidence_);
+        stop_on_convergence_ = settings.early_stop();                              // stop on convergence
     }
+
+
 
     /** Execute exactly one additional iteration on the device. */
     [[nodiscard]] bool step() {
-        if (converged_ || iteration_ >= max_iterations_) {
-            return converged_;
+
+        // don't step anymore, just return that we didn't take a step.
+        if (converged_ && stop_on_convergence_) {
+            return false;
         }
 
+        // out of iterations, return that we didn't take a step.
+        if (iteration_limit_reached()) {
+            return false;
+        }
+
+        // still have iterations remaining
         // get the tally
         current_tally_ = manager_.single_pass_and_tally(evt_idx_);
-        ++iteration_;
 
-        // compute the tally-related metrics
-        const double half_width = z_ * current_tally_.std_err;
-        const std::size_t bits_so_far = iteration_ * manager_.shaper().SAMPLE_SHAPE.num_bitpacks() * sizeof(bitpack_t_) * 8;
+        // compute the tally stats
+        const double half_width = z_score_ * current_tally_.std_err;
+        const std::size_t bits_so_far = current_tally_.total_bits; //cumulative_bits(manager_.shaper().SAMPLE_SHAPE, iteration_);
 
-        LOG(WARNING) << "tally[" << evt_idx_ << "] :: [std_err] :: [p05, mean, p95] :: [" << current_tally_.std_err << "] :: ["
-            << current_tally_.ci[0] << ", " << current_tally_.mean << ", "
-            << current_tally_.ci[1] << "] :: CI(" << confidence_ * 100.0 << "%) :: ε["
-            << half_width << "]";
+        // for now, this is our convergence criteria
+        const bool is_normal = stats::clt_ok(bits_so_far, current_tally_.mean);
+        const bool epsilon_bounded = half_width <= target_epsilon_;
+        const bool converged_now = is_normal && epsilon_bounded;
 
-        // stop early if convergence criteria met
-        if (use_early_stop_ && half_width <= eps_ && scram::mc::stats::clt_ok(bits_so_far, current_tally_.mean)) {
+        // if converged now, set convergence_ sticky to true
+        if (!converged_ && converged_now) {
             converged_ = true;
         }
 
-        // Implicitly converged when we have exhausted all planned iterations.
-        if (iteration_ >= max_iterations_) {
-            converged_ = true;
-        }
-        return converged_;
+        // LOG IT
+        LOG(DEBUG1) << "tally[" << evt_idx_ << "] :: [std_err] :: [p05, mean, p95] :: [" << current_tally_.std_err
+                     << "] :: [" << current_tally_.ci[0] << ", " << current_tally_.mean << ", " << current_tally_.ci[1]
+                     << "] :: CI(" << confidence_ * 100.0 << "%) :: ε[" << half_width << "]";
+
+        // since we did step, update the iteration count
+        return ++iteration_;
     }
 
     /**
@@ -82,8 +99,13 @@ class convergence_controller {
      * exhausted).  Returns the final tally.
      */
     [[nodiscard]] event::tally<bitpack_t_> run_to_convergence() {
-        while (!step()) {
+        while (step()) {
         }
+
+        // LOG IT
+        LOG(DEBUG1) << "tally[" << evt_idx_ << "] :: [std_err] :: [p05, mean, p95] :: [" << current_tally_.std_err
+                     << "] :: [" << current_tally_.ci[0] << ", " << current_tally_.mean << ", " << current_tally_.ci[1]
+                     << "] :: CI(" << confidence_ * 100.0 << "%) :: Iterations :: " << iteration_;
         return current_tally_;
     }
 
@@ -98,12 +120,18 @@ class convergence_controller {
     const index_t_ evt_idx_;
 
     // User-supplied convergence parameters.
-    const double eps_;
-    const double confidence_;
+    /**
+     * Desired half-width of the confidence interval.
+     */
+    double target_epsilon_;
+    /**
+     * confidence level (two-sided) requested by the user
+     */
+    double confidence_;
 
     // Derived constants.
-    bool use_early_stop_ = false;
-    double z_ = 0.0; // z-score for the requested confidence
+    bool stop_on_convergence_ = false;
+    double z_score_ = 0.0; // z-score for the requested confidence
     std::size_t max_iterations_ = 0;
 
     // State bookkeeping.

@@ -1,56 +1,41 @@
 /**
  * @file tally.h
- * @brief SYCL kernel implementation for parallel statistical tally computation
+ * @brief Population-count kernel and statistics reducer for Monte-Carlo tallies
  * @author Arjun Earthperson
  * @date 2025
- * 
- * @details This file implements a high-performance SYCL kernel for computing statistical
- * tallies from bit-packed simulation results. The kernel performs parallel population
- * counting (popcount) operations and computes statistical measures including mean probability estimates,
- * standard errors, and confidence intervals.
- * 
- * The implementation leverages advanced GPU parallelization techniques including
- * intra-group reductions and atomic operations to efficiently aggregate bit counts
- * across thousands of parallel threads. The resulting statistics provide quantitative
- * measures of uncertainty for Monte Carlo simulation results.
- * 
- * **Key Statistical Operations:**
- * - Population counting for bit-packed boolean samples
- * - Bernoulli distribution parameter estimation
- * - Standard error calculation using normal approximation
- * - Confidence interval computation at multiple significance levels
- * - Robust statistical aggregation across parallel executions
- * 
- * **Performance Features:**
- * - Intra-group reduction for efficient bit count aggregation
- * - Atomic operations for thread-safe global accumulation
- * - Optimized work-group organization for statistical computation
- * - Single-pass algorithm for memory-efficient processing
- * - Parallel statistical computation with minimal synchronization
- * 
- * **Statistical Methodology:**
- * The kernel implements standard Monte Carlo statistical estimation using the
- * Central Limit Theorem. For large sample sizes, the sample proportion follows
- * a normal distribution, enabling robust confidence interval estimation using
- * Z-score methods.
- * 
- * @note All statistical computations use double-precision arithmetic for numerical stability
- * @note Confidence intervals are clamped to [0,1] range for probability estimates
- * @note The algorithm assumes independent and identically distributed samples
- * 
- * @copyright Copyright (C) 2025 Arjun Earthperson
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ * This header defines `scram::mc::kernel::tally`, a SYCL kernel that
+ *   1. counts the number of set bits (failures) in a bit-packed buffer, and
+ *   2. derives probability estimates plus confidence intervals from those
+ *      counts.
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * Execution model
+ * ---------------
+ * Global ND-range ids are interpreted as `(tally_id, batch_id, bitpack_id)`.
+ * Every work-item touches **exactly one** `bitpack_t_` value:
+ *
+ *   idx = batch_id × bitpacks_per_batch + bitpack_id
+ *
+ * An intra-group reduction collapses the per-item popcounts; the group leader
+ * atomically adds the partial sum to `tally.num_one_bits`.
+ *
+ * Single-shot vs. repeated work
+ * -----------------------------
+ * • Bit counting is unique – each bit-pack is processed exactly once.
+ * • Statistical post-processing (`mean`, `std_err`, `ci`) is executed **once per
+ *   work-group** that maps to the same `tally_id`.  When the local Y/Z sizes do
+ *   not cover the whole `(batch_size × bitpacks_per_batch)` tile, multiple work-
+ *   groups are launched for one tally and this calculation is repeated.
+ *   The end result is correct (all groups see the same `num_one_bits`) but the
+ *   extra invocations waste GPU cycles and cause benign write races.
+ *
+ * To avoid the repetition choose a local range such that
+ *
+ *     local_range = { 1,
+ *                     sample_shape.batch_size,
+ *                     sample_shape.bitpacks_per_batch }
+ *
+ * or move the statistics step to a separate, single-work-group kernel.
  */
 
 #pragma once
@@ -195,11 +180,11 @@ namespace scram::mc::kernel {
                                            const event::sample_shape<size_t_> &shape) {
             auto new_local_range = local_range;
             new_local_range[0] = 1;
-            size_t global_x = (num_tallies + new_local_range[0] - 1) / new_local_range[0] * new_local_range[0];
-            size_t global_y = (shape.batch_size + new_local_range[1] - 1) / new_local_range[1] * new_local_range[1];
-            size_t global_z = (shape.bitpacks_per_batch + new_local_range[2] - 1) / new_local_range[2] * new_local_range[2];
-
-            return {sycl::range<3>(global_x, global_y, global_z), new_local_range};
+            const size_t global_size_x = (num_tallies + new_local_range[0] - 1) / new_local_range[0] * new_local_range[0];
+            const size_t global_size_y = (shape.batch_size + new_local_range[1] - 1) / new_local_range[1] * new_local_range[1];
+            const size_t global_size_z = (shape.bitpacks_per_batch + new_local_range[2] - 1) / new_local_range[2] * new_local_range[2];
+            LOG(DEBUG3) << "kernel::tally:: local_range{x,y,z}:(" << new_local_range[0] <<", " << new_local_range[1] <<", " << new_local_range[2] <<")\t global_range{x,y,z}:(" << "gates:"<< global_size_x <<", batch_size:"<< global_size_y <<", sample_shape_.bitpacks_per_batch:"<<global_size_z<<")";
+            return {sycl::range<3>(global_size_x, global_size_y, global_size_z), new_local_range};
         }
 
         /**
@@ -264,6 +249,7 @@ namespace scram::mc::kernel {
                 bernoulli_mean + margins.y()
             );
             const prob_vec_t_ clamped_cis = sycl::clamp(raw_confidence_intervals, 0.0, 1.0);
+            tally.total_bits = total_bits;
             tally.mean = bernoulli_mean;
             tally.std_err = bernoulli_std_error;
             tally.ci = clamped_cis;
@@ -273,9 +259,19 @@ namespace scram::mc::kernel {
          * @brief SYCL kernel operator for parallel statistical tally computation
          * 
          * @details This is the main kernel function that performs parallel population
-         * counting and statistical computation. The kernel uses a multi-stage algorithm that maximizes GPU
-         * utilization while minimizing atomic operation overhead.
-         * 
+         * counting followed by an (optional) statistical reduction.  The popcount part
+         * is inherently unique per work-item.  The statistics part is executed by the
+         * group leader **of every work-group** that processes the same tally, which
+         * means it can run more than once per tally and per iteration.
+         *
+         * @warning When more than one work-group is launched for a given `tally_id`
+         *          the call to `update_tally_stats` is duplicated.  Although the final
+         *          values are identical (last writer wins) the extra work costs
+         *          performance and introduces benign data races on the derived fields.
+         *          Make `local_range[1] == batch_size` and `local_range[2] ==
+         *          bitpacks_per_batch`, or move the statistics calculation to a
+         *          follow-up kernel, to ensure the computation happens exactly once.
+         *
          * **Algorithm Stages:**
          * 
          * **Stage 1: Parallel Population Counting**
@@ -341,7 +337,7 @@ namespace scram::mc::kernel {
             // Use an intra-group reduction so we only do one atomic add per group
             const std::size_t group_sum = sycl::reduce_over_group(item.get_group(), local_sum, sycl::plus<>());
 
-            // Have the subgroup/group leader accumulate bit counts in global memory
+            // Have the group leader accumulate bit counts in global memory
             if (item.get_local_linear_id() == 0) {
                 auto atomic_bits = sycl::atomic_ref<
                         std::size_t,

@@ -317,52 +317,15 @@ namespace scram::core {
 
         using bitpack_t_ = std::uint64_t;
 
-        // ---------------------------------------------------------------------
-        // 0) Gather user-supplied sampling preferences.
-        // ---------------------------------------------------------------------
-        auto &st         = this->settings();
-        const double eps = st.ci_margin_error();     // half-width ε
-        const double conf= st.ci_confidence();       // confidence level (two-sided)
-        const bool autotune = st.ci_autotune_trials() && eps > 0.0 && conf > 0.0 && conf < 1.0;
-
-        // ---------------------------------------------------------------------
-        // 1) Decide on the total number of Bernoulli trials.
-        // ---------------------------------------------------------------------
-        std::size_t trials = st.num_trials();
+        const auto &settings = this->settings();
+        const std::size_t trials = settings.num_trials();
         auto *pdag = this->graph();
 
-        if (autotune) {
-            // --- Pilot run ----------------------------------------------------
-            const std::size_t pilot_trials = std::max<std::size_t>(64, std::min<std::size_t>(trials, 4096));
-            mc::queue::layer_manager<bitpack_t_> pilot_mgr(pdag, pilot_trials);
-            mc::queue::convergence_controller<bitpack_t_> pilot_conv(pilot_mgr, pdag->root()->index(), eps, conf);
-            const auto pilot_tally = pilot_conv.run_to_convergence();
-            const double phat      = pilot_tally.mean;
-
-            trials = std::max<std::size_t>(
-                        scram::mc::stats::required_trials(phat, eps, conf),
-                        scram::mc::stats::worst_case_trials(eps, conf));
-
-            // Round up to whole bit-packs so the scheduler is happy.
-            constexpr std::size_t bits_in_pack = sizeof(bitpack_t_) * 8;
-            trials = ((trials + bits_in_pack - 1) / bits_in_pack) * bits_in_pack;
-
-            LOG(WARNING) << "[MC] auto-selected num_trials=" << trials
-                      << " (pilot p̂=" << phat << ", ε=" << eps
-                      << ", confidence=" << conf << ")";
-
-            // Persist the choice so that downstream code sees the final value.
-            st.num_trials(trials);
-        }
-
-        // ---------------------------------------------------------------------
-        // 2) Full simulation with (possibly) auto-tuned sample size.
-        // ---------------------------------------------------------------------
-
+        const auto event_id = pdag->root()->index();
         mc::queue::layer_manager<bitpack_t_> manager(pdag, trials);
-        mc::queue::convergence_controller<bitpack_t_> conv(manager, pdag->root()->index(), eps, conf);
+        mc::queue::convergence_controller scheduler(manager, event_id, settings);
 
-        const auto tally = conv.run_to_convergence();
+        const auto tally = scheduler.run_to_convergence();
 
         LOG(WARNING) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
         return tally.mean;

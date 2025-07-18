@@ -47,6 +47,13 @@ struct sample_shaper {
         max_device_bytes_ = device.get_info<sycl::info::device::max_mem_alloc_size>();
         max_device_bits_ = max_device_bytes_ * static_cast<std::size_t>(8);
 
+        const bool no_limits_on_iterations = !requested_num_trials_;
+
+        // still set a bound to compute the sample shape appropriately
+        if (no_limits_on_iterations) {
+            requested_num_trials_ = 64 * 1024 * 1024;
+        }
+
         // round number of sampled bits to nearest multiple of bits in bitpack_t_
         const std::size_t remainder = requested_num_trials_ % bits_in_bitpack_;
         if (remainder == 0) {
@@ -96,7 +103,7 @@ struct sample_shaper {
         // so, it will take these many iterations to collect the total samples
         num_iterations_ = static_cast<std::size_t>(std::ceil(total_bits_to_sample_ / static_cast<std::double_t>(bits_per_iteration_)));
 
-        TOTAL_ITERATIONS = num_iterations_;
+        TOTAL_ITERATIONS = no_limits_on_iterations ? 0 : num_iterations_;
         SAMPLE_SHAPE = sample_shape;
     }
 

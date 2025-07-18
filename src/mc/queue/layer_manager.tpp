@@ -169,14 +169,14 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::map_nodes_by_layer(
     const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer) {
     for (const auto &nodes_in_layer : nodes_by_layer) {
         build_kernels_for_layer(nodes_in_layer);
-        build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
-            nodes_in_layer, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_,
-            allocated_gates_by_index_, allocated_tally_events_by_index_);
+        // build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
+        //     nodes_in_layer, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_,
+        //     allocated_gates_by_index_, allocated_tally_events_by_index_);
     }
     // last layer gets tallied
-    // build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
-    //     nodes_by_layer.back(), queue_, sample_shape_, queueables_, queueables_by_index_,
-    //     allocated_basic_events_by_index_, allocated_gates_by_index_, allocated_tally_events_by_index_);
+    build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
+        nodes_by_layer.back(), queue_, sample_shape_, queueables_, queueables_by_index_,
+        allocated_basic_events_by_index_, allocated_gates_by_index_, allocated_tally_events_by_index_);
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
@@ -188,6 +188,7 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
     }
     const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
     to_tally.num_one_bits = computed_tally->num_one_bits;
+    to_tally.total_bits = computed_tally->total_bits;
     to_tally.mean = computed_tally->mean;
     to_tally.std_err = computed_tally->std_err;
     to_tally.ci = computed_tally->ci;
