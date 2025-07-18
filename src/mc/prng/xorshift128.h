@@ -17,14 +17,33 @@ namespace scram::mc::prng::xorshift {
 // sites can switch PRNGs simply by changing the seed struct they pass in.
 // ---------------------------------------------------------------------
 [[gnu::always_inline]] static inline uint32_t next(state128 &s) {
-    /* Standard Marsaglia xorshift (128-bit state, 32-bit output).
-     * Reference: "Xorshift RNGs" (2003). */
-    const uint32_t t = s.x[0] ^ (s.x[0] << 11);
-    s.x[0] = s.x[1];
-    s.x[1] = s.x[2];
-    s.x[2] = s.x[3];
-    s.x[3] = s.x[3] ^ (s.x[3] >> 19) ^ t ^ (t >> 8);
-    return s.x[3];
+    /* Correct Marsaglia xorshift128 (32-bit output).
+     * Algorithm reference: Marsaglia, "Xorshift RNGs" (2003).
+     * State transition:
+     *   t  = x3
+     *   t ^= t << 11;
+     *   t ^= t >> 8;
+     *   x3 = x2; x2 = x1; x1 = x0;
+     *   x0 ^= x0 >> 19;
+     *   x0 ^= t;
+     * Output is the new x0.
+     */
+
+    uint32_t t   = s.x[3];       // use highest word for scrambling (was x[0] – bug)
+    t ^= t << 11;
+    t ^= t >> 8;
+
+    const uint32_t s0 = s.x[0];  // preserve original x0 for later use
+
+    /* Rotate the register contents downward */
+    s.x[3] = s.x[2];
+    s.x[2] = s.x[1];
+    s.x[1] = s0;
+
+    /* Final scrambling step */
+    s.x[0] = s0 ^ (s0 >> 19) ^ t;
+
+    return s.x[0];
 }
 
 [[gnu::always_inline]] static void generate(const state128 *seeds, state128 *results, const uint8_t generation) {
@@ -50,7 +69,7 @@ namespace scram::mc::prng::xorshift {
  * to switch RNGs simply by choosing which seed type to pass.
  */
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ sample(const state128 *seeds, const std::uint32_t threshold,
+[[gnu::always_inline]] static bitpack_t_ sample(const state128 *seeds, const std::uint64_t threshold,
                                                 const std::uint32_t generation) {
     prng::state128 results;
     prng::xorshift::generate(seeds, &results, static_cast<uint8_t>(generation));
@@ -60,17 +79,16 @@ template <typename bitpack_t_>
 
     using b = bitpack_t_;
     bitpack_t_ out_bits = b(0);
-    out_bits |= (results.x[0] < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 0);
-    out_bits |= (results.x[1] < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 1);
-    out_bits |= (results.x[2] < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 2);
-    out_bits |= (results.x[3] < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 3);
+    out_bits |= (static_cast<std::uint64_t>(results.x[0]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 0);
+    out_bits |= (static_cast<std::uint64_t>(results.x[1]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 1);
+    out_bits |= (static_cast<std::uint64_t>(results.x[2]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 2);
+    out_bits |= (static_cast<std::uint64_t>(results.x[3]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 3);
 
     return out_bits;
 }
 
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base,
-                                                              const std::uint32_t p_threshold) {
+[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base, const std::uint64_t p_threshold) {
     static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
     static constexpr std::uint8_t num_generations = sizeof(bitpack_t_) * 8 / bernoulli_bits_per_generation;
 

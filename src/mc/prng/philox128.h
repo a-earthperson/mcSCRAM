@@ -57,8 +57,7 @@ namespace scram::mc::prng::philox {
  * @brief Bernoulli-sample four bits using the Philox 4x32-10 counter-based PRNG.
  */
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ sample(const state128 *seeds, const std::uint32_t threshold,
-                                                const std::uint32_t generation) {
+[[gnu::always_inline]] static bitpack_t_ sample(const state128 *seeds, const std::uint64_t threshold, const std::uint32_t generation) {
     prng::state128 results;
     prng::philox::generate(seeds, &results, static_cast<uint8_t>(generation));
 
@@ -67,16 +66,15 @@ template <typename bitpack_t_>
 
     using b = bitpack_t_;
     bitpack_t_ out_bits = b(0);
-    out_bits |= (results.x[0] < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 0);
-    out_bits |= (results.x[1] < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 1);
-    out_bits |= (results.x[2] < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 2);
-    out_bits |= (results.x[3] < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 3);
+    out_bits |= (static_cast<std::uint64_t>(results.x[0]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 0);
+    out_bits |= (static_cast<std::uint64_t>(results.x[1]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 1);
+    out_bits |= (static_cast<std::uint64_t>(results.x[2]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 2);
+    out_bits |= (static_cast<std::uint64_t>(results.x[3]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 3);
     return out_bits;
 }
 
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base,
-                                                              const std::uint32_t p_threshold) {
+[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base, const std::uint64_t p_threshold) {
     static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
     static constexpr std::uint8_t num_generations = sizeof(bitpack_t_) * 8 / bernoulli_bits_per_generation;
 
