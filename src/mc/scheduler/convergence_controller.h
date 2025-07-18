@@ -22,6 +22,9 @@
 
 #include "mc/queue/layer_manager.h"
 #include "mc/stats/ci_utils.h"
+#include <unistd.h>  // isatty
+#include <string>
+#include <sstream>
 
 namespace scram::mc::queue {
 
@@ -52,7 +55,7 @@ class convergence_controller {
         stop_on_convergence_ = settings.early_stop();                              // stop on convergence
     }
 
-
+    // (colour constants defined in the private helper below)
 
     /** Execute exactly one additional iteration on the device. */
     [[nodiscard]] bool step() {
@@ -71,12 +74,20 @@ class convergence_controller {
         // get the tally
         current_tally_ = manager_.single_pass_and_tally(evt_idx_);
 
-        // compute the tally stats
-        const double half_width = z_score_ * current_tally_.std_err;
-        const std::size_t bits_so_far = current_tally_.total_bits; //cumulative_bits(manager_.shaper().SAMPLE_SHAPE, iteration_);
+        // ---------------------------------------------------------------------
+        //  Host-side statistical post-processing
+        // ---------------------------------------------------------------------
+        // The Monte-Carlo kernel only updates `num_one_bits` and `total_bits`.
+        // We complete the statistics on the host so that the device kernel does
+        // no redundant work (especially when several work-groups process the
+        // same tally).
+
+        stats::populate_point_estimates(current_tally_);
+
+        const double half_width = stats::half_width(current_tally_, z_score_);
 
         // for now, this is our convergence criteria
-        const bool is_normal = stats::clt_ok(bits_so_far, current_tally_.mean);
+        const bool is_normal = stats::normal_approx_ok(current_tally_);
         const bool epsilon_bounded = half_width <= target_epsilon_;
         const bool converged_now = is_normal && epsilon_bounded;
 
@@ -85,10 +96,12 @@ class convergence_controller {
             converged_ = true;
         }
 
-        // LOG IT
-        LOG(DEBUG1) << "tally[" << evt_idx_ << "] :: [std_err] :: [p05, mean, p95] :: [" << current_tally_.std_err
-                     << "] :: [" << current_tally_.ci[0] << ", " << current_tally_.mean << ", " << current_tally_.ci[1]
-                     << "] :: CI(" << confidence_ * 100.0 << "%) :: ε[" << half_width << "]";
+        // Log progress for this step.
+        {
+            std::ostringstream tag;
+            tag << "ε[" << half_width << "]";
+            log_status(tag.str());
+        }
 
         // since we did step, update the iteration count
         return ++iteration_;
@@ -102,10 +115,12 @@ class convergence_controller {
         while (step()) {
         }
 
-        // LOG IT
-        LOG(DEBUG1) << "tally[" << evt_idx_ << "] :: [std_err] :: [p05, mean, p95] :: [" << current_tally_.std_err
-                     << "] :: [" << current_tally_.ci[0] << ", " << current_tally_.mean << ", " << current_tally_.ci[1]
-                     << "] :: CI(" << confidence_ * 100.0 << "%) :: Iterations :: " << iteration_;
+        // Final log with iteration count
+        {
+            std::ostringstream tag;
+            tag << "Iterations :: " << iteration_;
+            log_status(tag.str());
+        }
         return current_tally_;
     }
 
@@ -116,6 +131,34 @@ class convergence_controller {
     [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return current_tally_; }
 
   private:
+    // Helper that prints the coloured status line.  The suffix argument lets the
+    // caller append context-specific information (e.g. ε-half-width or number
+    // of iterations).
+    void log_status(const std::string &suffix) const {
+        // ANSI colours (only if stderr is a TTY)
+        constexpr const char *RED   = "\033[31m";
+        constexpr const char *GREEN = "\033[32m";
+        constexpr const char *YELL  = "\033[33m";
+        constexpr const char *CYAN  = "\033[36m";
+        constexpr const char *RESET = "\033[0m";
+
+        const bool colourise = isatty(fileno(stderr));
+        const char *mean_col  = colourise ? (converged_ ? GREEN : RED) : "";
+        const char *std_col   = colourise ? YELL  : "";
+        const char *ci_col    = colourise ? CYAN  : "";
+        const char *reset_col = colourise ? RESET : "";
+
+        LOG(DEBUG1) << "tally[" << evt_idx_ << "] :: "
+                     << "[std_err] :: " << std_col << current_tally_.std_err << reset_col << " :: "
+                     << "[p01, p05, mean, p95, p99] :: ["
+                     << ci_col << current_tally_.ci[2] << reset_col << ", "
+                     << ci_col << current_tally_.ci[0] << reset_col << ", "
+                     << mean_col << current_tally_.mean << reset_col << ", "
+                     << ci_col << current_tally_.ci[1] << reset_col << ", "
+                     << ci_col << current_tally_.ci[3] << reset_col << "] :: "
+                     << "CI(" << confidence_ * 100.0 << "% ) :: " << suffix;
+    }
+
     layer_manager<bitpack_t_, prob_t_, size_t_> &manager_;
     const index_t_ evt_idx_;
 

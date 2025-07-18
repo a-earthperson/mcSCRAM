@@ -47,14 +47,21 @@ namespace scram::mc::prng::xorshift {
 }
 
 [[gnu::always_inline]] static void generate(const state128 *seeds, state128 *results, const uint8_t generation) {
-    /* Copy the seed so we can mutate locally without touching the caller’s
-     * state.  Introduce `generation` via a simple Weyl step on the last
-     * word – cheap decorrelation that avoids a loop over `generation`.
-     */
+    /* Local copy so we can mutate without touching the caller’s seed. */
     state128 local = *seeds;
-    local.x[3] += 0x9E3779B9u * generation; // golden-ratio Weyl increment
 
-    /* Produce four 32-bit outputs (one full 128-bit block). */
+    local.x[0] += 0x9E3779B9u * generation;   // use Weyl on a different word
+    local.x[3] += generation;                 // cheap
+
+    /* --- additional diffusion ---------------------------------------
+     * The first call to `next()` previously used only `x0` and `x3`, so
+     * events that differed only in the other words produced highly
+     * correlated outputs.  We run one warm-up step to fold *all* four
+     * seed words into the state before we extract random words.
+     */
+    prng::xorshift::next(local); // discard output – purpose is scrambling
+
+    /* Produce four decorrelated 32-bit outputs. */
     results->x[0] = prng::xorshift::next(local);
     results->x[1] = prng::xorshift::next(local);
     results->x[2] = prng::xorshift::next(local);

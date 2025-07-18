@@ -11,10 +11,10 @@
  *
  * Execution model
  * ---------------
- * Global ND-range ids are interpreted as `(tally_id, batch_id, bitpack_id)`.
+ * Global ND-range ids are interpreted as `(tally_id, batch_idx, bitpack_id)`.
  * Every work-item touches **exactly one** `bitpack_t_` value:
  *
- *   idx = batch_id × bitpacks_per_batch + bitpack_id
+ *   idx = batch_idx × bitpacks_per_batch + bitpack_id
  *
  * An intra-group reduction collapses the per-item popcounts; the group leader
  * atomically adds the partial sum to `tally.num_one_bits`.
@@ -318,21 +318,21 @@ namespace scram::mc::kernel {
          * @endcode
          */
         void operator()(const sycl::nd_item<3> &item, const uint32_t iteration) const {
-            // Map global IDs to (tally_id, batch_id, bitpack_id)
-            const size_t tally_id = item.get_global_id(0);
-            const size_t batch_id = item.get_global_id(1);
+            // Map global IDs to (tally_idx, batch_idx, bitpack_id)
+            const size_t tally_idx = item.get_global_id(0);
+            const size_t batch_idx = item.get_global_id(1);
             const size_t bitpack_id = item.get_global_id(2);
 
             // Bounds check
-            if (tally_id >= tallies_block_.count ||
-                batch_id >= sample_shape_.batch_size ||
+            if (tally_idx >= tallies_block_.count ||
+                batch_idx >= sample_shape_.batch_size ||
                 bitpack_id >= sample_shape_.bitpacks_per_batch) {
                 return;
             }
 
             // Each work-item processes exactly one bitpack for this tally
-            const std::size_t idx = batch_id * sample_shape_.bitpacks_per_batch + bitpack_id;
-            const std::size_t local_sum = sycl::popcount(tallies_block_.data[tally_id].buffer[idx]);
+            const std::size_t idx = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_id;
+            const std::size_t local_sum = sycl::popcount(tallies_block_.data[tally_idx].buffer[idx]);
 
             // Use an intra-group reduction so we only do one atomic add per group
             const std::size_t group_sum = sycl::reduce_over_group(item.get_group(), local_sum, sycl::plus<>());
@@ -344,9 +344,10 @@ namespace scram::mc::kernel {
                         sycl::memory_order::relaxed,
                         sycl::memory_scope::device,
                         sycl::access::address_space::global_space>(
-                        tallies_block_.data[tally_id].num_one_bits);
+                        tallies_block_.data[tally_idx].num_one_bits);
                 atomic_bits.fetch_add(group_sum);
             }
+
 
             // Now, if each tally is handled by exactly one work-group,
             // we can compute final statistics on the group leader thread:
@@ -359,13 +360,17 @@ namespace scram::mc::kernel {
             // num_one_bits for this tally.
             item.barrier(sycl::access::fence_space::local_space);
 
+
             static constexpr std::size_t num_bits_in_dtype_ = sizeof(bitpack_t_) * 8;
             const auto total_bits = static_cast<std::size_t>(iteration)
                               * static_cast<std::size_t>(sample_shape_.batch_size)
                               * static_cast<std::size_t>(sample_shape_.bitpacks_per_batch)
                               * static_cast<std::size_t>(num_bits_in_dtype_);
 
-            update_tally_stats<sycl::double4>(tallies_block_.data[tally_id], static_cast<prob_t_>(total_bits));
+            tallies_block_.data[tally_idx].total_bits = total_bits;
+
+            return;
+            update_tally_stats<sycl::double4>(tallies_block_.data[tally_idx], static_cast<prob_t_>(total_bits));
         }
     };
 

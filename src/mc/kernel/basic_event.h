@@ -3,23 +3,23 @@
  * @brief SYCL kernel implementation for parallel basic event sampling using Philox PRNG
  * @author Arjun Earthperson
  * @date 2025
- * 
+ *
  * @details This file implements a high-performance SYCL kernel for generating random samples
  * from basic events in probabilistic analysis. It uses the Philox counter-based pseudorandom
  * number generator to ensure reproducible, high-quality random numbers suitable for Monte
  * Carlo simulations in parallel computing environments.
- * 
+ *
  * The implementation provides efficient bit-packed sampling with configurable bit widths
  * and supports massive parallelization across GPU threads. Each basic event is sampled
  * independently using its failure probability, with results stored in bit-packed format
  * for memory efficiency and computational performance.
- * 
+ *
  * Key features:
  * - Philox 4x32-10 PRNG for cryptographic-quality randomness
  * - Memory-efficient bit-packed storage
  * - Reproducible results with deterministic seeding
  * - Optimal SYCL kernel dispatch and work-group sizing
- * 
+ *
  * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -49,65 +49,94 @@ namespace scram::mc::kernel {
     template<typename prob_t_, typename bitpack_t_, typename size_t_>
     class basic_event {
 
-        event::basic_event_block<prob_t_, bitpack_t_> basic_events_block_;
+        using be_block = event::basic_event_block<prob_t_, bitpack_t_>;
+        be_block basic_events_block_;
 
+        using sample_shape = event::sample_shape<size_t_>;
         /// @brief Configuration for sample batch dimensions and bit-packing
-        const event::sample_shape<size_t_> sample_shape_;
+        const sample_shape sample_shape_;
 
     public:
         basic_event(
-                const event::basic_event_block<prob_t_, bitpack_t_> &basic_events_block,
-                const event::sample_shape<size_t_> &sample_shape)
+                const be_block &basic_events_block,
+                const sample_shape &sample_shape)
                 : basic_events_block_(basic_events_block),
                   sample_shape_(sample_shape) {}
 
         struct positional_counter  {
-            /// @brief Unique index identifier for the event (used for seeding)
-            uint32_t index_id;
+            /// @brief Basic event position in block
+            /// range: [0, basic_events_block_.count)
+            /// constraints: [[ event_idx < basic_events_block_.count ]]
+            /// @warning typically, pdag_idx and event_idx could be correlated
+            uint32_t event_idx;
 
-            /// @brief Event identifier within the current batch
-            uint32_t event_id;
+            /// @brief Unique index identifier in the pdag
+            /// range: [2, ?)
+            uint32_t pdag_idx;
 
-            /// @brief Batch identifier for the current sampling round
-            uint32_t batch_id;
+            /// @brief Batch index/position:
+            /// range: [0, sample_shape_.batch_size)
+            /// constraints: [[ batch_idx < sample_shape_.batch_size ]]
+            uint32_t batch_idx;
 
             /// @brief Bitpack index within the current batch
+            /// range: [0, sample_shape_.bitpacks_per_batch)
+            /// constraints: [[ bitpack_idx < sample_shape_.bitpacks_per_batch ]]
             uint32_t bitpack_idx;
+
+            /// @brief linearized index
+            /// batch_idx * bitpacks_per_batch + bitpack_idx
+            uint32_t sample_idx;
+
+            /// @brief iteration index
+            /// (iteration + 1) << 6,
+            uint32_t iteration_idx;
+
+            bool is_out_of_bounds;
+
+            [[gnu::always_inline]] explicit positional_counter(const sycl::nd_item<3> &item,
+                                                               const be_block &event_block,
+                                                               const sample_shape &sample_shape,
+                                                               const uint32_t &iteration) {
+                event_idx     = static_cast<uint32_t>(item.get_global_id(0));
+                batch_idx     = static_cast<uint32_t>(item.get_global_id(1));
+                bitpack_idx   = static_cast<uint32_t>(item.get_global_id(2));
+                pdag_idx      = static_cast<uint32_t>(event_block[event_idx].index);
+                sample_idx    = batch_idx * sample_shape.bitpacks_per_batch + bitpack_idx;
+                iteration_idx = iteration;
+                is_out_of_bounds = event_idx >= event_block.count || batch_idx >= sample_shape.batch_size || bitpack_idx >= sample_shape.bitpacks_per_batch;
+            }
+
+            [[gnu::always_inline]] [[nodiscard]] static prng::state128 fill(const positional_counter &args) {
+                const prng::state128 to_fill = {
+                    .x = {
+                        args.pdag_idx + 1,
+                        args.event_idx + 1,
+                        args.sample_idx + 1,
+                        (args.iteration_idx + 1) << 6, // spare 6 bits to store generation count (i)
+                    }
+                };
+                return to_fill;
+            }
         };
 
         void operator()(const sycl::nd_item<3> &item, const uint32_t iteration) const {
-            const auto blk_idx = static_cast<uint32_t>(item.get_global_id(0));
-            positional_counter args = {
-                .index_id    = static_cast<uint32_t>(basic_events_block_[blk_idx].index),
-                .event_id    = static_cast<uint32_t>(item.get_global_id(0)),
-                .batch_id    = static_cast<uint32_t>(item.get_global_id(1)),
-                .bitpack_idx = static_cast<uint32_t>(item.get_global_id(2)),
-            };
+
+            const positional_counter args(item, basic_events_block_, sample_shape_, iteration);
 
             // Bounds checking
-            if (args.event_id >= basic_events_block_.count ||
-                args.batch_id >= sample_shape_.batch_size ||
-                args.bitpack_idx >= sample_shape_.bitpacks_per_batch) {
+            if (args.is_out_of_bounds) {
                 return;
             }
 
-            const prng::state128 seed_base = {
-                .x = {
-                    args.index_id + 1,
-                    args.event_id + 1,
-                    args.batch_id + 1,
-                    (args.bitpack_idx + iteration + 1) << 6,  // spare 6 bits to store generation count (i)
-                },
-            };
+            const prng::state128 seed_base = positional_counter::fill(args);
 
-            const auto &p_threshold = basic_events_block_[blk_idx].probability_threshold;
+            const auto &p_threshold = basic_events_block_[args.event_idx].probability_threshold;
             const bitpack_t_ bitpack_value = prng::philox::pack_bernoulli_draws<bitpack_t_>(seed_base, p_threshold);
 
             // Store the bitpacked samples into the buffer
-            bitpack_t_ *output = basic_events_block_[args.event_id].buffer;
-            // Calculate the index within the generated_samples buffer
-            const size_t_ index = args.batch_id * sample_shape_.bitpacks_per_batch + args.bitpack_idx;
-            output[index] = bitpack_value;
+            bitpack_t_ *output = basic_events_block_[args.event_idx].buffer;
+            output[args.sample_idx] = bitpack_value;
         }
 
         static sycl::nd_range<3> get_range(const size_t_ num_events,

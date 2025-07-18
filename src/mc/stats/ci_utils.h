@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <algorithm>
 
+#include "mc/event/node.h"
+
 namespace scram::mc::stats {
 
 /**
@@ -103,6 +105,65 @@ namespace scram::mc::stats {
  */
 [[nodiscard]] inline bool clt_ok(const std::size_t n, const double p) {
     return static_cast<double>(n) * p >= 10.0 && static_cast<double>(n) * (1.0 - p) >= 10.0;
+}
+
+// Return the half-width (margin of error) of the confidence interval for a
+// given Z-score.  Call this after `populate_point_estimates` so that `std_err`
+// has been initialised.
+template <typename tally_t_>
+[[nodiscard]] inline double half_width(const tally_t_ &tally, const double z) {
+    return z * tally.std_err;
+}
+
+// Wrapper that checks whether the normal approximation (Central Limit Theorem
+// rule-of-thumb) is applicable for this tally.  Delegates to the existing
+// `clt_ok(n, p)` utility.
+template <typename tally_t_>
+[[nodiscard]] inline bool normal_approx_ok(const tally_t_ &tally) {
+    return clt_ok(tally.total_bits, tally.mean);
+}
+
+// Add helper functions for tally post-processing ---------------------------------------------------
+// These routines move the statistical post-processing that used to live in the
+// SYCL tally kernel to the host side.  They work directly with the `event::tally`
+// struct which only needs the raw counters (`num_one_bits`, `total_bits`) that
+// the device kernel fills in.
+
+// Populate the point estimates (mean probability and standard error) for a tally
+// object based only on its raw counters.  The function is templated so that it
+// works with any specialisation of `event::tally<bitpack_t_>`.
+template <typename tally_t_>
+inline void populate_point_estimates(tally_t_ &tally) {
+    if (tally.total_bits == 0) {
+        // Avoid division-by-zero – this generally means no samples have been
+        // processed yet.  Leave everything zero-initialised.
+        tally.mean    = 0.0;
+        tally.std_err = 0.0;
+        tally.ci      = {0.0, 0.0, 0.0, 0.0};
+        return;
+    }
+
+    const auto total_bits_d = static_cast<std::double_t>(tally.total_bits);
+    const auto p            = static_cast<std::double_t>(tally.num_one_bits) / total_bits_d;
+
+    tally.mean    = p;
+    tally.std_err = std::sqrt(p * (1.0 - p) / total_bits_d);
+
+    // ------------------------------------------------------------------
+    //  Confidence intervals (two-sided) – lower/upper 5% and 1%
+    // ------------------------------------------------------------------
+    constexpr double z_95 = 1.959963984540054;   // 95% two-sided → 2.5% tails
+    constexpr double z_99 = 2.5758293035489004;  // 99% two-sided → 0.5% tails
+
+    const double hw95 = half_width(tally, z_95);
+    const double hw99 = half_width(tally, z_99);
+
+    const std::double_t lower95 = std::clamp(p - hw95, 0.0, 1.0);
+    const std::double_t upper95 = std::clamp(p + hw95, 0.0, 1.0);
+    const std::double_t lower99 = std::clamp(p - hw99, 0.0, 1.0);
+    const std::double_t upper99 = std::clamp(p + hw99, 0.0, 1.0);
+
+    tally.ci = sycl::double4(lower95, upper95, lower99, upper99);
 }
 
 } // namespace scram::mc::stats
