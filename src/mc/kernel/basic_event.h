@@ -139,6 +139,26 @@ namespace scram::mc::kernel {
             // Store the bitpacked samples into the buffer
             bitpack_t_ *output = basic_events_block_[args.event_idx].buffer;
             output[args.sample_idx] = bitpack_value;
+
+            // ------------------------------------------------------------------
+            //  Importance-sampling weight write-out (if lr_buffer present)
+            // ------------------------------------------------------------------
+            std::double_t *weights_base = basic_events_block_[args.event_idx].lr_buffer;
+            if (weights_base) {
+                constexpr std::uint32_t NUM_BITS = sizeof(bitpack_t_) * 8;
+
+                const std::double_t lr1 = basic_events_block_[args.event_idx].LIKELIHOOD_RATIO_BIT_1;
+                const std::double_t lr0 = basic_events_block_[args.event_idx].LIKELIHOOD_RATIO_BIT_0;
+
+                const std::size_t base_offset = static_cast<std::size_t>(args.sample_idx) * NUM_BITS;
+
+                bitpack_t_ tmp = bitpack_value;
+                #pragma unroll
+                for (std::uint32_t bit = 0; bit < NUM_BITS; ++bit) {
+                    const bool bit_set = (tmp >> bit) & bitpack_t_(1);
+                    weights_base[base_offset + bit] = bit_set ? lr1 : lr0;
+                }
+            }
         }
 
         static sycl::nd_range<3> get_range(const size_t_ num_events,

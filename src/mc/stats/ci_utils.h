@@ -164,6 +164,30 @@ inline void populate_point_estimates(tally_t_ &tally) {
     const std::double_t upper99 = std::clamp(p + hw99, 0.0, 1.0);
 
     tally.ci = sycl::double4(lower95, upper95, lower99, upper99);
+
+    // -------------------------------------------------------------
+    //  Importance-sampling (weighted) estimates – if weights present
+    // -------------------------------------------------------------
+    if (tally.total_weight > 0.0) {
+        const auto w_total = static_cast<std::double_t>(tally.total_weight);
+        const auto p_w     = tally.weighted_num_one_bits / w_total;
+
+        tally.weighted_mean = p_w;
+
+        // Simple variance proxy using Bernoulli assumption with effective N = total_weight / max(lr)
+        // NOTE: For rigorous IS variance you’d need Σw_i² – we approximate with p_w(1-p_w)/w_total.
+        tally.weighted_std_err = std::sqrt(p_w * (1.0 - p_w) / w_total);
+
+        const double hw95_w = z_95 * tally.weighted_std_err;
+        const double hw99_w = z_99 * tally.weighted_std_err;
+
+        const std::double_t lower95_w = std::clamp(p_w - hw95_w, 0.0, 1.0);
+        const std::double_t upper95_w = std::clamp(p_w + hw95_w, 0.0, 1.0);
+        const std::double_t lower99_w = std::clamp(p_w - hw99_w, 0.0, 1.0);
+        const std::double_t upper99_w = std::clamp(p_w + hw99_w, 0.0, 1.0);
+
+        tally.weighted_ci = sycl::double4(lower95_w, upper95_w, lower99_w, upper99_w);
+    }
 }
 
 } // namespace scram::mc::stats

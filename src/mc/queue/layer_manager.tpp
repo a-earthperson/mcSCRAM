@@ -187,11 +187,18 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
         return std::move(to_tally);
     }
     const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
-    to_tally.num_one_bits = computed_tally->num_one_bits;
-    to_tally.total_bits = computed_tally->total_bits;
-    to_tally.mean = computed_tally->mean;
-    to_tally.std_err = computed_tally->std_err;
-    to_tally.ci = computed_tally->ci;
+    to_tally.num_one_bits            = computed_tally->num_one_bits;
+    to_tally.total_bits              = computed_tally->total_bits;
+    to_tally.mean                    = computed_tally->mean;
+    to_tally.std_err                 = computed_tally->std_err;
+    to_tally.ci                      = computed_tally->ci;
+
+    // Weighted (importance-sampling) statistics
+    to_tally.weighted_num_one_bits   = computed_tally->weighted_num_one_bits;
+    to_tally.total_weight            = computed_tally->total_weight;
+    to_tally.weighted_mean           = computed_tally->weighted_mean;
+    to_tally.weighted_std_err        = computed_tally->weighted_std_err;
+    to_tally.weighted_ci             = computed_tally->weighted_ci;
     return std::move(to_tally);
 }
 

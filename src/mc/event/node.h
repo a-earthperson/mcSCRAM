@@ -36,6 +36,7 @@
 #include <cstddef>
 #include <sycl/sycl.hpp>
 #include <vector>
+#include <type_traits>
 
 using cache_line_bytes = sycl::info::device::global_mem_cache_line_size;
 
@@ -64,7 +65,9 @@ namespace scram::mc::event {
     template<typename bitpack_t_>
     struct node {
         /// @brief Device-accessible buffer for storing computation results in bit-packed format
-        bitpack_t_ *buffer;
+        bitpack_t_ *buffer = nullptr;
+        /// @brief Device-accessible buffer for storing importance sampling weights
+        std::double_t *lr_buffer = nullptr; // pointer to per-sample weights (branchless IS)
     };
 
     /**
@@ -116,7 +119,10 @@ namespace scram::mc::event {
         /// @brief Unique identifier for this event within the computation graph
         index_t_ index;
 
-        std::uint64_t probability_threshold{};
+        std::uint64_t probability_threshold = 0;
+
+        std::double_t LIKELIHOOD_RATIO_BIT_1 = 1.0; // TODO:: figure out what defaults make sense for the base (weightless)
+        std::double_t LIKELIHOOD_RATIO_BIT_0 = 1.0;
     };
 
     /**
@@ -164,6 +170,21 @@ namespace scram::mc::event {
         
         /// @brief Confidence intervals: [lower_95, upper_95, lower_99, upper_99]
         sycl::double4 ci = {0., 0., 0., 0.};
+
+        /// @brief Weighted count of positive outcomes (1-bits) across all samples
+        std::double_t weighted_num_one_bits = 0;
+
+        /// @brief Estimated mean probability based on sample proportion, weighted using IS
+        std::double_t weighted_mean = 0.;
+
+        /// @brief Standard error of the IS-weighted probability estimate
+        std::double_t weighted_std_err = 0.;
+
+        /// @brief IS-weighted Confidence intervals: [lower_95, upper_95, lower_99, upper_99]
+        sycl::double4 weighted_ci = {0., 0., 0., 0.};
+
+        /// @brief Total accumulated importance weights across all samples
+        std::double_t total_weight = 0.;
     };
 
     /**
@@ -359,6 +380,9 @@ namespace scram::mc::event {
 
         [[nodiscard]] node_t       &operator[](std::size_t i)       { return data[i]; }
         [[nodiscard]] const node_t &operator[](std::size_t i) const { return data[i]; }
+
+        /// @brief Device-accessible contiguous shadow buffer for storing importance sampling weights
+        std::double_t *lr_buffers = nullptr; // pointer to per-sample weights (branchless IS)
     };
 
     /**
@@ -407,10 +431,14 @@ namespace scram::mc::event {
             // We use 64-bit storage so that a probability of 1.0 maps to
             // the *inclusive* upper bound 2^32, guaranteeing that
             // `u < threshold` is always true.
-            constexpr double two_to_32 = static_cast<double>(UINT64_C(1) << 32); // 4,294,967,296
+            constexpr auto two_to_32        = static_cast<std::double_t>(UINT64_C(1) << 32); // 4,294,967,296
             events[i].probability_threshold = static_cast<std::uint64_t>(indexed_probabilities[i].second * two_to_32);
-            events[i].index       = indexed_probabilities[i].first;
-            events[i].buffer      = buffer_block + i * num_bitpacks;
+            events[i].index                 = indexed_probabilities[i].first;
+            events[i].buffer                = buffer_block + i * num_bitpacks;
+            // explicitly leave these invalid, since we are not performing importance sampling here.
+            events[i].lr_buffer = nullptr;
+            events[i].LIKELIHOOD_RATIO_BIT_1 = 0.0;
+            events[i].LIKELIHOOD_RATIO_BIT_0 = 0.0;
         }
 
         // 4. Wrap everything in a basic_event_block and return.
@@ -419,6 +447,71 @@ namespace scram::mc::event {
         blk.count              = num_events;
         blk.buffers            = buffer_block;
         blk.bitpacks_per_event = num_bitpacks;
+        // explicitly leave this as null, since we are not performing importance sampling here.
+        blk.lr_buffers = nullptr;
+        return blk;
+    }
+
+    template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
+    [[nodiscard]]
+    basic_event_block<prob_t_, bitpack_t_, index_t_>
+    create_weighted_basic_event_block(const sycl::queue                                  &queue,
+                             const std::vector<std::pair<index_t_, std::pair<prob_t_, prob_t_>>>    &indexed_probabilities_and_biases,
+                             const std::size_t                                  num_bitpacks) {
+
+        const std::size_t num_events = indexed_probabilities_and_biases.size();
+
+        // 1. Allocate host-visible node array (USM shared memory).
+        using event_t = basic_event<prob_t_, bitpack_t_, index_t_>;
+        const auto align = queue.get_device().get_info<cache_line_bytes>();
+        event_t *events = sycl::aligned_alloc_shared<event_t>(align, num_events, queue);
+
+        // 2. Allocate device-side bit-packed buffer for *all* events.
+        bitpack_t_ *buffer_block = sycl::aligned_alloc_device<bitpack_t_>(align, num_events * num_bitpacks, queue);
+
+        // 3. Allocate device-side weights/likelihood-ratio buffer that will be populated by the basic_event kernel
+        constexpr std::size_t bits_per_pack = sizeof(bitpack_t_) * 8;
+        const std::size_t total_weight_slots = num_events * num_bitpacks * bits_per_pack;
+        auto *weights_block = sycl::aligned_alloc_device<std::double_t>(align, total_weight_slots, queue);
+
+        // 3. Populate per-event fields.
+        for (std::size_t i = 0; i < num_events; ++i) {
+            // fetch the appropriate variables.
+            const index_t_ event_index = indexed_probabilities_and_biases[i].first;
+            const std::pair<prob_t_, prob_t_> event_probability_and_bias = indexed_probabilities_and_biases[i].second;
+            const auto event_prob_p = static_cast<std::double_t>(event_probability_and_bias.first);
+            const auto event_bias_q = static_cast<std::double_t>(event_probability_and_bias.second);
+
+            // Pre-compute Bernoulli threshold in the range [0, 2^32].
+            // We use 64-bit storage so that a probability of 1.0 maps to
+            // the *inclusive* upper bound 2^32, guaranteeing that
+            // `u < threshold` is always true.
+            constexpr auto two_to_32 = static_cast<std::double_t>(UINT64_C(1) << 32); // 4,294,967,296
+            const auto p_threshold   = static_cast<std::uint64_t>(event_prob_p * two_to_32);
+
+            // set the likelihoods based on the probability and bias
+            // todo:: we need better and safer logic here, including clamping.
+            const std::double_t event_l1 = event_prob_p / event_bias_q;
+            const std::double_t event_l0 = (1.0 - event_prob_p) / (1.0 - event_bias_q);
+
+            // set the node-related values
+            events[i].buffer                  = buffer_block + i * num_bitpacks;
+            // set the basic-event-related values
+            events[i].index                   = event_index;
+            events[i].probability_threshold   = p_threshold;
+            events[i].LIKELIHOOD_RATIO_BIT_1 = event_l1;
+            events[i].LIKELIHOOD_RATIO_BIT_0 = event_l0;
+            // a pointer to the offset for this gate's weights buffer
+            events[i].lr_buffer = weights_block + i * num_bitpacks * bits_per_pack;
+        }
+
+        // 4. Wrap everything in a basic_event_block and return.
+        basic_event_block<prob_t_, bitpack_t_, index_t_> blk;
+        blk.data                     = events;
+        blk.count                    = num_events;
+        blk.buffers                  = buffer_block;
+        blk.bitpacks_per_event       = num_bitpacks;
+        blk.lr_buffers = weights_block;
         return blk;
     }
 
@@ -438,6 +531,10 @@ namespace scram::mc::event {
         if (blk.data) {
             sycl::free(blk.data, queue);
             blk.data  = nullptr;
+        }
+        if (blk.lr_buffers) {
+            sycl::free(blk.lr_buffers, queue);
+            blk.lr_buffers = nullptr;
         }
         blk.count = 0;
         blk.bitpacks_per_event = 0;
@@ -469,9 +566,11 @@ namespace scram::mc::event {
     template<typename bitpack_t_>
     [[nodiscard]]
     tally_block<bitpack_t_>
-    create_tally_block(const sycl::queue                    &queue,
-                       const std::vector<bitpack_t_ *>      &source_buffers) {
+    create_tally_block(const sycl::queue                       &queue,
+                       const std::vector<bitpack_t_ *>         &source_buffers,
+                       const std::vector<std::double_t *>      &weight_buffers) {
         const std::size_t n = source_buffers.size();
+        assert(weight_buffers.size() == n && "weight_buffers vector must parallel source_buffers");
         using tally_t = tally<bitpack_t_>;
         const auto align = queue.get_device().get_info<cache_line_bytes>();
         tally_t *tallies = sycl::aligned_alloc_shared<tally_t>(align, n, queue);
@@ -483,6 +582,13 @@ namespace scram::mc::event {
             tallies[i].mean         = 0.0;
             tallies[i].std_err      = 0.0;
             tallies[i].ci           = {0.0, 0.0, 0.0, 0.0};
+            // Importance-sampling weight pointer for this event
+            tallies[i].lr_buffer    = weight_buffers[i];
+            tallies[i].weighted_num_one_bits   = 0;
+            tallies[i].weighted_mean           = 0.0;
+            tallies[i].weighted_std_err        = 0.0;
+            tallies[i].weighted_ci             = {0.0, 0.0, 0.0, 0.0};
+            tallies[i].total_weight            = 0.0;
         }
 
         tally_block<bitpack_t_> blk;
@@ -548,8 +654,11 @@ namespace scram::mc::event {
     gate_block<bitpack_t_, size_t_>
     create_gate_block(const sycl::queue                                                      &queue,
                       const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>>       &inputs_per_gate,
+                      const std::vector<std::double_t *>                                     &weight_ptrs_per_gate,
                       const std::size_t                                                      num_bitpacks) {
         const std::size_t num_gates = inputs_per_gate.size();
+
+        assert(weight_ptrs_per_gate.size() == num_gates && "weight_ptrs_per_gate size mismatch");
 
         using gate_t = gate<bitpack_t_, size_t_>;
 
@@ -582,6 +691,7 @@ namespace scram::mc::event {
             gates[i].num_inputs            = static_cast<size_t_>(n_in);
             gates[i].negated_inputs_offset = static_cast<size_t_>(n_in - n_neg);
             gates[i].buffer                = buffer_block + i * num_bitpacks;
+            gates[i].lr_buffer             = weight_ptrs_per_gate[i];
 
             // Copy actual buffer pointers.
             std::copy(gate_inputs.begin(), gate_inputs.end(), all_inputs + cursor);
@@ -671,9 +781,12 @@ namespace scram::mc::event {
     atleast_gate_block<bitpack_t_, size_t_>
     create_atleast_gate_block(const sycl::queue                                                      &queue,
                               const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>>       &inputs_per_gate,
+                              const std::vector<std::double_t *>                                     &weight_ptrs_per_gate,
                               const std::vector<size_t_>                                             &atleast_per_gate,
                               const std::size_t                                                      num_bitpacks) {
         const std::size_t num_gates = inputs_per_gate.size();
+
+        assert(weight_ptrs_per_gate.size() == num_gates && "weight_ptrs_per_gate size mismatch");
 
         using gate_t = atleast_gate<bitpack_t_, size_t_>;
 
@@ -707,6 +820,7 @@ namespace scram::mc::event {
             gates[i].negated_inputs_offset = static_cast<size_t_>(n_in - n_neg);
             gates[i].buffer                = buffer_block + i * num_bitpacks;
             gates[i].at_least              = static_cast<uint8_t>(atleast_per_gate[i]);
+            gates[i].lr_buffer             = weight_ptrs_per_gate[i];
 
             // Copy actual buffer pointers.
             std::copy(gate_inputs.begin(), gate_inputs.end(), all_inputs + cursor);

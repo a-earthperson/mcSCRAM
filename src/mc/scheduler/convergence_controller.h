@@ -157,6 +157,18 @@ class convergence_controller {
                      << ci_col << current_tally_.ci[1] << reset_col << ", "
                      << ci_col << current_tally_.ci[3] << reset_col << "] :: "
                      << "CI(" << confidence_ * 100.0 << "% ) :: " << suffix;
+
+        // If weighted stats are present, print a second bracketed block
+        if (current_tally_.total_weight > 0.0) {
+            LOG(DEBUG1) << "tally[" << evt_idx_ << "] :: WEIGHTED :: [std_err] :: "
+                        << std_col << current_tally_.weighted_std_err << reset_col << " :: ["
+                        << ci_col << current_tally_.weighted_ci[2] << reset_col << ", "
+                        << ci_col << current_tally_.weighted_ci[0] << reset_col << ", "
+                        << mean_col << current_tally_.weighted_mean << reset_col << ", "
+                        << ci_col << current_tally_.weighted_ci[1] << reset_col << ", "
+                        << ci_col << current_tally_.weighted_ci[3] << reset_col << "] :: "
+                        << "CI(" << confidence_ * 100.0 << "% ) :: " << suffix;
+        }
     }
 
     layer_manager<bitpack_t_, prob_t_, size_t_> &manager_;

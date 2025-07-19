@@ -215,6 +215,70 @@ namespace scram::mc::queue {
         return queueable_partition;
     }
 
+    template<typename index_t_, typename prob_t_, typename bitpack_t_, typename size_t_>
+    static std::shared_ptr<queueable_base> build_kernel_for_weighted_variables(
+        const std::vector<std::shared_ptr<core::Variable>> &variables_,
+        sycl::queue &queue_,
+        const event::sample_shape<size_t_> &sample_shape_,
+        std::vector<std::shared_ptr<queueable_base>> &queueables_,
+        std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
+        std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
+        const std::double_t bias = 1.0) {
+
+        if (variables_.empty()) {
+            return nullptr;
+        }
+
+        // 1) Gather each Variable's index and probability from the BasicEvent data
+        std::vector<std::pair<index_t_, std::pair<prob_t_, prob_t_>>>    indexed_probabilities_and_biases;
+        indexed_probabilities_and_biases.reserve(variables_.size());
+
+        for (const auto& variable : variables_) {
+            const auto var_unique_index = variable->index();
+            const auto var_unique_index_in_pdag_index_map = var_unique_index - 2;
+
+            // Retrieve the mef::BasicEvent for this variable
+            const core::Pdag::IndexMap<const mef::BasicEvent*>& events = variable->graph().basic_events();
+            const mef::BasicEvent* event = events.at(var_unique_index_in_pdag_index_map);
+            const double p = event->expression().value();
+
+            std::pair<prob_t_, prob_t_> probability_and_bias = {static_cast<prob_t_>(p), static_cast<prob_t_>(bias)};
+            indexed_probabilities_and_biases.push_back({var_unique_index, probability_and_bias});
+        }
+
+        if (indexed_probabilities_and_biases.empty()) {
+            return nullptr;
+        }
+
+        const auto num_events_in_kernel = indexed_probabilities_and_biases.size();
+
+        // 2) Create a contiguous block of basic_events
+        using block_type = event::basic_event_block<prob_t_, bitpack_t_>;
+        block_type event_block = event::create_weighted_basic_event_block<prob_t_, bitpack_t_>(queue_, indexed_probabilities_and_biases, sample_shape_.num_bitpacks());
+
+        // 3) Build the basic_event kernel using the block wrapper
+        using kernel_type = kernel::basic_event<prob_t_, bitpack_t_, size_t_>;
+        kernel_type be_kernel(event_block, sample_shape_);
+
+        // 4) Compute the ND-range and create a queueable partition
+        const auto local_range = working_set<size_t_, bitpack_t_>(queue_, num_events_in_kernel, sample_shape_).compute_optimal_local_range_3d();
+        const auto nd_range = be_kernel.get_range(num_events_in_kernel, local_range, sample_shape_);
+        iterable_queueable<kernel_type, 3> be_partition(queue_, be_kernel, nd_range);
+        auto queueable_partition = std::make_shared<decltype(be_partition)>(be_partition);
+
+        // 5) Update allocated objects and queueables in the global maps
+        for (auto i = 0; i < num_events_in_kernel; ++i) {
+            const auto event_index_in_pdag = indexed_probabilities_and_biases[i].first;
+            // allocated_basic_events_by_index_[event_index_in_pdag] = event_block.data + i;
+            allocated_basic_events_by_index_[event_index_in_pdag] = &event_block[i];
+            queueables_by_index_[event_index_in_pdag] = queueable_partition;
+        }
+
+        // 6) Enqueue for computation
+        queueables_.push_back(queueable_partition);
+        return queueable_partition;
+    }
+
     /**
      * @brief Builds a SYCL kernel for gates of a specific logical operation type
      * 
@@ -325,6 +389,8 @@ namespace scram::mc::queue {
         indices.reserve(gates_.size());
         inputs_by_gate_with_negated_offset.reserve(gates_.size());
         atleast_args_by_gate.reserve(gates_.size());
+        std::vector<std::double_t *> lr_ptrs_by_gate; // parallel vector with weight-buffer pointers
+        lr_ptrs_by_gate.reserve(gates_.size());
 
         // 1) For each gate, gather child buffers (from both Variables and child Gates)
         for (const auto& gate_event : gates_)
@@ -377,12 +443,38 @@ namespace scram::mc::queue {
                 }
             }
 
+            // Determine common lr_buffer pointer (take from first input encountered)
+            std::double_t *lr_ptr_this_gate = nullptr;
+
+            // inspect variable inputs again to extract lr pointer
+            for (const auto &arg_pair : gate_event->args<core::Variable>()) {
+                const auto arg_index = arg_pair.second->index();
+                auto *be_ptr = allocated_basic_events_by_index_.at(arg_index);
+                if (!lr_ptr_this_gate) {
+                    lr_ptr_this_gate = be_ptr->lr_buffer;
+                } else {
+                    assert(lr_ptr_this_gate == be_ptr->lr_buffer && "Mismatched weight buffer among gate inputs (Variable)");
+                }
+            }
+
+            // inspect gate inputs
+            for (const auto &arg_pair : gate_event->args<core::Gate>()) {
+                const auto arg_index = arg_pair.second->index();
+                auto *child_gate_ptr = allocated_gates_by_index_.at(arg_index);
+                if (!lr_ptr_this_gate) {
+                    lr_ptr_this_gate = child_gate_ptr->lr_buffer;
+                } else {
+                    assert(lr_ptr_this_gate == child_gate_ptr->lr_buffer && "Mismatched weight buffer among gate inputs (Gate)");
+                }
+            }
+
+            // merge pos/neg input vectors: positives first
             const auto num_negated_events = negative_gate_inputs.size();
-            // merge these two vectors
             positive_gate_inputs.insert(positive_gate_inputs.end(), negative_gate_inputs.begin(), negative_gate_inputs.end());
 
             std::pair<std::vector<bitpack_t_*>, size_t_> gate_inputs(positive_gate_inputs, num_negated_events);
             inputs_by_gate_with_negated_offset.push_back(gate_inputs);
+            lr_ptrs_by_gate.push_back(lr_ptr_this_gate);
         }
 
         // 2) Create a contiguous array for these gates
@@ -394,7 +486,7 @@ namespace scram::mc::queue {
         std::shared_ptr<queueable_base> queueable_partition;
 
         if constexpr (gate_type_ == core::Connective::kAtleast) {
-            auto gate_blk = event::create_atleast_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, atleast_args_by_gate, sample_shape_.num_bitpacks());
+            auto gate_blk = event::create_atleast_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, lr_ptrs_by_gate, atleast_args_by_gate, sample_shape_.num_bitpacks());
             kernel_type typed_kernel(gate_blk, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
             queueable<kernel_type, 3> partition(queue_, typed_kernel, nd_range, layer_dependencies);
@@ -407,7 +499,7 @@ namespace scram::mc::queue {
                 queueables_by_index_[indices[i]] = queueable_partition;
             }
         } else {
-            auto gate_blk = event::create_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, sample_shape_.num_bitpacks());
+            auto gate_blk = event::create_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, lr_ptrs_by_gate, sample_shape_.num_bitpacks());
 
             kernel_type typed_kernel(gate_blk, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
@@ -704,6 +796,7 @@ namespace scram::mc::queue {
         // collect all events in this layer
         std::vector<index_t_> indices;
         std::vector<bitpack_t_ *> node_buffers;
+        std::vector<double *> weight_buffers; // parallel vector of lr_buffer pointers
         // initial counts no longer required; tallies start at 0
         std::set<std::shared_ptr<queueable_base>> layer_dependencies;// it is the union of all the tally dependencies
         for (const auto &node: nodes) {
@@ -731,6 +824,16 @@ namespace scram::mc::queue {
             }
             // store the data for this tally
             node_buffers.push_back(buffer);
+
+            // Determine corresponding importance-sampling weight buffer pointer
+            std::double_t *w_ptr = nullptr;
+            if (is_not_a_gate == allocated_gates_by_index_.end()) {
+                // basic event
+                w_ptr = allocated_basic_events_by_index_.at(event_index)->lr_buffer;
+            } else {
+                w_ptr = allocated_gates_by_index_.at(event_index)->lr_buffer;
+            }
+            weight_buffers.push_back(w_ptr);
             indices.push_back(event_index);
         }
 
@@ -740,7 +843,7 @@ namespace scram::mc::queue {
 
         const auto num_events_in_layer = indices.size();
         using block_type = event::tally_block<bitpack_t_>;
-        block_type tally_blk = event::create_tally_block<bitpack_t_>(queue_, node_buffers);
+        block_type tally_blk = event::create_tally_block<bitpack_t_>(queue_, node_buffers, weight_buffers);
 
         // build the kernel
         using kernel_type = kernel::tally<prob_t_, bitpack_t_, size_t_>;
