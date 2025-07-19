@@ -224,7 +224,7 @@ namespace scram::mc::kernel {
             global_size_z = ((global_size_z + local_range[2] - 1) / local_range[2]) * local_range[2];
 
             sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
-
+            LOG(DEBUG3) << "kernel::gate:: local_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\t global_range{x,y,z}:(" << "gates:"<< global_size_x <<", batch_size:"<< global_size_y <<", sample_shape_.bitpacks_per_batch:"<<global_size_z<<")";
             return {global_range, local_range};
         }
 
@@ -295,20 +295,20 @@ namespace scram::mc::kernel {
          * @endcode
          */
         void operator()(const sycl::nd_item<3> &item) const {
-            const auto gate_id = static_cast<size_t_>(item.get_global_id(0));
-            const auto batch_id = static_cast<size_t_>(item.get_global_id(1));
+            const auto gate_idx = static_cast<size_t_>(item.get_global_id(0));
+            const auto batch_idx = static_cast<size_t_>(item.get_global_id(1));
             const auto bitpack_idx = static_cast<size_t_>(item.get_global_id(2));
 
             // Bounds checking
-            if (gate_id >= this->gates_block_.count || batch_id >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
+            if (gate_idx >= this->gates_block_.count || batch_idx >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
                 return;
             }
 
             // Compute the linear index into the buffer
-            const size_t_ index = batch_id * sample_shape_.bitpacks_per_batch + bitpack_idx;
+            const size_t_ index = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_idx;
 
             // Get gate
-            const auto &g = gates_block_[gate_id];
+            const auto &g = gates_block_[gate_idx];
             const size_t_ num_inputs = g.num_inputs;
             const size_t_ negations_offset = g.negated_inputs_offset;
             // ---------------------------------------------------------------------
@@ -524,20 +524,20 @@ namespace scram::mc::kernel {
          * @endcode
          */
         void operator()(const sycl::nd_item<3> &item) const {
-            const auto gate_id = static_cast<std::uint32_t>(item.get_global_id(0));
-            const auto batch_id = static_cast<std::uint32_t>(item.get_global_id(1));
+            const auto gate_idx = static_cast<std::uint32_t>(item.get_global_id(0));
+            const auto batch_idx = static_cast<std::uint32_t>(item.get_global_id(1));
             const auto bitpack_idx = static_cast<std::uint32_t>(item.get_global_id(2));
 
             // Bounds checking
-            if (gate_id >= this->gates_block_.count || batch_id >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
+            if (gate_idx >= this->gates_block_.count || batch_idx >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
                 return;
             }
 
             // Compute the linear index into the buffer
-            const std::uint32_t index = batch_id * sample_shape_.bitpacks_per_batch + bitpack_idx;
+            const std::uint32_t index = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_idx;
 
             // Get gate
-            const auto &g = gates_block_[gate_id];
+            const auto &g = gates_block_[gate_idx];
             const auto num_inputs = g.num_inputs;
             const auto negations_offset = g.negated_inputs_offset;
 

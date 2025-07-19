@@ -28,7 +28,7 @@
 
 #include "mc/event/node.h"
 #include "mc/queue/queueable.h"
-#include "mc/queue/scheduler.h"
+#include "mc/queue/sample_shaper.h"
 
 #include "pdag.h"
 
@@ -86,7 +86,7 @@ class layer_manager {
     /// @brief Sample shape configuration defining batch size and bitpack dimensions
     event::sample_shape<size_t_> sample_shape_;
 
-    scheduler<bitpack_t_> scheduler_{};
+    sample_shaper<bitpack_t_> sample_shaper_{};
 
     /// @brief Vector containing all PDAG nodes in topological order
     std::vector<std::shared_ptr<core::Node>> pdag_nodes_;
@@ -236,6 +236,7 @@ class layer_manager {
      */
     void map_nodes_by_layer(const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer);
 
+    event::tally<bitpack_t_> fetch_tally_for_event_with_index(const index_t_ evt_idx);
     /**
      * @brief Fetches and logs tally results from all allocated tally events
      * 
@@ -252,7 +253,7 @@ class layer_manager {
      * // Check logs for: "tally[index] :: [std_err] :: [p05, mean, p95]"
      * @endcode
      */
-    void fetch_all_tallies();
+    void fetch_all_tallies(double eps, double confidence);
 
   public:
     /**
@@ -291,12 +292,12 @@ class layer_manager {
      * manager.submit_all().wait_and_throw();
      * 
      * // Submit asynchronously
-     * auto queue = manager.submit_all();
+     * auto queue = manager.single_pass();
      * // Do other work...
      * queue.wait_and_throw();
      * @endcode
      */
-    sycl::queue submit_all();
+    sycl::queue single_pass();
 
     /**
      * @brief Computes tally statistics for a specific event
@@ -330,7 +331,18 @@ class layer_manager {
      * }
      * @endcode
      */
-    event::tally<bitpack_t_> tally(index_t_ evt_idx);
+    event::tally<bitpack_t_> single_pass_and_tally(index_t_ evt_idx);
+
+    /**
+     * @brief Accessor for the internal sample shaper configuration
+     *
+     * @details Returns a const reference to the sample_shaper instance that
+     * controls how the requested number of trials is split across device
+     * iterations.  External convergence-management utilities can rely on
+     * this accessor to obtain TOTAL_ITERATIONS as well as the chosen
+     * SAMPLE_SHAPE.
+     */
+    [[nodiscard]] inline const sample_shaper<bitpack_t_> &shaper() const noexcept { return sample_shaper_; }
 
     /**
      * @brief Destructor that cleans up allocated device memory

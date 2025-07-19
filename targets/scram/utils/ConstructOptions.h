@@ -18,24 +18,22 @@
 /// @file
 
 #pragma once
-#include <iostream>
 #include <string>
-
 
 #include <boost/program_options.hpp>
 
 namespace po = boost::program_options;
 
 namespace ScramCLI {
-    /// Provides an options value type.
+/// Provides an options value type.
 #define OPT_VALUE(type) po::value<type>()->value_name(#type)
 
-    /// @returns Command-line option descriptions.
-    inline po::options_description ConstructOptions() {
-        using path = std::string;// To print argument type as path.
+/// @returns Command-line option descriptions.
+inline po::options_description ConstructOptions() {
+    using path = std::string; // To print argument type as path.
 
-        po::options_description desc("Options");
-        // clang-format off
+    po::options_description desc("Options");
+    // clang-format off
         desc.add_options()
             ("help", "Display this help message")
             ("version", "Display version information")
@@ -54,14 +52,10 @@ namespace ScramCLI {
             ("sil", "Compute the Safety Integrity Level metrics")
             ("rare-event", "Use the rare event approximation")
             ("mcub", "Use the MCUB approximation")
-            ("monte-carlo", "Use the monte carlo sampling approximation")
             ("limit-order,l", OPT_VALUE(int), "Upper limit for the product order")
             ("cut-off", OPT_VALUE(double), "Cut-off probability for products")
             ("mission-time", OPT_VALUE(double), "System mission time in hours")
             ("time-step", OPT_VALUE(double), "Time step in hours for probability analysis")
-            ("num-trials", OPT_VALUE(std::size_t),"Number of trials for Monte Carlo simulations")
-            ("batch-size", OPT_VALUE(std::size_t),"Batch size for Monte Carlo simulations")
-            ("sample-size", OPT_VALUE(std::size_t),"Sample size for Monte Carlo simulations")
             ("num-quantiles", OPT_VALUE(int),"Number of quantiles for distributions")
             ("num-bins", OPT_VALUE(int), "Number of bins for histograms")
             ("seed", OPT_VALUE(int), "Seed for the pseudo-random number generator")
@@ -69,15 +63,32 @@ namespace ScramCLI {
             ("no-indent", "Omit indentation whitespace in output XML")
             ("verbosity", OPT_VALUE(int), "Set log verbosity");
 
+        // ------------------------------------------------------------------
+        //  Monte-Carlo specific options
+        // ------------------------------------------------------------------
+        po::options_description mc("Monte Carlo Options");
+        mc.add_options()
+            ("monte-carlo", "Use the monte-carlo sampling approximation")
+            ("num-trials", OPT_VALUE(std::size_t),"Number of Bernoulli trials [0]: Auto")
+            ("early-stop", "Stop on convergence, implied if --num-trials unset or 0")
+            ("batch-size", OPT_VALUE(std::size_t),"Batch size (work-group Y dimension)")
+            ("sample-size", OPT_VALUE(std::size_t),"Sample size (work-group Z dimension)")
+            ("ci-confidence", OPT_VALUE(double),"Two-sided confidence level used for error estimation")
+            ("ci-epsilon", OPT_VALUE(double),"Target margin of error (half-width) for error estimation and early stop");
+
+
+        // ------------------------------------------------------------------
+        //  Debug options
+        // ------------------------------------------------------------------
         po::options_description debug("Debug Options");
         debug.add_options()
             ("serialize", "Serialize the input model without further analysis")
             ("preprocessor", "Stop analysis after the preprocessing step")
             ("print", "Print analysis results in a terminal friendly way")
             ("no-report", "Don't generate analysis report");
-        desc.add(debug);
-        // clang-format on
-        return desc;
-    }
-#undef OPT_VALUE
+        desc.add(mc).add(debug);
+    // clang-format on
+    return desc;
 }
+#undef OPT_VALUE
+} // namespace ScramCLI

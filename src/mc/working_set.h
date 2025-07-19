@@ -796,7 +796,6 @@ namespace scram::mc {
                     local_range = compute_optimal_local_range_3d_for_gpu(limits);
                     break;
             }
-            LOG(DEBUG3) << "local_range: (events:"<< num_events_ <<", batch_size:"<< bitpack_buffer_shape_.batch_size <<", sample_size:"<<bitpack_buffer_shape_.bitpacks_per_batch<<"): (" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")";
             assert(local_range[0] * local_range[1] * local_range[2] <= max_work_group_size);
             return local_range;
         }

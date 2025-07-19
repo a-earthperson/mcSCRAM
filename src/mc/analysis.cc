@@ -97,8 +97,11 @@
 
 #include "direct_eval.h"
 #include "logger.h"
+#include "mc/stats/ci_utils.h"
 #include "probability_analysis.h"
-#include "queue/layer_manager.h"
+#include "mc/queue/layer_manager.h"
+#include "mc/scheduler/convergence_controller.h"
+#include <algorithm>
 
 namespace scram::core {
 
@@ -310,22 +313,21 @@ namespace scram::core {
      */
     double ProbabilityAnalyzer<DirectEval>::CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept {
         CLOCK(calc_time);
-        LOG(DEBUG4) << "Calculating probability using monte carlo sampling...";
-        
-        // Extract sampling configuration from analysis settings
-        const auto num_trials = this->settings().num_trials();
-        
-        // Get the PDAG for computation
-        auto pdag = this->graph();
-        
-        // Create and configure the SYCL-based layer manager
+        LOG(WARNING) << "Calculating probability using monte carlo sampling...";
+
         using bitpack_t_ = std::uint64_t;
-        mc::queue::layer_manager<bitpack_t_> manager(pdag, num_trials);
-        
-        // Perform Monte Carlo sampling and compute statistics
-        const auto tally = manager.tally(pdag->root()->index());
-        
-        LOG(DEBUG4) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
+
+        const auto &settings = this->settings();
+        const std::size_t trials = settings.num_trials();
+        auto *pdag = this->graph();
+
+        const auto event_id = pdag->root()->index();
+        mc::queue::layer_manager<bitpack_t_> manager(pdag, trials);
+        mc::queue::convergence_controller scheduler(manager, event_id, settings);
+
+        const auto tally = scheduler.run_to_convergence();
+
+        LOG(WARNING) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
         return tally.mean;
     }
 }// namespace scram::core

@@ -33,19 +33,26 @@
 
 namespace scram::mc::queue {
 template<typename bitpack_t_>
-struct scheduler {
+struct sample_shaper {
 
     std::size_t TOTAL_ITERATIONS = 0;
     event::sample_shape<std::size_t> SAMPLE_SHAPE{};
 
-    explicit scheduler()= default;
+    explicit sample_shaper()= default;
 
-    scheduler(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes) 
+    sample_shaper(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes)
         : requested_num_trials_(requested_num_trials), num_nodes_(num_nodes) {
 
         const sycl::device device = queue.get_device();
         max_device_bytes_ = device.get_info<sycl::info::device::max_mem_alloc_size>();
         max_device_bits_ = max_device_bytes_ * static_cast<std::size_t>(8);
+
+        const bool no_limits_on_iterations = !requested_num_trials_;
+
+        // still set a bound to compute the sample shape appropriately
+        if (no_limits_on_iterations) {
+            requested_num_trials_ = 64 * 1024 * 1024;
+        }
 
         // round number of sampled bits to nearest multiple of bits in bitpack_t_
         const std::size_t remainder = requested_num_trials_ % bits_in_bitpack_;
@@ -82,11 +89,9 @@ struct scheduler {
         event::sample_shape<std::size_t> sample_shape = compute_closest_sample_shape_for_bits(device,
                                                                                               per_iteration_target_bits,
                                                                                               target_bits_per_iteration_);
-
-        // Normalise to exactly two bit-packs per batch when the shape permits
-        if (sample_shape.bitpacks_per_batch > 2) {
-            sample_shape.batch_size *= sample_shape.bitpacks_per_batch / 2;
-            sample_shape.bitpacks_per_batch = 2;
+        if (sample_shape.bitpacks_per_batch) {
+            sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
+            sample_shape.batch_size = 1;
         }
 
         // Log working_set configuration
@@ -98,7 +103,7 @@ struct scheduler {
         // so, it will take these many iterations to collect the total samples
         num_iterations_ = static_cast<std::size_t>(std::ceil(total_bits_to_sample_ / static_cast<std::double_t>(bits_per_iteration_)));
 
-        TOTAL_ITERATIONS = num_iterations_;
+        TOTAL_ITERATIONS = no_limits_on_iterations ? 0 : num_iterations_;
         SAMPLE_SHAPE = sample_shape;
     }
 
@@ -119,7 +124,7 @@ struct scheduler {
      * std::cout << sched << std::endl;
      * @endcode
      */
-    friend std::ostream &operator<<(std::ostream &os, const scheduler &sched) {
+    friend std::ostream &operator<<(std::ostream &os, const sample_shaper &sched) {
         os << "requested_num_trials: " << sched.requested_num_trials_ << std::endl
            << "num_nodes: " << sched.num_nodes_ << std::endl
            << "------------------------------------------------" << std::endl

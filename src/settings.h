@@ -321,10 +321,25 @@ class Settings {
   /// @param[in] flag  True or false for turning on or off the analysis.
   ///
   /// @returns Reference to this object.
-  Settings& ccf_analysis(bool flag) {
-    ccf_analysis_ = flag;
-    return *this;
-  }
+  Settings& ccf_analysis(bool flag) { ccf_analysis_ = flag; return *this; }
+
+  /// @returns The desired confidence level for automatic CI tuning (0 disables).
+  double ci_confidence() const { return ci_confidence_; }
+
+  /// Sets the confidence level (two-sided) used when automatically choosing
+  /// the number of Monte-Carlo trials.  Accepts values in (0,1).
+  Settings& ci_confidence(double p) { ci_confidence_ = p; return *this; }
+
+  /// @returns The target half-width (margin of error) for the estimated mean.
+  double ci_margin_error() const { return ci_margin_error_; }
+
+  /// Sets the target margin of error ε for automatic sampling.  ε must be
+  /// positive and typically ≤ 0.5.
+  Settings& ci_margin_error(double eps) { ci_margin_error_ = eps; return *this; }
+
+  bool early_stop() const { return early_stop_; }
+
+  Settings& early_stop(const bool on) { early_stop_ = on; return *this; }
 
   bool preprocessor = false;  ///< Stop analysis after preprocessor.
   bool print = false;  ///< Print analysis results in a terminal friendly way.
@@ -340,15 +355,20 @@ class Settings {
   bool prime_implicants_ = false;                     ///< Calculation of prime implicants.
   bool skip_products_ = false;                        ///< Do not compute the products.
   int limit_order_ = 20;                              ///< Limit on the order of products.
-  int seed_ = 0;                                      ///< The seed for the pseudo-random number generator.
-  std::size_t num_trials_  = 1000;                             ///< The number of trials for Monte Carlo simulations.
-  std::size_t batch_size_  = 1;                               ///< Batch size for Monte Carlo simulations.
-  std::size_t sample_size_ = 1;                               ///< Sample size for Monte Carlo simulations.
+  int seed_ = 372;                                    ///< The seed for the pseudo-random number generator.
+  std::size_t num_trials_  = 0;                       ///< The number of trials for Monte Carlo simulations (default 2^26).
+  std::size_t batch_size_  = 0;                       ///< Batch size for Monte Carlo simulations.
+  std::size_t sample_size_ = 0;                       ///< Sample size for Monte Carlo simulations.
   int num_quantiles_ = 20;                            ///< The number of quantiles for distributions.
   int num_bins_ = 20;                                 ///< The number of bins for histograms.
   double mission_time_ = 8760;                        ///< System mission time.
   double time_step_ = 0;                              ///< The time step for probability analyses.
   double cut_off_ = 1e-8;                             ///< The cut-off probability for products.
+  
+  // --- NEW: adaptive Monte-Carlo CI tuning ---------------------------------
+  double ci_confidence_      = 0.95;  ///< two-sided confidence level (0.95 default)
+  double ci_margin_error_    = 0.001; ///< desired half-width ε (default 0.001)
+  bool   early_stop_         = true;  ///< stop as soon as convergence occurs
 };
 
 }  // namespace scram::core
