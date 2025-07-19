@@ -14,7 +14,7 @@ struct lr_result {
 // return the corresponding importance-sampling likelihood ratios.
 [[nodiscard]] inline lr_result
 safe_likelihood_ratios(std::double_t p, std::double_t q) {
-    constexpr std::double_t eps = 1e-12;
+    constexpr std::double_t eps = 1e-20;
 
     p = std::clamp(p, 0.0, 1.0);
     q = std::clamp(q, eps, 1.0 - eps);

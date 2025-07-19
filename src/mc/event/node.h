@@ -184,8 +184,13 @@ namespace scram::mc::event {
         /// @brief IS-weighted Confidence intervals: [lower_95, upper_95, lower_99, upper_99]
         sycl::double4 weighted_ci = {0., 0., 0., 0.};
 
-        /// @brief Total accumulated importance weights across all samples
+        /// @brief Total accumulated importance weights across all samples (Σ w)
         std::double_t total_weight = 0.;
+
+        /// @brief Sum of squared weights (Σ w²) – required for a consistent
+        ///        variance estimator and effective-sample-size calculation in
+        ///        self-normalised importance sampling.
+        std::double_t sum_weights_squared = 0.;
     };
 
     /**
@@ -499,14 +504,21 @@ namespace scram::mc::event {
             auto event_bias_q_raw = static_cast<std::double_t>(event_probability_and_bias.second);
 
             const auto [p_clamped, lr1, lr0] = detail::safe_likelihood_ratios(event_prob_p_raw, event_bias_q_raw);
-            const auto event_prob_p = p_clamped;
 
-            // Pre-compute Bernoulli threshold in the range [0, 2^32].
-            // We use 64-bit storage so that a probability of 1.0 maps to
-            // the *inclusive* upper bound 2^32, guaranteeing that
-            // `u < threshold` is always true.
+            // ------------------------------------------------------------------
+            //  Use the *bias* probability q (after clamping) for sampling.
+            //  This ensures the PRNG draws follow the proposal distribution
+            //  that the likelihood-ratio weights (lr1, lr0) are computed for.
+            // ------------------------------------------------------------------
+            constexpr std::double_t eps = 1e-12;
+            const std::double_t event_bias_q = std::clamp(event_bias_q_raw, eps, 1.0 - eps);
+
+            // Pre-compute Bernoulli threshold in the range [0, 2^32] from q.
+            // We use 64-bit storage so that a probability of 1.0 maps to the
+            // *inclusive* upper bound 2^32, guaranteeing that `u < threshold`
+            // is always true.
             constexpr auto two_to_32 = static_cast<std::double_t>(UINT64_C(1) << 32); // 4,294,967,296
-            const auto p_threshold   = static_cast<std::uint64_t>(event_prob_p * two_to_32);
+            const auto q_threshold   = static_cast<std::uint64_t>(event_bias_q * two_to_32);
 
             // Set the likelihood ratios with safe denominators.  After the clamps
             // above both denominators are guaranteed > 0.
@@ -517,7 +529,7 @@ namespace scram::mc::event {
             events[i].buffer                  = buffer_block + i * num_bitpacks;
             // set the basic-event-related values
             events[i].index                   = event_index;
-            events[i].probability_threshold   = p_threshold;
+            events[i].probability_threshold   = q_threshold;
             events[i].LIKELIHOOD_RATIO_BIT_1  = event_l1;
             events[i].LIKELIHOOD_RATIO_BIT_0  = event_l0;
             // a pointer to the offset for this gate's weights buffer
@@ -608,6 +620,7 @@ namespace scram::mc::event {
             tallies[i].weighted_std_err        = 0.0;
             tallies[i].weighted_ci             = {0.0, 0.0, 0.0, 0.0};
             tallies[i].total_weight            = 0.0;
+            tallies[i].sum_weights_squared     = 0.0;
         }
 
         tally_block<bitpack_t_> blk;

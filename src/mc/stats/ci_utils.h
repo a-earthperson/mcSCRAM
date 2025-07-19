@@ -169,14 +169,22 @@ inline void populate_point_estimates(tally_t_ &tally) {
     //  Importance-sampling (weighted) estimates – if weights present
     // -------------------------------------------------------------
     if (tally.total_weight > 0.0) {
-        const auto w_total = static_cast<std::double_t>(tally.total_weight);
-        const auto p_w     = tally.weighted_num_one_bits / w_total;
+        const auto w_total = static_cast<std::double_t>(tally.total_weight);      // Σ w
+        const auto w2_total= static_cast<std::double_t>(tally.sum_weights_squared); // Σ w²
+
+        const auto p_w     = tally.weighted_num_one_bits / w_total;               // self-normalised IS estimator
 
         tally.weighted_mean = p_w;
 
-        // Simple variance proxy using Bernoulli assumption with effective N = total_weight / max(lr)
-        // NOTE: For rigorous IS variance you’d need Σw_i² – we approximate with p_w(1-p_w)/w_total.
-        tally.weighted_std_err = std::sqrt(p_w * (1.0 - p_w) / w_total);
+        // ------------------------------------------------------------------
+        //  Variance of self-normalised IS estimator
+        //     Var(μ̂) ≈ p(1-p) / N_eff,   with   N_eff = (Σ w)² / Σ w²
+        //  (Kong, Liu & Wong 1994; Owen 2013).  We clamp Σ w² to avoid NaNs.
+        // ------------------------------------------------------------------
+        const double denom = std::max(w2_total, 1e-300);
+        const double n_eff = (w_total * w_total) / denom; // effective sample size
+
+        tally.weighted_std_err = std::sqrt(p_w * (1.0 - p_w) / n_eff);
 
         const double hw95_w = z_95 * tally.weighted_std_err;
         const double hw99_w = z_99 * tally.weighted_std_err;

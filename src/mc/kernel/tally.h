@@ -343,6 +343,7 @@ namespace scram::mc::kernel {
             std::size_t    local_unweighted_count = 0;
             std::double_t  local_weighted_success = 0.0;
             std::double_t  local_total_weight     = 0.0;
+            std::double_t  local_w2_sum           = 0.0;
 
             if (!weights_base) {
                 // Standard popcount path
@@ -351,7 +352,7 @@ namespace scram::mc::kernel {
                 local_total_weight     = static_cast<double>(NUM_BITS);
             } else {
                 const std::size_t base_offset = static_cast<std::size_t>(idx) * NUM_BITS;
-#pragma unroll
+                #pragma unroll
                 for (std::uint32_t bit = 0; bit < NUM_BITS; ++bit) {
                     const bool bit_set = (word >> bit) & bitpack_t_(1);
                     const double w = weights_base[base_offset + bit];
@@ -360,6 +361,7 @@ namespace scram::mc::kernel {
                         local_weighted_success += w;
                         ++local_unweighted_count; // still maintain raw count for diagnostics
                     }
+                    local_w2_sum += w * w;
                 }
             }
 
@@ -367,6 +369,7 @@ namespace scram::mc::kernel {
             const std::size_t group_popcount = sycl::reduce_over_group(item.get_group(), local_unweighted_count, sycl::plus<>());
             const std::double_t group_weighted_success = sycl::reduce_over_group(item.get_group(), local_weighted_success, sycl::plus<>());
             const std::double_t group_total_weight     = sycl::reduce_over_group(item.get_group(), local_total_weight, sycl::plus<>());
+            const std::double_t group_w2_sum           = sycl::reduce_over_group(item.get_group(), local_w2_sum, sycl::plus<>());
 
             if (item.get_local_linear_id() == 0) {
                 // Atomically add raw popcount
@@ -394,6 +397,14 @@ namespace scram::mc::kernel {
                         sycl::access::address_space::global_space>(
                         tallies_block_.data[tally_idx].total_weight);
                     atomic_wtot.fetch_add(group_total_weight);
+
+                    auto atomic_w2 = sycl::atomic_ref<
+                        double,
+                        sycl::memory_order::relaxed,
+                        sycl::memory_scope::device,
+                        sycl::access::address_space::global_space>(
+                        tallies_block_.data[tally_idx].sum_weights_squared);
+                    atomic_w2.fetch_add(group_w2_sum);
                 }
             }
 

@@ -224,7 +224,7 @@ namespace scram::mc::queue {
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
         std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
-        const std::double_t bias = 1.0) {
+        const std::double_t proposal_probability = 0.2) {
 
         if (variables_.empty()) {
             return nullptr;
@@ -243,7 +243,7 @@ namespace scram::mc::queue {
             const mef::BasicEvent* event = events.at(var_unique_index_in_pdag_index_map);
             const double p = event->expression().value();
 
-            std::pair<prob_t_, prob_t_> probability_and_bias = {static_cast<prob_t_>(p), static_cast<prob_t_>(bias)};
+            std::pair<prob_t_, prob_t_> probability_and_bias = {static_cast<prob_t_>(p), static_cast<prob_t_>(proposal_probability)};
             indexed_probabilities_and_biases.push_back({var_unique_index, probability_and_bias});
         }
 

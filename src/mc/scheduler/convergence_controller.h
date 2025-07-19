@@ -23,6 +23,7 @@
 #include "mc/queue/layer_manager.h"
 #include "mc/stats/ci_utils.h"
 #include <unistd.h>  // isatty
+#include <algorithm>
 #include <string>
 #include <sstream>
 
@@ -84,10 +85,27 @@ class convergence_controller {
 
         stats::populate_point_estimates(current_tally_);
 
-        const double half_width = stats::half_width(current_tally_, z_score_);
+        // ------------------------------------------------------------
+        //  Decide whether to use weighted or unweighted statistics.
+        //  Presence of a weight buffer implies importance sampling.
+        // ------------------------------------------------------------
+        const bool is_weighted = (current_tally_.lr_buffer != nullptr);
 
-        // for now, this is our convergence criteria
-        const bool is_normal = stats::normal_approx_ok(current_tally_);
+        double half_width;
+        bool   is_normal;
+        if (is_weighted) {
+            // Effective sample size N_eff = (Σ w)² / Σ w²
+            const double w_tot  = current_tally_.total_weight;
+            const double w2_tot = std::max(current_tally_.sum_weights_squared, 1e-300);
+            const double n_eff  = (w_tot * w_tot) / w2_tot;
+
+            half_width = z_score_ * current_tally_.weighted_std_err;
+            is_normal  = stats::clt_ok(static_cast<std::size_t>(n_eff), current_tally_.weighted_mean);
+        } else {
+            half_width = stats::half_width(current_tally_, z_score_);
+            is_normal  = stats::normal_approx_ok(current_tally_);
+        }
+
         const bool epsilon_bounded = half_width <= target_epsilon_;
         const bool converged_now = is_normal && epsilon_bounded;
 

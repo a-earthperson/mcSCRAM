@@ -199,6 +199,7 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
     to_tally.weighted_mean           = computed_tally->weighted_mean;
     to_tally.weighted_std_err        = computed_tally->weighted_std_err;
     to_tally.weighted_ci             = computed_tally->weighted_ci;
+    to_tally.sum_weights_squared     = computed_tally->sum_weights_squared;
     return std::move(to_tally);
 }
 

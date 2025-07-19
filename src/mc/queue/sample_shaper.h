@@ -51,7 +51,7 @@ struct sample_shaper {
 
         // still set a bound to compute the sample shape appropriately
         if (no_limits_on_iterations) {
-            requested_num_trials_ = 64 * 1024 * 32;
+            requested_num_trials_ = 64 * 1024 * 4;
         }
 
         // round number of sampled bits to nearest multiple of bits in bitpack_t_
