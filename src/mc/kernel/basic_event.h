@@ -38,9 +38,11 @@
 #pragma once
 
 #include "mc/event/node.h"
+#include "mc/prng/philox128.h"
 #include "mc/prng/state128.h"
 #include "mc/prng/xorshift128.h"
-#include "mc/prng/philox128.h"
+#include "prng/sfc64.h"
+#include "prng/wyrand.h"
 
 #include <sycl/sycl.hpp>
 

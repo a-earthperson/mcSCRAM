@@ -16,34 +16,21 @@ namespace scram::mc::prng::xorshift {
 // variant but overload it for a different `state` type so existing call
 // sites can switch PRNGs simply by changing the seed struct they pass in.
 // ---------------------------------------------------------------------
-[[gnu::always_inline]] static inline uint32_t next(state128 &s) {
-    /* Correct Marsaglia xorshift128 (32-bit output).
-     * Algorithm reference: Marsaglia, "Xorshift RNGs" (2003).
-     * State transition:
-     *   t  = x3
-     *   t ^= t << 11;
-     *   t ^= t >> 8;
-     *   x3 = x2; x2 = x1; x1 = x0;
-     *   x0 ^= x0 >> 19;
-     *   x0 ^= t;
-     * Output is the new x0.
-     */
-
-    uint32_t t   = s.x[3];       // use highest word for scrambling (was x[0] – bug)
+[[gnu::always_inline]]
+static inline uint32_t next(state128 &s)
+{
+    uint32_t t = s.x[0];
     t ^= t << 11;
     t ^= t >> 8;
 
-    const uint32_t s0 = s.x[0];  // preserve original x0 for later use
+    s.x[0] = s.x[1];
+    s.x[1] = s.x[2];
+    s.x[2] = s.x[3];
 
-    /* Rotate the register contents downward */
-    s.x[3] = s.x[2];
-    s.x[2] = s.x[1];
-    s.x[1] = s0;
+    s.x[3] ^= s.x[3] >> 19;
+    s.x[3] ^= t;
 
-    /* Final scrambling step */
-    s.x[0] = s0 ^ (s0 >> 19) ^ t;
-
-    return s.x[0];
+    return s.x[3];                 // return the new w-word
 }
 
 [[gnu::always_inline]] static void generate(const state128 *seeds, state128 *results, const uint8_t generation) {
@@ -59,7 +46,7 @@ namespace scram::mc::prng::xorshift {
      * correlated outputs.  We run one warm-up step to fold *all* four
      * seed words into the state before we extract random words.
      */
-    prng::xorshift::next(local); // discard output – purpose is scrambling
+    //prng::xorshift::next(local); // discard output – purpose is scrambling
 
     /* Produce four decorrelated 32-bit outputs. */
     results->x[0] = prng::xorshift::next(local);
