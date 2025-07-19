@@ -149,7 +149,7 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::build_kernels_for_layer(
     gather_layer_nodes(layer_nodes, variables, gates_by_type);
 
     // Step (2): Build a single kernel for all variables in this layer (if any)
-    auto be_kernel = build_kernel_for_variables<index_t_, prob_t_, bitpack_t_, size_t_>(
+    auto be_kernel = build_kernel_for_weighted_variables<index_t_, prob_t_, bitpack_t_, size_t_>(
         variables, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_);
     // We could store or log “be_kernel” if we want direct reference, or just rely
     // on the global queueables_ list.

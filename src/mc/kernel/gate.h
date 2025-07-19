@@ -320,8 +320,21 @@ namespace scram::mc::kernel {
             // ---------------------------------------------------------------------
             // 2) Do the base operation, looping over one word from each input
             // ---------------------------------------------------------------------
+            constexpr std::uint32_t NUM_BITS = sizeof(bitpack_t_) * 8;
+            const size_t_ base_offset = index * NUM_BITS;
+
+            sycl::marray<double, NUM_BITS> weight_prod(1.0);
+
             for (size_t_ i = 0; i < negations_offset; ++i) {
                 const bitpack_t_ val = g.inputs[i][index];
+
+                const double *w_in_base = g.input_lr_buffers[i];
+                const double *w_in = w_in_base + base_offset;
+                #pragma unroll
+                for (std::uint32_t bit = 0; bit < NUM_BITS; ++bit) {
+                    weight_prod[bit] *= w_in[bit];
+                }
+
                 if constexpr (OpType == core::Connective::kOr || OpType == core::Connective::kNor) {
                     result |= val;
                 } else if constexpr (OpType == core::Connective::kAnd || OpType == core::Connective::kNand) {
@@ -336,6 +349,14 @@ namespace scram::mc::kernel {
 
             for (size_t_ i = negations_offset; i < num_inputs; ++i) {
                 const bitpack_t_ val = ~(g.inputs[i][index]);
+
+                const double *w_in_base = g.input_lr_buffers[i];
+                const double *w_in = w_in_base + base_offset;
+                #pragma unroll
+                for (std::uint32_t bit = 0; bit < NUM_BITS; ++bit) {
+                    weight_prod[bit] *= w_in[bit];
+                }
+
                 if constexpr (OpType == core::Connective::kOr || OpType == core::Connective::kNor) {
                     result |= val;
                 } else if constexpr (OpType == core::Connective::kAnd || OpType == core::Connective::kNand) {
@@ -357,6 +378,15 @@ namespace scram::mc::kernel {
 
             // 4) Write final result into the gate's output buffer
             g.buffer[index] = result;
+
+            // ------------------------------------------------------------------
+            // 5) Write accumulated importance-sampling weights to output vector
+            // ------------------------------------------------------------------
+            double *w_out = g.lr_buffer + base_offset;
+            #pragma unroll
+            for (std::uint32_t bit = 0; bit < NUM_BITS; ++bit) {
+                w_out[bit] = weight_prod[bit];
+            }
         }
     };
 
@@ -536,17 +566,30 @@ namespace scram::mc::kernel {
             // Compute the linear index into the buffer
             const std::uint32_t index = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_idx;
 
+            constexpr std::uint32_t NUM_BITS = sizeof(bitpack_t_) * 8;
+            const std::size_t base_offset = static_cast<std::size_t>(index) * NUM_BITS;
+
+            sycl::marray<double, NUM_BITS> weight_prod(1.0);
+
+            sycl::marray<bitpack_t_, NUM_BITS> accumulated_counts(0);
+
             // Get gate
             const auto &g = gates_block_[gate_idx];
             const auto num_inputs = g.num_inputs;
             const auto negations_offset = g.negated_inputs_offset;
 
-            static constexpr std::size_t NUM_BITS = sizeof(bitpack_t_) * 8;
-            sycl::marray<bitpack_t_, NUM_BITS> accumulated_counts(0);
-
             // for each input, accumulate the counts for each bit-position
             for (auto i = 0; i < negations_offset; ++i) {
                 const bitpack_t_ val = g.inputs[i][index];
+
+                const double *w_in_base = g.input_lr_buffers[i];
+                if (w_in_base) {
+                    const double *w_in = w_in_base + base_offset;
+                    #pragma unroll
+                    for (std::uint32_t bit = 0; bit < NUM_BITS; ++bit) {
+                        weight_prod[bit] *= w_in[bit];
+                    }
+                }
                 #pragma unroll
                 for (auto idx = 0; idx < NUM_BITS; ++idx) {
                     // Use the bit index (idx) – not the input index (i) – when checking
@@ -558,6 +601,15 @@ namespace scram::mc::kernel {
 
             for (auto i = negations_offset; i < num_inputs; ++i) {
                 const bitpack_t_ val = ~(g.inputs[i][index]);
+
+                const double *w_in_base = g.input_lr_buffers[i];
+                if (w_in_base) {
+                    const double *w_in = w_in_base + base_offset;
+                    #pragma unroll
+                    for (std::uint32_t bit = 0; bit < NUM_BITS; ++bit) {
+                        weight_prod[bit] *= w_in[bit];
+                    }
+                }
                 #pragma unroll
                 for (auto idx = 0; idx < NUM_BITS; ++idx) {
                     accumulated_counts[idx] += ((val >> idx) & bitpack_t_(1));
@@ -581,6 +633,13 @@ namespace scram::mc::kernel {
             }
 
             g.buffer[index] = result;
+
+            // write weight vector
+            double *w_out = g.lr_buffer + base_offset;
+#pragma unroll
+            for (std::uint32_t bit = 0; bit < NUM_BITS; ++bit) {
+                w_out[bit] = weight_prod[bit];
+            }
         }
     };
 }

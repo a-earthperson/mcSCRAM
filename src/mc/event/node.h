@@ -31,12 +31,13 @@
 
 #pragma once
 
+#include "weights.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <sycl/sycl.hpp>
 #include <vector>
-#include <type_traits>
 
 using cache_line_bytes = sycl::info::device::global_mem_cache_line_size;
 
@@ -250,6 +251,20 @@ namespace scram::mc::event {
         
         /// @brief Offset where negated inputs begin (inputs[0..offset-1] are positive, inputs[offset..num_inputs-1] are negated)
         size_t_ negated_inputs_offset;
+        /**
+         * @brief Parallel array to \c inputs holding the likelihood-ratio (IS
+         * weight) buffer pointer for each *input* node.  The array length is
+         * exactly <code>num_inputs</code> and the order matches that of
+         * <code>inputs</code>.
+         *
+         * Gate kernels multiply the NUM_BITS weights of every input element-wise
+         * and store the product into this gate’s own <code>lr_buffer</code>
+         * (inherited from <code>node</code>).
+         *
+         * The pointer lives in USM shared memory because the kernels only need to
+         * dereference it on the device side.
+         */
+        std::double_t **input_lr_buffers = nullptr;
     };
 
     /**
@@ -479,8 +494,12 @@ namespace scram::mc::event {
             // fetch the appropriate variables.
             const index_t_ event_index = indexed_probabilities_and_biases[i].first;
             const std::pair<prob_t_, prob_t_> event_probability_and_bias = indexed_probabilities_and_biases[i].second;
-            const auto event_prob_p = static_cast<std::double_t>(event_probability_and_bias.first);
-            const auto event_bias_q = static_cast<std::double_t>(event_probability_and_bias.second);
+
+            auto event_prob_p_raw = static_cast<std::double_t>(event_probability_and_bias.first);
+            auto event_bias_q_raw = static_cast<std::double_t>(event_probability_and_bias.second);
+
+            const auto [p_clamped, lr1, lr0] = detail::safe_likelihood_ratios(event_prob_p_raw, event_bias_q_raw);
+            const auto event_prob_p = p_clamped;
 
             // Pre-compute Bernoulli threshold in the range [0, 2^32].
             // We use 64-bit storage so that a probability of 1.0 maps to
@@ -489,18 +508,18 @@ namespace scram::mc::event {
             constexpr auto two_to_32 = static_cast<std::double_t>(UINT64_C(1) << 32); // 4,294,967,296
             const auto p_threshold   = static_cast<std::uint64_t>(event_prob_p * two_to_32);
 
-            // set the likelihoods based on the probability and bias
-            // todo:: we need better and safer logic here, including clamping.
-            const std::double_t event_l1 = event_prob_p / event_bias_q;
-            const std::double_t event_l0 = (1.0 - event_prob_p) / (1.0 - event_bias_q);
+            // Set the likelihood ratios with safe denominators.  After the clamps
+            // above both denominators are guaranteed > 0.
+            const std::double_t event_l1 = lr1;
+            const std::double_t event_l0 = lr0;
 
             // set the node-related values
             events[i].buffer                  = buffer_block + i * num_bitpacks;
             // set the basic-event-related values
             events[i].index                   = event_index;
             events[i].probability_threshold   = p_threshold;
-            events[i].LIKELIHOOD_RATIO_BIT_1 = event_l1;
-            events[i].LIKELIHOOD_RATIO_BIT_0 = event_l0;
+            events[i].LIKELIHOOD_RATIO_BIT_1  = event_l1;
+            events[i].LIKELIHOOD_RATIO_BIT_0  = event_l0;
             // a pointer to the offset for this gate's weights buffer
             events[i].lr_buffer = weights_block + i * num_bitpacks * bits_per_pack;
         }
@@ -638,6 +657,15 @@ namespace scram::mc::event {
         std::size_t   total_inputs      = 0;        ///< length of all_inputs
 
         std::size_t   bitpacks_per_gate = 0;        ///< stride between successive gate buffers
+
+        /* contiguous device allocation that stores every gate’s computed weight
+         * vector (importance-sampling likelihood ratio).                        */
+        std::double_t *lr_buffers = nullptr;
+
+        /* USM-shared array that stores *all* input weight-buffer pointers for
+         * every gate in this block.  Each gate’s <code>input_lr_buffers</code>
+         * member is a slice into this big array.                                */
+        std::double_t **all_input_lr_buffers = nullptr;
     };
 
     /**
@@ -654,31 +682,37 @@ namespace scram::mc::event {
     gate_block<bitpack_t_, size_t_>
     create_gate_block(const sycl::queue                                                      &queue,
                       const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>>       &inputs_per_gate,
-                      const std::vector<std::double_t *>                                     &weight_ptrs_per_gate,
+                      const std::vector<std::vector<std::double_t *>>                        &input_lr_ptrs_per_gate,
                       const std::size_t                                                      num_bitpacks) {
         const std::size_t num_gates = inputs_per_gate.size();
 
-        assert(weight_ptrs_per_gate.size() == num_gates && "weight_ptrs_per_gate size mismatch");
+        assert(input_lr_ptrs_per_gate.size() == num_gates && "input_lr_ptrs_per_gate size mismatch");
 
         using gate_t = gate<bitpack_t_, size_t_>;
 
-        /* First pass: count total unique pointer slots needed */
+        /* First pass: count total unique pointer slots needed (for inputs *and* their LR buffers) */
         std::size_t total_input_ptrs = 0;
         for (const auto &g : inputs_per_gate) {
             total_input_ptrs += g.first.size();
         }
+        const std::size_t total_lr_ptrs = total_input_ptrs;
 
         const auto align = queue.get_device().get_info<cache_line_bytes>();
 
         // 1) Allocate primary USM-shared structures.
         gate_t      *gates        = sycl::aligned_alloc_shared<gate_t>(align, num_gates, queue);
         bitpack_t_ **all_inputs   = sycl::aligned_alloc_shared<bitpack_t_ *>(align, total_input_ptrs, queue);
+        std::double_t **all_input_lr_buffers = sycl::aligned_alloc_shared<std::double_t *>(align, total_lr_ptrs, queue);
 
         // 2) Allocate single device block for all gate outputs.
         bitpack_t_  *buffer_block = sycl::aligned_alloc_device<bitpack_t_>(align, num_gates * num_bitpacks, queue);
 
+        constexpr std::size_t bits_per_pack = sizeof(bitpack_t_) * 8;
+        std::double_t *lr_buffer_block = sycl::aligned_alloc_device<std::double_t>(align, num_gates * num_bitpacks * bits_per_pack, queue);
+
         // 3) Populate gate structs and fill the all_inputs array.
         std::size_t cursor = 0;
+        std::size_t cursor_lr = 0;
         for (std::size_t i = 0; i < num_gates; ++i) {
             const auto &gate_inputs   = inputs_per_gate[i].first;
             const std::size_t n_in    = gate_inputs.size();
@@ -686,16 +720,26 @@ namespace scram::mc::event {
 
             assert(n_neg <= n_in);
 
+            // Sanity check: ensure LR pointer vector matches size
+            assert(input_lr_ptrs_per_gate[i].size() == n_in && "Mismatch in lr pointer count vs inputs");
+
             // Slice in all_inputs where this gate’s pointers will live.
             gates[i].inputs                = all_inputs + cursor;
             gates[i].num_inputs            = static_cast<size_t_>(n_in);
             gates[i].negated_inputs_offset = static_cast<size_t_>(n_in - n_neg);
             gates[i].buffer                = buffer_block + i * num_bitpacks;
-            gates[i].lr_buffer             = weight_ptrs_per_gate[i];
+            gates[i].lr_buffer             = lr_buffer_block + i * num_bitpacks * bits_per_pack;
+
+            // Slice for input lr buffers
+            gates[i].input_lr_buffers      = all_input_lr_buffers + cursor_lr;
 
             // Copy actual buffer pointers.
             std::copy(gate_inputs.begin(), gate_inputs.end(), all_inputs + cursor);
+
+            // Copy lr buffer pointers for each input
+            std::copy(input_lr_ptrs_per_gate[i].begin(), input_lr_ptrs_per_gate[i].end(), all_input_lr_buffers + cursor_lr);
             cursor += n_in;
+            cursor_lr += n_in;
         }
 
         // 4) Wrap and return.
@@ -706,6 +750,8 @@ namespace scram::mc::event {
         blk.all_inputs         = all_inputs;
         blk.total_inputs       = total_input_ptrs;
         blk.bitpacks_per_gate  = num_bitpacks;
+        blk.lr_buffers         = lr_buffer_block;
+        blk.all_input_lr_buffers = all_input_lr_buffers;
         return blk;
     }
 
@@ -733,6 +779,15 @@ namespace scram::mc::event {
         if (blk.data) {
             sycl::free(blk.data, queue);
             blk.data = nullptr;
+        }
+
+        if (blk.all_input_lr_buffers) {
+            sycl::free(blk.all_input_lr_buffers, queue);
+            blk.all_input_lr_buffers = nullptr;
+        }
+        if (blk.lr_buffers) {
+            sycl::free(blk.lr_buffers, queue);
+            blk.lr_buffers = nullptr;
         }
 
         blk.count = 0;
@@ -765,6 +820,9 @@ namespace scram::mc::event {
         std::size_t   total_inputs      = 0;        ///< length of all_inputs
 
         std::size_t   bitpacks_per_gate = 0;        ///< stride between successive gate buffers
+
+        std::double_t *lr_buffers = nullptr;
+        std::double_t **all_input_lr_buffers = nullptr;
     };
 
     /**
@@ -781,12 +839,12 @@ namespace scram::mc::event {
     atleast_gate_block<bitpack_t_, size_t_>
     create_atleast_gate_block(const sycl::queue                                                      &queue,
                               const std::vector<std::pair<std::vector<bitpack_t_ *>, size_t_>>       &inputs_per_gate,
-                              const std::vector<std::double_t *>                                     &weight_ptrs_per_gate,
+                              const std::vector<std::vector<std::double_t *>>                       &input_lr_ptrs_per_gate,
                               const std::vector<size_t_>                                             &atleast_per_gate,
                               const std::size_t                                                      num_bitpacks) {
         const std::size_t num_gates = inputs_per_gate.size();
 
-        assert(weight_ptrs_per_gate.size() == num_gates && "weight_ptrs_per_gate size mismatch");
+        assert(input_lr_ptrs_per_gate.size() == num_gates && "input_lr_ptrs_per_gate size mismatch");
 
         using gate_t = atleast_gate<bitpack_t_, size_t_>;
 
@@ -795,18 +853,24 @@ namespace scram::mc::event {
         for (const auto &g : inputs_per_gate) {
             total_input_ptrs += g.first.size();
         }
+        std::size_t total_lr_ptrs = total_input_ptrs;
 
         const auto align = queue.get_device().get_info<cache_line_bytes>();
 
         // 1) Allocate primary USM-shared structures.
         gate_t      *gates        = sycl::aligned_alloc_shared<gate_t>(align, num_gates, queue);
         bitpack_t_ **all_inputs   = sycl::aligned_alloc_shared<bitpack_t_ *>(align, total_input_ptrs, queue);
+        std::double_t **all_input_lr_buffers = sycl::aligned_alloc_shared<std::double_t *>(align, total_lr_ptrs, queue);
 
         // 2) Allocate single device block for all gate outputs.
         bitpack_t_  *buffer_block = sycl::aligned_alloc_device<bitpack_t_>(align, num_gates * num_bitpacks, queue);
 
+        constexpr std::size_t bits_per_pack = sizeof(bitpack_t_) * 8;
+        std::double_t *lr_buffer_block = sycl::aligned_alloc_device<std::double_t>(align, num_gates * num_bitpacks * bits_per_pack, queue);
+
         // 3) Populate gate structs and fill the all_inputs array.
         std::size_t cursor = 0;
+        std::size_t cursor_lr = 0;
         for (std::size_t i = 0; i < num_gates; ++i) {
             const auto &gate_inputs   = inputs_per_gate[i].first;
             const std::size_t n_in    = gate_inputs.size();
@@ -814,17 +878,22 @@ namespace scram::mc::event {
 
             assert(n_neg <= n_in);
 
+            assert(input_lr_ptrs_per_gate[i].size() == n_in && "Mismatch in lr pointer count vs inputs");
+
             // Slice in all_inputs where this gate’s pointers will live.
             gates[i].inputs                = all_inputs + cursor;
             gates[i].num_inputs            = static_cast<size_t_>(n_in);
             gates[i].negated_inputs_offset = static_cast<size_t_>(n_in - n_neg);
             gates[i].buffer                = buffer_block + i * num_bitpacks;
             gates[i].at_least              = static_cast<uint8_t>(atleast_per_gate[i]);
-            gates[i].lr_buffer             = weight_ptrs_per_gate[i];
+            gates[i].lr_buffer             = lr_buffer_block + i * num_bitpacks * bits_per_pack;
+            gates[i].input_lr_buffers      = all_input_lr_buffers + cursor_lr;
 
             // Copy actual buffer pointers.
             std::copy(gate_inputs.begin(), gate_inputs.end(), all_inputs + cursor);
+            std::copy(input_lr_ptrs_per_gate[i].begin(), input_lr_ptrs_per_gate[i].end(), all_input_lr_buffers + cursor_lr);
             cursor += n_in;
+            cursor_lr += n_in;
         }
 
         // 4) Wrap and return.
@@ -835,6 +904,8 @@ namespace scram::mc::event {
         blk.all_inputs         = all_inputs;
         blk.total_inputs       = total_input_ptrs;
         blk.bitpacks_per_gate  = num_bitpacks;
+        blk.lr_buffers         = lr_buffer_block;
+        blk.all_input_lr_buffers = all_input_lr_buffers;
         return blk;
     }
 
@@ -862,6 +933,15 @@ namespace scram::mc::event {
         if (blk.data) {
             sycl::free(blk.data, queue);
             blk.data = nullptr;
+        }
+
+        if (blk.all_input_lr_buffers) {
+            sycl::free(blk.all_input_lr_buffers, queue);
+            blk.all_input_lr_buffers = nullptr;
+        }
+        if (blk.lr_buffers) {
+            sycl::free(blk.lr_buffers, queue);
+            blk.lr_buffers = nullptr;
         }
 
         blk.count = 0;

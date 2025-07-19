@@ -73,6 +73,7 @@
 #include "pdag.h"
 
 #include <sycl/sycl.hpp>
+#include <algorithm>
 
 namespace scram::mc::queue {
 
@@ -389,8 +390,9 @@ namespace scram::mc::queue {
         indices.reserve(gates_.size());
         inputs_by_gate_with_negated_offset.reserve(gates_.size());
         atleast_args_by_gate.reserve(gates_.size());
-        std::vector<std::double_t *> lr_ptrs_by_gate; // parallel vector with weight-buffer pointers
-        lr_ptrs_by_gate.reserve(gates_.size());
+
+        std::vector<std::vector<std::double_t *>> lr_inputs_by_gate;
+        lr_inputs_by_gate.reserve(gates_.size());
 
         // 1) For each gate, gather child buffers (from both Variables and child Gates)
         for (const auto& gate_event : gates_)
@@ -398,10 +400,15 @@ namespace scram::mc::queue {
             const auto gate_index = gate_event->index();
             indices.push_back(gate_index);
 
-            std::vector<bitpack_t_*> positive_gate_inputs;
-            std::vector<bitpack_t_*> negative_gate_inputs;
+            std::vector<bitpack_t_*> positive_gate_inputs;  // positive input buffer pointers
+            std::vector<bitpack_t_*> negative_gate_inputs;  // negative input buffer pointers
+            std::vector<std::double_t*> positive_gate_input_likelihood_ratios; // likelihood ratio buffer pointers for positive inputs.
+            std::vector<std::double_t*> negative_gate_input_likelihood_ratios; // likelihood ratio buffer pointers for negative inputs.
+
             positive_gate_inputs.reserve(gate_event->args().size());
             negative_gate_inputs.reserve(gate_event->args().size());
+            positive_gate_input_likelihood_ratios.reserve(gate_event->args().size());
+            negative_gate_input_likelihood_ratios.reserve(gate_event->args().size());
 
             // non-zero only for atleast gates
             atleast_args_by_gate.push_back(gate_event->min_number());
@@ -414,13 +421,14 @@ namespace scram::mc::queue {
                     std::exit(EXIT_FAILURE);
                 }
                 layer_dependencies.insert(queueables_by_index_[arg_index]);
-                const auto* basic_ev_ptr = allocated_basic_events_by_index_.at(arg_index);
-
+                const event::basic_event<prob_t_, bitpack_t_>* allocated_node = allocated_basic_events_by_index_.at(arg_index);
                 // this is a negation of the event, store it in the negations vector
                 if (arg_pair.first < 0) {
-                    negative_gate_inputs.push_back(basic_ev_ptr->buffer);
+                    negative_gate_inputs.push_back(allocated_node->buffer);
+                    negative_gate_input_likelihood_ratios.push_back(allocated_node->lr_buffer);
                 } else {
-                    positive_gate_inputs.push_back(basic_ev_ptr->buffer);
+                    positive_gate_inputs.push_back(allocated_node->buffer);
+                    positive_gate_input_likelihood_ratios.push_back(allocated_node->lr_buffer);
                 }
             }
 
@@ -433,48 +441,26 @@ namespace scram::mc::queue {
                     std::exit(EXIT_FAILURE);
                 }
                 layer_dependencies.insert(queueables_by_index_[arg_index]);
-                const auto* child_gate_ptr = allocated_gates_by_index_.at(arg_index);
-
+                const event::gate<bitpack_t_, size_t_>* allocated_node = allocated_gates_by_index_.at(arg_index);
                 // this is a negation of the event, store it in the negations vector
                 if (arg_pair.first < 0) {
-                    negative_gate_inputs.push_back(child_gate_ptr->buffer);
+                    negative_gate_inputs.push_back(allocated_node->buffer);
+                    negative_gate_input_likelihood_ratios.push_back(allocated_node->lr_buffer);
                 } else {
-                    positive_gate_inputs.push_back(child_gate_ptr->buffer);
-                }
-            }
-
-            // Determine common lr_buffer pointer (take from first input encountered)
-            std::double_t *lr_ptr_this_gate = nullptr;
-
-            // inspect variable inputs again to extract lr pointer
-            for (const auto &arg_pair : gate_event->args<core::Variable>()) {
-                const auto arg_index = arg_pair.second->index();
-                auto *be_ptr = allocated_basic_events_by_index_.at(arg_index);
-                if (!lr_ptr_this_gate) {
-                    lr_ptr_this_gate = be_ptr->lr_buffer;
-                } else {
-                    assert(lr_ptr_this_gate == be_ptr->lr_buffer && "Mismatched weight buffer among gate inputs (Variable)");
-                }
-            }
-
-            // inspect gate inputs
-            for (const auto &arg_pair : gate_event->args<core::Gate>()) {
-                const auto arg_index = arg_pair.second->index();
-                auto *child_gate_ptr = allocated_gates_by_index_.at(arg_index);
-                if (!lr_ptr_this_gate) {
-                    lr_ptr_this_gate = child_gate_ptr->lr_buffer;
-                } else {
-                    assert(lr_ptr_this_gate == child_gate_ptr->lr_buffer && "Mismatched weight buffer among gate inputs (Gate)");
+                    positive_gate_inputs.push_back(allocated_node->buffer);
+                    positive_gate_input_likelihood_ratios.push_back(allocated_node->lr_buffer);
                 }
             }
 
             // merge pos/neg input vectors: positives first
             const auto num_negated_events = negative_gate_inputs.size();
             positive_gate_inputs.insert(positive_gate_inputs.end(), negative_gate_inputs.begin(), negative_gate_inputs.end());
-
             std::pair<std::vector<bitpack_t_*>, size_t_> gate_inputs(positive_gate_inputs, num_negated_events);
             inputs_by_gate_with_negated_offset.push_back(gate_inputs);
-            lr_ptrs_by_gate.push_back(lr_ptr_this_gate);
+
+            // merge pos/neg input lr buffers vectors: positives first
+            positive_gate_input_likelihood_ratios.insert(positive_gate_input_likelihood_ratios.end(), negative_gate_input_likelihood_ratios.begin(), negative_gate_input_likelihood_ratios.end());
+            lr_inputs_by_gate.push_back(positive_gate_input_likelihood_ratios);
         }
 
         // 2) Create a contiguous array for these gates
@@ -486,7 +472,7 @@ namespace scram::mc::queue {
         std::shared_ptr<queueable_base> queueable_partition;
 
         if constexpr (gate_type_ == core::Connective::kAtleast) {
-            auto gate_blk = event::create_atleast_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, lr_ptrs_by_gate, atleast_args_by_gate, sample_shape_.num_bitpacks());
+            auto gate_blk = event::create_atleast_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, lr_inputs_by_gate, atleast_args_by_gate, sample_shape_.num_bitpacks());
             kernel_type typed_kernel(gate_blk, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
             queueable<kernel_type, 3> partition(queue_, typed_kernel, nd_range, layer_dependencies);
@@ -499,7 +485,7 @@ namespace scram::mc::queue {
                 queueables_by_index_[indices[i]] = queueable_partition;
             }
         } else {
-            auto gate_blk = event::create_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, lr_ptrs_by_gate, sample_shape_.num_bitpacks());
+            auto gate_blk = event::create_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, lr_inputs_by_gate, sample_shape_.num_bitpacks());
 
             kernel_type typed_kernel(gate_blk, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
