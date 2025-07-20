@@ -74,7 +74,8 @@ inline po::options_description ConstructOptions() {
             ("batch-size", OPT_VALUE(std::size_t),"Batch size (work-group Y dimension)")
             ("sample-size", OPT_VALUE(std::size_t),"Sample size (work-group Z dimension)")
             ("ci-confidence", OPT_VALUE(double),"Two-sided confidence level used for error estimation")
-            ("ci-epsilon", OPT_VALUE(double),"Target margin of error (half-width) for error estimation and early stop");
+            ("ci-epsilon", OPT_VALUE(double),"Target margin of error (half-width) for error estimation and early stop")
+            ("true-prob", OPT_VALUE(double),"Ground truth probability for diagnostics");
 
 
         // ------------------------------------------------------------------

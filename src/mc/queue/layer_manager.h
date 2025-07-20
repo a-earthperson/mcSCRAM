@@ -236,24 +236,7 @@ class layer_manager {
      */
     void map_nodes_by_layer(const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer);
 
-    event::tally<bitpack_t_> fetch_tally_for_event_with_index(const index_t_ evt_idx);
-    /**
-     * @brief Fetches and logs tally results from all allocated tally events
-     * 
-     * @details Submits all queued computations, waits for completion, and retrieves
-     * tally results including mean, standard error, and confidence intervals.
-     * Results are logged at DEBUG1 level for analysis.
-     * 
-     * @note This method blocks until all computations complete
-     * @note Results are automatically logged with detailed statistics
-     * 
-     * @example
-     * @code
-     * fetch_all_tallies();
-     * // Check logs for: "tally[index] :: [std_err] :: [p05, mean, p95]"
-     * @endcode
-     */
-    void fetch_all_tallies(double eps, double confidence);
+    event::tally<bitpack_t_> fetch_tally_for_event_with_index(index_t_ evt_idx);
 
   public:
     /**

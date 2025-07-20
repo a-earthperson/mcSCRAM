@@ -86,6 +86,7 @@ namespace ScramCLI {
 
         SET("ci-confidence", double, ci_confidence);
         SET("ci-epsilon", double, ci_margin_error);
+        SET("true-prob", double, true_prob);
 
         if (vm.contains("num-trials")) {
             settings->early_stop(vm.contains("early-stop"));// if user passed --early-stop along with --num-trials, intent is clear

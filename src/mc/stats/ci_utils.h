@@ -8,15 +8,27 @@
 
 namespace scram::mc::stats {
 
+static constexpr std::double_t DELTA_EPSILON = 1.0e-20;
+
+struct ci {
+    std::double_t half_width_epsilon;
+    std::double_t two_sided_confidence_level;
+    std::double_t normal_quantile_two_sided;
+};
+
 /**
- * Compute the two-sided Z-score that corresponds to a required confidence
- * level.  E.g. confidence = 0.95 → 1.95996, 0.99 → 2.57583.
- * The implementation uses the inverse complementary error function which is
- * available in C++17 ( <cmath> ).
+ * Two-sided normal quantile: returns \(z\) such that
+ *     P(|Z| ≤ z) = confidence               (Z ~ N(0,1)).
+ * In other words the function computes Φ⁻¹(1−α/2) where
+ *     α = 1 − confidence.
+ *
+ * Implementation  =  Acklam’s rational approximation (2003)
+ * which reproduces the inverse CDF to < 5·10⁻¹⁶ over (0,1).
+ * See also A&S 26.2.23.
  */
-[[nodiscard]] inline double z_score(const double confidence) {
+[[nodiscard]] inline double normal_quantile_two_sided(const double confidence) {
     // Clamp to a sensible open interval to avoid infinities / NaNs.
-    const double p = std::clamp(confidence, 1e-12, 1.0 - 1e-12);
+    const double p = std::clamp(confidence, DELTA_EPSILON, 1.0 - DELTA_EPSILON);
     // Two-sided: need quantile(1 − α/2) where α = 1-confidence
     const double alpha = 1.0 - p;
     const double q = 1.0 - alpha / 2.0;   // central CDF point
@@ -78,6 +90,12 @@ namespace scram::mc::stats {
     return x;
 }
 
+// Backwards-compatibility wrapper (to be removed).
+[[deprecated("Use normal_quantile_two_sided")]]
+[[nodiscard]] inline double z_score(const double confidence) {
+    return normal_quantile_two_sided(confidence);
+}
+
 /**
  * Sample-size formula for a Bernoulli proportion.
  *   N ≥ z² · p(1-p) / ε²
@@ -86,7 +104,7 @@ namespace scram::mc::stats {
 [[nodiscard]] inline std::size_t required_trials(const double p,
                                                 const double eps,
                                                 const double confidence) {
-    const double z  = z_score(confidence);
+    const double z  = normal_quantile_two_sided(confidence);
     const double pq = p * (1.0 - p);
     return static_cast<std::size_t>(std::ceil((z * z * pq) / (eps * eps)));
 }
