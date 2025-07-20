@@ -54,6 +54,9 @@ add_sycl_to_target(TARGET mc SOURCES ${MC_SRC})
 
 target_compile_options(mc PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
 
+# Enforce zero-as-null-pointer warning across all build types
+#target_compile_options(mc PRIVATE -Wzero-as-null-pointer-constant)
+
 # Inherit the include directories defined at higher levels (src/ and project root).
 # Additional includes specific to this sub-module can be added here if needed.
 

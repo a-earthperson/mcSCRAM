@@ -251,6 +251,17 @@ list(APPEND LIBS
 ########################## End of find libraries ######################## }}}
 ########################## Begin includes ############################### {{{
 
+# ---- Progress bar (indicators) dependency ----
+include(FetchContent)
+FetchContent_Declare(
+  indicators
+  GIT_REPOSITORY https://github.com/p-ranav/indicators.git
+  GIT_TAG        v2.3
+  GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(indicators)
+include_directories(${indicators_SOURCE_DIR}/include)
+
 include_directories("${CMAKE_SOURCE_DIR}")  # Include the core headers via "src".
 include_directories("src")  # Include the core headers via "src".
 include_directories(${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR})

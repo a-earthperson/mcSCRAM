@@ -101,6 +101,19 @@ struct ci {
  *   N ≥ z² · p(1-p) / ε²
  * where ε is the desired half-width (margin of error).
  */
+template<typename bitpack_t_>
+[[nodiscard]] inline std::size_t required_trials(const event::tally<bitpack_t_> &tally, const stats::ci &target) {
+    const double p = tally.mean;
+    const double z  = normal_quantile_two_sided(target.two_sided_confidence_level);
+    const double pq = p * (1.0 - p);
+    return static_cast<std::size_t>(std::ceil((z * z * pq) / (target.half_width_epsilon * target.half_width_epsilon)));
+}
+
+/**
+ * Sample-size formula for a Bernoulli proportion.
+ *   N ≥ z² · p(1-p) / ε²
+ * where ε is the desired half-width (margin of error).
+ */
 [[nodiscard]] inline std::size_t required_trials(const double p,
                                                 const double eps,
                                                 const double confidence) {

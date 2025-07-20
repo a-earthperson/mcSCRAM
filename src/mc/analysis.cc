@@ -324,7 +324,7 @@ namespace scram::core {
 
         const auto event_id = pdag->root()->index();
         mc::queue::layer_manager<bitpack_t_> manager(pdag, trials);
-        mc::queue::convergence_controller scheduler(manager, event_id, settings);
+        mc::scheduler::convergence_controller<bitpack_t_> scheduler(manager, event_id, settings);
 
         const auto tally = scheduler.run_to_convergence();
 

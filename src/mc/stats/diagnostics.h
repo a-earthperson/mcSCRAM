@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <ostream>
+#include <iomanip>
 
 #include "mc/event/node.h"
 #include "mc/stats/ci_utils.h"
@@ -32,6 +34,10 @@ struct AccuracyMetrics {
      * Captures both variance and bias in a single non-negative number.
      * Here computed for a single run – still useful for optimisation. */
     double mse = std::numeric_limits<double>::quiet_NaN();
+
+    /* Log10 absolute error  log10(Δ) = log10(|\hat p − p_*|).
+     * Useful for comparing errors across different scales. */
+    double log10_abs_error = std::numeric_limits<double>::quiet_NaN();
 };
 
 /* -------------------------------------------------------------------------
@@ -86,6 +92,7 @@ template <typename tally_t_>
     m.abs_error = std::fabs(m.bias);
     m.rel_error = (p_true != 0.0) ? m.abs_error / p_true : std::numeric_limits<double>::quiet_NaN();
     m.mse       = m.bias * m.bias; // single-run squared error
+    m.log10_abs_error = (m.abs_error > 0.0) ? std::log10(m.abs_error) : std::numeric_limits<double>::quiet_NaN();
     return m;
 }
 
@@ -125,6 +132,30 @@ template <typename tally_t_>
                                                                const double    p_true,
                                                                const ci        &targets) {
     return compute_sampling_diagnostics(tally, p_true, targets.two_sided_confidence_level, targets.half_width_epsilon);
+}
+
+// -------------------------------------------------------------------------
+//  I/O helpers
+// -------------------------------------------------------------------------
+inline std::ostream &operator<<(std::ostream &os, const AccuracyMetrics &m) {
+    os << std::scientific << std::setprecision(6);
+    os << "Δ=" << m.abs_error
+       << ", δ=" << m.rel_error
+       << ", b=" << m.bias
+       << ", MSE=" << m.mse
+       << ", log10(Δ)=" << m.log10_abs_error;
+    return os;
+}
+
+inline std::ostream &operator<<(std::ostream &os, const SamplingDiagnostics &d) {
+    os << std::scientific << std::setprecision(6);
+    os << "z=" << d.z_score
+       << ", p=" << d.p_value
+       << ", CI95=" << (d.ci95_covered ? "yes" : "no")
+       << ", CI99=" << (d.ci99_covered ? "yes" : "no")
+       << ", n_required=" << d.n_required
+       << ", n_ratio=" << d.n_ratio;
+    return os;
 }
 
 } // namespace scram::mc::stats 

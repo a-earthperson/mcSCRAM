@@ -23,14 +23,18 @@
 #include "mc/queue/layer_manager.h"
 #include "mc/stats/ci_utils.h"
 #include "mc/stats/diagnostics.h"
+#include "mc/scheduler/progressbar.h"
 
 #include <unistd.h>  // isatty
 #include <string>
 #include <sstream>
 #include <optional>
 #include <iomanip>
+#include <memory>
+#include <vector>
+#include <cmath>
 
-namespace scram::mc::queue {
+namespace scram::mc::scheduler {
 
 template <typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
 class convergence_controller {
@@ -50,10 +54,11 @@ class convergence_controller {
      * @param evt_idx    Index of the event whose probability we track.
      * @param settings   Settings
      */
-    convergence_controller(layer_manager<bitpack_t_, prob_t_, size_t_> &mgr,
+    convergence_controller(queue::layer_manager<bitpack_t_, prob_t_, size_t_> &mgr,
                            const index_t_ evt_idx,
                            const core::Settings &settings)
         : manager_(mgr), evt_idx_(evt_idx), ground_truth_(settings.true_prob()), max_iterations_(mgr.shaper().TOTAL_ITERATIONS) {
+
         targets_ = {
             .half_width_epsilon = settings.ci_margin_error(),
             .two_sided_confidence_level = settings.ci_confidence(),
@@ -69,69 +74,10 @@ class convergence_controller {
         enable_diagnostics_ = settings.true_prob() >= 0.0;
         stop_on_convergence_ = settings.early_stop();
 
-        trials_per_iteration_ = cumulative_bits(manager_.sample_shape_, 1);
+        trials_per_iteration_ = cumulative_bits(manager_.shaper().SAMPLE_SHAPE, 1);
         max_trials_ = settings.num_trials();
-        trials_complete_ = 0;
-    }
 
-    // ---------------------------------------------------------------------------------
-    //  Logging helper – prints *one* status line with all diagnostics.
-    // ---------------------------------------------------------------------------------
-    void log_progress(const double half_width,
-                      const std::optional<mc::stats::AccuracyMetrics> &acc,
-                      const std::optional<mc::stats::SamplingDiagnostics> &diag,
-                      const std::string &suffix) const {
-
-        // ANSI colours (only if stderr is a TTY)
-        constexpr const char *RED   = "\033[31m";
-        constexpr const char *GREEN = "\033[32m";
-        constexpr const char *YELL  = "\033[33m";
-        constexpr const char *CYAN  = "\033[36m";
-        constexpr const char *RESET = "\033[0m";
-
-        const bool colorize = isatty(fileno(stderr));
-        const char *mean_col  = colorize ? (converged_ ? GREEN : RED) : "";
-        const char *std_col   = colorize ? YELL  : "";
-        const char *ci_col    = colorize ? CYAN  : "";
-        const char *reset_col = colorize ? RESET : "";
-
-        std::ostringstream oss;
-        oss << std::setprecision(6);
-
-        oss << "tally[" << evt_idx_ << "] :: ["
-            << ci_col << current_tally_.ci[2] << reset_col << ", "
-            << ci_col << current_tally_.ci[0] << reset_col << ", "
-            << mean_col << current_tally_.mean << reset_col << ", "
-            << ci_col << current_tally_.ci[1] << reset_col << ", "
-            << ci_col << current_tally_.ci[3] << reset_col << "] :: ";
-
-        // add requested CI info
-        oss << "CI(" << targets_.two_sided_confidence_level * 100.0 << ") :: ";
-
-        // half-width
-        if (half_width >= 0.0) {
-            oss << "ε[" << half_width << "] :: ";
-        }
-
-        // accuracy metrics
-        if (acc) {
-            oss << "|Δ|=" << acc->abs_error << ", rel_err=" << acc->rel_error;
-        }
-
-        // diagnostics
-        if (diag) {
-            oss << ", z=" << diag->z_score << " :: p=" << diag->p_value
-                << " :: CI(95)=" << (diag->ci95_covered ? "✔" : "✘")
-                << " :: CI(99)=" << (diag->ci99_covered ? "✔" : "✘");
-            if (!std::isnan(diag->n_ratio)) {
-                oss << " :: n_ratio=" << diag->n_ratio;
-            }
-            oss << " :: ";
-        }
-
-        oss << suffix;
-
-        LOG(DEBUG2) << oss.str();
+        progress_.initialize(this);
     }
 
     /** Execute exactly one additional iteration on the device. */
@@ -169,7 +115,10 @@ class convergence_controller {
         // if converged now, set convergence_ sticky to true
         if (!converged_ && epsilon_bounded) {
             converged_ = true;
+            progress_.mark_converged();
         }
+
+        progress_.tick(this);
 
         // ------------------------------------------------------------------
         //  Diagnostic metrics (if ground truth provided)
@@ -179,10 +128,15 @@ class convergence_controller {
             std::optional<scram::mc::stats::SamplingDiagnostics> diag_opt;
             acc_opt  = scram::mc::stats::compute_accuracy_metrics(current_tally_, ground_truth_);
             diag_opt = scram::mc::stats::compute_sampling_diagnostics(current_tally_, ground_truth_, targets_);
-            // Log progress for this step (single consolidated line)
-            log_progress(current_.half_width_epsilon, acc_opt, diag_opt, "iter=" + std::to_string(iteration_));
-        }
+        //     // Log progress for this step (single consolidated line)
+             log_progress(current_.half_width_epsilon, acc_opt, diag_opt, "iter=" + std::to_string(iteration_));
+         }
 
+        // Update progress bar
+        // if (progress_bar_) {
+        //     // Re-estimate total iterations based on current statistics
+        //const auto proj_max = projected_max_iterations(current_tally_);
+        // }
 
 
         // since we did step, update the iteration count
@@ -198,25 +152,20 @@ class convergence_controller {
         }
 
         // Final log with iteration count (no half-width / diagnostics)
-        log_progress(current_.half_width_epsilon, std::nullopt, std::nullopt, "Iterations :: " + std::to_string(iteration_));
+        //log_progress(current_.half_width_epsilon, std::nullopt, std::nullopt, "Iterations :: " + std::to_string(iteration_));
+
         return current_tally_;
     }
 
-    [[nodiscard]] bool converged() const { return converged_; }
-
-    [[nodiscard]] std::size_t iterations_completed() const { return iteration_; }
-
-    [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return current_tally_; }
-
-  private:
-
-    layer_manager<bitpack_t_, prob_t_, size_t_> &manager_;
+private:
+    queue::layer_manager<bitpack_t_, prob_t_, size_t_> &manager_;
     const index_t_ evt_idx_;
 
     stats::ci targets_{};
     stats::ci current_{};
 
     bool enable_diagnostics_ = false;
+
     std::double_t ground_truth_;
 
     // User-supplied convergence parameters.
@@ -232,7 +181,71 @@ class convergence_controller {
 
     std::size_t trials_per_iteration_ = 0;
     std::size_t max_trials_ = 0;
-    std::size_t trials_complete_ = 0;
-};
 
+    progress<bitpack_t_, prob_t_, size_t_> progress_;
+
+    void log_progress(const double half_width,
+                      const std::optional<mc::stats::AccuracyMetrics> &acc,
+                      const std::optional<mc::stats::SamplingDiagnostics> &diag,
+                      const std::string &suffix) {
+
+        // ANSI colours (only if stderr is a TTY)
+        constexpr const char *RED   = "\033[31m";
+        constexpr const char *GREEN = "\033[32m";
+        constexpr const char *YELL  = "\033[33m";
+        constexpr const char *CYAN  = "\033[36m";
+        constexpr const char *RESET = "\033[0m";
+
+        const bool colorize = isatty(fileno(stderr));
+        const char *mean_col  = colorize ? (converged_ ? GREEN : RED) : "";
+        const char *std_col   = colorize ? YELL  : "";
+        const char *ci_col    = colorize ? CYAN  : "";
+        const char *reset_col = colorize ? RESET : "";
+
+        std::ostringstream oss;
+        oss << std::setprecision(10);
+
+        oss << "tally[" << evt_idx_ << "] :: ["
+            << ci_col << current_tally_.ci[2] << reset_col << ", "
+            << ci_col << current_tally_.ci[0] << reset_col << ", "
+            << mean_col << current_tally_.mean << reset_col << ", "
+            << ci_col << current_tally_.ci[1] << reset_col << ", "
+            << ci_col << current_tally_.ci[3] << reset_col << "] :: ";
+
+        // add requested CI info
+        oss << "CI(" << targets_.two_sided_confidence_level * 100.0 << ") :: ";
+
+        // half-width
+        if (half_width >= 0.0) {
+            oss << "ε[" << half_width << "] :: ";
+        }
+
+        // accuracy metrics
+        if (acc) {
+            oss << *acc;
+        }
+
+        // diagnostics
+        if (diag) {
+            oss << *diag << " :: ";
+        }
+
+        oss << suffix;
+
+        LOG(DEBUG2) << oss.str();
+    }
+
+public:
+    [[nodiscard]] bool diagnostics_enabled() const { return enable_diagnostics_; }
+    [[nodiscard]] std::double_t ground_truth() const { return ground_truth_; }
+    [[nodiscard]] bool stop_on_convergence() const { return stop_on_convergence_; }
+    [[nodiscard]] std::size_t iterations() const { return iteration_; }
+    [[nodiscard]] bool converged() const { return converged_; }
+    [[nodiscard]] std::size_t trials_per_iteration() const { return trials_per_iteration_; }
+    [[nodiscard]] std::size_t max_trials() const { return max_trials_; }
+    [[nodiscard]] stats::ci targets() const { return targets_; }
+    [[nodiscard]] stats::ci current() const { return current_; }
+    [[nodiscard]] std::size_t max_iterations() const { return max_iterations_; }
+    [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return current_tally_; }
+};
 } // namespace scram::mc::queue
