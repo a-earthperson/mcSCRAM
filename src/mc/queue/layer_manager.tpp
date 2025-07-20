@@ -189,9 +189,17 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
     const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.total_bits = computed_tally->total_bits;
-    to_tally.mean = computed_tally->mean;
-    to_tally.std_err = computed_tally->std_err;
-    to_tally.ci = computed_tally->ci;
+    // to_tally.mean = computed_tally->mean;
+    // to_tally.std_err = computed_tally->std_err;
+    // to_tally.ci = computed_tally->ci;
+    // ---------------------------------------------------------------------
+    //  Host-side statistical post-processing
+    // ---------------------------------------------------------------------
+    // The Monte-Carlo kernel only updates `num_one_bits` and `total_bits`.
+    // We complete the statistics on the host so that the device kernel does
+    // no redundant work (especially when several work-groups process the
+    // same tally).
+    stats::populate_point_estimates(to_tally);
     return std::move(to_tally);
 }
 

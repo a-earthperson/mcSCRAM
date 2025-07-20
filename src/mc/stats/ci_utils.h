@@ -164,18 +164,18 @@ template <typename tally_t_>
 // object based only on its raw counters.  The function is templated so that it
 // works with any specialisation of `event::tally<bitpack_t_>`.
 template <typename tally_t_>
-inline void populate_point_estimates(tally_t_ &tally) {
+inline tally_t_ &populate_point_estimates(tally_t_ &tally) {
     if (tally.total_bits == 0) {
         // Avoid division-by-zero – this generally means no samples have been
         // processed yet.  Leave everything zero-initialised.
         tally.mean    = 0.0;
         tally.std_err = 0.0;
         tally.ci      = {0.0, 0.0, 0.0, 0.0};
-        return;
+        return tally;
     }
 
     const auto total_bits_d = static_cast<std::double_t>(tally.total_bits);
-    const auto p            = static_cast<std::double_t>(tally.num_one_bits) / total_bits_d;
+    const auto p     = static_cast<std::double_t>(tally.num_one_bits) / total_bits_d;
 
     tally.mean    = p;
     tally.std_err = std::sqrt(p * (1.0 - p) / total_bits_d);
@@ -195,6 +195,8 @@ inline void populate_point_estimates(tally_t_ &tally) {
     const std::double_t upper99 = std::clamp(p + hw99, 0.0, 1.0);
 
     tally.ci = sycl::double4(lower95, upper95, lower99, upper99);
+
+    return tally;
 }
 
 } // namespace scram::mc::stats

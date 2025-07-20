@@ -9,6 +9,8 @@
 #include "mc/event/node.h"
 #include "mc/stats/ci_utils.h"
 
+#define PRECISION_LOG_SCIENTIFIC_DIGITS 3
+
 namespace scram::mc::stats {
 
 /* -------------------------------------------------------------------------
@@ -138,7 +140,7 @@ template <typename tally_t_>
 //  I/O helpers
 // -------------------------------------------------------------------------
 inline std::ostream &operator<<(std::ostream &os, const AccuracyMetrics &m) {
-    os << std::scientific << std::setprecision(6);
+    os << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS);
     os << "Δ=" << m.abs_error
        << ", δ=" << m.rel_error
        << ", b=" << m.bias
@@ -148,11 +150,11 @@ inline std::ostream &operator<<(std::ostream &os, const AccuracyMetrics &m) {
 }
 
 inline std::ostream &operator<<(std::ostream &os, const SamplingDiagnostics &d) {
-    os << std::scientific << std::setprecision(6);
+    os << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS);
     os << "z=" << d.z_score
        << ", p=" << d.p_value
-       << ", CI95=" << (d.ci95_covered ? "yes" : "no")
-       << ", CI99=" << (d.ci99_covered ? "yes" : "no")
+       << ", CI95(" << (d.ci95_covered ? "T" : "F") << ")"
+       << ", CI99(" << (d.ci99_covered ? "T" : "F") << ")"
        << ", n_required=" << d.n_required
        << ", n_ratio=" << d.n_ratio;
     return os;

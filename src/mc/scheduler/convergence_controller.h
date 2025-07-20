@@ -34,6 +34,8 @@
 #include <vector>
 #include <cmath>
 
+#define PRECISION_LOG_SCIENTIFIC_DIGITS 3
+
 namespace scram::mc::scheduler {
 
 template <typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
@@ -46,7 +48,7 @@ class convergence_controller {
     }
 
     [[nodiscard]] bool iteration_limit_reached() const {
-        return iteration_ >= max_iterations_ && (max_iterations_ > 0);
+        return max_iterations_ && (iteration_ >= max_iterations_) ;
     }
 
     /**
@@ -77,7 +79,25 @@ class convergence_controller {
         trials_per_iteration_ = cumulative_bits(manager_.shaper().SAMPLE_SHAPE, 1);
         max_trials_ = settings.num_trials();
 
+        tallies_.reserve(this->max_iterations() ? this->max_iterations() : 1000);
         progress_.initialize(this);
+    }
+
+    void update_stats(const event::tally<bitpack_t_> &new_tally) {
+        current_.half_width_epsilon = stats::half_width(new_tally, targets_.two_sided_confidence_level);
+    }
+
+    void process_tally(const event::tally<bitpack_t_> &new_tally) {
+        tallies_.push_back(new_tally);
+        update_stats(new_tally);
+    }
+
+    [[nodiscard]] bool check_convergence() const {
+        return check_epsilon_bounded();
+    }
+
+    [[nodiscard]] bool check_epsilon_bounded() const {
+        return current_.half_width_epsilon <= targets_.half_width_epsilon && current_.half_width_epsilon > 0.0;
     }
 
     /** Execute exactly one additional iteration on the device. */
@@ -89,36 +109,22 @@ class convergence_controller {
         }
 
         // out of iterations, return that we didn't take a step.
+        // evals to false if max_iterations_ is 0, which means keep going.
         if (iteration_limit_reached()) {
+            progress_.mark_iterations_complete();
             return false;
         }
 
         // still have iterations remaining
         // get the tally
-        current_tally_ = manager_.single_pass_and_tally(evt_idx_);
-
-        // ---------------------------------------------------------------------
-        //  Host-side statistical post-processing
-        // ---------------------------------------------------------------------
-        // The Monte-Carlo kernel only updates `num_one_bits` and `total_bits`.
-        // We complete the statistics on the host so that the device kernel does
-        // no redundant work (especially when several work-groups process the
-        // same tally).
-
-        stats::populate_point_estimates(current_tally_);
-
-        current_.half_width_epsilon = stats::half_width(current_tally_, current_.normal_quantile_two_sided);
+        process_tally(manager_.single_pass_and_tally(evt_idx_));
 
         // for now, this is our convergence criteria
-        const bool epsilon_bounded = current_.half_width_epsilon <= targets_.half_width_epsilon && current_.half_width_epsilon > 0.0;
-
         // if converged now, set convergence_ sticky to true
-        if (!converged_ && epsilon_bounded) {
+        if (!converged_ && check_convergence()) {
             converged_ = true;
             progress_.mark_converged();
         }
-
-        progress_.tick(this);
 
         // ------------------------------------------------------------------
         //  Diagnostic metrics (if ground truth provided)
@@ -126,18 +132,11 @@ class convergence_controller {
         if (enable_diagnostics_) {
             std::optional<scram::mc::stats::AccuracyMetrics> acc_opt;
             std::optional<scram::mc::stats::SamplingDiagnostics> diag_opt;
-            acc_opt  = scram::mc::stats::compute_accuracy_metrics(current_tally_, ground_truth_);
-            diag_opt = scram::mc::stats::compute_sampling_diagnostics(current_tally_, ground_truth_, targets_);
+            acc_opt  = scram::mc::stats::compute_accuracy_metrics(current_tally(), ground_truth_);
+            diag_opt = scram::mc::stats::compute_sampling_diagnostics(current_tally(), ground_truth_, targets_);
         //     // Log progress for this step (single consolidated line)
              log_progress(current_.half_width_epsilon, acc_opt, diag_opt, "iter=" + std::to_string(iteration_));
          }
-
-        // Update progress bar
-        // if (progress_bar_) {
-        //     // Re-estimate total iterations based on current statistics
-        //const auto proj_max = projected_max_iterations(current_tally_);
-        // }
-
 
         // since we did step, update the iteration count
         return ++iteration_;
@@ -148,13 +147,16 @@ class convergence_controller {
      * exhausted).  Returns the final tally.
      */
     [[nodiscard]] event::tally<bitpack_t_> run_to_convergence() {
+
         while (step()) {
+            progress_.tick(this);
         }
 
+        //progress_.mark_iterations_complete();
         // Final log with iteration count (no half-width / diagnostics)
         //log_progress(current_.half_width_epsilon, std::nullopt, std::nullopt, "Iterations :: " + std::to_string(iteration_));
 
-        return current_tally_;
+        return tallies_.back();
     }
 
 private:
@@ -177,7 +179,8 @@ private:
     // State bookkeeping.
     std::size_t iteration_ = 0;
     bool converged_ = false;
-    event::tally<bitpack_t_> current_tally_{};
+
+    std::vector<event::tally<bitpack_t_>> tallies_;
 
     std::size_t trials_per_iteration_ = 0;
     std::size_t max_trials_ = 0;
@@ -203,14 +206,14 @@ private:
         const char *reset_col = colorize ? RESET : "";
 
         std::ostringstream oss;
-        oss << std::setprecision(10);
+        oss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS);
 
         oss << "tally[" << evt_idx_ << "] :: ["
-            << ci_col << current_tally_.ci[2] << reset_col << ", "
-            << ci_col << current_tally_.ci[0] << reset_col << ", "
-            << mean_col << current_tally_.mean << reset_col << ", "
-            << ci_col << current_tally_.ci[1] << reset_col << ", "
-            << ci_col << current_tally_.ci[3] << reset_col << "] :: ";
+            << ci_col << current_tally().ci[2] << reset_col << ", "
+            << ci_col << current_tally().ci[0] << reset_col << ", "
+            << mean_col << current_tally().mean << reset_col << ", "
+            << ci_col << current_tally().ci[1] << reset_col << ", "
+            << ci_col << current_tally().ci[3] << reset_col << "] :: ";
 
         // add requested CI info
         oss << "CI(" << targets_.two_sided_confidence_level * 100.0 << ") :: ";
@@ -222,7 +225,7 @@ private:
 
         // accuracy metrics
         if (acc) {
-            oss << *acc;
+            oss << *acc << " :: ";
         }
 
         // diagnostics
@@ -246,6 +249,6 @@ public:
     [[nodiscard]] stats::ci targets() const { return targets_; }
     [[nodiscard]] stats::ci current() const { return current_; }
     [[nodiscard]] std::size_t max_iterations() const { return max_iterations_; }
-    [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return current_tally_; }
+    [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return tallies_.back(); }
 };
 } // namespace scram::mc::queue
