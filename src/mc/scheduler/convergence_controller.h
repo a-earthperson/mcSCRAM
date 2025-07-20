@@ -54,7 +54,6 @@ class convergence_controller {
                            const index_t_ evt_idx,
                            const core::Settings &settings)
         : manager_(mgr), evt_idx_(evt_idx), ground_truth_(settings.true_prob()), max_iterations_(mgr.shaper().TOTAL_ITERATIONS) {
-
         targets_ = {
             .half_width_epsilon = settings.ci_margin_error(),
             .two_sided_confidence_level = settings.ci_confidence(),
@@ -69,6 +68,10 @@ class convergence_controller {
 
         enable_diagnostics_ = settings.true_prob() >= 0.0;
         stop_on_convergence_ = settings.early_stop();
+
+        trials_per_iteration_ = cumulative_bits(manager_.sample_shape_, 1);
+        max_trials_ = settings.num_trials();
+        trials_complete_ = 0;
     }
 
     // ---------------------------------------------------------------------------------
@@ -93,11 +96,9 @@ class convergence_controller {
         const char *reset_col = colorize ? RESET : "";
 
         std::ostringstream oss;
-        oss << std::setprecision(10);
+        oss << std::setprecision(6);
 
-        oss << "tally[" << evt_idx_ << "] :: "
-            << "[std_err] :: " << std_col << current_tally_.std_err << reset_col << " :: "
-            << "[p01, p05, mean, p95, p99] :: ["
+        oss << "tally[" << evt_idx_ << "] :: ["
             << ci_col << current_tally_.ci[2] << reset_col << ", "
             << ci_col << current_tally_.ci[0] << reset_col << ", "
             << mean_col << current_tally_.mean << reset_col << ", "
@@ -105,7 +106,7 @@ class convergence_controller {
             << ci_col << current_tally_.ci[3] << reset_col << "] :: ";
 
         // add requested CI info
-        oss << "CI(" << targets_.two_sided_confidence_level * 100.0 << "% ) :: ";
+        oss << "CI(" << targets_.two_sided_confidence_level * 100.0 << ") :: ";
 
         // half-width
         if (half_width >= 0.0) {
@@ -114,13 +115,14 @@ class convergence_controller {
 
         // accuracy metrics
         if (acc) {
-            oss << "|Δ|=" << acc->abs_error << ", z=";
+            oss << "|Δ|=" << acc->abs_error << ", rel_err=" << acc->rel_error;
         }
 
         // diagnostics
         if (diag) {
-            oss << diag->z_score << " :: p=" << diag->p_value
-                << " :: CI95=" << (diag->ci95_covered ? "✔" : "✘");
+            oss << ", z=" << diag->z_score << " :: p=" << diag->p_value
+                << " :: CI(95)=" << (diag->ci95_covered ? "✔" : "✘")
+                << " :: CI(99)=" << (diag->ci99_covered ? "✔" : "✘");
             if (!std::isnan(diag->n_ratio)) {
                 oss << " :: n_ratio=" << diag->n_ratio;
             }
@@ -172,16 +174,16 @@ class convergence_controller {
         // ------------------------------------------------------------------
         //  Diagnostic metrics (if ground truth provided)
         // ------------------------------------------------------------------
-        std::optional<scram::mc::stats::AccuracyMetrics> acc_opt;
-        std::optional<scram::mc::stats::SamplingDiagnostics> diag_opt;
-
         if (enable_diagnostics_) {
+            std::optional<scram::mc::stats::AccuracyMetrics> acc_opt;
+            std::optional<scram::mc::stats::SamplingDiagnostics> diag_opt;
             acc_opt  = scram::mc::stats::compute_accuracy_metrics(current_tally_, ground_truth_);
             diag_opt = scram::mc::stats::compute_sampling_diagnostics(current_tally_, ground_truth_, targets_);
+            // Log progress for this step (single consolidated line)
+            log_progress(current_.half_width_epsilon, acc_opt, diag_opt, "iter=" + std::to_string(iteration_));
         }
 
-        // Log progress for this step (single consolidated line)
-        log_progress(current_.half_width_epsilon, acc_opt, diag_opt, "iter=" + std::to_string(iteration_));
+
 
         // since we did step, update the iteration count
         return ++iteration_;
@@ -227,6 +229,10 @@ class convergence_controller {
     std::size_t iteration_ = 0;
     bool converged_ = false;
     event::tally<bitpack_t_> current_tally_{};
+
+    std::size_t trials_per_iteration_ = 0;
+    std::size_t max_trials_ = 0;
+    std::size_t trials_complete_ = 0;
 };
 
 } // namespace scram::mc::queue

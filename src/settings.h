@@ -381,8 +381,8 @@ class Settings {
   double cut_off_ = 1e-8;                             ///< The cut-off probability for products.
   
   // --- NEW: adaptive Monte-Carlo CI tuning ---------------------------------
-  double ci_confidence_      = 0.95;  ///< two-sided confidence level (0.95 default)
-  double ci_margin_error_    = 1e-9; ///< desired half-width ε (default 0.001)
+  double ci_confidence_      = 0.99;  ///< two-sided confidence level (0.95 default)
+  double ci_margin_error_    = 1e-4; ///< desired half-width ε (default 0.001)
   bool   early_stop_         = true;  ///< stop as soon as convergence occurs
   double true_prob_          = -1.0;   ///< negative means unset.
 };

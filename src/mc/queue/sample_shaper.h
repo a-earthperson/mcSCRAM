@@ -30,6 +30,7 @@
 #include <sycl/sycl.hpp>
 #include <algorithm>
 #include <limits>
+#include <string>
 
 namespace scram::mc::queue {
 template<typename bitpack_t_>
@@ -92,6 +93,21 @@ struct sample_shaper {
         if (sample_shape.bitpacks_per_batch) {
             sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
             sample_shape.batch_size = 1;
+        }
+
+        /* ------------------------------------------------------------------
+         * Intel GPU quirk: Empirically the HIPSYCL backend for Gen9/Gen11
+         * GPUs (e.g. UHD 630, vendor_id 32902) fails to JIT-compile kernels
+         * whose local Z-dimension exceeds 16.  Since we flatten the sample
+         * shape to (batch_size=1, bitpacks_per_batch=N), this translates to a
+         * hard upper bound of 16 bit-packs per iteration.  We therefore cap
+         * the shape _after_ flattening and let the scheduler compensate by
+         * increasing the iteration count.
+         * ----------------------------------------------------------------*/
+        const auto vendor_id = device.get_info<sycl::info::device::vendor_id>();
+        constexpr std::size_t kIntelMaxBitpacksPerIter = 16;
+        if (vendor_id == 32902 && sample_shape.bitpacks_per_batch > kIntelMaxBitpacksPerIter) {
+            sample_shape.bitpacks_per_batch = kIntelMaxBitpacksPerIter;
         }
 
         // Log working_set configuration
