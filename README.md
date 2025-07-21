@@ -197,12 +197,54 @@ docker run --rm --gpus all \
 ```
 
 ### Parameters
-| Parameter                | Description                   | Default   |
-|--------------------------|-------------------------------|-----------|
-| `--num-trials`           | Monte Carlo iterations        | 1,000,000 |
-| `--batch-size`           | Samples per kernel launch     | 1,024     |
-| `--sample-size`          | Bit-packs per batch           | 16        |
-| `--confidence-intervals` | Statistical bounds (95%, 99%) | disabled  |
+```bash
+Usage:    mcscram [options] input-files...
+
+Monte Carlo Options:
+  --probability               Perform probability analysis
+  --pdag                      Perform qualitative analysis with PDAG
+  --monte-carlo               Use the monte-carlo sampling approximation
+  --seed int                  Seed for the pseudorandom number generator
+  --num-trials std::double_t  Number of Bernoulli trials [0]: Auto
+  --early-stop                Stop on convergence, implied if --num-trials unset or 0
+  --ci-confidence double      Two-sided confidence level used for error estimation
+  --ci-epsilon double         Target margin of error (half-width) for error estimation and early stop
+  --ci-rel-epsilon double     Relative margin of error δ (fraction of p̂). ε= δ*p̂ during run
+  --ci-pilot int              Number of free pilot iterations before convergence checks [3]
+  --true-prob double          Ground truth probability for diagnostics
+
+Options:
+  --help                      Display this help message
+  --version                   Display version information
+  --project path              Project file with analysis configurations
+  --allow-extern              **UNSAFE** Allow external libraries
+  --validate                  Validate input files without analysis
+  --bdd                       Perform qualitative analysis with BDD
+  --zbdd                      Perform qualitative analysis with ZBDD
+  --mocus                     Perform qualitative analysis with MOCUS
+  --prime-implicants          Calculate prime implicants
+  --importance                Perform importance analysis
+  --uncertainty               Perform uncertainty analysis
+  --ccf                       Perform common-cause failure analysis
+  --sil                       Compute the Safety Integrity Level metrics
+  --rare-event                Use the rare event approximation
+  --mcub                      Use the MCUB approximation
+  -l [ --limit-order ] int    Upper limit for the product order
+  --cut-off double            Cut-off probability for products
+  --mission-time double       System mission time in hours
+  --time-step double          Time step in hours for probability analysis
+  --num-quantiles int         Number of quantiles for distributions
+  --num-bins int              Number of bins for histograms
+  -o [ --output ] path        Output file for reports
+  --no-indent                 Omit indentation whitespace in output XML
+  --verbosity int             Set log verbosity
+
+Debug Options:
+  --serialize                 Serialize the input model without further analysis
+  --preprocessor              Stop analysis after the preprocessing step
+  --print                     Print analysis results in a terminal friendly way
+  --no-report                 Don't generate analysis report
+```
 
 ## Runtime Environment Variables
 
