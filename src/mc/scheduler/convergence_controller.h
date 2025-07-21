@@ -25,12 +25,7 @@
 #include "mc/stats/diagnostics.h"
 #include "mc/scheduler/progressbar.h"
 
-#include <unistd.h>  // isatty
-#include <string>
-#include <sstream>
 #include <optional>
-#include <iomanip>
-#include <memory>
 #include <vector>
 #include <cmath>
 
@@ -84,7 +79,10 @@ class convergence_controller {
     }
 
     void update_stats(const event::tally<bitpack_t_> &new_tally) {
-        current_.half_width_epsilon = stats::half_width(new_tally, targets_.two_sided_confidence_level);
+        // The half_width helper expects the *Z*-score. We pre-computed the
+        // two-sided normal quantile when initialising `targets_`, so use it
+        // here instead of the confidence level itself.
+        current_.half_width_epsilon = stats::half_width(new_tally, targets_.normal_quantile_two_sided);
     }
 
     void process_tally(const event::tally<bitpack_t_> &new_tally) {
@@ -126,18 +124,6 @@ class convergence_controller {
             progress_.mark_converged();
         }
 
-        // ------------------------------------------------------------------
-        //  Diagnostic metrics (if ground truth provided)
-        // ------------------------------------------------------------------
-        if (enable_diagnostics_) {
-            std::optional<scram::mc::stats::AccuracyMetrics> acc_opt;
-            std::optional<scram::mc::stats::SamplingDiagnostics> diag_opt;
-            acc_opt  = scram::mc::stats::compute_accuracy_metrics(current_tally(), ground_truth_);
-            diag_opt = scram::mc::stats::compute_sampling_diagnostics(current_tally(), ground_truth_, targets_);
-        //     // Log progress for this step (single consolidated line)
-             log_progress(current_.half_width_epsilon, acc_opt, diag_opt, "iter=" + std::to_string(iteration_));
-         }
-
         // since we did step, update the iteration count
         return ++iteration_;
     }
@@ -151,11 +137,7 @@ class convergence_controller {
         while (step()) {
             progress_.tick(this);
         }
-
-        //progress_.mark_iterations_complete();
-        // Final log with iteration count (no half-width / diagnostics)
-        //log_progress(current_.half_width_epsilon, std::nullopt, std::nullopt, "Iterations :: " + std::to_string(iteration_));
-
+        progress_.tick(this);
         return tallies_.back();
     }
 
@@ -187,57 +169,6 @@ private:
 
     progress<bitpack_t_, prob_t_, size_t_> progress_;
 
-    void log_progress(const double half_width,
-                      const std::optional<mc::stats::AccuracyMetrics> &acc,
-                      const std::optional<mc::stats::SamplingDiagnostics> &diag,
-                      const std::string &suffix) {
-
-        // ANSI colours (only if stderr is a TTY)
-        constexpr const char *RED   = "\033[31m";
-        constexpr const char *GREEN = "\033[32m";
-        constexpr const char *YELL  = "\033[33m";
-        constexpr const char *CYAN  = "\033[36m";
-        constexpr const char *RESET = "\033[0m";
-
-        const bool colorize = isatty(fileno(stderr));
-        const char *mean_col  = colorize ? (converged_ ? GREEN : RED) : "";
-        const char *std_col   = colorize ? YELL  : "";
-        const char *ci_col    = colorize ? CYAN  : "";
-        const char *reset_col = colorize ? RESET : "";
-
-        std::ostringstream oss;
-        oss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS);
-
-        oss << "tally[" << evt_idx_ << "] :: ["
-            << ci_col << current_tally().ci[2] << reset_col << ", "
-            << ci_col << current_tally().ci[0] << reset_col << ", "
-            << mean_col << current_tally().mean << reset_col << ", "
-            << ci_col << current_tally().ci[1] << reset_col << ", "
-            << ci_col << current_tally().ci[3] << reset_col << "] :: ";
-
-        // add requested CI info
-        oss << "CI(" << targets_.two_sided_confidence_level * 100.0 << ") :: ";
-
-        // half-width
-        if (half_width >= 0.0) {
-            oss << "ε[" << half_width << "] :: ";
-        }
-
-        // accuracy metrics
-        if (acc) {
-            oss << *acc << " :: ";
-        }
-
-        // diagnostics
-        if (diag) {
-            oss << *diag << " :: ";
-        }
-
-        oss << suffix;
-
-        LOG(DEBUG2) << oss.str();
-    }
-
 public:
     [[nodiscard]] bool diagnostics_enabled() const { return enable_diagnostics_; }
     [[nodiscard]] std::double_t ground_truth() const { return ground_truth_; }
@@ -250,5 +181,20 @@ public:
     [[nodiscard]] stats::ci current() const { return current_; }
     [[nodiscard]] std::size_t max_iterations() const { return max_iterations_; }
     [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return tallies_.back(); }
+
+    [[nodiscard]] std::optional<stats::AccuracyMetrics> accuracy_metrics() const {
+        std::optional<stats::AccuracyMetrics> metrics;
+        if (enable_diagnostics_) {
+            metrics = stats::compute_accuracy_metrics(current_tally(), ground_truth_);
+        }
+        return metrics;
+    }
+    [[nodiscard]] std::optional<stats::SamplingDiagnostics> sampling_diagnostics() const {
+        std::optional<stats::SamplingDiagnostics> sampling_diagnostics;
+        if (enable_diagnostics_) {
+            sampling_diagnostics = stats::compute_sampling_diagnostics(current_tally(), ground_truth_, targets_);
+        }
+        return sampling_diagnostics;
+    }
 };
 } // namespace scram::mc::queue

@@ -130,28 +130,12 @@ template<typename bitpack_t_>
     return required_trials(0.5, eps, confidence);
 }
 
-/**
- * Quick rule-of-thumb validity check for the normal approximation of the
- * sample proportion (np ≥ 10 and n(1-p) ≥ 10).
- */
-[[nodiscard]] inline bool clt_ok(const std::size_t n, const double p) {
-    return static_cast<double>(n) * p >= 10.0 && static_cast<double>(n) * (1.0 - p) >= 10.0;
-}
-
 // Return the half-width (margin of error) of the confidence interval for a
 // given Z-score.  Call this after `populate_point_estimates` so that `std_err`
 // has been initialised.
 template <typename tally_t_>
 [[nodiscard]] inline double half_width(const tally_t_ &tally, const double z) {
     return z * tally.std_err;
-}
-
-// Wrapper that checks whether the normal approximation (Central Limit Theorem
-// rule-of-thumb) is applicable for this tally.  Delegates to the existing
-// `clt_ok(n, p)` utility.
-template <typename tally_t_>
-[[nodiscard]] inline bool normal_approx_ok(const tally_t_ &tally) {
-    return clt_ok(tally.total_bits, tally.mean);
 }
 
 // Add helper functions for tally post-processing ---------------------------------------------------

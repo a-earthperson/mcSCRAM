@@ -69,10 +69,10 @@ inline po::options_description ConstructOptions() {
         po::options_description mc("Monte Carlo Options");
         mc.add_options()
             ("monte-carlo", "Use the monte-carlo sampling approximation")
-            ("num-trials", OPT_VALUE(std::size_t),"Number of Bernoulli trials [0]: Auto")
+            ("num-trials", OPT_VALUE(std::double_t),"Number of Bernoulli trials [0]: Auto")
             ("early-stop", "Stop on convergence, implied if --num-trials unset or 0")
-            ("batch-size", OPT_VALUE(std::size_t),"Batch size (work-group Y dimension)")
-            ("sample-size", OPT_VALUE(std::size_t),"Sample size (work-group Z dimension)")
+            // ("batch-size", OPT_VALUE(std::size_t),"Batch size (work-group Y dimension)")
+            // ("sample-size", OPT_VALUE(std::size_t),"Sample size (work-group Z dimension)")
             ("ci-confidence", OPT_VALUE(double),"Two-sided confidence level used for error estimation")
             ("ci-epsilon", OPT_VALUE(double),"Target margin of error (half-width) for error estimation and early stop")
             ("true-prob", OPT_VALUE(double),"Ground truth probability for diagnostics");

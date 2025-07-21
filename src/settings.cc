@@ -105,11 +105,12 @@ Settings& Settings::cut_off(double prob) {
   return *this;
 }
 
-Settings& Settings::num_trials(std::size_t n) {
-  if (!n) {
+Settings& Settings::num_trials(const std::double_t n) {
+  const std::size_t nt = static_cast<std::size_t>(std::round(std::max(0.0, n)));
+  if (!nt) {
     early_stop_ = true;
   }
-  num_trials_ = n;
+  num_trials_ = nt;
   return *this;
 }
 

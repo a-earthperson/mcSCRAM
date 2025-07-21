@@ -22,6 +22,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
@@ -144,7 +145,7 @@ class Settings {
   /// @returns Reference to this object.
   ///
   /// @throws SettingsError  The number is less than 1.
-  Settings& num_trials(std::size_t n);
+  Settings& num_trials(std::double_t n);
 
   /// @returns The batch size for Monte-Carlo simulations.
   [[nodiscard]] std::size_t batch_size() const { return batch_size_; }
