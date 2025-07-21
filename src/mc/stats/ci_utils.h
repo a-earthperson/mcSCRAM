@@ -101,12 +101,12 @@ struct ci {
  *   N ≥ z² · p(1-p) / ε²
  * where ε is the desired half-width (margin of error).
  */
-template<typename bitpack_t_>
-[[nodiscard]] inline std::size_t required_trials(const event::tally<bitpack_t_> &tally, const stats::ci &target) {
-    const double p = tally.mean;
-    const double z  = normal_quantile_two_sided(target.two_sided_confidence_level);
+[[nodiscard]] inline std::size_t required_trials(const double p,
+                                                const double eps,
+                                                const double confidence) {
+    const double z  = normal_quantile_two_sided(confidence);
     const double pq = p * (1.0 - p);
-    return static_cast<std::size_t>(std::ceil((z * z * pq) / (target.half_width_epsilon * target.half_width_epsilon)));
+    return static_cast<std::size_t>(std::ceil((z * z * pq) / (eps * eps)));
 }
 
 /**
@@ -114,12 +114,12 @@ template<typename bitpack_t_>
  *   N ≥ z² · p(1-p) / ε²
  * where ε is the desired half-width (margin of error).
  */
-[[nodiscard]] inline std::size_t required_trials(const double p,
-                                                const double eps,
-                                                const double confidence) {
-    const double z  = normal_quantile_two_sided(confidence);
-    const double pq = p * (1.0 - p);
-    return static_cast<std::size_t>(std::ceil((z * z * pq) / (eps * eps)));
+template<typename bitpack_t_>
+[[nodiscard]] inline std::size_t required_trials(const event::tally<bitpack_t_> &tally, const stats::ci &target) {
+    const double p = tally.mean;
+    const double eps = target.half_width_epsilon;
+    const double confidence = target.two_sided_confidence_level;
+    return required_trials(p, eps, confidence);
 }
 
 /**
