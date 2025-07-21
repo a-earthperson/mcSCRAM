@@ -150,22 +150,34 @@ template <typename tally_t_>
 //  I/O helpers
 // -------------------------------------------------------------------------
 inline std::ostream &operator<<(std::ostream &os, const AccuracyMetrics &m) {
-    os << "Δ=" << m.abs_error
-       << " δ=" << m.rel_error
-       << " b=" << m.bias
-       << " MSE=" << m.mse
-       << " log10(Δ)=" << m.log10_abs_error
-       << " |log10|=" << m.abs_log10_error;
+    // Print each metric as label=value with a fixed-width field so columns line up.
+    auto print_pair = [&os](const char *label, const double value) {
+        os << label << std::setw(11) << value;
+    };
+
+    print_pair("Δ=",           m.abs_error);       os << " | ";
+    print_pair("δ=",           m.rel_error);       os << " | ";
+    print_pair("b=",           m.bias);            os << " | ";
+    print_pair("MSE=",         m.mse);             os << " | ";
+    print_pair("log10(Δ)=",    m.log10_abs_error); os << " | ";
+    print_pair("|log10|=",     m.abs_log10_error);
     return os;
 }
 
 inline std::ostream &operator<<(std::ostream &os, const SamplingDiagnostics &d) {
-    os << "z=" << d.z_score
-       << " p_val=" << d.p_value
-       << " CI95(" << (d.ci95_covered ? "T" : "F") << ")"
-       << " CI99(" << (d.ci99_covered ? "T" : "F") << ")"
-       << " n_req=" << d.n_required
-       << " n_rat=" << d.n_ratio;
+    auto print_pair = [&os](const char *label, const double value) {
+        os << label << std::setw(11) << value;
+    };
+    auto print_bool = [&os](const char *label, const bool flag) {
+        os << label << (flag ? 'T' : 'F');
+    };
+
+    print_pair("z=",      d.z_score);        os << " | ";
+    print_pair("p_val=",  d.p_value);        os << " | ";
+    print_bool("CI95=",   d.ci95_covered);   os << " | ";
+    print_bool("CI99=",   d.ci99_covered);   os << " | ";
+    os << "n_req=" << d.n_required << " | ";
+    print_pair("n_rat=",  d.n_ratio);
     return os;
 }
 

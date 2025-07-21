@@ -86,6 +86,8 @@ namespace ScramCLI {
 
         SET("ci-confidence", double, ci_confidence);
         SET("ci-epsilon", double, ci_margin_error);
+        SET("ci-rel-epsilon", double, ci_rel_margin_error);
+        SET("ci-pilot", int, ci_pilot_iterations);
         SET("true-prob", double, true_prob);
 
         if (vm.contains("num-trials")) {

@@ -57,10 +57,12 @@ struct progress {
             }
         }
         if (convergence_) {
-            if (max_ite) {
-                tick_iterations_progress_bar(bars_->operator[](*convergence_), cur_conv_ite, tot_conv_ite);
-            }
             tick_convergence_progress_bar(bars_->operator[](*convergence_), tally,stats_tar, stats_cur);
+            // if (max_ite) {
+            //     //tick_iterations_progress_bar(bars_->operator[](*convergence_), cur_conv_ite, tot_conv_ite);
+            // } else {
+            //     tick_convergence_progress_bar(bars_->operator[](*convergence_), tally,stats_tar, stats_cur);
+            // }
         }
         if (estimate_) {
             tick_estimate_bar(bars_->operator[](*estimate_), tally);
@@ -156,7 +158,7 @@ struct progress {
         std::ostringstream eps_ss;
         eps_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << targets.half_width_epsilon;
         std::ostringstream ci_ss;
-        ci_ss << std::scientific << std::setprecision(1) << targets.two_sided_confidence_level;
+        ci_ss << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << targets.two_sided_confidence_level;
         const std::string epsilon = eps_ss.str();
         const std::string conf_lv = "ci[" + ci_ss.str() + "]";
         const std::string str_prefix = "[convergence] :: "+conf_lv+" [target(ε): " + eps_ss.str() + "] :: ";
@@ -180,9 +182,9 @@ struct progress {
                                               const event::tally<bitpack_t_> &tally, const stats::ci &target,
                                               const stats::ci &current) {
         std::ostringstream eps_ss;
-        eps_ss << std::scientific << std::setprecision(1) << target.half_width_epsilon;
+        eps_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << target.half_width_epsilon;
         std::ostringstream ci_ss;
-        ci_ss << std::setprecision(2) << target.two_sided_confidence_level;
+        ci_ss << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << target.two_sided_confidence_level;
         const std::string epsilon = eps_ss.str();
         const std::string conf_lv = "CI(" + ci_ss.str() + ")";
         const std::string str_prefix_pre = "[convergence] :: "+conf_lv+" target(ε): " + eps_ss.str() + " :: ";

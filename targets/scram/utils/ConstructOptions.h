@@ -75,6 +75,8 @@ inline po::options_description ConstructOptions() {
             // ("sample-size", OPT_VALUE(std::size_t),"Sample size (work-group Z dimension)")
             ("ci-confidence", OPT_VALUE(double),"Two-sided confidence level used for error estimation")
             ("ci-epsilon", OPT_VALUE(double),"Target margin of error (half-width) for error estimation and early stop")
+            ("ci-rel-epsilon", OPT_VALUE(double),"Relative margin of error δ (fraction of p̂). ε = δ*p̂ during run")
+            ("ci-pilot", OPT_VALUE(int),"Number of free pilot iterations before convergence checks [3]")
             ("true-prob", OPT_VALUE(double),"Ground truth probability for diagnostics");
 
 

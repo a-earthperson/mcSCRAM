@@ -28,6 +28,8 @@
 #include <optional>
 #include <vector>
 #include <cmath>
+#include <algorithm>
+#include <limits>
 
 #define PRECISION_LOG_SCIENTIFIC_DIGITS 3
 
@@ -71,6 +73,16 @@ class convergence_controller {
         enable_diagnostics_ = settings.true_prob() >= 0.0;
         stop_on_convergence_ = settings.early_stop();
 
+        // --- Relative ε support -----------------------------------------
+        rel_epsilon_       = settings.ci_rel_margin_error();
+        pilot_iterations_  = settings.ci_pilot_iterations();
+
+        // If the user specified a relative tolerance but no absolute ε, we
+        // postpone convergence checks until the pilot phase finishes.
+        if (rel_epsilon_ > 0.0 && settings.ci_margin_error() <= 0.0) {
+            targets_.half_width_epsilon = std::numeric_limits<double>::infinity();
+        }
+
         trials_per_iteration_ = cumulative_bits(manager_.shaper().SAMPLE_SHAPE, 1);
         max_trials_ = settings.num_trials();
 
@@ -83,6 +95,19 @@ class convergence_controller {
         // two-sided normal quantile when initialising `targets_`, so use it
         // here instead of the confidence level itself.
         current_.half_width_epsilon = stats::half_width(new_tally, targets_.normal_quantile_two_sided);
+
+        // Adapt the target ε once we have completed the pilot iterations.
+        if (rel_epsilon_ > 0.0 && iteration_ >= pilot_iterations_) {
+            const double p_hat = std::max(new_tally.mean, stats::DELTA_EPSILON);
+            const double eps_rel = rel_epsilon_ * p_hat;
+            double eps_budget = 0.0;
+            if (max_trials_ > 0) {
+                eps_budget = targets_.normal_quantile_two_sided *
+                             std::sqrt(p_hat * (1.0 - p_hat) / static_cast<double>(max_trials_));
+            }
+            const double new_target = std::max(eps_rel, eps_budget);
+            targets_.half_width_epsilon = new_target;
+        }
     }
 
     void process_tally(const event::tally<bitpack_t_> &new_tally) {
@@ -91,6 +116,8 @@ class convergence_controller {
     }
 
     [[nodiscard]] bool check_convergence() const {
+        // Defer convergence checks until the pilot iterations are over.
+        if (iteration_ < pilot_iterations_) return false;
         return check_epsilon_bounded();
     }
 
@@ -166,6 +193,10 @@ private:
 
     std::size_t trials_per_iteration_ = 0;
     std::size_t max_trials_ = 0;
+
+    // --- Relative ε state -------------------------------------------------
+    double      rel_epsilon_     = -1.0;   ///< δ: relative half-width requested.
+    int         pilot_iterations_ = 0;     ///< free pilot iterations.
 
     progress<bitpack_t_, prob_t_, size_t_> progress_;
 

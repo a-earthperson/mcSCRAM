@@ -110,6 +110,12 @@ struct sample_shaper {
             sample_shape.bitpacks_per_batch = kIntelMaxBitpacksPerIter;
         }
 
+        const auto compute_units = device.get_info<sycl::info::device::max_compute_units>();
+        const bool is_cpu = device.has(sycl::aspect::cpu);
+        if (is_cpu && sample_shape.bitpacks_per_batch > compute_units) {
+            sample_shape.bitpacks_per_batch /= compute_units;
+        }
+
         // Log working_set configuration
         LOG(DEBUG2) << working_set<std::size_t, bitpack_t_>(queue, num_nodes, sample_shape);
 
