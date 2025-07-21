@@ -755,4 +755,14 @@ namespace scram::mc::event {
         blk.bitpacks_per_gate = 0;
     }
 
+template<typename bitpack_t_>
+inline std::ostream &operator<<(std::ostream &os, const event::tally<bitpack_t_> &t) {
+               os << t.ci[2]
+           << " " << t.ci[0]
+           << " " << t.mean
+           << " " << t.ci[1]
+           << " " << t.ci[3];
+        return os;
+    }
+
 }// namespace scram::mc::event

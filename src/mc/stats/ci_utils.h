@@ -8,15 +8,27 @@
 
 namespace scram::mc::stats {
 
+static constexpr std::double_t DELTA_EPSILON = 1.0e-20;
+
+struct ci {
+    std::double_t half_width_epsilon;
+    std::double_t two_sided_confidence_level;
+    std::double_t normal_quantile_two_sided;
+};
+
 /**
- * Compute the two-sided Z-score that corresponds to a required confidence
- * level.  E.g. confidence = 0.95 → 1.95996, 0.99 → 2.57583.
- * The implementation uses the inverse complementary error function which is
- * available in C++17 ( <cmath> ).
+ * Two-sided normal quantile: returns \(z\) such that
+ *     P(|Z| ≤ z) = confidence               (Z ~ N(0,1)).
+ * In other words the function computes Φ⁻¹(1−α/2) where
+ *     α = 1 − confidence.
+ *
+ * Implementation  =  Acklam’s rational approximation (2003)
+ * which reproduces the inverse CDF to < 5·10⁻¹⁶ over (0,1).
+ * See also A&S 26.2.23.
  */
-[[nodiscard]] inline double z_score(const double confidence) {
+[[nodiscard]] inline double normal_quantile_two_sided(const double confidence) {
     // Clamp to a sensible open interval to avoid infinities / NaNs.
-    const double p = std::clamp(confidence, 1e-12, 1.0 - 1e-12);
+    const double p = std::clamp(confidence, DELTA_EPSILON, 1.0 - DELTA_EPSILON);
     // Two-sided: need quantile(1 − α/2) where α = 1-confidence
     const double alpha = 1.0 - p;
     const double q = 1.0 - alpha / 2.0;   // central CDF point
@@ -78,6 +90,12 @@ namespace scram::mc::stats {
     return x;
 }
 
+// Backwards-compatibility wrapper (to be removed).
+[[deprecated("Use normal_quantile_two_sided")]]
+[[nodiscard]] inline double z_score(const double confidence) {
+    return normal_quantile_two_sided(confidence);
+}
+
 /**
  * Sample-size formula for a Bernoulli proportion.
  *   N ≥ z² · p(1-p) / ε²
@@ -86,9 +104,22 @@ namespace scram::mc::stats {
 [[nodiscard]] inline std::size_t required_trials(const double p,
                                                 const double eps,
                                                 const double confidence) {
-    const double z  = z_score(confidence);
+    const double z  = normal_quantile_two_sided(confidence);
     const double pq = p * (1.0 - p);
     return static_cast<std::size_t>(std::ceil((z * z * pq) / (eps * eps)));
+}
+
+/**
+ * Sample-size formula for a Bernoulli proportion.
+ *   N ≥ z² · p(1-p) / ε²
+ * where ε is the desired half-width (margin of error).
+ */
+template<typename bitpack_t_>
+[[nodiscard]] inline std::size_t required_trials(const event::tally<bitpack_t_> &tally, const stats::ci &target) {
+    const double p = tally.mean;
+    const double eps = target.half_width_epsilon;
+    const double confidence = target.two_sided_confidence_level;
+    return required_trials(p, eps, confidence);
 }
 
 /**
@@ -99,28 +130,12 @@ namespace scram::mc::stats {
     return required_trials(0.5, eps, confidence);
 }
 
-/**
- * Quick rule-of-thumb validity check for the normal approximation of the
- * sample proportion (np ≥ 10 and n(1-p) ≥ 10).
- */
-[[nodiscard]] inline bool clt_ok(const std::size_t n, const double p) {
-    return static_cast<double>(n) * p >= 10.0 && static_cast<double>(n) * (1.0 - p) >= 10.0;
-}
-
 // Return the half-width (margin of error) of the confidence interval for a
 // given Z-score.  Call this after `populate_point_estimates` so that `std_err`
 // has been initialised.
 template <typename tally_t_>
 [[nodiscard]] inline double half_width(const tally_t_ &tally, const double z) {
     return z * tally.std_err;
-}
-
-// Wrapper that checks whether the normal approximation (Central Limit Theorem
-// rule-of-thumb) is applicable for this tally.  Delegates to the existing
-// `clt_ok(n, p)` utility.
-template <typename tally_t_>
-[[nodiscard]] inline bool normal_approx_ok(const tally_t_ &tally) {
-    return clt_ok(tally.total_bits, tally.mean);
 }
 
 // Add helper functions for tally post-processing ---------------------------------------------------
@@ -133,18 +148,18 @@ template <typename tally_t_>
 // object based only on its raw counters.  The function is templated so that it
 // works with any specialisation of `event::tally<bitpack_t_>`.
 template <typename tally_t_>
-inline void populate_point_estimates(tally_t_ &tally) {
+inline tally_t_ &populate_point_estimates(tally_t_ &tally) {
     if (tally.total_bits == 0) {
         // Avoid division-by-zero – this generally means no samples have been
         // processed yet.  Leave everything zero-initialised.
         tally.mean    = 0.0;
         tally.std_err = 0.0;
         tally.ci      = {0.0, 0.0, 0.0, 0.0};
-        return;
+        return tally;
     }
 
     const auto total_bits_d = static_cast<std::double_t>(tally.total_bits);
-    const auto p            = static_cast<std::double_t>(tally.num_one_bits) / total_bits_d;
+    const auto p     = static_cast<std::double_t>(tally.num_one_bits) / total_bits_d;
 
     tally.mean    = p;
     tally.std_err = std::sqrt(p * (1.0 - p) / total_bits_d);
@@ -164,6 +179,8 @@ inline void populate_point_estimates(tally_t_ &tally) {
     const std::double_t upper99 = std::clamp(p + hw99, 0.0, 1.0);
 
     tally.ci = sycl::double4(lower95, upper95, lower99, upper99);
+
+    return tally;
 }
 
 } // namespace scram::mc::stats

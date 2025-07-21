@@ -22,11 +22,18 @@
 
 #include "mc/queue/layer_manager.h"
 #include "mc/stats/ci_utils.h"
-#include <unistd.h>  // isatty
-#include <string>
-#include <sstream>
+#include "mc/stats/diagnostics.h"
+#include "mc/scheduler/progressbar.h"
 
-namespace scram::mc::queue {
+#include <optional>
+#include <vector>
+#include <cmath>
+#include <algorithm>
+#include <limits>
+
+#define PRECISION_LOG_SCIENTIFIC_DIGITS 3
+
+namespace scram::mc::scheduler {
 
 template <typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
 class convergence_controller {
@@ -37,8 +44,8 @@ class convergence_controller {
         return iteration * shape.num_bitpacks() * sizeof(bitpack_t_) * 8;
     }
 
-    bool iteration_limit_reached() const {
-        return iteration_ >= max_iterations_ && (max_iterations_ > 0);
+    [[nodiscard]] bool iteration_limit_reached() const {
+        return max_iterations_ && (iteration_ >= max_iterations_) ;
     }
 
     /**
@@ -46,16 +53,77 @@ class convergence_controller {
      * @param evt_idx    Index of the event whose probability we track.
      * @param settings   Settings
      */
-    convergence_controller(layer_manager<bitpack_t_, prob_t_, size_t_> &mgr, const index_t_ evt_idx, const core::Settings &settings)
-        : manager_(mgr), evt_idx_(evt_idx), max_iterations_(mgr.shaper().TOTAL_ITERATIONS) {
+    convergence_controller(queue::layer_manager<bitpack_t_, prob_t_, size_t_> &mgr,
+                           const index_t_ evt_idx,
+                           const core::Settings &settings)
+        : manager_(mgr), evt_idx_(evt_idx), ground_truth_(settings.true_prob()), max_iterations_(mgr.shaper().TOTAL_ITERATIONS) {
 
-        target_epsilon_ = std::abs(settings.ci_margin_error());                    // half-width ε
-        confidence_ = std::clamp(settings.ci_confidence(), 0.0, 1.0);       // confidence level (two-sided)
-        z_score_ = scram::mc::stats::z_score(confidence_);
-        stop_on_convergence_ = settings.early_stop();                              // stop on convergence
+        targets_ = {
+            .half_width_epsilon = settings.ci_margin_error(),
+            .two_sided_confidence_level = settings.ci_confidence(),
+            .normal_quantile_two_sided = mc::stats::normal_quantile_two_sided(settings.ci_confidence()),
+        };
+
+        current_ = {
+            .half_width_epsilon = MAXFLOAT,
+            .two_sided_confidence_level = targets_.two_sided_confidence_level,
+            .normal_quantile_two_sided = targets_.normal_quantile_two_sided,
+        };
+
+        enable_diagnostics_ = settings.true_prob() >= 0.0;
+        stop_on_convergence_ = settings.early_stop();
+
+        // --- Relative ε support -----------------------------------------
+        rel_epsilon_       = settings.ci_rel_margin_error();
+        pilot_iterations_  = settings.ci_pilot_iterations();
+
+        // If the user specified a relative tolerance but no absolute ε, we
+        // postpone convergence checks until the pilot phase finishes.
+        if (rel_epsilon_ > 0.0 && settings.ci_margin_error() <= 0.0) {
+            targets_.half_width_epsilon = std::numeric_limits<double>::infinity();
+        }
+
+        trials_per_iteration_ = cumulative_bits(manager_.shaper().SAMPLE_SHAPE, 1);
+        max_trials_ = settings.num_trials();
+
+        tallies_.reserve(this->max_iterations() ? this->max_iterations() : 1000);
+        progress_.initialize(this);
     }
 
-    // (colour constants defined in the private helper below)
+    void update_stats(const event::tally<bitpack_t_> &new_tally) {
+        // The half_width helper expects the *Z*-score. We pre-computed the
+        // two-sided normal quantile when initialising `targets_`, so use it
+        // here instead of the confidence level itself.
+        current_.half_width_epsilon = stats::half_width(new_tally, targets_.normal_quantile_two_sided);
+
+        // Adapt the target ε once we have completed the pilot iterations.
+        if (rel_epsilon_ > 0.0 && iteration_ >= pilot_iterations_) {
+            const double p_hat = std::max(new_tally.mean, stats::DELTA_EPSILON);
+            const double eps_rel = rel_epsilon_ * p_hat;
+            double eps_budget = 0.0;
+            if (max_trials_ > 0) {
+                eps_budget = targets_.normal_quantile_two_sided *
+                             std::sqrt(p_hat * (1.0 - p_hat) / static_cast<double>(max_trials_));
+            }
+            const double new_target = std::max(eps_rel, eps_budget);
+            targets_.half_width_epsilon = new_target;
+        }
+    }
+
+    void process_tally(const event::tally<bitpack_t_> &new_tally) {
+        tallies_.push_back(new_tally);
+        update_stats(new_tally);
+    }
+
+    [[nodiscard]] bool check_convergence() const {
+        // Defer convergence checks until the pilot iterations are over.
+        if (iteration_ < pilot_iterations_) return false;
+        return check_epsilon_bounded();
+    }
+
+    [[nodiscard]] bool check_epsilon_bounded() const {
+        return current_.half_width_epsilon <= targets_.half_width_epsilon && current_.half_width_epsilon > 0.0;
+    }
 
     /** Execute exactly one additional iteration on the device. */
     [[nodiscard]] bool step() {
@@ -66,41 +134,21 @@ class convergence_controller {
         }
 
         // out of iterations, return that we didn't take a step.
+        // evals to false if max_iterations_ is 0, which means keep going.
         if (iteration_limit_reached()) {
+            progress_.mark_iterations_complete();
             return false;
         }
 
         // still have iterations remaining
         // get the tally
-        current_tally_ = manager_.single_pass_and_tally(evt_idx_);
-
-        // ---------------------------------------------------------------------
-        //  Host-side statistical post-processing
-        // ---------------------------------------------------------------------
-        // The Monte-Carlo kernel only updates `num_one_bits` and `total_bits`.
-        // We complete the statistics on the host so that the device kernel does
-        // no redundant work (especially when several work-groups process the
-        // same tally).
-
-        stats::populate_point_estimates(current_tally_);
-
-        const double half_width = stats::half_width(current_tally_, z_score_);
+        process_tally(manager_.single_pass_and_tally(evt_idx_));
 
         // for now, this is our convergence criteria
-        const bool is_normal = stats::normal_approx_ok(current_tally_);
-        const bool epsilon_bounded = half_width <= target_epsilon_;
-        const bool converged_now = is_normal && epsilon_bounded;
-
         // if converged now, set convergence_ sticky to true
-        if (!converged_ && converged_now) {
+        if (!converged_ && check_convergence()) {
             converged_ = true;
-        }
-
-        // Log progress for this step.
-        {
-            std::ostringstream tag;
-            tag << "ε[" << half_width << "]";
-            log_status(tag.str());
+            progress_.mark_converged();
         }
 
         // since we did step, update the iteration count
@@ -112,75 +160,72 @@ class convergence_controller {
      * exhausted).  Returns the final tally.
      */
     [[nodiscard]] event::tally<bitpack_t_> run_to_convergence() {
+
         while (step()) {
+            progress_.tick(this);
         }
-
-        // Final log with iteration count
-        {
-            std::ostringstream tag;
-            tag << "Iterations :: " << iteration_;
-            log_status(tag.str());
-        }
-        return current_tally_;
+        progress_.tick(this);
+        return tallies_.back();
     }
 
-    [[nodiscard]] bool converged() const { return converged_; }
-
-    [[nodiscard]] std::size_t iterations_completed() const { return iteration_; }
-
-    [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return current_tally_; }
-
-  private:
-    // Helper that prints the coloured status line.  The suffix argument lets the
-    // caller append context-specific information (e.g. ε-half-width or number
-    // of iterations).
-    void log_status(const std::string &suffix) const {
-        // ANSI colours (only if stderr is a TTY)
-        constexpr const char *RED   = "\033[31m";
-        constexpr const char *GREEN = "\033[32m";
-        constexpr const char *YELL  = "\033[33m";
-        constexpr const char *CYAN  = "\033[36m";
-        constexpr const char *RESET = "\033[0m";
-
-        const bool colourise = isatty(fileno(stderr));
-        const char *mean_col  = colourise ? (converged_ ? GREEN : RED) : "";
-        const char *std_col   = colourise ? YELL  : "";
-        const char *ci_col    = colourise ? CYAN  : "";
-        const char *reset_col = colourise ? RESET : "";
-
-        LOG(DEBUG1) << "tally[" << evt_idx_ << "] :: "
-                     << "[std_err] :: " << std_col << current_tally_.std_err << reset_col << " :: "
-                     << "[p01, p05, mean, p95, p99] :: ["
-                     << ci_col << current_tally_.ci[2] << reset_col << ", "
-                     << ci_col << current_tally_.ci[0] << reset_col << ", "
-                     << mean_col << current_tally_.mean << reset_col << ", "
-                     << ci_col << current_tally_.ci[1] << reset_col << ", "
-                     << ci_col << current_tally_.ci[3] << reset_col << "] :: "
-                     << "CI(" << confidence_ * 100.0 << "% ) :: " << suffix;
-    }
-
-    layer_manager<bitpack_t_, prob_t_, size_t_> &manager_;
+private:
+    queue::layer_manager<bitpack_t_, prob_t_, size_t_> &manager_;
     const index_t_ evt_idx_;
 
+    stats::ci targets_{};
+    stats::ci current_{};
+
+    bool enable_diagnostics_ = false;
+
+    std::double_t ground_truth_;
+
     // User-supplied convergence parameters.
-    /**
-     * Desired half-width of the confidence interval.
-     */
-    double target_epsilon_;
-    /**
-     * confidence level (two-sided) requested by the user
-     */
-    double confidence_;
 
     // Derived constants.
     bool stop_on_convergence_ = false;
-    double z_score_ = 0.0; // z-score for the requested confidence
     std::size_t max_iterations_ = 0;
 
     // State bookkeeping.
     std::size_t iteration_ = 0;
     bool converged_ = false;
-    event::tally<bitpack_t_> current_tally_{};
-};
 
+    std::vector<event::tally<bitpack_t_>> tallies_;
+
+    std::size_t trials_per_iteration_ = 0;
+    std::size_t max_trials_ = 0;
+
+    // --- Relative ε state -------------------------------------------------
+    double      rel_epsilon_     = -1.0;   ///< δ: relative half-width requested.
+    int         pilot_iterations_ = 0;     ///< free pilot iterations.
+
+    progress<bitpack_t_, prob_t_, size_t_> progress_;
+
+public:
+    [[nodiscard]] bool diagnostics_enabled() const { return enable_diagnostics_; }
+    [[nodiscard]] std::double_t ground_truth() const { return ground_truth_; }
+    [[nodiscard]] bool stop_on_convergence() const { return stop_on_convergence_; }
+    [[nodiscard]] std::size_t iterations() const { return iteration_; }
+    [[nodiscard]] bool converged() const { return converged_; }
+    [[nodiscard]] std::size_t trials_per_iteration() const { return trials_per_iteration_; }
+    [[nodiscard]] std::size_t max_trials() const { return max_trials_; }
+    [[nodiscard]] stats::ci targets() const { return targets_; }
+    [[nodiscard]] stats::ci current() const { return current_; }
+    [[nodiscard]] std::size_t max_iterations() const { return max_iterations_; }
+    [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return tallies_.back(); }
+
+    [[nodiscard]] std::optional<stats::AccuracyMetrics> accuracy_metrics() const {
+        std::optional<stats::AccuracyMetrics> metrics;
+        if (enable_diagnostics_) {
+            metrics = stats::compute_accuracy_metrics(current_tally(), ground_truth_);
+        }
+        return metrics;
+    }
+    [[nodiscard]] std::optional<stats::SamplingDiagnostics> sampling_diagnostics() const {
+        std::optional<stats::SamplingDiagnostics> sampling_diagnostics;
+        if (enable_diagnostics_) {
+            sampling_diagnostics = stats::compute_sampling_diagnostics(current_tally(), ground_truth_, targets_);
+        }
+        return sampling_diagnostics;
+    }
+};
 } // namespace scram::mc::queue

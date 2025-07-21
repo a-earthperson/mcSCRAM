@@ -21,8 +21,10 @@
 
 #pragma once
 
-#include <cstdint>
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 
 #include <string_view>
 
@@ -143,7 +145,7 @@ class Settings {
   /// @returns Reference to this object.
   ///
   /// @throws SettingsError  The number is less than 1.
-  Settings& num_trials(std::size_t n);
+  Settings& num_trials(std::double_t n);
 
   /// @returns The batch size for Monte-Carlo simulations.
   [[nodiscard]] std::size_t batch_size() const { return batch_size_; }
@@ -324,22 +326,48 @@ class Settings {
   Settings& ccf_analysis(bool flag) { ccf_analysis_ = flag; return *this; }
 
   /// @returns The desired confidence level for automatic CI tuning (0 disables).
-  double ci_confidence() const { return ci_confidence_; }
+  [[nodiscard]] double ci_confidence() const { return std::clamp(ci_confidence_, 0.0, 1.0); }
 
   /// Sets the confidence level (two-sided) used when automatically choosing
   /// the number of Monte-Carlo trials.  Accepts values in (0,1).
-  Settings& ci_confidence(double p) { ci_confidence_ = p; return *this; }
+  Settings& ci_confidence(double p) { ci_confidence_ = std::clamp(p, 0.0, 1.0); return *this; }
 
   /// @returns The target half-width (margin of error) for the estimated mean.
-  double ci_margin_error() const { return ci_margin_error_; }
+  [[nodiscard]] double ci_margin_error() const { return std::abs(ci_margin_error_); }
 
   /// Sets the target margin of error ε for automatic sampling.  ε must be
   /// positive and typically ≤ 0.5.
-  Settings& ci_margin_error(double eps) { ci_margin_error_ = eps; return *this; }
+  Settings& ci_margin_error(double eps) { ci_margin_error_ = std::abs(eps); return *this; }
+
+  /// @returns The relative margin of error δ (fraction of p̂) if set (>0), otherwise 0.
+  [[nodiscard]] double ci_rel_margin_error() const { return std::abs(ci_rel_margin_error_); }
+
+  /// Sets the relative margin of error δ used to derive an absolute ε as δ·p̂.
+  Settings& ci_rel_margin_error(double delta) { ci_rel_margin_error_ = std::abs(delta); return *this; }
+
+  /// @returns Number of pilot iterations to run before enabling convergence checks.
+  [[nodiscard]] int ci_pilot_iterations() const { return ci_pilot_iterations_; }
+
+  /// Sets the number of pilot iterations (non-negative).
+  Settings& ci_pilot_iterations(int n) { if (n >= 0) ci_pilot_iterations_ = n; return *this; }
 
   bool early_stop() const { return early_stop_; }
 
   Settings& early_stop(const bool on) { early_stop_ = on; return *this; }
+
+  /// @returns The known ground-truth probability provided by the user (negative when unset).
+  double true_prob() const { return true_prob_; }
+
+  /// Sets the ground-truth probability that will be used for diagnostic statistics.
+  /// Accepts values in the closed interval [0,1].  Values outside that interval
+  /// leave the setting unchanged so that existing code continues to treat the
+  /// probability as “unset”.  (We deliberately avoid throwing from this header.)
+  Settings &true_prob(const double p) {
+    if (0.0 <= p && p <= 1.0) {
+      true_prob_ = p;
+    }
+    return *this;
+  }
 
   bool preprocessor = false;  ///< Stop analysis after preprocessor.
   bool print = false;  ///< Print analysis results in a terminal friendly way.
@@ -366,9 +394,13 @@ class Settings {
   double cut_off_ = 1e-8;                             ///< The cut-off probability for products.
   
   // --- NEW: adaptive Monte-Carlo CI tuning ---------------------------------
-  double ci_confidence_      = 0.95;  ///< two-sided confidence level (0.95 default)
-  double ci_margin_error_    = 0.001; ///< desired half-width ε (default 0.001)
+  double ci_confidence_      = 0.99;  ///< two-sided confidence level (0.95 default)
+  double ci_margin_error_    = 1e-4; ///< desired half-width ε (default 0.001)
   bool   early_stop_         = true;  ///< stop as soon as convergence occurs
+  double true_prob_          = -1.0;   ///< negative means unset.
+  // ---- NEW: relative error support ---------------------------------------
+  double ci_rel_margin_error_ = -1.0; ///< δ (relative ε). Negative → disabled.
+  int    ci_pilot_iterations_ = 3;    ///< free pilot iterations before convergence checks.
 };
 
 }  // namespace scram::core

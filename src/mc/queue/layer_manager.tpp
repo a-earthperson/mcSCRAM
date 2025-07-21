@@ -189,33 +189,41 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
     const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.total_bits = computed_tally->total_bits;
-    to_tally.mean = computed_tally->mean;
-    to_tally.std_err = computed_tally->std_err;
-    to_tally.ci = computed_tally->ci;
+    // to_tally.mean = computed_tally->mean;
+    // to_tally.std_err = computed_tally->std_err;
+    // to_tally.ci = computed_tally->ci;
+    // ---------------------------------------------------------------------
+    //  Host-side statistical post-processing
+    // ---------------------------------------------------------------------
+    // The Monte-Carlo kernel only updates `num_one_bits` and `total_bits`.
+    // We complete the statistics on the host so that the device kernel does
+    // no redundant work (especially when several work-groups process the
+    // same tally).
+    stats::populate_point_estimates(to_tally);
     return std::move(to_tally);
 }
 
-template <typename bitpack_t_, typename prob_t_, typename size_t_>
-void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies(double eps, double confidence) {
-    single_pass().wait_and_throw();
-    for (auto &pair : allocated_tally_events_by_index_) {
-        const index_t_ idx = pair.first;
-        const event::tally<bitpack_t_> *tally = pair.second;
-
-        // ------------------------------------------------------------------
-        //  Compose human-readable statistics line.
-        //   format:  tally[idx] :: [std_err] :: [p05, mean, p95] :: CI(x%) :: ε[val]
-        // ------------------------------------------------------------------
-        const double conf_used = (confidence > 0.0) ? confidence : 0.95; // default to 95 %
-        const double z_used    = scram::mc::stats::z_score(conf_used);
-        const double half_width= z_used * tally->std_err;
-
-        LOG(WARNING) << "tally[" << idx << "] :: [std_err] :: [p05, mean, p95] :: [" << tally->std_err << "] :: ["
-                    << tally->ci[0] << ", " << tally->mean << ", "
-                    << tally->ci[1] << "] :: CI(" << conf_used * 100.0 << "%) :: ε["
-                    << half_width << "]";
-    }
-}
+// template <typename bitpack_t_, typename prob_t_, typename size_t_>
+// void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies(double eps, double confidence) {
+//     single_pass().wait_and_throw();
+//     for (auto &pair : allocated_tally_events_by_index_) {
+//         const index_t_ idx = pair.first;
+//         const event::tally<bitpack_t_> *tally = pair.second;
+//
+//         // ------------------------------------------------------------------
+//         //  Compose human-readable statistics line.
+//         //   format:  tally[idx] :: [std_err] :: [p05, mean, p95] :: CI(x%) :: ε[val]
+//         // ------------------------------------------------------------------
+//         const double conf_used = (confidence > 0.0) ? confidence : 0.95; // default to 95 %
+//         const double z_used    = scram::mc::stats::normal_quantile_two_sided(conf_used);
+//         const double half_width= z_used * tally->std_err;
+//
+//         LOG(WARNING) << "tally[" << idx << "] :: [std_err] :: [p05, mean, p95] :: [" << tally->std_err << "] :: ["
+//                     << tally->ci[0] << ", " << tally->mean << ", "
+//                     << tally->ci[1] << "] :: CI(" << conf_used * 100.0 << "%) :: ε["
+//                     << half_width << "]";
+//     }
+// }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials) {

@@ -86,11 +86,14 @@ namespace ScramCLI {
 
         SET("ci-confidence", double, ci_confidence);
         SET("ci-epsilon", double, ci_margin_error);
+        SET("ci-rel-epsilon", double, ci_rel_margin_error);
+        SET("ci-pilot", int, ci_pilot_iterations);
+        SET("true-prob", double, true_prob);
 
         if (vm.contains("num-trials")) {
             settings->early_stop(vm.contains("early-stop"));// if user passed --early-stop along with --num-trials, intent is clear
             // otherwise, turn off --early-stop with --num-trials
-            SET("num-trials", size_t, num_trials); // this will also set early-stop to true if num-trials = 0
+            SET("num-trials", std::double_t, num_trials); // this will also set early-stop to true if num-trials = 0
         } else {
             settings->num_trials(0); // this will also set early-stop to true
         }

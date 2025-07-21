@@ -35,7 +35,7 @@ endif()
 
 # Memory allocator
 set(ALLOWED_MALLOC_TYPES "tcmalloc" "jemalloc" "malloc" CACHE STRING "Allowed memory allocator types: tcmalloc, jemalloc, malloc")
-set(MALLOC_TYPE "tcmalloc" CACHE STRING "Select the memory allocator type (tcmalloc, jemalloc, malloc)")
+set(MALLOC_TYPE "malloc" CACHE STRING "Select the memory allocator type (tcmalloc, jemalloc, malloc)")
 option(WITH_COVERAGE "Instrument for coverage analysis" OFF)
 option(WITH_PROFILE "Instrument for performance profiling" OFF)
 option(BUILD_TESTS "Build the tests" ON)  # Influences CTest.
@@ -250,6 +250,17 @@ list(APPEND LIBS
 
 ########################## End of find libraries ######################## }}}
 ########################## Begin includes ############################### {{{
+
+# ---- Progress bar (indicators) dependency ----
+include(FetchContent)
+FetchContent_Declare(
+  indicators
+  GIT_REPOSITORY https://github.com/p-ranav/indicators.git
+  GIT_TAG        v2.3
+  GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(indicators)
+include_directories(${indicators_SOURCE_DIR}/include)
 
 include_directories("${CMAKE_SOURCE_DIR}")  # Include the core headers via "src".
 include_directories("src")  # Include the core headers via "src".
