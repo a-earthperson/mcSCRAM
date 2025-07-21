@@ -32,12 +32,9 @@ namespace ScramCLI {
 inline po::options_description ConstructOptions() {
     using path = std::string; // To print argument type as path.
 
-    po::options_description desc("Options");
-    // clang-format off
+        po::options_description desc("Options");
         desc.add_options()
-            ("help", "Display this help message")
-            ("version", "Display version information")
-            ("project", OPT_VALUE(path), "Project file with analysis configurations")
+            ("project", OPT_VALUE(path), "project analysis config file")
             ("allow-extern", "**UNSAFE** Allow external libraries")
             ("validate", "Validate input files without analysis")
             ("pdag", "Perform qualitative analysis with PDAG")
@@ -58,36 +55,46 @@ inline po::options_description ConstructOptions() {
             ("time-step", OPT_VALUE(double), "Time step in hours for probability analysis")
             ("num-quantiles", OPT_VALUE(int),"Number of quantiles for distributions")
             ("num-bins", OPT_VALUE(int), "Number of bins for histograms")
-            ("seed", OPT_VALUE(int), "Seed for the pseudo-random number generator")
             ("output,o", OPT_VALUE(path), "Output file for reports")
-            ("no-indent", "Omit indentation whitespace in output XML")
-            ("verbosity", OPT_VALUE(int), "Set log verbosity");
+            ("no-indent", "Omit indentation whitespace in output XML");
+
+        // ------------------------------------------------------------------
+        //  graph compilation specific options
+        // ------------------------------------------------------------------
+        po::options_description gc("Graph Compilation Options");
+        gc.add_options()
+            ("pdag", "perform qualitative analysis with PDAG")
+            ("bdd", "Perform qualitative analysis with BDD")
+            ("zbdd", "Perform qualitative analysis with ZBDD")
+            ("mocus", "Perform qualitative analysis with MOCUS");
 
         // ------------------------------------------------------------------
         //  Monte-Carlo specific options
         // ------------------------------------------------------------------
         po::options_description mc("Monte Carlo Options");
         mc.add_options()
-            ("monte-carlo", "Use the monte-carlo sampling approximation")
-            ("num-trials", OPT_VALUE(std::double_t),"Number of Bernoulli trials [0]: Auto")
-            ("early-stop", "Stop on convergence, implied if --num-trials unset or 0")
-            // ("batch-size", OPT_VALUE(std::size_t),"Batch size (work-group Y dimension)")
-            // ("sample-size", OPT_VALUE(std::size_t),"Sample size (work-group Z dimension)")
-            ("ci-confidence", OPT_VALUE(double),"Two-sided confidence level used for error estimation")
-            ("ci-epsilon", OPT_VALUE(double),"Target margin of error (half-width) for error estimation and early stop")
-            ("ci-rel-epsilon", OPT_VALUE(double),"Relative margin of error δ (fraction of p̂) ε = δ*p̂ during run, default 0.01")
-            ("ci-burn-in-trials", OPT_VALUE(double),"Burn-in trials before convergence checks (2^20 default), 0 to disable")
-            ("true-p", OPT_VALUE(double),"Ground truth probability/frequency for diagnostics. (>= 0 to enable)");
+            ("monte-carlo", "enable monte carlo sampling")
+            ("early-stop", "stop on convergence (implied if N=0)")
+            ("seed", OPT_VALUE(int)->default_value(372), "PRNG seed")
+            ("num-trials,N", OPT_VALUE(double)->default_value(0), "# bernoulli trials [N ∈ ℕ₀, 0=auto]")
+            ("confidence,a", OPT_VALUE(float)->default_value(0.96), "two-sided conf. lvl [α ∈ (0,1)]")
+            ("epsilon,e", OPT_VALUE(double)->default_value(-1.0), "target half-width [ε > 0]")
+            ("rel-epsilon,d", OPT_VALUE(double)->default_value(0.01), "relative ε=δ·p̂ [δ > 0]")
+            ("burn-in,b", OPT_VALUE(int)->default_value(1<<20), "trials before convergence check [0=off]");
 
         // ------------------------------------------------------------------
         //  Debug options
         // ------------------------------------------------------------------
         po::options_description debug("Debug Options");
         debug.add_options()
-            ("serialize", "Serialize the input model without further analysis")
-            ("preprocessor", "Stop analysis after the preprocessing step")
-            ("print", "Print analysis results in a terminal friendly way")
-            ("no-report", "Don't generate analysis report");
+            ("help", "display this help message")
+            ("no-report", "don't generate analysis report")
+            ("oracle,p", OPT_VALUE(double)->default_value(-1.0), "true p* [p* ∈ [0,∞), -1=off]")
+            ("preprocessor", "stop analysis after preprocessing")
+            ("print", "print analysis results to terminal")
+            ("serialize", "serialize the input model and exit")
+            ("verbosity,V", OPT_VALUE(int), "set log verbosity")
+            ("version,v", "display version information");
         desc.add(mc).add(debug);
     // clang-format on
     return desc;
