@@ -25,6 +25,7 @@
 #include "mc/scheduler/iteration_shape.h"
 #include "mc/stats/ci_utils.h"
 #include "mc/stats/diagnostics.h"
+#include "mc/stats/info_gain.h"
 
 #include <optional>
 #include <cmath>
@@ -62,7 +63,7 @@ class convergence_controller {
         // ε = |µ - p̂|
         // ε = δ•p̂
         // we don't have a target ε yet since it's a value that gets computed and updated after we run some initial
-        // trials. So, we make the target postpone convergence checks until the pilot phase finishes.
+        // trials. So, we make the target postpone convergence checks until the burn-in phase finishes.
         interval_ = {
             .current = {
                 .half_width_epsilon = std::numeric_limits<std::double_t>::infinity(), // not been computed so far, max
@@ -94,6 +95,12 @@ class convergence_controller {
         // ------------------ update projected trials ----------------------------------
         const auto N = stats::required_trials_from_normal_quantile_two_sided(tally.mean, target_epsilon, target_z);
         steps_.target.trials(N);
+        // ------------------ update information gain -----------------------------
+        const std::size_t successes_delta = tally.num_one_bits - prev_one_bits_;
+        const std::size_t failures_delta  = (tally.total_bits - tally.num_one_bits) - (prev_total_bits_ - prev_one_bits_);
+        last_info_bits_ = info_gain_tracker_.add_batch(successes_delta, failures_delta);
+        prev_one_bits_   = tally.num_one_bits;
+        prev_total_bits_ = tally.total_bits;
     }
 
     [[nodiscard]] bool check_convergence() const {
@@ -110,7 +117,8 @@ class convergence_controller {
 
         // out of iterations, return that we didn't take a step.
         // evals to false if max_iterations_ is 0, which means keep going.
-        if (iteration_limit_reached()) {
+        if (!fixed_iteration_limited_reached_ && iteration_limit_reached()) {
+            fixed_iteration_limited_reached_ = true;
             progress_.mark_fixed_iterations_complete(*this);
             return false;
         }
@@ -138,8 +146,8 @@ class convergence_controller {
     [[nodiscard]] bool burn_in_step() {
 
         // iteration_ now shows that enough tasks have been queued on device such that by the time they finish,
-        // pilot trials would be complete. So, don't queue up any additional work, just return saying you're done taking
-        // pilot steps.
+        // burn-in trials would be complete. So, don't queue up any additional work, just return saying you're done taking
+        // burn-in steps.
         if (burn_in_complete()) {
             progress_.mark_burn_in_complete(*this);
             return false;
@@ -156,13 +164,14 @@ class convergence_controller {
      * exhausted).  Returns the final tally.
      */
     [[nodiscard]] event::tally<bitpack_t_> run_to_convergence() {
-        // queue up pilot trials, but dont check for convergence.
+        // queue up burn-in trials, but dont check for convergence.
         while(burn_in_step()) {
             progress_.tick_burn_in(*this);
         }
         while (step()) {
-            progress_.tick(this);
+            progress_.perform_normal_update(*this);
         }
+        progress_.finalize();
         return current_tally();
     }
 
@@ -170,10 +179,16 @@ private:
     queue::layer_manager<bitpack_t_, prob_t_, size_t_> &manager_;
     const index_t_ evt_idx_;
     const core::Settings &settings_;
+    // Information gain tracking
+    stats::InfoGainTracker info_gain_tracker_{};
+    std::size_t prev_one_bits_ = 0;
+    std::size_t prev_total_bits_ = 0;
+    double last_info_bits_ = 0.0;
     tracked_pair<stats::ci> interval_;
     tracked_pair<iteration_shape<bitpack_t_>> steps_{};
     event::tally<bitpack_t_> current_tally_{};
     bool converged_ = false;
+    bool fixed_iteration_limited_reached_ = false;
     progress<bitpack_t_, prob_t_, size_t_> progress_;
 
 public:
@@ -206,6 +221,8 @@ public:
 
     [[nodiscard]] const event::tally<bitpack_t_> &current_tally() const { return current_tally_; }
 
+    [[nodiscard]] double info_gain_last_iteration() const { return last_info_bits_; }
+    [[nodiscard]] double info_gain_cumulative() const { return info_gain_tracker_.cumulative_bits(); }
 
     [[nodiscard]] std::optional<stats::AccuracyMetrics> accuracy_metrics() const {
         std::optional<stats::AccuracyMetrics> metrics;

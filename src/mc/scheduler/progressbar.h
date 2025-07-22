@@ -9,6 +9,11 @@
 #include <vector>
 #include <optional>
 #include <chrono>
+#include <thread>
+#include <condition_variable>
+#include <atomic>
+#include <mutex>
+
 #include "mc/stats/ci_utils.h"
 #include "mc/stats/diagnostics.h"
 #include "mc/stats/info_gain.h"
@@ -60,22 +65,45 @@ struct progress {
         }
         setup_throughput(*controller);
         setup_info_gain(*controller);
+
+        // Launch background worker that will handle UI refreshes without
+        // blocking the sampling loop.
+        worker_thread_ = std::thread([this]() { worker_loop(); });
     }
 
     void tick(const convergence_controller<bitpack_t_, prob_t_, size_t_> *controller) {
-        tick_fixed_bar(*controller);
-        tick_convergence_bar(*controller);
-        tick_text(controller);
+        // Fast path: if we are *not* in watch mode, behave exactly as before.
         if (!watch_mode_) {
+            // No terminal attached – fallback to lightweight logging only.
             LOG(DEBUG2) << controller->current_tally();
+            return;
         }
+
+        {
+            std::lock_guard<std::mutex> lk(cv_mutex_);
+            pending_controller_ = controller;
+            burn_in_pending_    = false;
+            tick_pending_.store(true, std::memory_order_release);
+        }
+        cv_.notify_one();
     }
 
-    ~progress() {
+    void finalize() {
+        // Signal the worker thread to stop and wait for it to finish.
+        stop_worker_ = true;
+        cv_.notify_all();
+        if (worker_thread_.joinable()) {
+            worker_thread_.join();
+        }
+
         indicators::show_console_cursor(true);
         for (auto &bar: owned_bars_) {
             bar->mark_as_completed();
         }
+    }
+
+    ~progress() {
+        finalize();
     }
 
     void tick_text(const convergence_controller<bitpack_t_, prob_t_, size_t_> *controller) const {
@@ -110,21 +138,50 @@ struct progress {
     }
 
     void tick_burn_in(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+        // If watch mode is disabled we can perform the update synchronously.
+        if (!watch_mode_) {
+            LOG(DEBUG2) << controller.current_tally();
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lk(cv_mutex_);
+            pending_controller_ = &controller;
+            burn_in_pending_    = true;
+            tick_pending_.store(true, std::memory_order_release);
+        }
+        cv_.notify_one();
+    }
+
+    void perform_normal_update(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+        tick_fixed_bar(controller);
+        tick_convergence_bar(controller);
+        tick_text(&controller);
+    }
+
+    void perform_burn_in_update(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_fixed_bar(controller);
         tick_text(&controller);
+
         if (burn_in_ && !bars_->operator[](*burn_in_).is_completed()) {
             auto &bar = bars_->operator[](*burn_in_);
+
             std::ostringstream tar_ss;
-            tar_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.target_state().half_width_epsilon;
+            tar_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS)
+                   << controller.target_state().half_width_epsilon;
             const std::string t = tar_ss.str();
+
             std::ostringstream cur_ss;
-            cur_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.current_state().half_width_epsilon;
+            cur_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS)
+                   << controller.current_state().half_width_epsilon;
             const std::string c = cur_ss.str();
-            bar.set_option(indicators::option::PrefixText{"[burn-in]     :: ε= "+c+" | ε₀= "+t+" :: "});
+
+            bar.set_option(indicators::option::PrefixText{"[burn-in]     :: ε= " + c + " | ε₀= " + t + " :: "});
+
             const auto cur_ite = controller.current_steps().iterations();
             const auto tot_ite = controller.burn_in_trials_shape().iterations();
             const std::string ite = std::to_string(cur_ite) + "/" + std::to_string(tot_ite);
-            bar.set_option(indicators::option::PostfixText{"["+ite+"]"});
+            bar.set_option(indicators::option::PostfixText{"[" + ite + "]"});
             bar.set_progress(cur_ite);
         }
     }
@@ -162,6 +219,104 @@ struct progress {
     mutable std::size_t prev_info_iteration_ = 0;
 
     bool watch_mode_ = false;
+
+    // -------------------------------------------------------------------------
+    // Deferred tick machinery.  Updates to the (potentially slow) terminal UI
+    // should not block the main sampling loop.  Instead, we queue a request and
+    // let a background worker satisfy it at most once every PERIOD.  This keeps
+    // the main thread free while still providing timely progress feedback.
+    // -------------------------------------------------------------------------
+
+    // Limit UI refreshes to PERIOD ms
+    static constexpr std::chrono::milliseconds PERIOD{std::chrono::milliseconds(100)};
+
+    // Set by the main thread to request a UI refresh. Cleared by the worker
+    // once the refresh has been executed.
+    mutable std::atomic<bool> tick_pending_{false};
+
+    // True if the pending request refers to a burn-in update (rather than a
+    // regular convergence update).
+    mutable bool burn_in_pending_{false};
+
+    // Pointer to the controller associated with the pending request.  We only
+    // ever have one controller per progress instance, so keeping a raw pointer
+    // is safe as long as the controller out-lives *this* progress object.
+    mutable const convergence_controller<bitpack_t_, prob_t_, size_t_>* pending_controller_{nullptr};
+
+    // Synchronisation primitives for the worker thread.
+    mutable std::mutex cv_mutex_;
+    mutable std::condition_variable cv_;
+    std::thread worker_thread_;
+    std::atomic<bool> stop_worker_{false};
+
+    // ---------------------------------------------------------------------
+    // Background worker implementation
+    // ---------------------------------------------------------------------
+
+    void worker_loop() {
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        auto last_exec = std::chrono::high_resolution_clock::now();
+
+        while (!stop_worker_) {
+            // Wait until there is work or until we are asked to stop
+            cv_.wait(lock, [this]() {
+                return tick_pending_.load(std::memory_order_acquire) || stop_worker_.load();
+            });
+
+            if (stop_worker_) {
+                break;
+            }
+
+            // Ensure we do not execute updates more often than PERIOD
+            auto now = std::chrono::high_resolution_clock::now();
+            if (now - last_exec < PERIOD) {
+                auto remaining = PERIOD - (now - last_exec);
+
+                // Wait for the remaining time *or* until we are asked to stop.
+                cv_.wait_for(lock, remaining, [this, &last_exec]() {
+                    // Wake early only if we are shutting down or the rate limit expired.
+                    return stop_worker_.load() || (std::chrono::high_resolution_clock::now() - last_exec >= PERIOD);
+                });
+
+                if (stop_worker_) {
+                    break;
+                }
+
+                // After the timed wait the period may still not have elapsed (spurious wake-up).
+                now = std::chrono::high_resolution_clock::now();
+                if (now - last_exec < PERIOD) {
+                    // Too early – go back to the top of the loop and wait again.
+                    continue;
+                }
+            }
+
+            if (!tick_pending_.load(std::memory_order_acquire)) {
+                // Spurious wake-up or the pending flag cleared elsewhere.
+                continue;
+            }
+
+            // Capture state for the update
+            const auto controller = pending_controller_;
+            const bool is_burn_in  = burn_in_pending_;
+
+            // Reset request state before releasing the lock so that new
+            // requests can be queued while we are performing the expensive
+            // terminal update.
+            tick_pending_.store(false, std::memory_order_release);
+            lock.unlock();
+
+            if (controller) {
+                if (is_burn_in) {
+                    perform_burn_in_update(*controller);
+                } else {
+                    perform_normal_update(*controller);
+                }
+            }
+
+            last_exec = std::chrono::high_resolution_clock::now();
+            lock.lock();
+        }
+    }
 
     indicators::ProgressBar &add_text(std::optional<std::size_t> &idx, const std::optional<std::string> &pretext) {
         if (!idx) {
@@ -475,6 +630,7 @@ struct progress {
         // Format human-friendly strings
         auto format_bits = [](double bits) {
             std::ostringstream oss;
+            bits = std::abs(bits);
             if (std::isnan(bits)) {
                 oss << "nan bit";
             } else if (bits >= 1024.0 * 1024.0) {
