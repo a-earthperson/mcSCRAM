@@ -20,12 +20,10 @@
 /// Implementation of Settings Builder.
 
 #include "settings.h"
+#include "error.h"
 
 #include <string>
-
 #include <boost/range/algorithm.hpp>
-
-#include "error.h"
 
 namespace scram::core {
 

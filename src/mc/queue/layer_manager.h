@@ -326,17 +326,17 @@ class layer_manager {
      * SAMPLE_SHAPE.
      */
     [[nodiscard]] inline const sample_shaper<bitpack_t_> &shaper() const noexcept { return sample_shaper_; }
-
+    [[nodiscard]] sycl::queue &queue() { return queue_; }
     /**
      * @brief Destructor that cleans up allocated device memory
-     * 
+     *
      * @details Properly releases all allocated device-side memory for basic events,
      * gates, and tally events. Ensures no memory leaks occur when the layer manager
      * is destroyed.
-     * 
+     *
      * @note All device memory is automatically freed
      * @note SYCL queue operations are completed before destruction
-     * 
+     *
      * @example
      * @code
      * {
