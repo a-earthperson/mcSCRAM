@@ -37,35 +37,6 @@ private:
     std::size_t                      trials_{};      // single source of truth
 };
 
-// template<typename bitpack_t_>
-// struct iteration_shape {
-// public:
-//     std::size_t iterations{};
-//     std::size_t trials;
-//     template<event::sample_shape<std::size_t> shape>
-//     [[nodiscard]] iteration_shape(const std::size_t trials)
-//         : trials(trials), shape_(shape) {}
-//
-//     [[nodiscard]] static std::size_t cumulative_bits(const event::sample_shape<std::size_t> &shape,
-//                                                      const size_t &iteration = 1) {
-//         return iteration * shape.num_bitpacks() * sizeof(bitpack_t_) * 8;
-//     }
-//     void set_iterations(const std::size_t iterations) {
-//         this->trials = cumulative_bits(shape_, iterations);
-//     }
-//     void set_trials(const std::size_t trials) { this->trials = trials; }
-//
-//     [[nodiscard]] static std::size_t trials_per_iteration(const event::sample_shape<std::size_t> &shape) {
-//         return cumulative_bits(shape, 1);
-//     }
-//
-//     [[nodiscard]] static std::size_t iterations_from_trials(const std::size_t trials, const std::size_t trials_per_iteration) {
-//         return static_cast<std::size_t>(std::ceil(static_cast<std::double_t>(trials) / static_cast<std::double_t>(trials_per_iteration)));
-//     }
-// private:
-//     event::sample_shape<std::size_t> shape_;
-// };
-
 template <typename DataT>
 struct tracked_pair {
     DataT current{};

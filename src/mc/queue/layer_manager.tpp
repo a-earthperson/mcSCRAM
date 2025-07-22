@@ -229,14 +229,19 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials) {
     // create and sort layers
     layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
-    const auto num_nodes = pdag_nodes_.size();
-    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, num_nodes);
+    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, node_count());
     sample_shape_ = sample_shaper_.SAMPLE_SHAPE;
     
     // Log sample_shaper configuration
     LOG(DEBUG2) << sample_shaper_;
     
     map_nodes_by_layer(pdag_nodes_by_layer_);
+}
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+std::size_t layer_manager<bitpack_t_, prob_t_, size_t_>::node_count() const {
+    const auto num_nodes = pdag_nodes_.size();
+    return num_nodes;
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>

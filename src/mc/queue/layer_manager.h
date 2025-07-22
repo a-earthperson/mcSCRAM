@@ -316,6 +316,8 @@ class layer_manager {
      */
     event::tally<bitpack_t_> single_pass_and_tally(index_t_ evt_idx);
 
+    [[nodiscard]] std::size_t node_count() const;
+
     /**
      * @brief Accessor for the internal sample shaper configuration
      *
