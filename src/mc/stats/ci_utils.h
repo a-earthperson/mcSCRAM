@@ -12,6 +12,7 @@ static constexpr std::double_t DELTA_EPSILON = 1.0e-12;
 
 struct ci {
     std::double_t half_width_epsilon;
+    std::double_t half_width_epsilon_log10;
     std::double_t two_sided_confidence_level;
     std::double_t normal_quantile_two_sided;
 };
@@ -141,6 +142,16 @@ template<typename bitpack_t_>
 template <typename tally_t_>
 [[nodiscard]] inline double half_width(const tally_t_ &tally, const double z) {
     return z * tally.std_err;
+}
+
+template <typename tally_t_>
+inline double half_width_log10(const tally_t_ &tally, const double z) {
+    return z * tally.std_err / (tally.mean * std::log(10.0));
+}
+
+inline std::size_t required_trials_log10_from_normal_quantile_two_sided(const double p, const double eps_log10, const double z) {
+    const double denom = p * eps_log10 * eps_log10 * std::log(10.0) * std::log(10.0);
+    return static_cast<std::size_t>(std::ceil(z * z * (1.0 - p) / denom));
 }
 
 /**

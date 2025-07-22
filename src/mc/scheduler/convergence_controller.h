@@ -67,11 +67,13 @@ class convergence_controller {
         interval_ = {
             .current = {
                 .half_width_epsilon = std::numeric_limits<std::double_t>::infinity(), // not been computed so far, max
+                .half_width_epsilon_log10 = std::numeric_limits<std::double_t>::infinity(), // not been computed so far, max
                 .two_sided_confidence_level = std::numeric_limits<std::double_t>::quiet_NaN(), // not needed, not tracked for now.
                 .normal_quantile_two_sided = std::numeric_limits<std::double_t>::quiet_NaN(),
             },
             .target = {
                 .half_width_epsilon = settings_.ci_rel_margin_error() * std::max(0.0, stats::DELTA_EPSILON),
+                .half_width_epsilon_log10 = 1e-4, // for now, assume this is a user-provided constant
                 .two_sided_confidence_level = settings_.ci_confidence(), // from settings
                 .normal_quantile_two_sided = stats::normal_quantile_two_sided(settings_.ci_confidence()), // compute once
             },
@@ -83,18 +85,28 @@ class convergence_controller {
         current_tally_ = tally;
         // ------------------ update iterations ---------------------------------------
         steps_.current.trials(tally.total_bits);
-        // ------------------ update epsilons -----------------------------------------
-        const std::double_t &target_z = target_zscore();
+        // ------------------ update current epsilon, log10-epsilon--------------------
+        const std::double_t &target_z = interval_.target.normal_quantile_two_sided;
         // The half_width helper expects the *Z*-score. We pre-computed the
         // two-sided normal quantile when initialising `targets_`, so use it
         // here instead of the confidence level itself.
         interval_.current.half_width_epsilon = stats::half_width(tally, target_z);
+        interval_.current.half_width_epsilon_log10 = stats::half_width_log10(tally, target_z);
+        // ------------------ update target epsilon, log10-epsilon----------------------
+        const auto p_hat = std::max(tally.mean, stats::DELTA_EPSILON);
+        const auto p_hat_log10 = std::log10(p_hat);
         // set the target epsilon as a fraction of the estimated mean
-        const std::double_t target_epsilon = settings_.ci_rel_margin_error() * std::max(tally.mean, stats::DELTA_EPSILON);
+        const std::double_t target_epsilon = settings_.ci_rel_margin_error() * p_hat;
         interval_.target.half_width_epsilon = target_epsilon;
+        // set the target log10 epsilon as a fraction of log10 of the estimated mean
+        const std::double_t target_epsilon_log10 = interval_.target.half_width_epsilon_log10;
+        //settings_.ci_rel_margin_error() * p_hat_log10;
+        //interval_.target.half_width_epsilon_log10 = target_epsilon_log10;
         // ------------------ update projected trials ----------------------------------
-        const auto N = stats::required_trials_from_normal_quantile_two_sided(tally.mean, target_epsilon, target_z);
-        steps_.target.trials(N);
+        const auto N1 = stats::required_trials_from_normal_quantile_two_sided(p_hat, target_epsilon, target_z);
+        const auto N2 = stats::required_trials_log10_from_normal_quantile_two_sided(p_hat, target_epsilon_log10, target_z);
+        const auto N = std::max(N1, N2);
+        steps_.target.trials(N1);
         // ------------------ update information gain -----------------------------
         const std::size_t successes_delta = tally.num_one_bits - prev_one_bits_;
         const std::size_t failures_delta  = (tally.total_bits - tally.num_one_bits) - (prev_total_bits_ - prev_one_bits_);
@@ -104,7 +116,8 @@ class convergence_controller {
     }
 
     [[nodiscard]] bool check_convergence() const {
-        return check_epsilon_bounded(interval_);
+        check_log_epsilon_bounded(interval_);
+        return check_epsilon_bounded(interval_); //||
     }
 
     /** Execute exactly one additional iteration on the device. */
@@ -166,7 +179,7 @@ class convergence_controller {
     [[nodiscard]] event::tally<bitpack_t_> run_to_convergence() {
         // queue up burn-in trials, but dont check for convergence.
         while(burn_in_step()) {
-            progress_.tick_burn_in(*this);
+            progress_.perform_burn_in_update(*this);
         }
         while (step()) {
             progress_.perform_normal_update(*this);
@@ -214,8 +227,6 @@ public:
         };
     }
 
-    [[nodiscard]] const std::double_t &target_zscore() const { return interval_.target.normal_quantile_two_sided; }
-
     [[nodiscard]] const stats::ci &target_state() const { return interval_.target; }
     [[nodiscard]] const stats::ci &current_state() const { return interval_.current; }
 
@@ -242,6 +253,13 @@ public:
     [[nodiscard]] static bool check_epsilon_bounded(const tracked_pair<stats::ci> &interval) {
         const auto &current = interval.current.half_width_epsilon;
         const auto &target = interval.target.half_width_epsilon;
+        return current > 0 && current <= target;
+    }
+
+    [[nodiscard]] static bool check_log_epsilon_bounded(const tracked_pair<stats::ci> &interval) {
+        const auto &current = interval.current.half_width_epsilon_log10;
+        const auto &target = interval.target.half_width_epsilon_log10;
+        LOG(DEBUG3) << "current: " << current << ", target: " << target << ", delta: " << (target - current) << ", abs_delta: " << std::abs(target - current);
         return current > 0 && current <= target;
     }
 
