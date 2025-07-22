@@ -319,6 +319,16 @@ class layer_manager {
     [[nodiscard]] std::size_t node_count() const;
 
     /**
+     * @brief Retrieves the original MEF event (BasicEvent) corresponding to a PDAG node index.
+     *
+     * Given a PDAG node index, this function resolves the underlying MEF event that was
+     * used to construct the node.  At the moment only Variable nodes map directly back
+     * to MEF::BasicEvent instances.  If the index is unknown or the mapping cannot be
+     * resolved an exception is thrown.
+     */
+    [[nodiscard]] const scram::mef::Event* get_mef_event(index_t_ event_id) const;
+
+    /**
      * @brief Accessor for the internal sample shaper configuration
      *
      * @details Returns a const reference to the sample_shaper instance that

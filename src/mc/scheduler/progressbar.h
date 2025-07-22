@@ -11,6 +11,7 @@
 #include <chrono>
 #include "mc/stats/ci_utils.h"
 #include "mc/stats/diagnostics.h"
+#include "mc/stats/info_gain.h"
 
 #define PRECISION_LOG_SCIENTIFIC_DIGITS 3
 
@@ -58,6 +59,7 @@ struct progress {
             setup_accuracy_metrics(*controller);
         }
         setup_throughput(*controller);
+        setup_info_gain(*controller);
     }
 
     void tick(const convergence_controller<bitpack_t_, prob_t_, size_t_> *controller) {
@@ -81,6 +83,7 @@ struct progress {
         tick_diagnostics(*controller);
         tick_accuracy_metrics(*controller);
         tick_throughput_bar(*controller);
+        tick_info_gain(*controller);
     }
 
     // Mark the convergence bar as complete once the controller reports success.
@@ -143,6 +146,7 @@ struct progress {
     std::optional<std::size_t> diagnostics_{};
     std::optional<std::size_t> estimate_{};
     std::optional<std::size_t> throughput_{};
+    std::optional<std::size_t> info_gain_{};  // new info-gain line
     std::optional<std::size_t> all_inclusive_progress_{};
 
     static constexpr std::uint8_t bar_width_ = 30;
@@ -150,6 +154,12 @@ struct progress {
     mutable std::chrono::high_resolution_clock::time_point last_tick_time_;
     mutable bool first_tick_ = true;
     mutable std::size_t last_iteration_ = 0;
+
+    // timing state for info-gain rate
+    mutable std::chrono::high_resolution_clock::time_point last_info_time_{};
+    mutable bool first_info_tick_ = true;
+    mutable double prev_info_total_bits_ = 0.0;
+    mutable std::size_t prev_info_iteration_ = 0;
 
     bool watch_mode_ = false;
 
@@ -191,7 +201,7 @@ struct progress {
             auto &bar = add_iterations_bar(fixed_iterations_);
             const auto tot_ite = controller.fixed_iterations_shape().iterations();
             bar.set_option(indicators::option::PrefixText{"[fixed]       :: "});
-            bar.set_option(indicators::option::BarWidth{bar_width_});
+            bar.set_option(indicators::option::BarWidth{bar_width_*2+2});
             bar.set_option(indicators::option::MinProgress{0});
             bar.set_option(indicators::option::MaxProgress{tot_ite});
             bar.set_option(indicators::option::ShowPercentage{true});
@@ -218,6 +228,11 @@ struct progress {
     void setup_throughput(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
         auto &bar = add_text(throughput_, "[throughput]  ::");
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::magenta});
+    }
+
+    void setup_info_gain(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+        auto &bar = add_text(info_gain_, "[info-gain]   ::");
+        bar.set_option(indicators::option::ForegroundColor{indicators::Color::cyan});
     }
 
     void setup_estimate(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
@@ -378,13 +393,108 @@ struct progress {
              bits_sec_str = ss.str();
          }
 
+         // Per-node metrics
+         const auto nodes = static_cast<std::double_t>(controller.node_count());
+         std::string bits_iter_node_str;
+         std::string bits_sec_node_str;
+         if (nodes > 0.0) {
+             const double bits_iter_node = bits_per_iteration / nodes;
+             const double bits_sec_node  = bits_per_sec / nodes;
+
+             if (bits_iter_node >= 1024.0 * 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter_node / (1024.0*1024.0) << " Mbit/iter/node"; bits_iter_node_str = ss.str();
+             } else if (bits_iter_node >= 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter_node / 1024.0 << " kbit/iter/node"; bits_iter_node_str = ss.str();
+             } else {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter_node << " bit/iter/node"; bits_iter_node_str = ss.str();
+             }
+
+             if (bits_sec_node >= 1024.0 * 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec_node / (1024.0*1024.0) << " Mbit/s/node"; bits_sec_node_str = ss.str();
+             } else if (bits_sec_node >= 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec_node / 1024.0 << " kbit/s/node"; bits_sec_node_str = ss.str();
+             } else {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec_node << " bit/s/node"; bits_sec_node_str = ss.str();
+             }
+         }
+
          // Combine all metrics into a single line
-         const std::string throughput_text = bits_iter_str + " | " + iter_rate_str + " | " + bits_sec_str;
+         std::string throughput_text = bits_iter_str + " | " + iter_rate_str + " | " + bits_sec_str;
+         if (!bits_iter_node_str.empty() && !bits_sec_node_str.empty()) {
+             throughput_text += " | " + bits_iter_node_str + " | " + bits_sec_node_str;
+         }
+
          bar.set_option(indicators::option::PostfixText{throughput_text});
 
          // Update state for next tick
          last_tick_time_ = current_time;
          last_iteration_ = current_iteration;
+    }
+
+    void tick_info_gain(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+        if (!info_gain_) {
+            return;
+        }
+
+        auto &bar = bars_->operator[](*info_gain_);
+
+        const double total_bits = controller.info_gain_cumulative();
+
+        if (total_bits == 0.0) {
+            bar.set_option(indicators::option::PostfixText{"initializing..."});
+            return;
+        }
+
+        // Time delta for rate
+        const auto now = std::chrono::high_resolution_clock::now();
+        double seconds = 0.0;
+        if (first_info_tick_) {
+            first_info_tick_ = false;
+            last_info_time_ = now;
+        } else {
+            seconds = std::chrono::duration<double>(now - last_info_time_).count();
+            last_info_time_ = now;
+        }
+
+        const double delta_bits = total_bits - prev_info_total_bits_;
+
+        double bits_per_sec = std::numeric_limits<double>::quiet_NaN();
+        if (seconds > 0.0) {
+            bits_per_sec = delta_bits / seconds;
+        }
+
+        const std::size_t current_iteration = controller.current_steps().iterations();
+        const std::size_t iterations_delta  = current_iteration - prev_info_iteration_;
+
+        // bits per iteration
+        double bits_per_iter = std::numeric_limits<double>::quiet_NaN();
+        if (iterations_delta > 0) {
+            bits_per_iter = delta_bits / static_cast<double>(iterations_delta);
+        }
+
+        // Format human-friendly strings
+        auto format_bits = [](double bits) {
+            std::ostringstream oss;
+            if (std::isnan(bits)) {
+                oss << "nan bit";
+            } else if (bits >= 1024.0 * 1024.0) {
+                oss << std::fixed << std::setprecision(6) << bits / (1024.0 * 1024.0) << " Mbit";
+            } else if (bits >= 1024.0) {
+                oss << std::fixed << std::setprecision(6) << bits / 1024.0 << " kbit";
+            } else {
+                oss << std::fixed << std::setprecision(6) << bits << " bit";
+            }
+            return oss.str();
+        };
+
+        const std::string rate_str  = format_bits(bits_per_sec) + "/s";
+        const std::string iter_str  = format_bits(bits_per_iter) + "/iter";
+        const std::string total_str = "Σ " + format_bits(total_bits);
+
+        bar.set_option(indicators::option::PostfixText{rate_str + " | " + iter_str + " | " + total_str});
+
+        prev_info_total_bits_ = total_bits;
+        prev_info_iteration_  = current_iteration;
     }
 
 
