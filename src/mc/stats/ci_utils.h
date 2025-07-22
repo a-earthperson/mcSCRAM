@@ -8,7 +8,7 @@
 
 namespace scram::mc::stats {
 
-static constexpr std::double_t DELTA_EPSILON = 1.0e-20;
+static constexpr std::double_t DELTA_EPSILON = 1.0e-12;
 
 struct ci {
     std::double_t half_width_epsilon;
@@ -123,19 +123,44 @@ template<typename bitpack_t_>
 }
 
 /**
- * Conservative upper bound obtained by plugging in p = 0.5 (maximum variance).
+ * Sample-size formula for a Bernoulli proportion.
+ *   N ≥ z² · p(1-p) / ε²
+ * where ε is the desired half-width (margin of error).
  */
-[[nodiscard]] inline std::size_t worst_case_trials(const double eps,
-                                                  const double confidence) {
-    return required_trials(0.5, eps, confidence);
+[[nodiscard]] inline std::size_t required_trials_from_normal_quantile_two_sided(const std::double_t &p,
+                                                                                const std::double_t &epsilon,
+                                                                                const std::double_t &normal_quantile_two_sided) {
+    const std::double_t &z  = normal_quantile_two_sided;
+    const double pq = p * (1.0 - p);
+    return static_cast<std::size_t>(std::ceil((z * z * pq) / (epsilon * epsilon)));
 }
 
 // Return the half-width (margin of error) of the confidence interval for a
 // given Z-score.  Call this after `populate_point_estimates` so that `std_err`
-// has been initialised.
+// has been initialized.
 template <typename tally_t_>
 [[nodiscard]] inline double half_width(const tally_t_ &tally, const double z) {
     return z * tally.std_err;
+}
+
+/**
+ * Inverted sample-size formula: compute the achievable margin of error ε
+ * given a fixed sample budget N.
+ *   ε = z · √[p(1-p) / N]
+ * This tells you the best possible half-width you can achieve with N trials.
+ */
+[[nodiscard]] inline std::double_t epsilon_from_trials(const std::double_t p, const std::size_t N, const std::double_t z) {
+    if (N == 0) return std::numeric_limits<std::double_t>::infinity();
+    const std::double_t pq = p * (1.0 - p);
+    const std::double_t epsilon = z * std::sqrt(pq / static_cast<std::double_t>(N));
+    return epsilon;
+}
+
+/**
+ * Conservative upper bound obtained by plugging in p = 0.5 (maximum variance).
+ */
+[[nodiscard]] inline std::size_t worst_case_trials(const double eps, const double confidence) {
+    return required_trials(0.5, eps, confidence);
 }
 
 // Add helper functions for tally post-processing ---------------------------------------------------

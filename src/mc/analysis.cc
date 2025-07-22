@@ -314,7 +314,7 @@ namespace scram::core {
      */
     double ProbabilityAnalyzer<DirectEval>::CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept {
         CLOCK(calc_time);
-        LOG(WARNING) << "Calculating probability using monte carlo sampling...";
+        LOG(DEBUG1) << "Calculating probability using monte carlo sampling...";
 
         using bitpack_t_ = std::uint64_t;
 
@@ -329,25 +329,12 @@ namespace scram::core {
         const auto tally = scheduler.run_to_convergence();
 
         LOG(DEBUG1) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
-
+        LOG(DEBUG1) << tally;
         // ------------------------------------------------------------------
         //  Diagnostic statistics when a ground-truth probability is supplied
         // ------------------------------------------------------------------
-        const double p_true = settings.true_prob();
-        if (0.0 <= p_true && p_true <= 1.0) {
-            const auto acc  = mc::stats::compute_accuracy_metrics(tally, p_true);
-            const auto diag = mc::stats::compute_sampling_diagnostics(tally,
-                                                                     p_true,
-                                                                     settings.ci_confidence(),
-                                                                     settings.ci_margin_error());
-
-            LOG(DEBUG1) << "Diagnostics :: |Δ|=" << acc.abs_error
-                         << " (rel " << acc.rel_error << ")"
-                         << " :: z=" << diag.z_score
-                         << " :: p-value=" << diag.p_value
-                         << " :: CI95 cover=" << (diag.ci95_covered ? "yes" : "no")
-                         << " :: n_ratio=" << diag.n_ratio;
-        }
+        LOG(DEBUG1) << *scheduler.accuracy_metrics();
+        LOG(DEBUG1) << *scheduler.sampling_diagnostics();
         return tally.mean;
     }
 }// namespace scram::core

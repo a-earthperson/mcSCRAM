@@ -84,11 +84,11 @@ namespace ScramCLI {
         settings->preprocessor = vm.contains("preprocessor");
         settings->print = vm.contains("print");
 
-        SET("ci-confidence", double, ci_confidence);
-        SET("ci-epsilon", double, ci_margin_error);
-        SET("ci-rel-epsilon", double, ci_rel_margin_error);
-        SET("ci-burn-in-trials", double, ci_burnin_trials);
-        SET("true-p", double, oracle_p);
+        SET("confidence", double, ci_confidence);
+        SET("delta", double, ci_rel_margin_error);
+        SET("burn-in", double, ci_burnin_trials);
+
+        SET("oracle", double, oracle_p);
 
         if (vm.contains("num-trials")) {
             settings->early_stop(vm.contains("early-stop"));// if user passed --early-stop along with --num-trials, intent is clear
@@ -98,6 +98,7 @@ namespace ScramCLI {
             settings->num_trials(0); // this will also set early-stop to true
         }
 
+        settings->watch_mode(vm.contains("watch"));
 
     }
 #undef SET
