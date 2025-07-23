@@ -316,6 +316,18 @@ class layer_manager {
      */
     event::tally<bitpack_t_> single_pass_and_tally(index_t_ evt_idx);
 
+    [[nodiscard]] std::size_t node_count() const;
+
+    /**
+     * @brief Retrieves the original MEF event (BasicEvent) corresponding to a PDAG node index.
+     *
+     * Given a PDAG node index, this function resolves the underlying MEF event that was
+     * used to construct the node.  At the moment only Variable nodes map directly back
+     * to MEF::BasicEvent instances.  If the index is unknown or the mapping cannot be
+     * resolved an exception is thrown.
+     */
+    [[nodiscard]] const scram::mef::Event* get_mef_event(index_t_ event_id) const;
+
     /**
      * @brief Accessor for the internal sample shaper configuration
      *
@@ -326,17 +338,17 @@ class layer_manager {
      * SAMPLE_SHAPE.
      */
     [[nodiscard]] inline const sample_shaper<bitpack_t_> &shaper() const noexcept { return sample_shaper_; }
-
+    [[nodiscard]] sycl::queue &queue() { return queue_; }
     /**
      * @brief Destructor that cleans up allocated device memory
-     * 
+     *
      * @details Properly releases all allocated device-side memory for basic events,
      * gates, and tally events. Ensures no memory leaks occur when the layer manager
      * is destroyed.
-     * 
+     *
      * @note All device memory is automatically freed
      * @note SYCL queue operations are completed before destruction
-     * 
+     *
      * @example
      * @code
      * {

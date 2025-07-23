@@ -105,7 +105,7 @@ struct sample_shaper {
          * increasing the iteration count.
          * ----------------------------------------------------------------*/
         const auto vendor_id = device.get_info<sycl::info::device::vendor_id>();
-        constexpr std::size_t kIntelMaxBitpacksPerIter = 16;
+        constexpr std::size_t kIntelMaxBitpacksPerIter = 24;
         if (vendor_id == 32902 && sample_shape.bitpacks_per_batch > kIntelMaxBitpacksPerIter) {
             sample_shape.bitpacks_per_batch = kIntelMaxBitpacksPerIter;
         }

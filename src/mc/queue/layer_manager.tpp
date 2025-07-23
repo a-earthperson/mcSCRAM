@@ -20,6 +20,7 @@
 #include "layer_manager.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 #include "logger.h"
 #include "mc/event/node.h"
@@ -229,14 +230,19 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials) {
     // create and sort layers
     layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
-    const auto num_nodes = pdag_nodes_.size();
-    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, num_nodes);
+    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, node_count());
     sample_shape_ = sample_shaper_.SAMPLE_SHAPE;
     
     // Log sample_shaper configuration
     LOG(DEBUG2) << sample_shaper_;
     
     map_nodes_by_layer(pdag_nodes_by_layer_);
+}
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+std::size_t layer_manager<bitpack_t_, prob_t_, size_t_>::node_count() const {
+    const auto num_nodes = pdag_nodes_.size();
+    return num_nodes;
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
@@ -273,6 +279,47 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
         event::tally<bitpack_t_> *event = pair.second;
         // destroy_tally_event(queue_, event);
     }
+}
+
+// ------------------------------------------------------------
+//  layer_manager :: get_mef_event
+// ------------------------------------------------------------
+
+/*!
+ * Resolve the underlying MEF event (currently BasicEvent) for a given PDAG
+ * node index.  The function supports only Variable nodes because Gate nodes
+ * produced by the PDAG do not maintain a one-to-one mapping back to their
+ * origin in the MEF fault-tree representation.
+ */
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+const scram::mef::Event *scram::mc::queue::layer_manager<bitpack_t_, prob_t_, size_t_>::get_mef_event(index_t_ event_id) const {
+    // Quick lookup of the core::Node pointer.
+    auto it = pdag_nodes_by_index_.find(event_id);
+    if (it == pdag_nodes_by_index_.end() || !(it->second)) {
+        throw std::runtime_error("layer_manager::get_mef_event – unknown event_id " + std::to_string(event_id));
+    }
+
+    const std::shared_ptr<core::Node> &node_ptr = it->second;
+
+    // Currently only Variable nodes carry a mapping back to MEF::BasicEvent.
+    if (auto var = std::dynamic_pointer_cast<core::Variable>(node_ptr)) {
+        // Variables are indexed starting from core::Pdag::kVariableStartIndex.
+        const int adjusted_index = var->index() - core::Pdag::kVariableStartIndex;
+        if (adjusted_index < 0) {
+            throw std::runtime_error("layer_manager::get_mef_event – invalid variable index computation for event_id " + std::to_string(event_id));
+        }
+
+        // Access the index map that lives in the owning PDAG instance.
+        const auto &basic_event_map = var->graph().basic_events();
+        if (adjusted_index < 0 || static_cast<std::size_t>(adjusted_index) >= basic_event_map.size()) {
+            throw std::runtime_error("layer_manager::get_mef_event – BasicEvent not found for variable index " + std::to_string(event_id));
+        }
+        return basic_event_map.at(adjusted_index);
+    }
+
+    // Unsupported node type – provide a clear diagnostic.
+    throw std::runtime_error("layer_manager::get_mef_event – resolution for non-variable nodes (gates / constants) is not implemented");
 }
 
 } // namespace scram::mc::queue

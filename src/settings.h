@@ -53,7 +53,7 @@ const char* const kApproximationToString[] = { "none", "rare-event", "mcub", "mo
 class Settings {
  public:
   /// @returns The Qualitative analysis algorithm.
-  Algorithm algorithm() const { return algorithm_; }
+  [[nodiscard]] Algorithm algorithm() const { return algorithm_; }
 
   /// Sets the algorithm for Qualitative analysis.
   /// Appropriate defaults are given to other settings
@@ -78,7 +78,7 @@ class Settings {
   Settings& algorithm(std::string_view value);
 
   /// @returns The quantitative analysis approximation.
-  Approximation approximation() const { return approximation_; }
+  [[nodiscard]] Approximation approximation() const { return approximation_; }
 
   /// Sets the approximation for quantitative analysis.
   ///
@@ -95,7 +95,7 @@ class Settings {
 
   /// @returns true if prime implicants are to be calculated
   ///               instead of minimal cut sets.
-  bool prime_implicants() const { return prime_implicants_; }
+  [[nodiscard]] bool prime_implicants() const { return prime_implicants_; }
 
   /// Sets a flag to calculate prime implicants instead of minimal cut sets.
   /// Prime implicants can only be calculated with BDD-based algorithms.
@@ -111,7 +111,7 @@ class Settings {
   Settings& prime_implicants(bool flag);
 
   /// @returns The limit on the size of products.
-  int limit_order() const { return limit_order_; }
+  [[nodiscard]] int limit_order() const { return limit_order_; }
 
   /// Sets the limit order for products.
   ///
@@ -123,7 +123,7 @@ class Settings {
   Settings& limit_order(int order);
 
   /// @returns The minimum required probability for products.
-  double cut_off() const { return cut_off_; }
+  [[nodiscard]] double cut_off() const { return cut_off_; }
 
   /// Sets the cut-off probability for products
   /// to be considered for analysis.
@@ -136,7 +136,7 @@ class Settings {
   Settings& cut_off(double prob);
 
   /// @returns The number of trials for Monte-Carlo simulations.
-  std::size_t num_trials() const { return num_trials_; }
+  [[nodiscard]] std::size_t num_trials() const { return num_trials_; }
 
   /// Sets the number of trials for Monte Carlo simulations.
   ///
@@ -172,7 +172,7 @@ class Settings {
   Settings& sample_size(std::size_t n) { sample_size_ = n; return *this; }
 
   /// @returns The number of quantiles for distributions.
-  int num_quantiles() const { return num_quantiles_; }
+  [[nodiscard]] int num_quantiles() const { return num_quantiles_; }
 
   /// Sets the number of quantiles for distributions.
   ///
@@ -184,7 +184,7 @@ class Settings {
   Settings& num_quantiles(int n);
 
   /// @returns The number of bins for histograms.
-  int num_bins() const { return num_bins_; }
+  [[nodiscard]] int num_bins() const { return num_bins_; }
 
   /// Sets the number of bins for histograms.
   ///
@@ -196,7 +196,7 @@ class Settings {
   Settings& num_bins(int n);
 
   /// @returns The seed of the pseudo-random number generator.
-  int seed() const { return seed_; }
+  [[nodiscard]] int seed() const { return seed_; }
 
   /// Sets the seed for the pseudo-random number generator.
   ///
@@ -208,7 +208,7 @@ class Settings {
   Settings& seed(int s);
 
   /// @returns The length time of the system under risk.
-  double mission_time() const { return mission_time_; }
+  [[nodiscard]] double mission_time() const { return mission_time_; }
 
   /// Sets the system mission time.
   ///
@@ -221,7 +221,7 @@ class Settings {
 
   /// @returns The time step in hours for probability analyses.
   ///          0 if the time step doesn't apply.
-  double time_step() const { return time_step_; }
+  [[nodiscard]] double time_step() const { return time_step_; }
 
   /// Sets the time step for probability analyses.
   /// 0 value signifies that the time step doesn't apply.
@@ -236,7 +236,7 @@ class Settings {
   Settings& time_step(double time);
 
   /// @returns true if probability analysis is requested.
-  bool probability_analysis() const { return probability_analysis_; }
+  [[nodiscard]] bool probability_analysis() const { return probability_analysis_; }
 
   /// Sets the flag for probability analysis.
   /// If another analysis requires probability analysis,
@@ -268,7 +268,7 @@ class Settings {
   [[nodiscard]] bool skip_products() const { return skip_products_; }
 
   /// @returns true if the SIL metrics are requested.
-  bool safety_integrity_levels() const { return safety_integrity_levels_; }
+  [[nodiscard]] bool safety_integrity_levels() const { return safety_integrity_levels_; }
 
   /// Sets the flag for calculation of the SIL metrics.
   /// This requires that time-step is set.
@@ -281,7 +281,7 @@ class Settings {
   Settings& safety_integrity_levels(bool flag);
 
   /// @returns true if importance analysis is requested.
-  bool importance_analysis() const { return importance_analysis_; }
+  [[nodiscard]] bool importance_analysis() const { return importance_analysis_; }
 
   /// Sets the flag for importance analysis.
   /// Importance analysis is performed
@@ -299,7 +299,7 @@ class Settings {
   }
 
   /// @returns true if uncertainty analysis is requested.
-  bool uncertainty_analysis() const { return uncertainty_analysis_; }
+  [[nodiscard]] bool uncertainty_analysis() const { return uncertainty_analysis_; }
 
   /// Sets the flag for uncertainty analysis.
   /// Uncertainty analysis implies probability analysis,
@@ -316,7 +316,7 @@ class Settings {
   }
 
   /// @returns true if CCF groups must be incorporated into analysis.
-  bool ccf_analysis() const { return ccf_analysis_; }
+  [[nodiscard]] bool ccf_analysis() const { return ccf_analysis_; }
 
   /// Sets the flag for CCF analysis.
   ///
@@ -330,51 +330,43 @@ class Settings {
 
   /// Sets the confidence level (two-sided) used when automatically choosing
   /// the number of Monte-Carlo trials.  Accepts values in (0,1).
-  Settings& ci_confidence(double p) { ci_confidence_ = std::clamp(p, 0.0, 1.0); return *this; }
-
-  /// @returns The target half-width (margin of error) for the estimated mean.
-  [[nodiscard]] double ci_margin_error() const { return std::abs(ci_margin_error_); }
-
-  /// Sets the target margin of error ε for automatic sampling.  ε must be
-  /// positive and typically ≤ 0.5.
-  Settings& ci_margin_error(double eps) { ci_margin_error_ = std::abs(eps); return *this; }
+  Settings& ci_confidence(const double p) { ci_confidence_ = std::clamp(p, 0.0, 1.0); return *this; }
 
   /// @returns The relative margin of error δ (fraction of p̂) if set (>0), otherwise 0.
   [[nodiscard]] double ci_rel_margin_error() const { return std::abs(ci_rel_margin_error_); }
 
-  /// Sets the relative margin of error δ used to derive an absolute ε as δ·p̂.
-  Settings& ci_rel_margin_error(double delta) { ci_rel_margin_error_ = std::abs(delta); return *this; }
+  /// Sets the relative margin of error δ used to derive an absolute ε as δ·p̂. negative values are set to 0.
+  Settings& ci_rel_margin_error(const double delta) { ci_rel_margin_error_ =  delta > 0 ? delta : 0; return *this; }
 
-  /// @returns Number of pilot iterations to run before enabling convergence checks.
-  [[nodiscard]] int ci_pilot_iterations() const { return ci_pilot_iterations_; }
+  /// @returns Number of burn-in trials to run before enabling convergence checks.
+  [[nodiscard]] std::size_t ci_burnin_trials() const { return static_cast<std::size_t>(ci_burnin_trials_); }
 
   /// Sets the number of pilot iterations (non-negative).
-  Settings& ci_pilot_iterations(int n) { if (n >= 0) ci_pilot_iterations_ = n; return *this; }
+  Settings& ci_burnin_trials(const double n) { ci_burnin_trials_= n > 0 ? std::round(n) : 0; return *this; }
 
-  bool early_stop() const { return early_stop_; }
+  [[nodiscard]] bool early_stop() const { return early_stop_; }
 
   Settings& early_stop(const bool on) { early_stop_ = on; return *this; }
 
-  /// @returns The known ground-truth probability provided by the user (negative when unset).
-  double true_prob() const { return true_prob_; }
+  [[nodiscard]] bool watch_mode() const { return watch_mode_; }
 
-  /// Sets the ground-truth probability that will be used for diagnostic statistics.
-  /// Accepts values in the closed interval [0,1].  Values outside that interval
-  /// leave the setting unchanged so that existing code continues to treat the
-  /// probability as “unset”.  (We deliberately avoid throwing from this header.)
-  Settings &true_prob(const double p) {
-    if (0.0 <= p && p <= 1.0) {
-      true_prob_ = p;
-    }
-    return *this;
-  }
+  Settings& watch_mode(const bool on) { watch_mode_ = on; return *this; }
+
+  /// @returns The known ground-truth probability provided by the user (negative when unset).
+  [[nodiscard]] double oracle_p() const { return oracle_p_; }
+
+  /// Sets the ground-truth probability/frequency that will be used for diagnostic statistics.
+  /// Accepts non-negative values. Negative values are simply set as -1 to unset the variable.
+  Settings &oracle_p(const double p) { oracle_p_ = p >= 0 ? p : -1.0; return *this; }
 
   bool preprocessor = false;  ///< Stop analysis after preprocessor.
   bool print = false;  ///< Print analysis results in a terminal friendly way.
 
+  bool watch_mode_ = false;  ///< Display analysis status on TTY.
+
  private:
-  Algorithm algorithm_ = Algorithm::kBdd;             ///< Algorithm for minimal cut set / prime implicant analysis
-  Approximation approximation_ = Approximation::kNone;///< The approximations for calculations
+  Algorithm algorithm_ = Algorithm::kDirect;                  ///< Algorithm for minimal cut set / prime implicant analysis
+  Approximation approximation_ = Approximation::kMonteCarlo ; ///< The approximations for calculations
   bool probability_analysis_ = false;                 ///< A flag for probability analysis.
   bool safety_integrity_levels_ = false;              ///< Calculation of the SIL metrics.
   bool importance_analysis_ = false;                  ///< A flag for importance analysis.
@@ -392,15 +384,15 @@ class Settings {
   double mission_time_ = 8760;                        ///< System mission time.
   double time_step_ = 0;                              ///< The time step for probability analyses.
   double cut_off_ = 1e-8;                             ///< The cut-off probability for products.
-  
+
+
+  double oracle_p_           = -1.0;    ///< negative means unset.
+
   // --- NEW: adaptive Monte-Carlo CI tuning ---------------------------------
-  double ci_confidence_      = 0.99;  ///< two-sided confidence level (0.95 default)
-  double ci_margin_error_    = 1e-4; ///< desired half-width ε (default 0.001)
-  bool   early_stop_         = true;  ///< stop as soon as convergence occurs
-  double true_prob_          = -1.0;   ///< negative means unset.
-  // ---- NEW: relative error support ---------------------------------------
-  double ci_rel_margin_error_ = -1.0; ///< δ (relative ε). Negative → disabled.
-  int    ci_pilot_iterations_ = 3;    ///< free pilot iterations before convergence checks.
+  bool   early_stop_          = true;    ///< stop as soon as convergence occurs
+  double ci_confidence_       = 0.99;    ///< two-sided confidence level (0.99 default)
+  double ci_rel_margin_error_ = 0.001;   ///< δ (relative ε). 0 → disabled.
+  double ci_burnin_trials_    = 1 << 20; ///< burn-in trials before convergence checks (2^20 default), 0 → disabled.
 };
 
 }  // namespace scram::core
