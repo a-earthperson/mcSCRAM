@@ -155,7 +155,7 @@ namespace scram::mc::kernel {
             global_size_z = ((global_size_z + local_range[2] - 1) / local_range[2]) * local_range[2];
 
             sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
-            LOG(DEBUG3) << "kernel::basic_event:: local_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\t global_range{x,y,z}:(" << "events:"<< global_size_x <<", batch_size:"<< global_size_y <<", sample_shape_.bitpacks_per_batch:"<<global_size_z<<")";
+            LOG(INFO) << "kernel::basic_event::\tlocal_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\tglobal_range{x,y,z}:("<< global_range[0] <<", " << global_range[1] <<", " << global_range[2] <<")\tnum_events:" << num_events << " | " << sample_shape_;
             return {global_range, local_range};
         }
     };
