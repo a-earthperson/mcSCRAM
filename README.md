@@ -201,51 +201,85 @@ docker run --rm --gpus all \
 Usage:    mcscram [options] input-files...
 
 Monte Carlo Options:
-  --probability               Perform probability analysis
-  --pdag                      Perform qualitative analysis with PDAG
-  --monte-carlo               Use the monte-carlo sampling approximation
-  --seed int                  Seed for the pseudorandom number generator
-  --num-trials std::double_t  Number of Bernoulli trials [0]: Auto
-  --early-stop                Stop on convergence, implied if --num-trials unset or 0
-  --ci-confidence double      Two-sided confidence level used for error estimation
-  --ci-epsilon double         Target margin of error (half-width) for error estimation and early stop
-  --ci-rel-epsilon double     Relative margin of error δ (fraction of p̂). ε= δ*p̂ during run
-  --ci-pilot int              Number of free pilot iterations before convergence checks [3]
-  --true-prob double          Ground truth probability for diagnostics
+  --monte-carlo                         enable monte carlo sampling
+  --early-stop                          stop on convergence (implied if N=0)
+  --seed int (=372)                     PRNG seed
+  -N [ --num-trials ] double (=0)       bernoulli trials [N ∈ ℕ, 0=auto]
+  -a [ --confidence ] double            two-sided conf. lvl [α ∈ (0,1)] 
+                                        (0.99)
+  -d [ --delta ] double (=0.001)        compute as ε=δ·p̂ [δ > 0]
+  -b [ --burn-in ] double (=1048576)    trials before convergence check [0=off]
 
-Options:
-  --help                      Display this help message
-  --version                   Display version information
-  --project path              Project file with analysis configurations
-  --allow-extern              **UNSAFE** Allow external libraries
-  --validate                  Validate input files without analysis
-  --bdd                       Perform qualitative analysis with BDD
-  --zbdd                      Perform qualitative analysis with ZBDD
-  --mocus                     Perform qualitative analysis with MOCUS
-  --prime-implicants          Calculate prime implicants
-  --importance                Perform importance analysis
-  --uncertainty               Perform uncertainty analysis
-  --ccf                       Perform common-cause failure analysis
-  --sil                       Compute the Safety Integrity Level metrics
-  --rare-event                Use the rare event approximation
-  --mcub                      Use the MCUB approximation
-  -l [ --limit-order ] int    Upper limit for the product order
-  --cut-off double            Cut-off probability for products
-  --mission-time double       System mission time in hours
-  --time-step double          Time step in hours for probability analysis
-  --num-quantiles int         Number of quantiles for distributions
-  --num-bins int              Number of bins for histograms
-  -o [ --output ] path        Output file for reports
-  --no-indent                 Omit indentation whitespace in output XML
-  --verbosity int             Set log verbosity
+Graph Compilation Options:
+  --no-kn                               expand k/n to and/or [off]
+  --no-xor                              expand xor to and/or [off]
+  --nnf                                 compile to negation normal form [off]
+  -c [ --compilation-passes ] int (=2)  0=off 1=null-only 2=optimize 
+                                        3+=multipass
 
 Debug Options:
-  --serialize                 Serialize the input model without further analysis
-  --preprocessor              Stop analysis after the preprocessing step
-  --print                     Print analysis results in a terminal friendly way
-  --no-report                 Don't generate analysis report
+  -w [ --watch ]                        enable watch mode [off]
+  -h [ --help ]                         display this help message
+  --no-report                           don't generate analysis report
+  -p [ --oracle ] double (=-1)          true µ [µ ∈ [0,∞), -1=off]
+  --preprocessor                        stop analysis after preprocessing
+  --print                               print analysis results to terminal
+  --serialize                           serialize the input model and exit
+  -V [ --verbosity ] int                set log verbosity
+  -v [ --version ]                      display version information
+
+Legacy Options:
+  --project path                        project analysis config file
+  --allow-extern                        **UNSAFE** allow external libraries
+  --validate                            validate input files without analysis
+  --pdag                                perform qualitative analysis with PDAG
+  --bdd                                 perform qualitative analysis with BDD
+  --zbdd                                perform qualitative analysis with ZBDD
+  --mocus                               perform qualitative analysis with MOCUS
+  --prime-implicants                    calculate prime implicants
+  --probability                         perform probability analysis
+  --importance                          perform importance analysis
+  --uncertainty                         perform uncertainty analysis
+  --ccf                                 compute common-cause failures
+  --sil                                 compute safety-integrity-level metrics
+  --rare-event                          use the rare event approximation
+  --mcub                                use the MCUB approximation
+  -l [ --limit-order ] int              upper limit for the product order
+  --cut-off double                      cut-off probability for products
+  --mission-time double                 system mission time in hours
+  --time-step double                    timestep in hours
+  --num-quantiles int                   number of quantiles for distributions
+  --num-bins int                        number of bins for histograms
+  -o [ --output ] path                  output file for reports
+  --no-indent                           omit indented whitespace in output XML
 ```
 
+### Example Run
+```bash
+ACPP_VISIBILITY_MASK=cuda \
+ACPP_ADAPTIVITY_LEVEL=2 \
+ACPP_ALLOCATION_TRACKING=1 \
+ACPP_DEBUG_LEVEL=0 \
+ACPP_PERSISTENT_RUNTIME=1 \
+ACPP_USE_ACCELERATED_CPU=on \
+mcscram \
+--pdag \
+--monte-carlo \
+--probability \
+-oracle 0.000713018 \
+--compilation-passes 5 \
+--watch \
+../../../input/Aralia/baobab2.xml
+
+[burn-in]     ::      (ε)= 3.026e-06 |      (ε₀)= 7.129e-07 :: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■] 100% [00m:01s<00m:00s] [1/1]                                                                        
+[convergence] ::      (ε)= 7.135e-07 |      (ε₀)= 7.135e-07 :: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■] 100% [00m:02s<00m:00s] [18/18]                                                                      
+[log10-conv]  :: log10(ε)= 9.212e-04 | log10(ε₀)= 1.000e-03 :: [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■] 100% [00m:00s<00m:00s] [4/4]                                                                        
+[estimate]    :: p01= 7.12748e-04  |  p05= 7.12919e-04  |  mu = 7.13462e-04  |  p95= 7.14005e-04  |  p99= 7.14175e-04  |                                                                            
+[diagnostics] :: z=  1.602e+00 | p_val=  1.092e-01 | CI95=T | CI99=T | n_req=9287175163 | n_rat=  1.001e+00                                                                                         
+[accuracy]    :: true(p)= 7.130e-04 | Δ=  4.436e-07 | δ=  6.222e-04 | b=  4.436e-07 | MSE=  1.968e-13 | log10(Δ)= -6.353e+00 | |log10|=  2.701e-04                                                  
+[throughput]  :: 5.34 it/s | 42.79 Gbit/it | 228.57 Gbit/s | 492.36 Mbit/node/it | 2.57 Gbit/node/s                                                                                                 
+[info-gain]   :: 0.235169 bit/s | 0.043719 bit/iter | Σ 19.346960 bit                                                                                                                               
+```
 ## Runtime Environment Variables
 
 AdaptiveCpp environment variables control hardware acceleration behavior, debugging output, and performance tuning. For detailed performance optimization guidance, see the [AdaptiveCpp Performance Tuning Guide](https://github.com/AdaptiveCpp/AdaptiveCpp/blob/develop/doc/performance.md).

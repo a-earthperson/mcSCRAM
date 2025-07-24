@@ -32,7 +32,45 @@ namespace ScramCLI {
 inline po::options_description ConstructOptions() {
     using path = std::string; // To print argument type as path.
 
-        po::options_description desc("Options");
+    // ------------------------------------------------------------------
+    //  Monte-Carlo specific options
+    // ------------------------------------------------------------------
+    po::options_description mc("Monte Carlo Options");
+    mc.add_options()
+        ("monte-carlo", "enable monte carlo sampling")
+        ("early-stop", "stop on convergence (implied if N=0)")
+        ("seed", OPT_VALUE(int)->default_value(372), "PRNG seed")
+        ("num-trials,N", OPT_VALUE(double)->default_value(0), "bernoulli trials [N ∈ ℕ, 0=auto]")
+        ("confidence,a", OPT_VALUE(double), "two-sided conf. lvl [α ∈ (0,1)] (0.99)")
+        ("delta,d", OPT_VALUE(double)->default_value(0.001),"compute as ε=δ·p̂ [δ > 0]")
+        ("burn-in,b", OPT_VALUE(double)->default_value(1<<20), "trials before convergence check [0=off]");
+
+    // ------------------------------------------------------------------
+    //  graph compilation specific options
+    // ------------------------------------------------------------------
+    po::options_description gc("Graph Compilation Options");
+    gc.add_options()
+        ("no-kn", "expand k/n to and/or [off]")
+        ("no-xor", "expand xor to and/or [off]")
+        ("nnf", "compile to negation normal form [off]")
+        ("compilation-passes,c", OPT_VALUE(int)->default_value(2), "0=off 1=null-only 2=optimize 3+=multipass");
+
+    // ------------------------------------------------------------------
+    //  Debug options
+    // ------------------------------------------------------------------
+    po::options_description debug("Debug Options");
+    debug.add_options()
+        ("watch,w", "enable watch mode [off]")
+        ("help,h", "display this help message")
+        ("no-report", "don't generate analysis report")
+        ("oracle,p", OPT_VALUE(double)->default_value(-1.0), "true µ [µ ∈ [0,∞), -1=off]")
+        ("preprocessor", "stop analysis after preprocessing")
+        ("print", "print analysis results to terminal")
+        ("serialize", "serialize the input model and exit")
+        ("verbosity,V", OPT_VALUE(int), "set log verbosity")
+        ("version,v", "display version information");
+
+        po::options_description desc("Legacy Options");
         desc.add_options()
             ("project", OPT_VALUE(path), "project analysis config file")
             ("allow-extern", "**UNSAFE** allow external libraries")
@@ -58,46 +96,9 @@ inline po::options_description ConstructOptions() {
             ("output,o", OPT_VALUE(path), "output file for reports")
             ("no-indent", "omit indented whitespace in output XML");
 
-        // ------------------------------------------------------------------
-        //  graph compilation specific options
-        // ------------------------------------------------------------------
-        po::options_description gc("Graph Compilation Options");
-        gc.add_options()
-            ("compilation-passes,c", OPT_VALUE(int)->default_value(1), "0= off, 1= null-only, 2+= optimize [default= 2]")
-            ("no-kn", "expand k/n to and/or [default= off]")
-            ("no-xor", "expand xor to and/or [default= off]")
-            ("nnf", "compile to negation normal form [default= off]");
-
-        // ------------------------------------------------------------------
-        //  Monte-Carlo specific options
-        // ------------------------------------------------------------------
-        po::options_description mc("Monte Carlo Options");
-        mc.add_options()
-            ("monte-carlo", "enable monte carlo sampling")
-            ("early-stop", "stop on convergence (implied if N=0)")
-            ("seed", OPT_VALUE(int)->default_value(372), "PRNG seed")
-            ("num-trials,N", OPT_VALUE(double)->default_value(0), "bernoulli trials [N ∈ ℕ, 0=auto]")
-            ("confidence,a", OPT_VALUE(double), "two-sided conf. lvl [α ∈ (0,1)] (0.99)")
-            ("delta,d", OPT_VALUE(double)->default_value(0.001),"compute as ε=δ·p̂ [δ > 0]")
-            ("burn-in,b", OPT_VALUE(double)->default_value(1<<20), "trials before convergence check [0=off]");
-
-        // ------------------------------------------------------------------
-        //  Debug options
-        // ------------------------------------------------------------------
-        po::options_description debug("Debug Options");
-        debug.add_options()
-            ("watch,w", "enable watch mode [default off]")
-            ("help", "display this help message")
-            ("no-report", "don't generate analysis report")
-            ("oracle,p", OPT_VALUE(double)->default_value(-1.0), "true µ [µ ∈ [0,∞), -1=off]")
-            ("preprocessor", "stop analysis after preprocessing")
-            ("print", "print analysis results to terminal")
-            ("serialize", "serialize the input model and exit")
-            ("verbosity,V", OPT_VALUE(int), "set log verbosity")
-            ("version,v", "display version information");
-        desc.add(mc).add(gc).add(debug);
+        mc.add(gc).add(debug).add(desc);
     // clang-format on
-    return desc;
+    return mc;
 }
 #undef OPT_VALUE
 } // namespace ScramCLI
