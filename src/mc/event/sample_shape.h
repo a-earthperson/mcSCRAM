@@ -59,7 +59,7 @@ namespace scram::mc::event {
     template<typename size_t_>
     inline std::ostream &operator<<(std::ostream &os, const event::sample_shape<size_t_> &ss) {
         os << "batch_size= " << ss.batch_size << " | "
-           << "bitpacks_per_batch= " << ss.batch_size << " | "
+           << "bitpacks_per_batch= " << ss.bitpacks_per_batch << " | "
            << "num_bitpacks= " << ss.num_bitpacks();
         return os;
     }

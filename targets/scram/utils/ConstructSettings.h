@@ -84,6 +84,11 @@ namespace ScramCLI {
         settings->preprocessor = vm.contains("preprocessor");
         settings->print = vm.contains("print");
 
+
+        settings->expand_atleast_gates(vm.contains("no-kn"));
+        settings->expand_xor_gates(vm.contains("no-xor"));
+
+        SET("compilation-passes", int, compilation_level);
         SET("confidence", double, ci_confidence);
         SET("delta", double, ci_rel_margin_error);
         SET("burn-in", double, ci_burnin_trials);

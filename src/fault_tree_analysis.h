@@ -294,7 +294,8 @@ class FaultTreeAnalyzer : public FaultTreeAnalysis {
 
  private:
   void Preprocess(Pdag* graph) noexcept override {
-    CustomPreprocessor<Algorithm>{graph}();
+    std::optional<Settings>  settings_opt = std::optional<Settings>(settings());
+    CustomPreprocessor<Algorithm>{graph,settings_opt}();
   }
 
   const Zbdd& GenerateProducts(const Pdag* graph) noexcept override {

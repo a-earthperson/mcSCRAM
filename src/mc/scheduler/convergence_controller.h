@@ -59,6 +59,9 @@ class convergence_controller {
             .target  = iteration_shape<bitpack_t_>(mgr.shaper().SAMPLE_SHAPE, settings.num_trials()),
         };
 
+        projected_steps_epsilon_ = iteration_shape<bitpack_t_>(mgr.shaper().SAMPLE_SHAPE, settings.num_trials());
+        projected_steps_epsilon_log10_ = iteration_shape<bitpack_t_>(mgr.shaper().SAMPLE_SHAPE, settings.num_trials());
+
         // --- parametrize δ as a function of ε ------------------------------------------------------------
         // ε = |µ - p̂|
         // ε = δ•p̂
@@ -73,7 +76,7 @@ class convergence_controller {
             },
             .target = {
                 .half_width_epsilon = settings_.ci_rel_margin_error() * std::max(0.0, stats::DELTA_EPSILON),
-                .half_width_epsilon_log10 = 1e-4, // for now, assume this is a user-provided constant
+                .half_width_epsilon_log10 = settings_.ci_rel_margin_error(), // for now, assume this is a user-provided constant
                 .two_sided_confidence_level = settings_.ci_confidence(), // from settings
                 .normal_quantile_two_sided = stats::normal_quantile_two_sided(settings_.ci_confidence()), // compute once
             },
@@ -98,15 +101,22 @@ class convergence_controller {
         // set the target epsilon as a fraction of the estimated mean
         const std::double_t target_epsilon = settings_.ci_rel_margin_error() * p_hat;
         interval_.target.half_width_epsilon = target_epsilon;
-        // set the target log10 epsilon as a fraction of log10 of the estimated mean
+        // Desired half-width in log10 space must be positive.  We therefore
+        // take the absolute distance |log10(p̂)| and scale it by the same
+        // relative margin-of-error used in linear space.  The max() guard
+        // avoids the corner-case p̂ → 1 (log10 p̂ ≈ 0) by falling back to a
+        // tiny non-zero baseline so the convergence test remains meaningful.
+        // const auto abs_log10_p_hat = std::max(std::abs(p_hat_log10), stats::DELTA_EPSILON);
+        // const std::double_t target_epsilon_log10 = settings_.ci_rel_margin_error() * abs_log10_p_hat;
         const std::double_t target_epsilon_log10 = interval_.target.half_width_epsilon_log10;
-        //settings_.ci_rel_margin_error() * p_hat_log10;
-        //interval_.target.half_width_epsilon_log10 = target_epsilon_log10;
+        // interval_.target.half_width_epsilon_log10 = target_epsilon_log10;
         // ------------------ update projected trials ----------------------------------
         const auto N1 = stats::required_trials_from_normal_quantile_two_sided(p_hat, target_epsilon, target_z);
         const auto N2 = stats::required_trials_log10_from_normal_quantile_two_sided(p_hat, target_epsilon_log10, target_z);
         const auto N = std::max(N1, N2);
-        steps_.target.trials(N1);
+        steps_.target.trials(N);
+        projected_steps_epsilon_.trials(N1);
+        projected_steps_epsilon_log10_.trials(N2);
         // ------------------ update information gain -----------------------------
         const std::size_t successes_delta = tally.num_one_bits - prev_one_bits_;
         const std::size_t failures_delta  = (tally.total_bits - tally.num_one_bits) - (prev_total_bits_ - prev_one_bits_);
@@ -116,15 +126,14 @@ class convergence_controller {
     }
 
     [[nodiscard]] bool check_convergence() const {
-        check_log_epsilon_bounded(interval_);
-        return check_epsilon_bounded(interval_); //||
+        return check_epsilon_bounded(interval_) && check_log_epsilon_bounded(interval_);
     }
 
     /** Execute exactly one additional iteration on the device. */
     [[nodiscard]] bool step() {
 
         // don't step anymore, just return that we didn't take a step.
-        if (converged_ && stop_on_convergence()) {
+        if (all_converged() && stop_on_convergence()) {
             return false;
         }
 
@@ -142,10 +151,16 @@ class convergence_controller {
 
         // for now, this is our convergence criteria
         // if converged now, set convergence_ sticky to true
-        if (!converged_ && check_convergence()) {
-            converged_ = true;
+        if (!epsilon_converged_ && check_epsilon_bounded(interval_)) {
+            epsilon_converged_ = true;
             progress_.mark_converged(*this);
         }
+
+        if (!epsilon_log10_converged_ && check_log_epsilon_bounded(interval_)) {
+            epsilon_log10_converged_ = true;
+            progress_.mark_log_converged(*this);
+        }
+
 
         // since we did step, update the iteration count
         return true;
@@ -198,9 +213,14 @@ private:
     std::size_t prev_total_bits_ = 0;
     double last_info_bits_ = 0.0;
     tracked_pair<stats::ci> interval_;
+
     tracked_pair<iteration_shape<bitpack_t_>> steps_{};
+    iteration_shape<bitpack_t_> projected_steps_epsilon_{};
+    iteration_shape<bitpack_t_> projected_steps_epsilon_log10_{};
+
     event::tally<bitpack_t_> current_tally_{};
-    bool converged_ = false;
+    bool epsilon_log10_converged_ = false;
+    bool epsilon_converged_ = false;
     bool fixed_iteration_limited_reached_ = false;
     progress<bitpack_t_, prob_t_, size_t_> progress_;
 
@@ -210,6 +230,10 @@ public:
 
     [[nodiscard]] const iteration_shape<bitpack_t_> &current_steps() const { return steps_.current; }
     [[nodiscard]] const iteration_shape<bitpack_t_> &projected_steps() const { return steps_.target; }
+
+    [[nodiscard]] const iteration_shape<bitpack_t_> &projected_steps_epsilon() const { return projected_steps_epsilon_; }
+    [[nodiscard]] const iteration_shape<bitpack_t_> &projected_steps_epsilon_log10() const { return projected_steps_epsilon_log10_; }
+
     [[nodiscard]] const iteration_shape<bitpack_t_> &remaining_steps() const {
         return {
             .iterations = projected_steps().iterations() - current_steps().iterations(),
@@ -218,7 +242,7 @@ public:
     }
 
     [[nodiscard]] bool stop_on_convergence() const { return settings_.early_stop(); }
-    [[nodiscard]] bool converged() const { return converged_; }
+    [[nodiscard]] bool all_converged() const { return epsilon_log10_converged_ && epsilon_converged_; }
     [[nodiscard]] tracked_triplet<iteration_shape<bitpack_t_>> convergence_status() const {
         return tracked_triplet{
             .current = current_steps(),
@@ -259,7 +283,7 @@ public:
     [[nodiscard]] static bool check_log_epsilon_bounded(const tracked_pair<stats::ci> &interval) {
         const auto &current = interval.current.half_width_epsilon_log10;
         const auto &target = interval.target.half_width_epsilon_log10;
-        LOG(DEBUG3) << "current: " << current << ", target: " << target << ", delta: " << (target - current) << ", abs_delta: " << std::abs(target - current);
+        //LOG(DEBUG3) << "current: " << current << ", target: " << target << ", delta: " << (target - current) << ", abs_delta: " << std::abs(target - current);
         return current > 0 && current <= target;
     }
 

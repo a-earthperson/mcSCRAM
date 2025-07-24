@@ -472,40 +472,54 @@ namespace scram::mc::kernel {
                                            const sycl::range<3> &local_range,
                                            const event::sample_shape<size_t_> &sample_shape_) {
 
+            /* ------------------------------------------------------------------
+             *  Launch strategy (warp/ISA agnostic)
+             *  ---------------------------------------------------------------
+             *  – 1 work-group   ≙   1 gate × 1 batch × 1 bit-pack
+             *  – |local|.z      =   NUM_BITS  (= 64 for uint64_t)
+             *  – Each thread in the work-group owns one *bit position* (lane)
+             *  – The work-group leader (lane 0) writes the final 64-bit word
+             */
+
+            static constexpr std::size_t NUM_BITS = sizeof(bitpack_t_) * 8;
+
             sycl::range<3> new_local_range = local_range;
+            new_local_range[0] = 1;            // one gate per group in X
+            new_local_range[2] = NUM_BITS;     // one thread per output bit
 
-            //new_local_range[2] = 32;
-
-            // Compute global range
+            // Compute desired global sizes.
             auto global_size_x = static_cast<size_t>(num_gates);
             auto global_size_y = static_cast<size_t>(sample_shape_.batch_size);
-            auto global_size_z = static_cast<size_t>(sample_shape_.bitpacks_per_batch);
+            auto global_size_z = static_cast<size_t>(sample_shape_.bitpacks_per_batch) * NUM_BITS;
 
-            // Adjust global sizes to be multiples of the corresponding local sizes
+            // Round global sizes up to multiples of the local size.
             global_size_x = ((global_size_x + new_local_range[0] - 1) / new_local_range[0]) * new_local_range[0];
             global_size_y = ((global_size_y + new_local_range[1] - 1) / new_local_range[1]) * new_local_range[1];
             global_size_z = ((global_size_z + new_local_range[2] - 1) / new_local_range[2]) * new_local_range[2];
 
             sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
+
             LOG(INFO) << "kernel::op<kAtleast>:: local_range{x,y,z}:(" << new_local_range[0] <<", " << new_local_range[1] <<", " << new_local_range[2] <<")\tglobal_range{x,y,z}:("<< global_range[0] <<", " << global_range[1] <<", " << global_range[2] <<")\tnum_gates:" << num_gates << " | " << sample_shape_;
             return {global_range, new_local_range};
         }
 
         void operator()(const sycl::nd_item<3> &item) const {
             // Thread coordinates
+            static constexpr std::uint32_t NUM_BITS = sizeof(bitpack_t_) * 8;
+
             const auto gate_idx    = static_cast<std::uint32_t>(item.get_global_id(0));
             const auto batch_idx   = static_cast<std::uint32_t>(item.get_global_id(1));
-            const auto bitpack_idx = static_cast<std::uint32_t>(item.get_global_id(2));
-            const auto lane  = item.get_local_id(2);
-            const auto subgroup = item.get_sub_group();
 
-            static constexpr auto NUM_BITS = sizeof(bitpack_t_) * 8;
+            /*  group_id.z identifies the bit-pack, local_id.z (lane) identifies the bit */
+            const auto bitpack_idx = static_cast<std::uint32_t>(item.get_group().get_group_id(2));
+            const auto lane        = item.get_local_id(2);   // 0 … NUM_BITS-1
 
             if (lane >= NUM_BITS ||
-                gate_idx >= gates_block_.count    ||
+                gate_idx >= gates_block_.count ||
                 batch_idx >= sample_shape_.batch_size ||
-                bitpack_idx >= sample_shape_.bitpacks_per_batch
-                ) return;
+                bitpack_idx >= sample_shape_.bitpacks_per_batch) {
+                return;
+                }
 
             const size_t index = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_idx;
 
@@ -530,11 +544,12 @@ namespace scram::mc::kernel {
 
             const bitpack_t_ my_bit = (cnt >= k) ? mask : bitpack_t_(0);
 
-            // --- warp / sub-group reduction ---
-            const bitpack_t_ result = sycl::reduce_over_group(subgroup, my_bit, sycl::bit_or<bitpack_t_>());
+            /* Reduction across the *whole* work-group (64 lanes) */
+            const auto &wg = item.get_group();
+            const bitpack_t_ result = sycl::reduce_over_group(wg, my_bit, sycl::bit_or<bitpack_t_>());
 
-            // one lane writes
-            if(subgroup.leader()) {
+            /* Single thread (lane 0) writes the 64-bit result */
+            if (lane == 0) {
                 g.buffer[index] = result;
             }
         }

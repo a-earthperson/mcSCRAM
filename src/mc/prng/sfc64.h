@@ -66,7 +66,7 @@ template <typename bitpack_t_>
 static bitpack_t_ sample(const prng::state128 *seeds,
                          const std::uint64_t   threshold,
                          const std::uint32_t   generation) {
-    prng::state128 rnd;
+    prng::state128 rnd{};
     generate(seeds, &rnd, static_cast<std::uint8_t>(generation));
 
     constexpr std::uint32_t BITS_PER_GEN = 4;
