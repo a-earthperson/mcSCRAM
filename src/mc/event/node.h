@@ -175,7 +175,7 @@ namespace scram::mc::event {
         std::double_t std_err = 0.;
         
         /// @brief Confidence intervals: [lower_95, upper_95, lower_99, upper_99]
-        sycl::double4 ci = {0., 0., 0., 0.};
+        std::array<double_t, 4> ci = {0., 0., 0., 0.};
     };
 
     /**

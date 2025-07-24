@@ -316,6 +316,8 @@ class layer_manager {
      */
     event::tally<bitpack_t_> single_pass_and_tally(index_t_ evt_idx);
 
+    void collect_tallies(std::unordered_map<index_t_, stats::tally> &stats);
+
     [[nodiscard]] std::size_t node_count() const;
 
     /**

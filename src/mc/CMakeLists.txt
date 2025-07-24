@@ -1,21 +1,44 @@
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(MC_SRC
-        ${CMAKE_CURRENT_SOURCE_DIR}/analysis.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/preprocessor.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/probability_analysis.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/importance_analysis.cc
 )
 
 # Optionally collect public headers for installation
 set(MC_HEADERS
+        #
+        direct_eval.h
+        #
         event/node.h
-        working_set.h
+        event/sample_shape.h
+        #
         kernel/basic_event.h
         kernel/gate.h
         kernel/tally.h
-        queue/scheduler.h
+        #
+        prng/philox128.h
+        prng/sfc64.h
+        prng/state128.h
+        prng/wyrand.h
+        prng/xorshift128.h
+        #
+        queue/working_set.h
         queue/layer_manager.h
         queue/layer_manager.tpp
         queue/kernel_builder.h
+        queue/sample_shaper.h
         queue/queueable.h
+        #
+        scheduler/convergence_controller.h
+        scheduler/iteration_shape.h
+        scheduler/progressbar.h
+        #
+        stats/ci_utils.h
+        stats/diagnostics.h
+        stats/info_gain.h
+        stats/tally.h
 )
 
 find_package(_adaptivecpp)
@@ -52,7 +75,7 @@ add_sycl_to_target(TARGET mc SOURCES ${MC_SRC})
 # Propagate the same debug compile options used by the rest of SCRAM
 # so that the new target benefits from the strict checks in Debug builds.
 
-target_compile_options(mc PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
+#target_compile_options(mc PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
 
 # Enforce zero-as-null-pointer warning across all build types
 #target_compile_options(mc PRIVATE -Wzero-as-null-pointer-constant)

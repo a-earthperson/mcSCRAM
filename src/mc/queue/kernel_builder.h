@@ -61,7 +61,7 @@
 #pragma once
 
 #include "mc/event/node.h"
-#include "mc/working_set.h"
+#include "working_set.h"
 
 #include "mc/kernel/basic_event.h"
 #include "mc/kernel/gate.h"

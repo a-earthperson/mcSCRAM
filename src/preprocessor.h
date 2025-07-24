@@ -28,12 +28,11 @@
 #include <utility>
 #include <vector>
 
-#include <boost/noncopyable.hpp>
 #include <boost/unordered_map.hpp>
 
 #include "pdag.h"
 
-#include "direct_eval.h"
+#include "mc/direct_eval.h"
 
 namespace scram::core {
 
@@ -1081,32 +1080,14 @@ class CustomPreprocessor<Mocus> : public CustomPreprocessor<Zbdd> {
   void InvertOrder() noexcept;
 };
 
-  /// Specialization of preprocessing for MOCUS based analyses.
-  template <>
-  class CustomPreprocessor<DirectEval> : public Preprocessor {
+  /// Specialization of preprocessing for DirectEval analysis.
+template <>
+class CustomPreprocessor<mc::DirectEval> : public Preprocessor {
   public:
     using Preprocessor::Preprocessor;
 
   private:
-    /// Performs processing of a fault tree
-    /// to simplify the structure to
-    /// normalized (OR/AND gates only),
-    /// modular (independent subtrees),
-    /// positive-gate-only (negation normal) PDAG.
-    /// The variable ordering is assigned specifically for MOCUS.
     void Run() noexcept override;
-
-    /// Groups and inverts the topological ordering for nodes.
-    /// The inversion is done to simplify the work of MOCUS facilities,
-    /// which rely on the top-down approach.
-    ///
-    /// Gates are ordered so that they show up at the top of ZBDD.
-    /// However, module gates are handled just as basic events.
-    /// Basic events preserve
-    /// the original topological ordering.
-    ///
-    /// Note, however, the inversion of the order
-    /// generally (dramatically) increases the size of Binary Decision Diagrams.
     void InvertOrder() noexcept;
     [[nodiscard]] auto remove_null_gates() const;
   };

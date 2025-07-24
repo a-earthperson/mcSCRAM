@@ -195,7 +195,7 @@ inline tally_t_ &populate_point_estimates(tally_t_ &tally) {
     const std::double_t lower99 = std::clamp(p - hw99, 0.0, 1.0);
     const std::double_t upper99 = std::clamp(p + hw99, 0.0, 1.0);
 
-    tally.ci = sycl::double4(lower95, upper95, lower99, upper99);
+    tally.ci = { lower95, upper95, lower99, upper99 };
 
     return tally;
 }

@@ -26,9 +26,9 @@
 #include "ext/scope_guard.h"
 #include "fault_tree.h"
 #include "logger.h"
+#include "mc/direct_eval.h"
 #include "mocus.h"
 #include "zbdd.h"
-#include "direct_eval.h"
 
 namespace scram::core {
 
@@ -132,7 +132,7 @@ void RiskAnalysis::RunAnalysis(const mef::Gate& target,
     case Algorithm::kMocus:
         return RunAnalysis<Mocus>(target, result);
     case Algorithm::kDirect:
-        return RunAnalysis<DirectEval>(target, result);
+        return RunAnalysis<mc::DirectEval>(target, result);
   }
 }
 
@@ -153,7 +153,7 @@ void RiskAnalysis::RunAnalysis(const mef::Gate& target,
         RunAnalysis<Algorithm, McubCalculator>(fta.get(), result);
         break;
       case Approximation::kMonteCarlo:
-        RunAnalysis<Algorithm, DirectEval>(fta.get(), result);
+        RunAnalysis<Algorithm, mc::DirectEval>(fta.get(), result);
     }
   }
   result->fault_tree_analysis = std::move(fta);

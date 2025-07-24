@@ -1,5 +1,5 @@
 /**
- * @file analysis.cc
+ * @file probability_analysis.cc
  * @brief Monte Carlo probability analysis implementation using SYCL-based parallel computation
  * @author Arjun Earthperson
  * @date 2025
@@ -95,14 +95,15 @@
  *
  */
 
-#include "direct_eval.h"
-#include "logger.h"
-#include "mc/stats/ci_utils.h"
-#include "mc/stats/diagnostics.h"
 #include "probability_analysis.h"
+#include "logger.h"
+
+#include "mc/direct_eval.h"
 #include "mc/queue/layer_manager.h"
 #include "mc/scheduler/convergence_controller.h"
-#include <algorithm>
+#include "mc/stats/diagnostics.h"
+
+#include <boost/smart_ptr/make_shared_array.hpp>
 
 namespace scram::core {
 
@@ -178,9 +179,10 @@ namespace scram::core {
      * @see FaultTreeAnalyzer<DirectEval> for fault tree analysis details
      * @see core::Pdag for graph structure documentation
      */
-    ProbabilityAnalyzer<DirectEval>::ProbabilityAnalyzer(FaultTreeAnalyzer<DirectEval> *fta, mef::MissionTime *mission_time)
+    ProbabilityAnalyzer<mc::DirectEval>::ProbabilityAnalyzer(FaultTreeAnalyzer<mc::DirectEval> *fta, mef::MissionTime *mission_time)
         : ProbabilityAnalyzerBase(fta, mission_time) {
         LOG(DEBUG2) << "Re-using PDAG from FaultTreeAnalyzer for ProbabilityAnalyzer";
+        ComputeTallies(this->graph(), tallies_);
     }
 
     /**
@@ -208,7 +210,7 @@ namespace scram::core {
      * // All resources are properly cleaned up
      * @endcode
      */
-    inline ProbabilityAnalyzer<DirectEval>::~ProbabilityAnalyzer() noexcept = default;
+    inline ProbabilityAnalyzer<mc::DirectEval>::~ProbabilityAnalyzer() noexcept = default;
 
     /**
      * @brief Calculates total system failure probability using Monte Carlo sampling
@@ -312,29 +314,37 @@ namespace scram::core {
      * @see sample_shape for memory layout configuration
      * @see Settings for parameter configuration options
      */
-    double ProbabilityAnalyzer<DirectEval>::CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept {
-        CLOCK(calc_time);
-        LOG(DEBUG1) << "Calculating probability using monte carlo sampling...";
+    double ProbabilityAnalyzer<mc::DirectEval>::CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept {
+        auto *pdag = this->graph();
+        const auto event_id = pdag->root()->index();
+        const double mean = tallies_[event_id].mean;
+        LOG(DEBUG1) << "Root Event Probability: " << mean;
+        return mean;
+    }
 
-        using bitpack_t_ = std::uint64_t;
+    void ProbabilityAnalyzer<mc::DirectEval>::ComputeTallies(Pdag *pdag, std::unordered_map<int, mc::stats::tally> &to_compute) {
+        CLOCK(calc_time);
+        LOG(DEBUG1) << "Computing all tallies using monte carlo sampling...";
 
         const auto &settings = this->settings();
         const std::size_t trials = settings.num_trials();
-        auto *pdag = this->graph();
+
+        using bitpack_t_ = std::uint64_t;
+        mc::queue::layer_manager<bitpack_t_> manager(pdag, trials);
 
         const auto event_id = pdag->root()->index();
-        mc::queue::layer_manager<bitpack_t_> manager(pdag, trials);
-        mc::scheduler::convergence_controller<bitpack_t_> scheduler(manager, event_id, settings);
+        mc::scheduler::convergence_controller<bitpack_t_> scheduler(manager, settings);
 
-        const auto tally = scheduler.run_to_convergence();
+        const auto tally = scheduler.run_to_convergence(event_id);
+        manager.collect_tallies(to_compute);
 
-        LOG(DEBUG1) << "Calculated probability " << tally.mean << " in " << DUR(calc_time);
+        LOG(DEBUG1) << "Calculated probabilities for" << to_compute.size() << " events in " << DUR(calc_time);
         LOG(DEBUG1) << tally;
         // ------------------------------------------------------------------
         //  Diagnostic statistics when a ground-truth probability is supplied
         // ------------------------------------------------------------------
         LOG(DEBUG1) << *scheduler.accuracy_metrics();
         LOG(DEBUG1) << *scheduler.sampling_diagnostics();
-        return tally.mean;
     }
-}// namespace scram::core
+
+    } // namespace scram::core

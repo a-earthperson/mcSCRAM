@@ -46,13 +46,10 @@ class convergence_controller {
 
     /**
      * @param mgr        Reference to a fully initialised layer_manager.
-     * @param evt_idx    Index of the event whose probability we track.
      * @param settings   Settings
      */
-    convergence_controller(queue::layer_manager<bitpack_t_, prob_t_, size_t_> &mgr,
-                           const index_t_ evt_idx,
-                           const core::Settings &settings)
-        : manager_(mgr), evt_idx_(evt_idx), settings_(settings) {
+    convergence_controller(queue::layer_manager<bitpack_t_, prob_t_, size_t_> &mgr, const core::Settings &settings)
+        : manager_(mgr), settings_(settings) {
 
         steps_ = {
             .current = iteration_shape<bitpack_t_>(mgr.shaper().SAMPLE_SHAPE, 0),
@@ -130,7 +127,7 @@ class convergence_controller {
     }
 
     /** Execute exactly one additional iteration on the device. */
-    [[nodiscard]] bool step() {
+    [[nodiscard]] bool step(const index_t_ event_id) {
 
         // don't step anymore, just return that we didn't take a step.
         if (all_converged() && stop_on_convergence()) {
@@ -147,7 +144,7 @@ class convergence_controller {
 
         // still have iterations remaining
         // get the tally
-        process_tally(manager_.single_pass_and_tally(evt_idx_));
+        process_tally(manager_.single_pass_and_tally(event_id));
 
         // for now, this is our convergence criteria
         // if converged now, set convergence_ sticky to true
@@ -171,7 +168,7 @@ class convergence_controller {
      * since they are accumulating on device. The iteration count keeps track of how many trials have been run on device
      * so far.
      */
-    [[nodiscard]] bool burn_in_step() {
+    [[nodiscard]] bool burn_in_step(const index_t_ event_id) {
 
         // iteration_ now shows that enough tasks have been queued on device such that by the time they finish,
         // burn-in trials would be complete. So, don't queue up any additional work, just return saying you're done taking
@@ -181,7 +178,7 @@ class convergence_controller {
             return false;
         }
 
-        process_tally(manager_.single_pass_and_tally(evt_idx_));
+        process_tally(manager_.single_pass_and_tally(event_id));
 
         // since we did step, update the iteration count
         return true;
@@ -191,12 +188,12 @@ class convergence_controller {
      * Run until the stopping criterion is met (or until the original plan is
      * exhausted).  Returns the final tally.
      */
-    [[nodiscard]] event::tally<bitpack_t_> run_to_convergence() {
+    [[nodiscard]] event::tally<bitpack_t_> run_to_convergence(const index_t_ event_id) {
         // queue up burn-in trials, but dont check for convergence.
-        while(burn_in_step()) {
+        while(burn_in_step(event_id)) {
             progress_.perform_burn_in_update(*this);
         }
-        while (step()) {
+        while (step(event_id)) {
             progress_.perform_normal_update(*this);
         }
         progress_.finalize();
@@ -205,7 +202,7 @@ class convergence_controller {
 
 private:
     queue::layer_manager<bitpack_t_, prob_t_, size_t_> &manager_;
-    const index_t_ evt_idx_;
+    //const index_t_ evt_idx_;
     const core::Settings &settings_;
     // Information gain tracking
     stats::InfoGainTracker info_gain_tracker_{};

@@ -17,17 +17,15 @@
 
 #pragma once
 
-#include "layer_manager.h"
-
 #include <algorithm>
 #include <stdexcept>
 
 #include "logger.h"
-#include "mc/event/node.h"
-#include "mc/working_set.h"
 #include "preprocessor.h"
-#include "mc/stats/ci_utils.h"
 
+#include "mc/queue/layer_manager.h"
+#include "mc/event/node.h"
+#include "mc/stats/ci_utils.h"
 #include "mc/queue/kernel_builder.h"
 
 namespace scram::mc::queue {
@@ -168,15 +166,22 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::build_kernels_for_layer(
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 void layer_manager<bitpack_t_, prob_t_, size_t_>::map_nodes_by_layer(
     const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer) {
+
+    // flatten the list of list of nodes
+    std::vector<std::shared_ptr<core::Node>> all_nodes_to_tally;
+    all_nodes_to_tally.reserve(pdag_nodes_.size());
+
     for (const auto &nodes_in_layer : nodes_by_layer) {
+        // build kernels for nodes in this layer
         build_kernels_for_layer(nodes_in_layer);
-        // build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
-        //     nodes_in_layer, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_,
-        //     allocated_gates_by_index_, allocated_tally_events_by_index_);
+
+        // add all the nodes from this layer to all_nodes_to_tally
+        all_nodes_to_tally.insert(all_nodes_to_tally.end(), nodes_in_layer.begin(), nodes_in_layer.end());
     }
-    // last layer gets tallied
+
+    // now, add *ALL* nodes, including variables, to the final layer, which is one large tally block.
     build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
-        nodes_by_layer.back(), queue_, sample_shape_, queueables_, queueables_by_index_,
+        all_nodes_to_tally, queue_, sample_shape_, queueables_, queueables_by_index_,
         allocated_basic_events_by_index_, allocated_gates_by_index_, allocated_tally_events_by_index_);
 }
 
@@ -258,6 +263,17 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::single_pas
     single_pass().wait_and_throw();
     const event::tally<bitpack_t_> computed_tally = fetch_tally_for_event_with_index(evt_idx);
     return computed_tally;
+}
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+void layer_manager<bitpack_t_, prob_t_, size_t_>::collect_tallies(std::unordered_map<index_t_, stats::tally> &stats) {
+    for (auto &pair : allocated_tally_events_by_index_) {
+        const auto &idx = pair.first;
+        const auto *tally_on_device = allocated_tally_events_by_index_[idx];
+        stats[idx].num_one_bits = tally_on_device->num_one_bits;
+        stats[idx].total_bits = tally_on_device->total_bits;
+        stats::populate_point_estimates(stats[idx]);
+    }
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>

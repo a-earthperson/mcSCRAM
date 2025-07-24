@@ -23,7 +23,7 @@
 #pragma once
 
 #include "mc/event/node.h"
-#include "mc/working_set.h"
+#include "working_set.h"
 
 #include "logger.h"
 

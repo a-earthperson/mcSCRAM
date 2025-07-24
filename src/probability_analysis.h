@@ -29,9 +29,11 @@
 #include "fault_tree_analysis.h"
 #include "pdag.h"
 
+#include "mc/stats/tally.h"
+
 namespace scram::mef {
-    class MissionTime;
-}// namespace scram::mef
+class MissionTime;
+} // namespace scram::mef
 
 namespace scram::core {
 
@@ -336,7 +338,7 @@ namespace scram::core {
     /// Specialization of probability analyzer using direct evaluation of the underlying pdag.
     /// The quantitative analysis is done using Monte Carlo sampling.
     template<>
-    class ProbabilityAnalyzer<DirectEval> : public ProbabilityAnalyzerBase {
+    class ProbabilityAnalyzer<mc::DirectEval> : public ProbabilityAnalyzerBase {
     public:
         /// Constructs probability analyzer from a fault tree analyzer
         /// with the same algorithm.
@@ -347,7 +349,9 @@ namespace scram::core {
         template<class Algorithm>
         ProbabilityAnalyzer(const FaultTreeAnalyzer<Algorithm> *fta,
                             mef::MissionTime *mission_time)
-            : ProbabilityAnalyzerBase(fta, mission_time) {}
+            : ProbabilityAnalyzerBase(fta, mission_time) {
+            ComputeTallies(this->graph(), tallies_);
+        }
 
         /// Reuses PDAG structures from Fault tree analyzer.
         ///
@@ -357,7 +361,7 @@ namespace scram::core {
         ///
         /// @post FaultTreeAnalyzer is not corrupted
         ///       by use of its PDAG internals.
-        ProbabilityAnalyzer(FaultTreeAnalyzer<DirectEval> *fta,
+        ProbabilityAnalyzer(FaultTreeAnalyzer<mc::DirectEval> *fta,
                             mef::MissionTime *mission_time);
 
         /// Deletes the PDAG
@@ -367,5 +371,8 @@ namespace scram::core {
         double CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept final;
 
         //double CalculateTotalProbability() noexcept override;
+    protected:
+        void ComputeTallies(Pdag* pdag, std::unordered_map<int, mc::stats::tally> &to_compute);
+        std::unordered_map<int, mc::stats::tally> tallies_;
     };
 }// namespace scram::core

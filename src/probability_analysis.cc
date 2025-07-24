@@ -25,7 +25,6 @@
 
 #include <boost/range/algorithm/find_if.hpp>
 
-#include "direct_eval.h"
 #include "event.h"
 #include "logger.h"
 #include "parameter.h"
