@@ -22,43 +22,15 @@
 
 #include "importance_analysis.h"
 #include "mc/direct_eval.h"
+#include "probability_analysis.h"
 
-/// Specialization of importance analyzer with computed tallies
-template <>
-class scram::core::ImportanceAnalyzer<scram::mc::DirectEval> : public scram::core::ImportanceAnalyzerBase {
-public:
-    /// Constructs importance analyzer from probability analyzer.
-    /// Probability analyzer facilities are used
-    /// to calculate the total and conditional probabilities for factors.
-    ///
-    /// @param[in] prob_analyzer  Instantiated probability analyzer.
-    explicit ImportanceAnalyzer(ProbabilityAnalyzer<Bdd>* prob_analyzer)
-        : ImportanceAnalyzerBase(prob_analyzer),
-          bdd_graph_(prob_analyzer->bdd_graph()) {}
+/// ---------------------------------------------------------------------------
+///  Stub specialization of ImportanceAnalyzer for Monte-Carlo DirectEval path.
+///  This merely wires the class into the existing template dispatch so that the
+///  RiskAnalysis -> ImportanceAnalysis call chain compiles.  Full logic will be
+///  added later.
+/// ---------------------------------------------------------------------------
 
-private:
-    double CalculateMif(int index) noexcept override;
+namespace scram::core {
 
-    /// Calculates Marginal Importance Factor of a variable.
-    ///
-    /// @param[in] vertex  The root vertex of a function graph.
-    /// @param[in] order  The identifying order of the variable.
-    /// @param[in] mark  A flag to mark traversed vertices.
-    ///
-    /// @returns Importance factor value.
-    ///
-    /// @note Probability factor fields are used to save results.
-    /// @note The graph needs cleaning its marks after this function
-    ///       because the graph gets continuously-but-partially marked.
-    double CalculateMif(const Bdd::VertexPtr& vertex, int order,
-                        bool mark) noexcept;
-
-    /// Retrieves memorized probability values for BDD function graphs.
-    ///
-    /// @param[in] vertex  Vertex with calculated probabilities.
-    ///
-    /// @returns Saved probability value of the vertex.
-    double RetrieveProbability(const Bdd::VertexPtr& vertex) noexcept;
-
-    Bdd* bdd_graph_;  ///< Binary decision diagram for the analyzer.
-};
+}  // namespace scram::core

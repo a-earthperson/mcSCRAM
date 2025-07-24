@@ -196,4 +196,31 @@ class ImportanceAnalyzer<Bdd> : public ImportanceAnalyzerBase {
   Bdd* bdd_graph_;  ///< Binary decision diagram for the analyzer.
 };
 
+// Forward declaration – implemented below.
+template <>
+class ImportanceAnalyzer<scram::mc::DirectEval> : public ImportanceAnalyzerBase {
+public:
+    explicit ImportanceAnalyzer(ProbabilityAnalyzer<scram::mc::DirectEval>* prob_analyzer)
+        : ImportanceAnalyzerBase(prob_analyzer), prob_analyzer_(prob_analyzer) {}
+
+private:
+    //  Temporary implementation – returns zero so that the analysis completes.
+    //  A future commit will compute true MIF from Monte-Carlo tallies.
+    double CalculateMif(int /*index*/) noexcept override { return 0.0; }
+
+    /// @brief Returns a dummy occurrence count (1) for every basic event.
+    ///
+    /// The regular BDD/ZBDD path counts how many minimal cut sets contain a
+    /// variable.  For Monte-Carlo we currently do not compute cut sets, so to
+    /// keep the ImportanceAnalysis runner happy we pretend that every variable
+    /// appears exactly once.  This prevents the call chain from touching the
+    /// stub ZBDD container.
+    std::vector<int> occurrences() noexcept override {
+        const auto &events = prob_analyzer_->graph()->basic_events();
+        return std::vector<int>(events.size(), 1);
+    }
+
+    ProbabilityAnalyzer<scram::mc::DirectEval>* prob_analyzer_;
+};
+
 }  // namespace scram::core

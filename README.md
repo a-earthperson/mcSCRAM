@@ -391,3 +391,16 @@ This program is free software distributed under the **GNU Affero General Public 
 - **mcSCRAM**: Copyright (C) 2025 Arjun Earthperson
 - **Synthetic Models**: OpenPRA Initiative contributors
 - **Testing Infrastructure**: Fault tree benchmarks from various PRA/PSA research groups
+
+## Development Status
+
+| Analysis Type | Status | DirectEval Support | Action Required |
+|---------------|---------|-------------------|-----------------|
+| **FaultTreeAnalysis** | ✅ Core | Full support | None |
+| **ProbabilityAnalysis** | ✅ Core | Full support | Add `tallies()` accessor |
+| **ImportanceAnalysis** | ⚠️ Stub | Partial | **Full implementation needed** |
+| **UncertaintyAnalysis** | ❌ Missing | No support | **New specialization needed** |
+| **EventTreeAnalysis** | ✅ Core | Full support | None |
+| **CCF Analysis** | ✅ Preprocessing | Full support | None |
+| **SIL Analysis** | ✅ Embedded | Full support | None |  
+| **Cut Set Analysis** | ⚠️ Stub | Intentional stub | None (by design) |

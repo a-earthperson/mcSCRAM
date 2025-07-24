@@ -374,5 +374,14 @@ namespace scram::core {
     protected:
         void ComputeTallies(Pdag* pdag, std::unordered_map<int, mc::stats::tally> &to_compute);
         std::unordered_map<int, mc::stats::tally> tallies_;
+
+    public:
+        /// @brief Read-only access to Monte-Carlo tallies computed for each PDAG node.
+        ///
+        /// The key is the PDAG node index, the value is the sampling statistics
+        /// collected for that node.
+        [[nodiscard]] const std::unordered_map<int, mc::stats::tally>& tallies() const {
+            return tallies_;
+        }
     };
 }// namespace scram::core
