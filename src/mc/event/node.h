@@ -121,6 +121,16 @@ namespace scram::mc::event {
         std::uint64_t probability_threshold{};
     };
 
+    template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
+    inline std::ostream &operator<<(std::ostream &os, const event::basic_event<prob_t_, bitpack_t_, index_t_> &be) {
+        constexpr double two_to_32 = static_cast<double>(UINT64_C(1) << 32); // 4,294,967,296
+        const double p = static_cast<double>(be.probability_threshold) / two_to_32;
+        os << "index= " << be.index << "  |  "
+           << "p(double)= " << std::scientific << std::setprecision(6) << p << "  |  "
+           << "p_threshold= " << be.probability_threshold;
+        return os;
+    }
+
     /**
      * @struct tally
      * @brief Accumulates and stores statistical results from Monte Carlo sampling
@@ -358,6 +368,7 @@ namespace scram::mc::event {
             events[i].probability_threshold = static_cast<std::uint64_t>(indexed_probabilities[i].second * two_to_32);
             events[i].index       = indexed_probabilities[i].first;
             events[i].buffer      = buffer_block + i * num_bitpacks;
+            LOG(DEBUG4) << events[i];
         }
 
         // 4. Wrap everything in a basic_event_block and return.

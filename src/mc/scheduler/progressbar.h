@@ -58,6 +58,7 @@ struct progress {
         setup_fixed_bar(*controller);
         setup_burn_in_bar(*controller);
         setup_convergence_bar(*controller);
+        setup_log_convergence_bar(*controller);
         setup_estimate(*controller);
         if (controller->diagnostics_enabled()) {
             setup_diagnostics(*controller);
@@ -122,6 +123,14 @@ struct progress {
         }
     }
 
+    // Mark the convergence bar as complete once the controller reports success.
+    void mark_log_converged(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+        tick_log_convergence_bar(controller);
+        if (log_convergence_ && !bars_->operator[](*log_convergence_).is_completed()) {
+            bars_->operator[](*log_convergence_).mark_as_completed();
+        }
+    }
+
     // Mark the iterations bar as complete when the planned iterations finish.
     void mark_fixed_iterations_complete(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_fixed_bar(controller);
@@ -156,6 +165,7 @@ struct progress {
     void perform_normal_update(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_fixed_bar(controller);
         tick_convergence_bar(controller);
+        tick_log_convergence_bar(controller);
         tick_text(&controller);
     }
 
@@ -176,7 +186,7 @@ struct progress {
                    << controller.current_state().half_width_epsilon;
             const std::string c = cur_ss.str();
 
-            bar.set_option(indicators::option::PrefixText{"[burn-in]     :: ε= " + c + " | ε₀= " + t + " :: "});
+            bar.set_option(indicators::option::PrefixText{"[burn-in]     ::      (ε)= "+c+" |      (ε₀)= "+t+" :: "});
 
             const auto cur_ite = controller.current_steps().iterations();
             const auto tot_ite = controller.burn_in_trials_shape().iterations();
@@ -198,6 +208,7 @@ struct progress {
     // as *false*.
     std::optional<std::size_t> burn_in_{};
     std::optional<std::size_t> convergence_{};
+    std::optional<std::size_t> log_convergence_{};
     std::optional<std::size_t> fixed_iterations_{};
     std::optional<std::size_t> accuracy_metrics_{};
     std::optional<std::size_t> diagnostics_{};
@@ -340,7 +351,6 @@ struct progress {
         if (controller.burn_in_trials()) {
             auto &bar = add_iterations_bar(burn_in_);
             const auto tot_ite = controller.burn_in_trials_shape().iterations();
-            // bar.set_option(indicators::option::PrefixText{"[burn-in]     :: ε= ?         | ε₀= ?         :: "});
             bar.set_option(indicators::option::BarWidth{bar_width_});
             bar.set_option(indicators::option::MaxProgress{tot_ite});
             bar.set_option(indicators::option::ShowPercentage{true});
@@ -369,13 +379,12 @@ struct progress {
 
     void setup_convergence_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
         auto &bar = add_iterations_bar(convergence_);
-        std::ostringstream tar_ss;
-        tar_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.target_state().half_width_epsilon;
-        const std::string t = tar_ss.str();
-        std::ostringstream cur_ss;
-        cur_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.current_state().half_width_epsilon;
-        const std::string c = cur_ss.str();
-        // bar.set_option(indicators::option::PrefixText{"[convergence] :: ε= "+c+" | ε₀= "+t+" :: "});
+        bar.set_option(indicators::option::BarWidth{bar_width_});
+        bar.set_option(indicators::option::ForegroundColor{indicators::Color::white});
+    }
+
+    void setup_log_convergence_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+        auto &bar = add_iterations_bar(log_convergence_);
         bar.set_option(indicators::option::BarWidth{bar_width_});
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::white});
     }
@@ -396,10 +405,10 @@ struct progress {
     }
 
     void setup_accuracy_metrics(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
-        auto &bar = add_text(accuracy_metrics_, "[accuracy]    ::");
         std::ostringstream true_p_ss;
         true_p_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.ground_truth();
         const std::string str_prefix = "[accuracy]    :: true(p)= "+true_p_ss.str()+" |";
+        auto &bar = add_text(accuracy_metrics_, str_prefix);
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::white});
     }
 
@@ -412,7 +421,7 @@ struct progress {
         if (convergence_ && !bars_->operator[](*convergence_).is_completed()) {
             auto &bar = bars_->operator[](*convergence_);
             const auto cur_ite = controller.current_steps().iterations();
-            const auto projected_ite = controller.projected_steps().iterations();
+            const auto projected_ite = controller.projected_steps_epsilon().iterations();
             const std::string ite = std::to_string(cur_ite) + "/" + std::to_string(projected_ite);
             std::ostringstream tar_ss;
             tar_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.target_state().half_width_epsilon;
@@ -420,7 +429,30 @@ struct progress {
             std::ostringstream cur_ss;
             cur_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.current_state().half_width_epsilon;
             const std::string c = cur_ss.str();
-            bar.set_option(indicators::option::PrefixText{"[convergence] :: ε= "+c+" | ε₀= "+t+" :: "});
+            bar.set_option(indicators::option::PrefixText{"[convergence] ::      (ε)= "+c+" |      (ε₀)= "+t+" :: "});
+            bar.set_option(indicators::option::PostfixText{"["+ite+"]"});
+            bar.set_option(indicators::option::MinProgress{0});
+            bar.set_option(indicators::option::MaxProgress{projected_ite}); // moving target
+            bar.set_option(indicators::option::ShowPercentage{true});
+            bar.set_option(indicators::option::ShowElapsedTime{true});
+            bar.set_option(indicators::option::ShowRemainingTime{true});
+            bar.set_progress(cur_ite);
+        }
+    }
+
+    void tick_log_convergence_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+        if (log_convergence_ && !bars_->operator[](*log_convergence_).is_completed()) {
+            auto &bar = bars_->operator[](*log_convergence_);
+            const auto cur_ite = controller.current_steps().iterations();
+            const auto projected_ite = controller.projected_steps_epsilon_log10().iterations();
+            const std::string ite = std::to_string(cur_ite) + "/" + std::to_string(projected_ite);
+            std::ostringstream tar_ss;
+            tar_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.target_state().half_width_epsilon_log10;
+            const std::string t = tar_ss.str();
+            std::ostringstream cur_ss;
+            cur_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.current_state().half_width_epsilon_log10;
+            const std::string c = cur_ss.str();
+            bar.set_option(indicators::option::PrefixText{"[log10-conv]  :: log10(ε)= "+c+" | log10(ε₀)= "+t+" :: "});
             bar.set_option(indicators::option::PostfixText{"["+ite+"]"});
             bar.set_option(indicators::option::MinProgress{0});
             bar.set_option(indicators::option::MaxProgress{projected_ite}); // moving target
@@ -448,7 +480,7 @@ struct progress {
         }
         auto &bar = bars_->operator[](*estimate_);
         std::ostringstream ss;
-        ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.current_tally();
+        ss << std::scientific << std::setprecision(5) << controller.current_tally();
         bar.set_option(indicators::option::PostfixText{ss.str()});
     }
 
@@ -503,81 +535,93 @@ struct progress {
         std::string iter_rate_str;
         if (iterations_per_sec >= 1.0) {
             std::ostringstream ss;
-            ss << std::fixed << std::setprecision(2) << iterations_per_sec << " iter/s";
+            ss << std::fixed << std::setprecision(2) << iterations_per_sec << " it/s";
             iter_rate_str = ss.str();
         } else {
             const double sec_per_iteration = elapsed_time / static_cast<double>(iterations_delta);
             std::ostringstream ss;
-            ss << std::fixed << std::setprecision(2) << sec_per_iteration << " s/iter";
+            ss << std::fixed << std::setprecision(2) << sec_per_iteration << " s/it";
             iter_rate_str = ss.str();
         }
 
        //  Calculate bits per iteration with appropriate units
-        const std::double_t bits_per_iteration_whole_graph = static_cast<double_t>(controller.fixed_iterations_shape().trials_per_iteration());
+        // const std::double_t bits_per_iteration_whole_graph = static_cast<double_t>(controller.fixed_iterations_shape().trials_per_iteration());
+        const std::double_t bits_per_iteration_per_node = static_cast<double_t>(controller.fixed_iterations_shape().trials_per_iteration());
         const std::double_t nodes_per_graph = static_cast<double_t>(controller.node_count());
-        const std::double_t bits_per_iteration = bits_per_iteration_whole_graph;
-         std::string bits_iter_str;
-         if (bits_per_iteration >= 1024 * 1024) {
+        // const std::double_t bits_per_iteration = bits_per_iteration_whole_graph;
+         std::string bits_iter_node_str;
+        if (bits_per_iteration_per_node >= 1024 * 1024 * 1024) {
+            std::ostringstream ss;
+            ss << std::fixed << std::setprecision(2) << bits_per_iteration_per_node / (1024.0 * 1024.0 * 1024.0) << " Gbit/node/it";
+            bits_iter_node_str = ss.str();
+        } else if (bits_per_iteration_per_node >= 1024 * 1024) {
              std::ostringstream ss;
-             ss << std::fixed << std::setprecision(2) << bits_per_iteration / (1024.0 * 1024.0) << " Mbit/iter";
-             bits_iter_str = ss.str();
-         } else if (bits_per_iteration >= 1024) {
+             ss << std::fixed << std::setprecision(2) << bits_per_iteration_per_node / (1024.0 * 1024.0) << " Mbit/node/it";
+             bits_iter_node_str = ss.str();
+         } else if (bits_per_iteration_per_node >= 1024) {
              std::ostringstream ss;
-             ss << std::fixed << std::setprecision(2) << bits_per_iteration / 1024.0 << " kbit/iter";
-             bits_iter_str = ss.str();
+             ss << std::fixed << std::setprecision(2) << bits_per_iteration_per_node / 1024.0 << " kbit/node/it";
+             bits_iter_node_str = ss.str();
          } else {
              std::ostringstream ss;
-             ss << bits_per_iteration << " bit/iter";
-             bits_iter_str = ss.str();
+             ss << bits_per_iteration_per_node << " bit/node/it";
+             bits_iter_node_str = ss.str();
          }
 
          // Calculate bits per second with appropriate units
-         const double bits_per_sec = static_cast<double>(bits_per_iteration * iterations_delta) / elapsed_time;
-         std::string bits_sec_str;
-         if (bits_per_sec >= 1024.0 * 1024.0) {
+         const double bits_per_node_sec = static_cast<double>(bits_per_iteration_per_node * iterations_delta) / elapsed_time;
+         std::string bits_sec_node_str;
+        if (bits_per_node_sec >= 1024.0 * 1024.0 * 1024.0) {
+            std::ostringstream ss;
+            ss << std::fixed << std::setprecision(2) << bits_per_node_sec / (1024.0 * 1024.0 * 1024.0) << " Gbit/node/s";
+            bits_sec_node_str = ss.str();
+        } else if (bits_per_node_sec >= 1024.0 * 1024.0) {
              std::ostringstream ss;
-             ss << std::fixed << std::setprecision(2) << bits_per_sec / (1024.0 * 1024.0) << " Mbit/s";
-             bits_sec_str = ss.str();
-         } else if (bits_per_sec >= 1024.0) {
+             ss << std::fixed << std::setprecision(2) << bits_per_node_sec / (1024.0 * 1024.0) << " Mbit/node/s";
+             bits_sec_node_str = ss.str();
+         } else if (bits_per_node_sec >= 1024.0) {
              std::ostringstream ss;
-             ss << std::fixed << std::setprecision(2) << bits_per_sec / 1024.0 << " kbit/s";
-             bits_sec_str = ss.str();
+             ss << std::fixed << std::setprecision(2) << bits_per_node_sec / 1024.0 << " kbit/node/s";
+             bits_sec_node_str = ss.str();
          } else {
              std::ostringstream ss;
-             ss << std::fixed << std::setprecision(2) << bits_per_sec << " bit/s";
-             bits_sec_str = ss.str();
+             ss << std::fixed << std::setprecision(2) << bits_per_node_sec << " bit/node/s";
+             bits_sec_node_str = ss.str();
          }
 
-         // Per-node metrics
+         // Global Metrics
          const auto nodes = static_cast<std::double_t>(controller.node_count());
-         std::string bits_iter_node_str;
-         std::string bits_sec_node_str;
-         if (nodes > 0.0) {
-             const double bits_iter_node = bits_per_iteration / nodes;
-             const double bits_sec_node  = bits_per_sec / nodes;
+         std::string bits_iter_str;
+         std::string bits_sec_str;
+         if (nodes >= 1) {
+             const double bits_iter = bits_per_iteration_per_node * nodes;
+             const double bits_sec  = bits_per_node_sec * nodes;
 
-             if (bits_iter_node >= 1024.0 * 1024.0) {
-                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter_node / (1024.0*1024.0) << " Mbit/iter/node"; bits_iter_node_str = ss.str();
-             } else if (bits_iter_node >= 1024.0) {
-                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter_node / 1024.0 << " kbit/iter/node"; bits_iter_node_str = ss.str();
+             if (bits_iter >= 1024.0 * 1024.0 * 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter / (1024.0*1024.0*1024.0) << " Gbit/it"; bits_iter_str = ss.str();
+             } else if (bits_iter >= 1024.0 * 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter / (1024.0*1024.0) << " Mbit/it"; bits_iter_str = ss.str();
+             } else if (bits_iter >= 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter / 1024.0 << " kbit/it"; bits_iter_str = ss.str();
              } else {
-                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter_node << " bit/iter/node"; bits_iter_node_str = ss.str();
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_iter << " bit/it"; bits_iter_str = ss.str();
              }
 
-             if (bits_sec_node >= 1024.0 * 1024.0) {
-                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec_node / (1024.0*1024.0) << " Mbit/s/node"; bits_sec_node_str = ss.str();
-             } else if (bits_sec_node >= 1024.0) {
-                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec_node / 1024.0 << " kbit/s/node"; bits_sec_node_str = ss.str();
+             if (bits_sec >= 1024.0 * 1024.0 * 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec / (1024.0*1024.0*1024.0) << " Gbit/s"; bits_sec_str = ss.str();
+             } else if (bits_sec >= 1024.0 * 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec / (1024.0*1024.0) << " Mbit/s"; bits_sec_str = ss.str();
+             } else if (bits_sec >= 1024.0) {
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec / 1024.0 << " kbit/s"; bits_sec_str = ss.str();
              } else {
-                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec_node << " bit/s/node"; bits_sec_node_str = ss.str();
+                 std::ostringstream ss; ss << std::fixed << std::setprecision(2) << bits_sec << " bit/s"; bits_sec_str = ss.str();
              }
          }
 
          // Combine all metrics into a single line
-         std::string throughput_text = bits_iter_str + " | " + iter_rate_str + " | " + bits_sec_str;
-         if (!bits_iter_node_str.empty() && !bits_sec_node_str.empty()) {
-             throughput_text += " | " + bits_iter_node_str + " | " + bits_sec_node_str;
-         }
+        const std::string global_stats = bits_iter_str + " | " +bits_sec_str;
+        const std::string node_stats = bits_iter_node_str + " | " +bits_sec_node_str;
+        const std::string throughput_text = iter_rate_str + " | " + global_stats + " | " + node_stats;
 
          bar.set_option(indicators::option::PostfixText{throughput_text});
 

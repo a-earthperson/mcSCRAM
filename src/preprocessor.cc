@@ -216,8 +216,9 @@ void MarkCoherence(Pdag* graph) noexcept {
 
 }  // namespace pdag
 
-Preprocessor::Preprocessor(Pdag* graph) noexcept : graph_(graph) {}
+Preprocessor::Preprocessor(Pdag *graph) noexcept : graph_(graph) {}
 
+Preprocessor::Preprocessor(Pdag *graph, const std::optional<Settings> &settings) : graph_(graph), settings_(settings) {}
 void Preprocessor::operator()() noexcept {
   TIMER(DEBUG2, "Preprocessing");
   this->Run();
@@ -225,7 +226,7 @@ void Preprocessor::operator()() noexcept {
 
 void Preprocessor::Run() noexcept {
   TIMER(DEBUG2, "Preprocessor:: Running Transform Phases I, II, and III...");
-  pdag::Transform(graph_, [this](Pdag*) { RunPhaseOne(NormalizationLevel::partial); },
+  pdag::Transform(graph_, [this](Pdag*) { RunPhaseOne(); },
                   [this](Pdag*) { RunPhaseTwo(); },
                   [this](Pdag*) {
                     if (!graph_->normal())
@@ -367,21 +368,19 @@ class TestGateStructure {
   assert(TestGateStructure()(*graph_->root()));                            \
   assert(TestGateMarks()(*graph_->root(), graph_->root()->mark()))
 
-void Preprocessor::RunPhaseOne(const NormalizationLevel &normalization_level = NormalizationLevel::partial) noexcept {
-    TIMER(DEBUG2, "Preprocessing Phase I");
-    graph_->Log();
-    if (graph_->HasNullGates()) {
-        TIMER(DEBUG3, "Removing NULL gates");
-        graph_->RemoveNullGates();
-        if (graph_->IsTrivial())
-            return;
-    }
-    SANITY_ASSERT;
-    if (normalization_level > NormalizationLevel::none) {
-        if (!graph_->coherent()) {
-            NormalizeGates(normalization_level);
-        }
-    }
+void Preprocessor::RunPhaseOne() noexcept {
+  TIMER(DEBUG2, "Preprocessing Phase I");
+  graph_->Log();
+  if (graph_->HasNullGates()) {
+    TIMER(DEBUG3, "Removing NULL gates");
+    graph_->RemoveNullGates();
+    if (graph_->IsTrivial())
+      return;
+  }
+  SANITY_ASSERT;
+  if (!graph_->coherent()) {
+    NormalizeGates(/*full=*/false);
+  }
 }
 
 void Preprocessor::RunPhaseTwo() noexcept {
@@ -417,7 +416,7 @@ void Preprocessor::RunPhaseThree() noexcept {
   SANITY_ASSERT;
   graph_->Log();
   assert(!graph_->normal());
-  NormalizeGates(NormalizationLevel::full);
+  NormalizeGates(/*full=*/true);
   graph_->normal(true);
 
   if (graph_->IsTrivial())
@@ -529,12 +528,12 @@ bool IsSubgraphWithinGraph(const GatePtr& root, int enter_time,
 
 }  // namespace
 
-void Preprocessor::NormalizeGates(const NormalizationLevel &normalization_level) noexcept {
-  TIMER(DEBUG3, normalization_level == NormalizationLevel::full ? "Full normalization" : "Partial normalization");
+void Preprocessor::NormalizeGates(bool full) noexcept {
+  TIMER(DEBUG3, (full ? "Full normalization" : "Partial normalization"));
   assert(!graph_->HasNullGates());
-  if (normalization_level == NormalizationLevel::full) {
-      pdag::TopologicalOrder(graph_);  // K/N gates need order.
-  }
+  if (full)
+    pdag::TopologicalOrder(graph_);  // K/N gates need order.
+
   const GatePtr& root_gate = graph_->root();
   Connective type = root_gate->type();
   switch (type) {  // Handle special case for the root gate.
@@ -570,19 +569,16 @@ void Preprocessor::NotifyParentsOfNegativeGates(const GatePtr& gate) noexcept {
   }
 }
 
-void Preprocessor::NormalizeGate(const GatePtr& gate, const NormalizationLevel &normalization_level) noexcept {
+void Preprocessor::NormalizeGate(const GatePtr& gate, bool full) noexcept {
   if (gate->mark())
     return;
   gate->mark(true);
   assert(!gate->constant());
   assert(!gate->args().empty());
-
   // Depth-first traversal before the arguments may get changed.
   for (const Gate::Arg<Gate>& arg : gate->args<Gate>()) {
-    NormalizeGate(arg.second, normalization_level);
+    NormalizeGate(arg.second, full);
   }
-
-  const bool full_normalization = normalization_level == NormalizationLevel::full;
 
   switch (gate->type()) {  // Negation is already processed.
     case kNor:
@@ -595,13 +591,13 @@ void Preprocessor::NormalizeGate(const GatePtr& gate, const NormalizationLevel &
       break;
     case kXor:
       assert(gate->args().size() == 2);
-      if (full_normalization)
+      if (full)
         NormalizeXorGate(gate);
       break;
     case kAtleast:
       assert(gate->args().size() > 2);
       assert(gate->min_number() > 1);
-      if (full_normalization)
+      if (full)
         NormalizeAtleastGate(gate);
       break;
     case kNot:
@@ -784,7 +780,6 @@ bool Preprocessor::CoalesceGates(const GatePtr& gate, bool common) noexcept {
     if (!common && arg_gate->parents().size() > 1)
       continue;  // Check common.
 
-    // TODO:: @earthperson: add XOR, XNOR here
     if (arg_gate->type() == target_type)
       to_join.push_back(arg_gate);
   }
@@ -1158,32 +1153,16 @@ bool Preprocessor::MergeCommonArgs() noexcept {
   changed |= MergeCommonArgs(kAnd);
   LOG(DEBUG4) << "Finished merging for AND gates!";
 
-  LOG(DEBUG4) << "Merging common arguments for NAND gates...";
-  changed |= MergeCommonArgs(kNand);
-  LOG(DEBUG4) << "Finished merging for NAND gates!";
-
   LOG(DEBUG4) << "Merging common arguments for OR gates...";
   changed |= MergeCommonArgs(kOr);
   LOG(DEBUG4) << "Finished merging for OR gates!";
-
-  LOG(DEBUG4) << "Merging common arguments for NOR gates...";
-  changed |= MergeCommonArgs(kNor);
-  LOG(DEBUG4) << "Finished merging for NOR gates!";
-
-  LOG(DEBUG4) << "Merging common arguments for XOR gates...";
-  changed |= MergeCommonArgs(kXor);
-  LOG(DEBUG4) << "Finished merging for XOR gates!";
-
-  // LOG(DEBUG4) << "Merging common arguments for XNOR gates...";
-  // changed |= MergeCommonArgs(kXnor);
-  // LOG(DEBUG4) << "Finished merging for XNOR gates!";
 
   assert(!graph_->HasNullGates());
   return changed;
 }
 
 bool Preprocessor::MergeCommonArgs(Connective op) noexcept {
-  assert(op == kAnd || op == kOr || op == kNand || op == kXor || op == kNor);
+  assert(op == kAnd || op == kOr);
   graph_->Clear<Pdag::kCount>();
   graph_->Clear<Pdag::kGateMark>();
   // Gather and group gates
@@ -1610,13 +1589,6 @@ bool Preprocessor::DetectDistributivity(const GatePtr& gate) noexcept {
     case kNor:
       distr_type = kAnd;
       break;
-    case kXor:
-    //case kXnor:
-      distr_type = kXor;
-      break;
-  case kAtleast:
-      distr_type = kAtleast;
-      break;
     default:
       distr_type = kNull;
   }
@@ -1626,7 +1598,7 @@ bool Preprocessor::DetectDistributivity(const GatePtr& gate) noexcept {
     const GatePtr& child_gate = arg.second;
     changed |= DetectDistributivity(child_gate);
     assert(!child_gate->constant() && "Impossible state.");
-    if (distr_type == kNull || distr_type == kAtleast || distr_type == kXor)
+    if (distr_type == kNull)
       continue;  // Distributivity is not possible.
     if (arg.first < 0)
       continue;  // Does not work on negation.
@@ -1740,12 +1712,10 @@ bool Preprocessor::FilterDistributiveArgs(
     switch (gate->type()) {
       case kAnd:
       case kOr:
-      case kXor:
         gate->type(kNull);
         break;
       case kNand:
       case kNor:
-      //case kXnor:
         gate->type(kNot);
         break;
       default:
@@ -1792,7 +1762,7 @@ void Preprocessor::TransformDistributiveArgs(
     MergeTable::MergeGroup* group) noexcept {
   if (group->empty())
     return;
-  assert(distr_type == kAnd || distr_type == kOr || distr_type == kXor);
+  assert(distr_type == kAnd || distr_type == kOr);
   const MergeTable::Option& base_option = group->front();
   const MergeTable::CommonArgs& args = base_option.first;
   const MergeTable::CommonParents& gates = base_option.second;
@@ -1803,7 +1773,6 @@ void Preprocessor::TransformDistributiveArgs(
     switch (gate->type()) {
       case kAnd:
       case kOr:
-      case kXor:
         gate->type(distr_type);
         break;
       case kNand:
@@ -1821,8 +1790,8 @@ void Preprocessor::TransformDistributiveArgs(
     gate->AddArg(new_parent);
   }
 
-  // TODO:: determine how to handle xor
-  auto sub_parent = std::make_shared<Gate>(distr_type == kAnd ? kOr : kAnd, graph_);
+  auto sub_parent =
+      std::make_shared<Gate>(distr_type == kAnd ? kOr : kAnd, graph_);
   sub_parent->mark(true);
   new_parent->AddArg(sub_parent);
 
@@ -2449,8 +2418,8 @@ void Preprocessor::GatherNodes(const GatePtr& gate, std::vector<GatePtr>* gates,
 }
 
 void CustomPreprocessor<Bdd>::Run() noexcept {
-    Preprocessor::Run();
-    pdag::Transform(graph_, &pdag::MarkCoherence, &pdag::TopologicalOrder);
+  Preprocessor::Run();
+  pdag::Transform(graph_, &pdag::MarkCoherence, &pdag::TopologicalOrder);
 }
 
 void CustomPreprocessor<Zbdd>::Run() noexcept {
@@ -2494,14 +2463,11 @@ void CustomPreprocessor<DirectEval>::InvertOrder() noexcept {
     std::vector<GatePtr> gates;
     std::vector<VariablePtr> variables;
     Preprocessor::GatherNodes(&gates, &variables);
-    auto middle = boost::partition(
-        gates, [](const GatePtr& gate) { return gate->module(); });
+    auto middle = boost::partition(gates, [](const GatePtr &gate) { return gate->module(); });
 
-    std::sort(middle, gates.end(), [](const GatePtr& lhs, const GatePtr& rhs) {
-      return lhs->order() < rhs->order();
-    });
+    std::sort(middle, gates.end(), [](const GatePtr &lhs, const GatePtr &rhs) { return lhs->order() < rhs->order(); });
     for (auto it = middle; it != gates.end(); ++it)
-        (*it)->order(gates.end() - it);  // Inversion.
+        (*it)->order(gates.end() - it); // Inversion.
 
     int shift = gates.end() - middle;
     for (auto it = gates.begin(); it != middle; ++it)
@@ -2511,13 +2477,194 @@ void CustomPreprocessor<DirectEval>::InvertOrder() noexcept {
         var->order(shift + var->order());
 }
 
+auto CustomPreprocessor<DirectEval>::remove_null_gates() const {
+        if (graph_->HasNullGates()) {
+            TIMER(DEBUG3, "NULL gates found");
+            graph_->Log();
+            if (this->settings_->keep_null_gates()) {
+                TIMER(DEBUG3, "Keeping NULL gates");
+            } else {
+                TIMER(DEBUG3, "Removing NULL gates");
+                graph_->RemoveNullGates();
+            }
+        }
+}
+
+// stages:: somewhat different from phases, as defined by rakhimov
+// stage 0: do nothing
+// stage 1: just remove nulls, and that's it.
+// stage 2: normalize, expanding k/n to and/or
+// always a good idea to run Phase2 multiple times if we care about compression.
 void CustomPreprocessor<DirectEval>::Run() noexcept {
-    TIMER(DEBUG2, "CustomPreprocessor<DirectEval>:: Running Transform Phases I, II with no normalization, followed by layered toposort...");
-    pdag::Transform(graph_,
-            [this](Pdag*){ RunPhaseOne(NormalizationLevel::none); },
-                    [this](Pdag*){ RunPhaseTwo(); },
-                    [this](Pdag*){ RunPhaseFive();});
-    pdag::Transform(graph_, &pdag::LayeredTopologicalOrder);
+
+    const int compilation_target = this->settings_->compilation_level();
+    TIMER(DEBUG2, "CustomPreprocessor<DirectEval>::");
+    LOG(DEBUG3) << "Compilation Target: " << std::to_string(compilation_target);
+
+    if (compilation_target <= 0) {
+        return;
+    }
+
+    // remove null gates, absorb not gates
+    pdag::Transform(graph_, [this](Pdag*){ RunPhaseOne();});
+
+    if (compilation_target <=1) {
+        return;
+    }
+
+    for (auto pass = 2; pass <= compilation_target; ++pass) {
+        pdag::Transform(graph_,
+                [this](Pdag*){ RunPhaseOne(); },
+                        [this](Pdag*){ RunPhaseTwo(); },
+                        [this](Pdag*) {
+                          if (!graph_->normal() && (settings_->expand_atleast_gates() || settings_->expand_xor_gates()))
+                              RunPhaseThree();
+                          },
+                          [this](Pdag*) {
+                            if (!graph_->coherent() && (settings_->expand_atleast_gates() || settings_->expand_xor_gates()))
+                                RunPhaseFour();
+                            },
+                          [this](Pdag*) {
+                              RunPhaseFive();
+                          });
+    }
+    //             [this](Pdag*) {
+    //               while (ProcessMultipleDefinitions())
+    //                   continue;
+    //               },
+    //               [this](Pdag*) { DetectModules(); },
+    //               [this](Pdag*) {
+    //                 while (CoalesceGates(/*common=*/true))
+    //                     continue;
+    //                 },
+    //                 [this](Pdag*) { MergeCommonArgs(); },
+    //                 [this](Pdag*) { DetectDistributivity(); },
+    //                 [this](Pdag*) { DetectModules(); },
+    //                 // [this](Pdag*) { BooleanOptimization(); },
+    //                 // [this](Pdag*) { DecomposeCommonNodes(); },
+    //                 [this](Pdag*) {
+    //                   while (CoalesceGates(/*common=*/true))
+    //                       continue;
+    //                   },
+    //                   [this](Pdag*) { DetectModules(); },
+    //                   [this](Pdag*) { if (settings_->expand_atleast_gates() && !graph_->normal()) { RunPhaseThree(); }});
+    // }
+    // return;
+    // if (compilation_target <=5) {
+    //     return;
+    // }
+    // for (auto pass = 0; pass < compilation_target; ++pass) {
+    //     LOG(DEBUG3) << "Compilation Pass: " << std::to_string(pass);
+    //     pdag::Transform(graph_,
+    //             [this](Pdag*){ while (ProcessMultipleDefinitions()) continue;},
+    //             [this](Pdag*) { DetectModules(); },
+    //             [this](Pdag*) { while (CoalesceGates(/*common=*/false)) continue; },
+    //             [this](Pdag *) { MergeCommonArgs(); },
+    //             [this](Pdag*) { while (CoalesceGates(/*common=*/true)) continue; },
+    //             [this](Pdag *) { MergeCommonArgs(); },
+    //             [this](Pdag*) { DetectModules(); },
+    //              [this](Pdag*) { while (CoalesceGates(/*common=*/true)) continue; });
+    // }
+
+
+
+    // while (compilation_level != compilation_target) {
+    //     switch (compilation_level++) {
+    //         case 1:
+    //             pdag::Transform(graph_, [this](Pdag*){ RunPhaseOne();});
+    //             break;
+    //         case 2:
+    //             pdag::Transform(graph_,
+    //                     [this](Pdag*){ RunPhaseOne();},
+    //                             [this](Pdag*){ while (ProcessMultipleDefinitions()) continue;},
+    //                             [this](Pdag*) { DetectModules(); },
+    //                             [this](Pdag*) { while (CoalesceGates(/*common=*/false)) continue; },
+    //                             [this](Pdag *) { MergeCommonArgs(); },
+    //                             [this](Pdag*) { while (CoalesceGates(/*common=*/true)) continue; },
+    //                             [this](Pdag *) { MergeCommonArgs(); },
+    //                             [this](Pdag*) { DetectModules(); },
+    //                              [this](Pdag*) { while (CoalesceGates(/*common=*/true)) continue; });
+    //             break;
+    //         case 3:
+    //             pdag::Transform(graph_, [this](Pdag*){ if (!graph_->normal()) RunPhaseThree(); });
+    //             break;
+    //         case 4:
+    //             pdag::Transform(graph_, [this](Pdag*){ if (!graph_->coherent()) RunPhaseFour(); });
+    //             break;
+    //         case 5:
+    //             pdag::Transform(graph_, [this](Pdag*){ RunPhaseFive(); });
+    //             break;
+    //         case 0:
+    //             pdag::Transform(graph_, [this](Pdag*){ remove_null_gates();});
+    //             break;
+    //         case -1:
+    //         default:
+    //             break;
+    //     }
+    // }
+    // return;
+    // TIMER(DEBUG2, "CustomPreprocessor<DirectEval>:: Running Transform Phases I, II with no normalization, followed by layered toposort...");
+    // pdag::Transform(graph_,
+    //     [this](Pdag*) {
+    //         if (graph_->HasNullGates()) {
+    //             TIMER(DEBUG3, "NULL gates found");
+    //             graph_->Log();
+    //             if (this->settings_->keep_null_gates()) {
+    //                 TIMER(DEBUG3, "Keeping NULL gates");
+    //             } else {
+    //                 TIMER(DEBUG3, "Removing NULL gates");
+    //                 graph_->RemoveNullGates();
+    //             }
+    //         }
+    //     },
+    //     [this](Pdag*){ RunPhaseOne(); },
+    //             [this](Pdag*){ RunPhaseTwo(); },
+    //             [this](Pdag*) {
+    //               if (!graph_->normal())
+    //                   RunPhaseThree();
+    //               },
+    //               [this](Pdag*) {
+    //                 if (!graph_->coherent())
+    //                   RunPhaseFour();
+    //               },
+    //             [this](Pdag*){ RunPhaseFive();}
+    //             );
+    //
+    // pdag::Transform(graph_,
+    //         [this](Pdag*) {
+    //           while (ProcessMultipleDefinitions())
+    //               continue;
+    //           },
+    //           [this](Pdag*) { DetectModules(); },
+    //           [this](Pdag*) {
+    //             while (CoalesceGates(/*common=*/false))
+    //                 continue;
+    //             },
+    //             [this](Pdag*) { MergeCommonArgs(); },
+    //             [this](Pdag*) { DetectDistributivity(); },
+    //             [this](Pdag*) { DetectModules(); },
+    //             [this](Pdag*) { BooleanOptimization(); },
+    //             [this](Pdag*) { DecomposeCommonNodes(); },
+    //             [this](Pdag*) { DetectModules(); },
+    //             [this](Pdag*) {
+    //               while (CoalesceGates(/*common=*/false))
+    //                   continue;
+    //               },
+    //               [this](Pdag*) { DetectModules(); });
+    // pdag::Transform(graph_, &pdag::LayeredTopologicalOrder);
+    //Preprocessor::Run();
+    // pdag::Transform(graph_,
+    //                 [this](Pdag*) {
+    //                   if (!graph_->coherent())
+    //                       RunPhaseFour();
+    //                   },
+    //                   [this](Pdag*) { RunPhaseFive(); }, &pdag::MarkCoherence,
+    //                   &pdag::TopologicalOrder);
+    // pdag::Transform(graph_, [this](Pdag*) { InvertOrder(); });
+    //                   [this](Pdag*) { RunPhaseTwo(); },
+    //                   [this](Pdag*) { RunPhaseFive(); },
+    //                   &pdag::MarkCoherence,
+    //                   &pdag::TopologicalOrder);
 }
 
 }  // namespace scram::core

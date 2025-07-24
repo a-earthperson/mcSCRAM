@@ -33,7 +33,7 @@
 
 #include "pdag.h"
 
-#include <direct_eval.h>
+#include "direct_eval.h"
 
 namespace scram::core {
 
@@ -102,31 +102,27 @@ void MarkCoherence(Pdag* graph) noexcept;
 /// and to help analysis run more efficiently.
 class Preprocessor : private boost::noncopyable {
  public:
-  /// Constructs a preprocessor of a PDAG
-  /// representing a fault tree.
-  ///
-  /// @param[in] graph  The PDAG to be preprocessed.
-  ///
-  /// @warning There should not be another shared pointer to the root gate
-  ///          outside of the passed PDAG.
-  ///          Upon preprocessing a new root gate may be assigned to the graph,
-  ///          and, if there is an extra pointer to the previous top gate
-  ///          outside of the graph,
-  ///          the destructor will not be called
-  ///          as expected by the preprocessing algorithms,
-  ///          which will mess the new structure of the PDAG.
-  explicit Preprocessor(Pdag* graph) noexcept;
+    explicit Preprocessor(Pdag *graph) noexcept;
+    /// Constructs a preprocessor of a PDAG
+    /// representing a fault tree.
+    ///
+    /// @param[in] graph  The PDAG to be preprocessed.
+    /// @param settings
+    ///
+    /// @warning There should not be another shared pointer to the root gate
+    ///          outside of the passed PDAG.
+    ///          Upon preprocessing a new root gate may be assigned to the graph,
+    ///          and, if there is an extra pointer to the previous top gate
+    ///          outside of the graph,
+    ///          the destructor will not be called
+    ///          as expected by the preprocessing algorithms,
+    ///          which will mess the new structure of the PDAG.
+  explicit Preprocessor(Pdag* graph, const std::optional<Settings> &settings);
 
   virtual ~Preprocessor() = default;
 
   /// Runs the graph preprocessing.
   void operator()() noexcept;
-
-  enum NormalizationLevel {
-    none = 0,
-    partial = 1,
-    full = 2,
-  };
 
  protected:
   class GateSet;  ///< Container of unique gates by semantics.
@@ -153,7 +149,7 @@ class Preprocessor : private boost::noncopyable {
   ///          however, the preprocessing algorithms should not rely on this.
   ///          If the partial normalization messes some significant algorithm,
   ///          it may be removed from this phase in future.
-  void RunPhaseOne(const NormalizationLevel &normalization_level) noexcept;
+  void RunPhaseOne() noexcept;
 
   /// Preprocessing phase of the original structure of the graph.
   /// This phase attempts to leverage
@@ -192,7 +188,7 @@ class Preprocessor : private boost::noncopyable {
   /// Normalizes the gates of the whole PDAG
   /// into OR, AND gates.
   ///
-  /// @param[in] normalization_level  A flag to handle complex gates like XOR and K/N,
+  /// @param[in] full  A flag to handle complex gates like XOR and K/N,
   ///                  which generate a lot more new gates
   ///                  and make the structure of the graph more complex.
   ///
@@ -207,7 +203,7 @@ class Preprocessor : private boost::noncopyable {
   /// @warning Gate marks are used.
   /// @warning Node ordering may be used for full normalization.
   /// @warning Node visit information is used.
-  void NormalizeGates(const NormalizationLevel &normalization_level) noexcept;
+  void NormalizeGates(bool full) noexcept;
 
   /// Notifies all parents of negative gates,
   /// such as NOT, NOR, and NAND,
@@ -228,7 +224,7 @@ class Preprocessor : private boost::noncopyable {
   /// Normalizes complex gates into OR, AND gates.
   ///
   /// @param[in,out] gate  The gate to be processed.
-  /// @param[in] normalization_level  A flag to handle complex gates like XOR and K/N.
+  /// @param[in] full  A flag to handle complex gates like XOR and K/N.
   ///
   /// @note This is a helper function for NormalizeGates().
   ///
@@ -237,7 +233,7 @@ class Preprocessor : private boost::noncopyable {
   /// @warning Gate marks must be clear.
   /// @warning The parents of negative gates are assumed to be
   ///          notified about the change of their arguments' types.
-  void NormalizeGate(const GatePtr& gate, const NormalizationLevel &normalization_level) noexcept;
+  void NormalizeGate(const GatePtr& gate, bool full) noexcept;
 
   /// Normalizes a gate with XOR logic.
   /// This is a helper function
@@ -1013,6 +1009,8 @@ class Preprocessor : private boost::noncopyable {
 
   /// @todo Eliminate the protected data.
   Pdag* graph_;  ///< The PDAG to preprocess.
+
+  std::optional<Settings> settings_; ///< optional settings, passed down to preprocessor
 };
 
 /// Undefined template class for specialization of Preprocessor
@@ -1093,7 +1091,7 @@ class CustomPreprocessor<Mocus> : public CustomPreprocessor<Zbdd> {
     /// Performs processing of a fault tree
     /// to simplify the structure to
     /// normalized (OR/AND gates only),
-    /// modular (independent sub-trees),
+    /// modular (independent subtrees),
     /// positive-gate-only (negation normal) PDAG.
     /// The variable ordering is assigned specifically for MOCUS.
     void Run() noexcept override;
@@ -1110,6 +1108,7 @@ class CustomPreprocessor<Mocus> : public CustomPreprocessor<Zbdd> {
     /// Note, however, the inversion of the order
     /// generally (dramatically) increases the size of Binary Decision Diagrams.
     void InvertOrder() noexcept;
+    [[nodiscard]] auto remove_null_gates() const;
   };
 
 }  // namespace scram::core

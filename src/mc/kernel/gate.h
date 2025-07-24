@@ -49,6 +49,7 @@
 #pragma once
 
 #include "mc/event/node.h"
+#include "pdag.h"
 
 #include <sycl/sycl.hpp>
 
@@ -224,7 +225,8 @@ namespace scram::mc::kernel {
             global_size_z = ((global_size_z + local_range[2] - 1) / local_range[2]) * local_range[2];
 
             sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
-            LOG(DEBUG3) << "kernel::gate:: local_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\t global_range{x,y,z}:(" << "gates:"<< global_size_x <<", batch_size:"<< global_size_y <<", sample_shape_.bitpacks_per_batch:"<<global_size_z<<")";
+
+            LOG(INFO) << "kernel::optype<"<<core::OpName.at(OpType)<<">::\tlocal_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\tglobal_range{x,y,z}:("<< global_range[0] <<", " << global_range[1] <<", " << global_range[2] <<")\tnum_gates:" << num_gates << " | " << sample_shape_;
             return {global_range, local_range};
         }
 
@@ -258,7 +260,7 @@ namespace scram::mc::kernel {
          * @endcode
          */
         static constexpr bitpack_t_ init_bitpack() {
-            return (OpType == core::Connective::kAnd || OpType == core::Connective::kNand) ? ~bitpack_t_(0) : 0;
+            return (OpType == core::Connective::kAnd || OpType == core::Connective::kNand) ? ~bitpack_t_(0) : bitpack_t_(0);
         }
 
         /**
@@ -469,118 +471,87 @@ namespace scram::mc::kernel {
         static sycl::nd_range<3> get_range(const size_t_ num_gates,
                                            const sycl::range<3> &local_range,
                                            const event::sample_shape<size_t_> &sample_shape_) {
-            // Compute global range
+
+            /* ------------------------------------------------------------------
+             *  Launch strategy (warp/ISA agnostic)
+             *  ---------------------------------------------------------------
+             *  – 1 work-group   ≙   1 gate × 1 batch × 1 bit-pack
+             *  – |local|.z      =   NUM_BITS  (= 64 for uint64_t)
+             *  – Each thread in the work-group owns one *bit position* (lane)
+             *  – The work-group leader (lane 0) writes the final 64-bit word
+             */
+
+            static constexpr std::size_t NUM_BITS = sizeof(bitpack_t_) * 8;
+
+            sycl::range<3> new_local_range = local_range;
+            new_local_range[0] = 1;            // one gate per group in X
+            new_local_range[2] = NUM_BITS;     // one thread per output bit
+
+            // Compute desired global sizes.
             auto global_size_x = static_cast<size_t>(num_gates);
             auto global_size_y = static_cast<size_t>(sample_shape_.batch_size);
-            auto global_size_z = static_cast<size_t>(sample_shape_.bitpacks_per_batch);
+            auto global_size_z = static_cast<size_t>(sample_shape_.bitpacks_per_batch) * NUM_BITS;
 
-            // Adjust global sizes to be multiples of the corresponding local sizes
-            global_size_x = ((global_size_x + local_range[0] - 1) / local_range[0]) * local_range[0];
-            global_size_y = ((global_size_y + local_range[1] - 1) / local_range[1]) * local_range[1];
-            global_size_z = ((global_size_z + local_range[2] - 1) / local_range[2]) * local_range[2];
+            // Round global sizes up to multiples of the local size.
+            global_size_x = ((global_size_x + new_local_range[0] - 1) / new_local_range[0]) * new_local_range[0];
+            global_size_y = ((global_size_y + new_local_range[1] - 1) / new_local_range[1]) * new_local_range[1];
+            global_size_z = ((global_size_z + new_local_range[2] - 1) / new_local_range[2]) * new_local_range[2];
 
             sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
 
-            return {global_range, local_range};
+            LOG(INFO) << "kernel::op<kAtleast>:: local_range{x,y,z}:(" << new_local_range[0] <<", " << new_local_range[1] <<", " << new_local_range[2] <<")\tglobal_range{x,y,z}:("<< global_range[0] <<", " << global_range[1] <<", " << global_range[2] <<")\tnum_gates:" << num_gates << " | " << sample_shape_;
+            return {global_range, new_local_range};
         }
 
-        /**
-         * @brief SYCL kernel operator for parallel at-least gate computation
-         * 
-         * @details This is the main kernel function for at-least-k-out-of-n operations.
-         * It implements a bit-counting algorithm that processes all bit
-         * positions in parallel, counting how many inputs have each bit set and
-         * comparing against the threshold.
-         * 
-         * **Algorithm Steps:**
-         * 1. Extract thread indices and perform bounds checking
-         * 2. Initialize per-bit accumulation counters to zero
-         * 3. Process positive inputs, accumulating bit counts for each position
-         * 4. Process negated inputs, accumulating bit counts for each position
-         * 5. Compare accumulated counts against threshold for each bit position
-         * 6. Construct result bitpack from threshold comparisons
-         * 7. Store result in the gate's output buffer
-         * 
-         * **Bit Processing:**
-         * - Each bit position is processed independently
-         * - Accumulation counters track how many inputs have each bit set
-         * - Threshold comparison determines output bit value
-         * - Unrolled loops optimize for GPU execution
-         * 
-         * @param item SYCL nd_item providing thread indices and group information
-         * 
-         * @note Uses sycl::marray for efficient per-bit accumulation
-         * @note Unrolled loops provide optimal GPU performance
-         * @note Supports both positive and negated inputs through offset indexing
-         * 
-         * @example At-least computation flow:
-         * @code
-         * // For 2-out-of-3 gate with inputs [1010, 1100, 0110]:
-         * // Bit 0: count=1, 1>=2? false -> output bit 0 = 0
-         * // Bit 1: count=2, 2>=2? true  -> output bit 1 = 1  
-         * // Bit 2: count=2, 2>=2? true  -> output bit 2 = 1
-         * // Bit 3: count=1, 1>=2? false -> output bit 3 = 0
-         * // Result: 0110
-         * @endcode
-         */
         void operator()(const sycl::nd_item<3> &item) const {
-            const auto gate_idx = static_cast<std::uint32_t>(item.get_global_id(0));
-            const auto batch_idx = static_cast<std::uint32_t>(item.get_global_id(1));
-            const auto bitpack_idx = static_cast<std::uint32_t>(item.get_global_id(2));
+            // Thread coordinates
+            static constexpr std::uint32_t NUM_BITS = sizeof(bitpack_t_) * 8;
 
-            // Bounds checking
-            if (gate_idx >= this->gates_block_.count || batch_idx >= this->sample_shape_.batch_size || bitpack_idx >= this->sample_shape_.bitpacks_per_batch) {
+            const auto gate_idx    = static_cast<std::uint32_t>(item.get_global_id(0));
+            const auto batch_idx   = static_cast<std::uint32_t>(item.get_global_id(1));
+
+            /*  group_id.z identifies the bit-pack, local_id.z (lane) identifies the bit */
+            const auto bitpack_idx = static_cast<std::uint32_t>(item.get_group().get_group_id(2));
+            const auto lane        = item.get_local_id(2);   // 0 … NUM_BITS-1
+
+            if (lane >= NUM_BITS ||
+                gate_idx >= gates_block_.count ||
+                batch_idx >= sample_shape_.batch_size ||
+                bitpack_idx >= sample_shape_.bitpacks_per_batch) {
                 return;
-            }
+                }
 
-            // Compute the linear index into the buffer
-            const std::uint32_t index = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_idx;
+            const size_t index = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_idx;
 
-            // Get gate
             const auto &g = gates_block_[gate_idx];
             const auto num_inputs = g.num_inputs;
             const auto negations_offset = g.negated_inputs_offset;
+            const std::uint8_t k      = g.at_least;
 
-            static constexpr std::size_t NUM_BITS = sizeof(bitpack_t_) * 8;
-            sycl::marray<bitpack_t_, NUM_BITS> accumulated_counts(0);
+            // --- every thread owns one bit position ---
+            std::uint8_t cnt = 0;
+            const bitpack_t_ mask = bitpack_t_(1) << lane;
 
-            // for each input, accumulate the counts for each bit-position
+            // positive inputs
             for (auto i = 0; i < negations_offset; ++i) {
-                const bitpack_t_ val = g.inputs[i][index];
-                #pragma unroll
-                for (auto idx = 0; idx < NUM_BITS; ++idx) {
-                    // Use the bit index (idx) – not the input index (i) – when checking
-                    // whether the current bit is set. Shift the value and mask with 1 to
-                    // obtain 0/1, then accumulate.
-                    accumulated_counts[idx] += ((val >> idx) & bitpack_t_(1));
-                }
+                cnt += (g.inputs[i][index] & mask) ? bitpack_t_(1) : bitpack_t_(0);
             }
 
+            // negated inputs
             for (auto i = negations_offset; i < num_inputs; ++i) {
-                const bitpack_t_ val = ~(g.inputs[i][index]);
-                #pragma unroll
-                for (auto idx = 0; idx < NUM_BITS; ++idx) {
-                    accumulated_counts[idx] += ((val >> idx) & bitpack_t_(1));
-                }
+                cnt += (~g.inputs[i][index] & mask) ? bitpack_t_(1) : bitpack_t_(0);
             }
 
-            // at_least = 0   -> always one
-            // at_least = 1   -> or gate
-            // at_least = k   -> k of n
-            // at_least = n   -> and gate
-            // at_least = n+1 -> always zero
-            const auto threshold = g.at_least;
+            const bitpack_t_ my_bit = (cnt >= k) ? mask : bitpack_t_(0);
 
-            bitpack_t_ result = 0;
+            /* Reduction across the *whole* work-group (64 lanes) */
+            const auto &wg = item.get_group();
+            const bitpack_t_ result = sycl::reduce_over_group(wg, my_bit, sycl::bit_or<bitpack_t_>());
 
-            #pragma unroll
-            for (auto idx = 0; idx < NUM_BITS; ++idx) {
-                if (accumulated_counts[idx] >= threshold) {
-                    result |= (bitpack_t_(1) << idx);
-                }
+            /* Single thread (lane 0) writes the 64-bit result */
+            if (lane == 0) {
+                g.buffer[index] = result;
             }
-
-            g.buffer[index] = result;
         }
     };
 }

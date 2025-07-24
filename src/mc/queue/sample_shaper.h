@@ -90,30 +90,25 @@ struct sample_shaper {
         event::sample_shape<std::size_t> sample_shape = compute_closest_sample_shape_for_bits(device,
                                                                                               per_iteration_target_bits,
                                                                                               target_bits_per_iteration_);
-        if (sample_shape.bitpacks_per_batch) {
-            sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
-            sample_shape.batch_size = 1;
-        }
 
-        /* ------------------------------------------------------------------
-         * Intel GPU quirk: Empirically the HIPSYCL backend for Gen9/Gen11
-         * GPUs (e.g. UHD 630, vendor_id 32902) fails to JIT-compile kernels
-         * whose local Z-dimension exceeds 16.  Since we flatten the sample
-         * shape to (batch_size=1, bitpacks_per_batch=N), this translates to a
-         * hard upper bound of 16 bit-packs per iteration.  We therefore cap
-         * the shape _after_ flattening and let the scheduler compensate by
-         * increasing the iteration count.
-         * ----------------------------------------------------------------*/
-        const auto vendor_id = device.get_info<sycl::info::device::vendor_id>();
-        constexpr std::size_t kIntelMaxBitpacksPerIter = 24;
-        if (vendor_id == 32902 && sample_shape.bitpacks_per_batch > kIntelMaxBitpacksPerIter) {
-            sample_shape.bitpacks_per_batch = kIntelMaxBitpacksPerIter;
+        if (device.has(sycl::aspect::cpu)) {
+            if (sample_shape.bitpacks_per_batch) {
+                sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
+                sample_shape.batch_size = 1;
+            }
         }
-
-        const auto compute_units = device.get_info<sycl::info::device::max_compute_units>();
-        const bool is_cpu = device.has(sycl::aspect::cpu);
-        if (is_cpu && sample_shape.bitpacks_per_batch > compute_units) {
-            sample_shape.bitpacks_per_batch /= compute_units;
+        // device maximum memory
+        // hacky hack
+        if (device.has(sycl::aspect::gpu) && device.get_info<sycl::info::device::vendor>() == "NVIDIA") {
+            const std::double_t max_device_bitpacks = static_cast<std::double_t>(max_device_bytes_) / static_cast<std::double_t>(sizeof(bitpack_t_));
+            const std::size_t bitpacks = static_cast<std::size_t>(std::floor(max_device_bitpacks / (num_nodes * 1.05)));
+            const std::size_t cache_line_bytes = device.get_info<sycl::info::device::global_mem_cache_line_size>();
+            const std::size_t cache_line_bitpacks = static_cast<std::size_t>(cache_line_bytes / static_cast<std::double_t>(sizeof(bitpack_t_)));
+            const std::size_t bitpacks_aligned = bitpacks - (bitpacks % cache_line_bitpacks);
+            if (sample_shape.bitpacks_per_batch) {
+                sample_shape.bitpacks_per_batch = bitpacks_aligned;
+                sample_shape.batch_size = 1;
+            }
         }
 
         // Log working_set configuration

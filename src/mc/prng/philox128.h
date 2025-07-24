@@ -22,7 +22,7 @@ namespace scram::mc::prng::philox {
     counters.x[0] = hi.B ^ counters.x[1] ^ key.A;
     counters.x[1] = lo.B;
     counters.x[2] = hi.A ^ counters.x[3] ^ key.B;
-    counters.x[3] = lo.B;
+    counters.x[3] = lo.A;
 
     static constexpr Vec2<uint32_t> PHILOX_W32 = {
         .A = 0x9E3779B9u,

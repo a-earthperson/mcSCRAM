@@ -352,6 +352,16 @@ class Settings {
 
   Settings& watch_mode(const bool on) { watch_mode_ = on; return *this; }
 
+  [[nodiscard]] bool expand_atleast_gates() const { return expand_atleast_gates_; }
+  [[nodiscard]] bool expand_xor_gates() const { return expand_xor_gates_; }
+  [[nodiscard]] bool keep_null_gates() const { return keep_null_gates_; }
+  [[nodiscard]] int compilation_level() const { return compilation_level_; }
+
+  Settings& expand_xor_gates(const bool on) { expand_xor_gates_ = on; return *this; }
+  Settings& expand_atleast_gates(const bool on) { expand_atleast_gates_ = on; return *this; }
+  Settings& keep_null_gates(const bool on) { keep_null_gates_ = on; return *this; }
+  Settings& compilation_level(const int level) { compilation_level_ = std::clamp(level, 0, 5); return *this; }
+
   /// @returns The known ground-truth probability provided by the user (negative when unset).
   [[nodiscard]] double oracle_p() const { return oracle_p_; }
 
@@ -393,6 +403,12 @@ class Settings {
   double ci_confidence_       = 0.99;    ///< two-sided confidence level (0.99 default)
   double ci_rel_margin_error_ = 0.001;   ///< δ (relative ε). 0 → disabled.
   double ci_burnin_trials_    = 1 << 20; ///< burn-in trials before convergence checks (2^20 default), 0 → disabled.
+
+  // Graph Compilation Options
+  bool keep_null_gates_ = false;
+  bool expand_atleast_gates_ = false;
+  bool expand_xor_gates_ = false;
+  int compilation_level_ = 2;
 };
 
 }  // namespace scram::core

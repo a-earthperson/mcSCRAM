@@ -183,7 +183,9 @@ namespace scram::mc::kernel {
             const size_t global_size_x = (num_tallies + new_local_range[0] - 1) / new_local_range[0] * new_local_range[0];
             const size_t global_size_y = (shape.batch_size + new_local_range[1] - 1) / new_local_range[1] * new_local_range[1];
             const size_t global_size_z = (shape.bitpacks_per_batch + new_local_range[2] - 1) / new_local_range[2] * new_local_range[2];
-            LOG(DEBUG3) << "kernel::tally:: local_range{x,y,z}:(" << new_local_range[0] <<", " << new_local_range[1] <<", " << new_local_range[2] <<")\t global_range{x,y,z}:(" << "gates:"<< global_size_x <<", batch_size:"<< global_size_y <<", sample_shape_.bitpacks_per_batch:"<<global_size_z<<")";
+            sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
+
+            LOG(INFO) << "kernel::tally_event::\tlocal_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\tglobal_range{x,y,z}:("<< global_range[0] <<", " << global_range[1] <<", " << global_range[2] <<")\tnum_tallies:" << num_tallies << " | " << shape;
             return {sycl::range<3>(global_size_x, global_size_y, global_size_z), new_local_range};
         }
 
@@ -339,39 +341,43 @@ namespace scram::mc::kernel {
 
             // Have the group leader accumulate bit counts in global memory
             if (item.get_local_linear_id() == 0) {
-                auto atomic_bits = sycl::atomic_ref<
+
+                static constexpr std::size_t num_bits_in_dtype_ = sizeof(bitpack_t_) * 8;
+                const auto total_bits = static_cast<std::size_t>(iteration)
+                                  * static_cast<std::size_t>(sample_shape_.batch_size)
+                                  * static_cast<std::size_t>(sample_shape_.bitpacks_per_batch)
+                                  * static_cast<std::size_t>(num_bits_in_dtype_);
+
+
+                tallies_block_.data[tally_idx].total_bits = total_bits;
+
+                auto atomic_one_bits = sycl::atomic_ref<
                         std::size_t,
                         sycl::memory_order::relaxed,
                         sycl::memory_scope::device,
                         sycl::access::address_space::global_space>(
                         tallies_block_.data[tally_idx].num_one_bits);
-                atomic_bits.fetch_add(group_sum);
+                atomic_one_bits.fetch_add(group_sum);
             }
 
 
             // Now, if each tally is handled by exactly one work-group,
             // we can compute final statistics on the group leader thread:
             // (This only works correctly if no other groups write to this tally.)
-            if (item.get_local_linear_id()) {
-                return;
-            }
+            // if (item.get_local_linear_id()) {
+            //     return;
+            // }
 
             // Barrier so that all work-items in this group have finished updating
             // num_one_bits for this tally.
-            item.barrier(sycl::access::fence_space::local_space);
+            // item.barrier(sycl::access::fence_space::local_space);
 
-
-            static constexpr std::size_t num_bits_in_dtype_ = sizeof(bitpack_t_) * 8;
-            const auto total_bits = static_cast<std::size_t>(iteration)
-                              * static_cast<std::size_t>(sample_shape_.batch_size)
-                              * static_cast<std::size_t>(sample_shape_.bitpacks_per_batch)
-                              * static_cast<std::size_t>(num_bits_in_dtype_);
-
-            tallies_block_.data[tally_idx].total_bits = total_bits;
-
-            return;
-            update_tally_stats<sycl::double4>(tallies_block_.data[tally_idx], static_cast<prob_t_>(total_bits));
+            // early return ::
+            // given the extra/redundant work being performed here due to potentially mismatched work-item ranges,
+            // for now, we are performing stats calculations host-side.
+            //return;
+            //update_tally_stats<sycl::double4>(tallies_block_.data[tally_idx], static_cast<prob_t_>(total_bits));
         }
     };
 
-}// namespace scram::mc::kernel
+    } // namespace scram::mc::kernel

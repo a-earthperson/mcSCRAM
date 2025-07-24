@@ -63,10 +63,10 @@ inline po::options_description ConstructOptions() {
         // ------------------------------------------------------------------
         po::options_description gc("Graph Compilation Options");
         gc.add_options()
-            ("pdag", "perform qualitative analysis with PDAG")
-            ("bdd", "Perform qualitative analysis with BDD")
-            ("zbdd", "Perform qualitative analysis with ZBDD")
-            ("mocus", "Perform qualitative analysis with MOCUS");
+            ("compilation-passes,c", OPT_VALUE(int)->default_value(1), "0= off, 1= null-only, 2+= optimize [default= 2]")
+            ("no-kn", "expand k/n to and/or [default= off]")
+            ("no-xor", "expand xor to and/or [default= off]")
+            ("nnf", "compile to negation normal form [default= off]");
 
         // ------------------------------------------------------------------
         //  Monte-Carlo specific options
@@ -95,7 +95,7 @@ inline po::options_description ConstructOptions() {
             ("serialize", "serialize the input model and exit")
             ("verbosity,V", OPT_VALUE(int), "set log verbosity")
             ("version,v", "display version information");
-        desc.add(mc).add(debug);
+        desc.add(mc).add(gc).add(debug);
     // clang-format on
     return desc;
 }

@@ -265,11 +265,23 @@ enum Connective : std::uint8_t {
   kOr,  ///< OR gate.
   kAtleast,  ///< Combination, K/N, or Vote gate representation.
   kXor,  ///< Exclusive OR gate with two inputs.
-  // kXnor, ///< Negation of the exclusive OR gate
   kNot,  ///< Boolean negation.
   kNand,  ///< NAND gate.
   kNor,  ///< NOR gate.
-  kNull  ///< Special pass-through or NULL gate. This is not NULL set.
+  kNull,  ///< Special pass-through or NULL gate. This is not NULL set.
+  //kXnor, ///< Negation of the exclusive OR gate
+};
+
+static const std::map<Connective, std::string> OpName = {
+    {kAnd,      "and"},
+    {kOr,       "or"},
+    {kAtleast,  "k/n"},
+    {kXor,      "xor"},
+    {kNot,      "not"},
+    {kNand,     "nand"},
+    {kNor,      "nor"},
+    {kNull,     "null"},
+    //{kXnor,     "XNOR"},
 };
 
 /// The number of connectives in the enum.
