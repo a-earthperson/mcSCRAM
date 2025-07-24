@@ -38,12 +38,12 @@ inline po::options_description ConstructOptions() {
     po::options_description mc("Monte Carlo Options");
     mc.add_options()
         ("monte-carlo", "enable monte carlo sampling")
+        ("num-trials,N", OPT_VALUE(double)->default_value(0), "bernoulli trials [N ∈ ℕ, 0=auto]")
         ("early-stop", "stop on convergence (implied if N=0)")
         ("seed", OPT_VALUE(int)->default_value(372), "PRNG seed")
-        ("num-trials,N", OPT_VALUE(double)->default_value(0), "bernoulli trials [N ∈ ℕ, 0=auto]")
-        ("confidence,a", OPT_VALUE(double), "two-sided conf. lvl [α ∈ (0,1)] (0.99)")
         ("delta,d", OPT_VALUE(double)->default_value(0.001),"compute as ε=δ·p̂ [δ > 0]")
-        ("burn-in,b", OPT_VALUE(double)->default_value(1<<20), "trials before convergence check [0=off]");
+        ("burn-in,b", OPT_VALUE(double)->default_value(1<<20), "trials before convergence check [0=off]")
+        ("confidence,a", OPT_VALUE(double), "two-sided conf. lvl [α ∈ (0,1)] (0.99)");
 
     // ------------------------------------------------------------------
     //  graph compilation specific options

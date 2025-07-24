@@ -202,13 +202,12 @@ Usage:    mcscram [options] input-files...
 
 Monte Carlo Options:
   --monte-carlo                         enable monte carlo sampling
-  --early-stop                          stop on convergence (implied if N=0)
-  --seed int (=372)                     PRNG seed
   -N [ --num-trials ] double (=0)       bernoulli trials [N ∈ ℕ, 0=auto]
-  -a [ --confidence ] double            two-sided conf. lvl [α ∈ (0,1)] 
-                                        (0.99)
+  --early-stop                          stop on convergence (implied if N=0)
+  --seed int (=372)                     philox-4x32-10 seed
   -d [ --delta ] double (=0.001)        compute as ε=δ·p̂ [δ > 0]
   -b [ --burn-in ] double (=1048576)    trials before convergence check [0=off]
+  -a [ --confidence ] double            two-sided conf. lvl [α ∈ (0,1)] (0.99)
 
 Graph Compilation Options:
   --no-kn                               expand k/n to and/or [off]
@@ -220,7 +219,7 @@ Graph Compilation Options:
 Debug Options:
   -w [ --watch ]                        enable watch mode [off]
   -h [ --help ]                         display this help message
-  --no-report                           don't generate analysis report
+  --no-report                           dont generate analysis report
   -p [ --oracle ] double (=-1)          true µ [µ ∈ [0,∞), -1=off]
   --preprocessor                        stop analysis after preprocessing
   --print                               print analysis results to terminal
