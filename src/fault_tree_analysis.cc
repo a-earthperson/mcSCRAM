@@ -84,7 +84,7 @@ namespace scram::core {
         std::cerr << std::endl;
     }
 
-    ProductContainer::ProductContainer(const Zbdd &products, const Pdag &graph) noexcept
+    ProductContainer::ProductContainer(const Zbdd &products, const Pdag &graph)
         : products_(products), graph_(graph), size_(0) {
         Pdag::IndexMap<bool> filter(graph_.basic_events().size());
         for (const std::vector<int> &product: products_) {
@@ -117,7 +117,7 @@ namespace scram::core {
                                          const mef::Model *model)
         : Analysis(settings), top_event_(root), model_(model) {}
 
-    void FaultTreeAnalysis::Analyze() noexcept {
+    void FaultTreeAnalysis::Analyze()  {
         CLOCK(analysis_time);
         graph_ = std::make_unique<Pdag>(top_event_, Analysis::settings().ccf_analysis(), model_);
         this->Preprocess(graph_.get());
@@ -137,7 +137,7 @@ namespace scram::core {
     }
 
     void FaultTreeAnalysis::Store(const Zbdd &products,
-                                  const Pdag &graph) noexcept {
+                                  const Pdag &graph)  {
         // Special cases of sets.
         if (products.empty()) {
             Analysis::AddWarning("The set is NULL/Empty.");

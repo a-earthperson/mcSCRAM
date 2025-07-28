@@ -339,7 +339,7 @@ class layer_manager {
      * this accessor to obtain TOTAL_ITERATIONS as well as the chosen
      * SAMPLE_SHAPE.
      */
-    [[nodiscard]] inline const sample_shaper<bitpack_t_> &shaper() const noexcept { return sample_shaper_; }
+    [[nodiscard]] inline const sample_shaper<bitpack_t_> &shaper() const  { return sample_shaper_; }
     [[nodiscard]] sycl::queue &queue() { return queue_; }
     /**
      * @brief Destructor that cleans up allocated device memory

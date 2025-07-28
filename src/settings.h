@@ -66,7 +66,7 @@ class Settings {
   /// @param[in] value  The algorithm kind.
   ///
   /// @returns Reference to this object.
-  Settings& algorithm(Algorithm value) noexcept;
+  Settings& algorithm(Algorithm value) ;
 
   /// Provides a convenient wrapper for algorithm setting from a string.
   ///

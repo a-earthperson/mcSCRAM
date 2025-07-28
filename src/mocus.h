@@ -48,7 +48,7 @@ class Mocus : private boost::noncopyable {
   /// Finds minimal cut sets from the PDAG.
   ///
   /// @param[in] graph  The optional PDAG with non-declarative substitutions.
-  void Analyze(const Pdag* graph = nullptr) noexcept;
+  void Analyze(const Pdag* graph = nullptr) ;
 
   /// @returns Generated minimal cut sets with basic event indices.
   [[nodiscard]] const Zbdd& products() const {
@@ -65,7 +65,7 @@ class Mocus : private boost::noncopyable {
   ///
   /// @returns Fully processed, minimized Zbdd cut set container.
   std::unique_ptr<zbdd::CutSetContainer>
-  AnalyzeModule(const Gate& gate, const Settings& settings) noexcept;
+  AnalyzeModule(const Gate& gate, const Settings& settings) ;
 
   const Pdag* graph_;  ///< The analysis PDAG.
   const Settings kSettings_;  ///< Analysis settings.

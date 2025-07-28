@@ -84,10 +84,10 @@ class Expression : private boost::noncopyable {
   virtual void Validate() const {}
 
   /// @returns The mean value of this expression.
-  virtual double value() noexcept = 0;
+  virtual double value()  = 0;
 
   /// @returns The domain interval for validation purposes only.
-  virtual Interval interval() noexcept {
+  virtual Interval interval()  {
     double value = this->value();
     return Interval::closed(value, value);
   }
@@ -103,16 +103,16 @@ class Expression : private boost::noncopyable {
   ///
   /// @warning Improper registration of arguments
   ///          may yield silent failure.
-  virtual bool IsDeviate() noexcept;
+  virtual bool IsDeviate() ;
 
   /// @returns A sampled value of this expression.
-  double Sample() noexcept;
+  double Sample() ;
 
   /// This routine resets the sampling to get new values.
   /// All the arguments are called to reset themselves.
   /// If this expression was not sampled,
   /// its arguments are not going to get any calls.
-  void Reset() noexcept;
+  void Reset() ;
 
  protected:
   /// Registers an additional argument expression.
@@ -125,7 +125,7 @@ class Expression : private boost::noncopyable {
   /// Derived concrete classes must provide the calculation.
   ///
   /// @returns A sampled value of this expression.
-  virtual double DoSample() noexcept = 0;
+  virtual double DoSample()  = 0;
 
   std::vector<Expression*> args_;  ///< Expression's arguments.
   double sampled_value_;  ///< The sampled value.
@@ -141,14 +141,14 @@ class ExpressionFormula : public Expression {
   using Expression::Expression;
 
   /// Computes the expression with argument expression default values.
-  double value() noexcept final {
+  double value()  final {
     return static_cast<T*>(this)->Compute(
         [](Expression* arg) { return arg->value(); });
   }
 
  private:
   /// Computes the expression with argument expression sampled values.
-  double DoSample() noexcept final {
+  double DoSample()  final {
     return static_cast<T*>(this)->Compute(
         [](Expression* arg) { return arg->Sample(); });
   }
@@ -172,7 +172,7 @@ class NaryExpression<T, 1> : public ExpressionFormula<NaryExpression<T, 1>> {
 
   void Validate() const override {}
 
-  Interval interval() noexcept override {
+  Interval interval()  override {
     Interval arg_interval = expression_.interval();
     double max_value = T()(arg_interval.upper());
     double min_value = T()(arg_interval.lower());
@@ -182,7 +182,7 @@ class NaryExpression<T, 1> : public ExpressionFormula<NaryExpression<T, 1>> {
 
   /// Computes the expression value with a given argument value extractor.
   template <typename F>
-  double Compute(F&& eval) noexcept {
+  double Compute(F&& eval)  {
     return T()(eval(&expression_));
   }
 
@@ -200,7 +200,7 @@ class NaryExpression<T, 2> : public ExpressionFormula<NaryExpression<T, 2>> {
 
   void Validate() const override {}
 
-  Interval interval() noexcept override {
+  Interval interval()  override {
     Interval interval_one = Expression::args().front()->interval();
     Interval interval_two = Expression::args().back()->interval();
     double max_max = T()(interval_one.upper(), interval_two.upper());
@@ -213,7 +213,7 @@ class NaryExpression<T, 2> : public ExpressionFormula<NaryExpression<T, 2>> {
 
   /// Computes the expression value with a given argument value extractor.
   template <typename F>
-  double Compute(F&& eval) noexcept {
+  double Compute(F&& eval)  {
     return T()(eval(Expression::args().front()),
                eval(Expression::args().back()));
   }
@@ -246,7 +246,7 @@ class NaryExpression<T, -1> : public ExpressionFormula<NaryExpression<T, -1>> {
 
   void Validate() const override {}
 
-  Interval interval() noexcept override {
+  Interval interval()  override {
     auto it = Expression::args().begin();
     Interval first_arg_interval = (*it)->interval();
     double max_value = first_arg_interval.upper();
@@ -268,7 +268,7 @@ class NaryExpression<T, -1> : public ExpressionFormula<NaryExpression<T, -1>> {
 
   /// Computes the expression value with a given argument value extractor.
   template <typename F>
-  double Compute(F&& eval) noexcept {
+  double Compute(F&& eval)  {
     auto it = Expression::args().begin();
     double result = eval(*it);
     for (++it; it != Expression::args().end(); ++it) {

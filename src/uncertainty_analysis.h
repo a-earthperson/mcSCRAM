@@ -51,7 +51,7 @@ class UncertaintyAnalysis : public Analysis {
   /// Performs quantitative analysis on the total probability.
   ///
   /// @note  Undefined behavior if analysis called two or more times.
-  void Analyze() noexcept;
+  void Analyze() ;
 
   /// @returns Mean of the final distribution.
   double mean() const { return mean_; }
@@ -82,7 +82,7 @@ class UncertaintyAnalysis : public Analysis {
   ///
   /// @returns The gathered deviate expressions with variable indices.
   std::vector<std::pair<int, mef::Expression&>>
-  GatherDeviateExpressions(const Pdag* graph) noexcept;
+  GatherDeviateExpressions(const Pdag* graph) ;
 
   /// Samples uncertain probabilities.
   ///
@@ -90,7 +90,7 @@ class UncertaintyAnalysis : public Analysis {
   /// @param[in,out] p_vars  Indices to probabilities mapping with values.
   void SampleExpressions(
       const std::vector<std::pair<int, mef::Expression&>>& deviate_expressions,
-      Pdag::IndexMap<double>* p_vars) noexcept;
+      Pdag::IndexMap<double>* p_vars) ;
 
  private:
   /// Performs Monte Carlo Simulation
@@ -98,12 +98,12 @@ class UncertaintyAnalysis : public Analysis {
   /// and providing the final sampled values of the final probability.
   ///
   /// @returns Sampled values.
-  virtual std::vector<double> Sample() noexcept = 0;
+  virtual std::vector<double> Sample()  = 0;
 
   /// Calculates statistical values from the final distribution.
   ///
   /// @param[in] samples  Gathered samples for statistical analysis.
-  void CalculateStatistics(const std::vector<double>& samples) noexcept;
+  void CalculateStatistics(const std::vector<double>& samples) ;
 
   double mean_;  ///< The mean of the final distribution.
   double sigma_;  ///< The standard deviation of the final distribution.
@@ -132,14 +132,14 @@ class UncertaintyAnalyzer : public UncertaintyAnalysis {
 
  private:
   /// @returns Samples of the total probability.
-  std::vector<double> Sample() noexcept override;
+  std::vector<double> Sample()  override;
 
   /// Calculator of the total probability.
   ProbabilityAnalyzer<Calculator>* prob_analyzer_;
 };
 
 template <class Calculator>
-std::vector<double> UncertaintyAnalyzer<Calculator>::Sample() noexcept {
+std::vector<double> UncertaintyAnalyzer<Calculator>::Sample()  {
   std::vector<std::pair<int, mef::Expression&>> deviate_expressions =
       UncertaintyAnalysis::GatherDeviateExpressions(prob_analyzer_->graph());
   Pdag::IndexMap<double> p_vars = prob_analyzer_->p_vars();  // Private copy!

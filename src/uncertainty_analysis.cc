@@ -42,7 +42,7 @@ UncertaintyAnalysis::UncertaintyAnalysis(
       sigma_(0),
       error_factor_(1) {}
 
-void UncertaintyAnalysis::Analyze() noexcept {
+void UncertaintyAnalysis::Analyze()  {
   CLOCK(analysis_time);
   CLOCK(sample_time);
   LOG(DEBUG3) << "Sampling probabilities...";
@@ -59,7 +59,7 @@ void UncertaintyAnalysis::Analyze() noexcept {
 }
 
 std::vector<std::pair<int, mef::Expression&>>
-UncertaintyAnalysis::GatherDeviateExpressions(const Pdag* graph) noexcept {
+UncertaintyAnalysis::GatherDeviateExpressions(const Pdag* graph)  {
   std::vector<std::pair<int, mef::Expression&>> deviate_expressions;
   int index = Pdag::kVariableStartIndex;
   for (const mef::BasicEvent* event : graph->basic_events()) {
@@ -72,7 +72,7 @@ UncertaintyAnalysis::GatherDeviateExpressions(const Pdag* graph) noexcept {
 
 void UncertaintyAnalysis::SampleExpressions(
     const std::vector<std::pair<int, mef::Expression&>>& deviate_expressions,
-    Pdag::IndexMap<double>* p_vars) noexcept {
+    Pdag::IndexMap<double>* p_vars)  {
   // Reset distributions.
   for (const auto& expression : deviate_expressions)
     expression.second.Reset();
@@ -85,7 +85,7 @@ void UncertaintyAnalysis::SampleExpressions(
 }
 
 void UncertaintyAnalysis::CalculateStatistics(
-    const std::vector<double>& samples) noexcept {
+    const std::vector<double>& samples)  {
   using namespace boost;  // NOLINT
   using namespace boost::accumulators;  // NOLINT
   using histogram_type =

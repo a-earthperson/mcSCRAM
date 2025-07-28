@@ -117,7 +117,7 @@ class Node : public NodeParentManager {
   /// Creates a unique graph node as a member of a PDAG.
   ///
   /// @param[in] graph  The graph this node belongs to.
-  explicit Node(Pdag* graph) noexcept;
+  explicit Node(Pdag* graph) ;
 
   virtual ~Node() = 0;  ///< Abstract class.
 
@@ -328,10 +328,10 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   ///
   /// @param[in] type  The type of this gate.
   /// @param[in,out] graph  The host PDAG.
-  Gate(Connective type, Pdag* graph) noexcept;
+  Gate(Connective type, Pdag* graph) ;
 
   /// Destructs parent information from the arguments.
-  ~Gate() noexcept {
+  ~Gate()  {
     assert(Node::parents().empty());
     EraseArgs();
   }
@@ -345,7 +345,7 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   /// @warning This function does not destroy modules.
   ///          If cloning destroys modules,
   ///          module(false) member function must be called.
-  GatePtr Clone() noexcept;
+  GatePtr Clone() ;
 
   /// @returns Type of this gate.
   Connective type() const { return type_; }
@@ -496,7 +496,7 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   ///
   /// @warning The function assumes that the argument exists.
   ///          If it doesn't, the return value is invalid.
-  int GetArgSign(const NodePtr& arg) const noexcept {
+  int GetArgSign(const NodePtr& arg) const  {
     assert(arg->parents().count(Node::index()) && "Invalid argument.");
     return args_.count(arg->index()) ? 1 : -1;
   }
@@ -513,7 +513,7 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   /// @warning Never try to use dynamic casts to find the type of the node.
   ///          There are other gate's helper functions
   ///          that will avoid any need for the RTTI or other hacks.
-  NodePtr GetArg(int index) const noexcept {
+  NodePtr GetArg(int index) const  {
     assert(args_.count(index));
     if (auto it = ext::find(gate_args_, index))
       return it->second;
@@ -556,7 +556,7 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   ///          The caller must be very cautious of
   ///          the side effects of the manipulations.
   template <class T>
-  void AddArg(int index, const std::shared_ptr<T>& arg) noexcept {
+  void AddArg(int index, const std::shared_ptr<T>& arg)  {
     assert(index);
     assert(std::abs(index) == arg->index());
     assert(!constant_);
@@ -575,12 +575,12 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   }
   /// Wrapper to add gate arguments with index retrieval from the arg.
   template <class T>
-  void AddArg(const std::shared_ptr<T>& arg, bool complement = false) noexcept {
+  void AddArg(const std::shared_ptr<T>& arg, bool complement = false)  {
     return AddArg(complement ? -arg->index() : arg->index(), arg);
   }
   /// Wrapper to add arguments from the containers.
   template <class T>
-  void AddArg(const Arg<T>& arg) noexcept {
+  void AddArg(const Arg<T>& arg)  {
     return AddArg(arg.first, arg.second);
   }
 
@@ -590,7 +590,7 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   /// @param[in,out] recipient  A new parent for the argument.
   ///
   /// @pre No constant arguments are present.
-  void TransferArg(int index, const GatePtr& recipient) noexcept;
+  void TransferArg(int index, const GatePtr& recipient) ;
 
   /// Shares this gate's argument with another gate.
   ///
@@ -598,14 +598,14 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   /// @param[in,out] recipient  Another parent for the argument.
   ///
   /// @pre No constant arguments are present.
-  void ShareArg(int index, const GatePtr& recipient) noexcept;
+  void ShareArg(int index, const GatePtr& recipient) ;
 
   /// Makes all arguments complements of themselves.
   /// This is a helper function to propagate a complement gate
   /// and apply the De Morgan's Law.
   ///
   /// @pre No constant arguments are present.
-  void NegateArgs() noexcept;
+  void NegateArgs() ;
 
   /// Replaces an argument with the complement of it.
   /// This is a helper function to propagate a complement gate
@@ -614,14 +614,14 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   /// @param[in] existing_arg  Positive or negative index of the argument.
   ///
   /// @pre No constant arguments are present.
-  void NegateArg(int existing_arg) noexcept;
+  void NegateArg(int existing_arg) ;
 
   /// Turns all non-coherent arguments of type gate (NOT, NAND, etc.)
   /// into complement arguments.
   ///
   /// This is a helper function for gate normalization
   /// to efficiently normalize non-coherent gates.
-  void NegateNonCoherentGateArgs() noexcept {
+  void NegateNonCoherentGateArgs()  {
     for (Arg<Gate>& arg : gate_args_) {
       switch (arg.second->type()) {
         case kNor:
@@ -650,14 +650,14 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   /// @warning This function does not test
   ///          if the parent and argument logics are
   ///          correct for coalescing.
-  void CoalesceGate(const GatePtr& arg_gate) noexcept;
+  void CoalesceGate(const GatePtr& arg_gate) ;
 
   /// Swaps a single argument of a NULL type argument gate.
   /// This is separate from other coalescing functions
   /// because this function takes into account the sign of the argument.
   ///
   /// @param[in] index  Positive or negative index of the argument gate.
-  void JoinNullGate(int index) noexcept;
+  void JoinNullGate(int index) ;
 
   /// Changes the state of a gate
   /// or removes a constant argument.
@@ -672,7 +672,7 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   ///       to properly assess the Boolean constant argument.
   /// @note This function may change the state of the gate.
   /// @note This function may change type and parameters of the gate.
-  void ProcessConstantArg(const NodePtr& arg, bool state) noexcept;
+  void ProcessConstantArg(const NodePtr& arg, bool state) ;
 
   /// Removes an argument from the arguments container.
   /// The passed argument index must be
@@ -682,17 +682,17 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   ///
   /// @warning The parent gate may become empty or one-argument gate,
   ///          which must be handled by the caller.
-  void EraseArg(int index) noexcept;
+  void EraseArg(int index) ;
 
   /// Clears all the arguments of this gate.
-  void EraseArgs() noexcept;
+  void EraseArgs() ;
 
   /// Sets the logic of this gate to pass-through
   /// and clears all its arguments except for a Boolean constant.
   /// This function is expected to be used only once.
   ///
   /// @param[in] state  The value for the Boolean constant.
-  void MakeConstant(bool state) noexcept;
+  void MakeConstant(bool state) ;
 
  private:
   using std::enable_shared_from_this<Gate>::shared_from_this;
@@ -716,32 +716,32 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   ///          has a complex set of possible outcomes
   ///          depending on the context.
   ///          The complex corner cases must be handled by the caller.
-  void ProcessDuplicateArg(int index) noexcept;
+  void ProcessDuplicateArg(int index) ;
 
   /// Handles the complex case of duplicate arguments for K/N gates.
   ///
   /// @param[in] index  Positive or negative index of the existing argument.
   ///
   /// @warning New gates may be introduced.
-  void ProcessAtleastGateDuplicateArg(int index) noexcept;
+  void ProcessAtleastGateDuplicateArg(int index) ;
 
   /// Process an addition of a complement of an existing argument.
   ///
   /// @param[in] index  Positive or negative index of the argument.
-  void ProcessComplementArg(int index) noexcept;
+  void ProcessComplementArg(int index) ;
 
   /// Processes the addition of a constant to the gate.
   ///
   /// @tparam State  The Boolean Constant value.
   template <bool State>
-  void AddConstantArg() noexcept;
+  void AddConstantArg() ;
 
   /// Downgrades the logic of the gate
   /// if the number of arguments meets a certain number.
   ///
   /// @param[in] target_type  The logic compatible with the current one.
   /// @param[in] num_args  The number of required arguments.
-  void ReduceLogic(Connective target_type, int num_args = 1) noexcept {
+  void ReduceLogic(Connective target_type, int num_args = 1)  {
     assert(!args_.empty());
     if (static_cast<int>(args_.size()) == num_args)
       type(target_type);
@@ -772,7 +772,7 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
 /// Specialization to handle Boolean constants in arguments.
 /// @copydoc Gate::AddArg
 template <>
-void Gate::AddArg<Constant>(int index, const ConstantPtr& arg) noexcept;
+void Gate::AddArg<Constant>(int index, const ConstantPtr& arg) ;
 
 /// PDAG is a propositional directed acyclic graph.
 /// This class provides a simpler representation of a fault tree
@@ -843,7 +843,7 @@ class Pdag : private boost::noncopyable {
 
   /// Constructs a graph with no root gate
   /// ready for general purpose (test) Boolean formulas.
-  Pdag() noexcept;
+  Pdag() ;
 
   /// Constructs a PDAG
   /// starting from the top gate of a fault tree.
@@ -873,7 +873,7 @@ class Pdag : private boost::noncopyable {
   ///
   /// @post All Gate indices >= (num of vars + kVariableStartIndex).
   explicit Pdag(const mef::Gate& root, bool ccf = false,
-                const mef::Model* model = nullptr) noexcept;
+                const mef::Model* model = nullptr) ;
 
   /// @returns Non-declarative substitutions to be applied by analysis.
   const std::vector<Substitution>& substitutions() const {
@@ -947,7 +947,7 @@ class Pdag : private boost::noncopyable {
   /// Attempts to make the graph trivial if possible.
   ///
   /// @returns true if the graph is trivial or made trivial.
-  bool IsTrivial() noexcept;
+  bool IsTrivial() ;
 
   /// @returns Original basic event
   ///          as initialized in this indexed fault tree.
@@ -973,7 +973,7 @@ class Pdag : private boost::noncopyable {
   /// @post Gate marks are clear.
   ///
   /// @warning Gate marks are manipulated.
-  void Log() noexcept;
+  void Log() ;
 
   /// Removes gates of Null logic with a single argument (maybe constant).
   /// That one child arg is transferred to the parent gate,
@@ -993,13 +993,13 @@ class Pdag : private boost::noncopyable {
   ///       so no further processing is required.
   ///
   /// @warning Gate marks will get cleared by this function.
-  void RemoveNullGates() noexcept;
+  void RemoveNullGates() ;
 
   /// Clears marks from graph nodes.
   ///
   /// @tparam Mark  The kind of the mark.
   template <NodeMark Mark>
-  void Clear() noexcept {
+  void Clear()  {
     if constexpr (Mark == kGateMark) {
       Clear<kGateMark>(root_);
 
@@ -1019,7 +1019,7 @@ class Pdag : private boost::noncopyable {
   ///
   /// @pre The gate marks are usable for traversal (clear, continuous, etc.).
   template <NodeMark Mark>
-  void Clear(const GatePtr& gate) noexcept;
+  void Clear(const GatePtr& gate) ;
 
  private:
   /// Holder for nodes that are created from fault tree events.
@@ -1039,7 +1039,7 @@ class Pdag : private boost::noncopyable {
   /// @param[in] ccf  A flag to gather CCF basic events and gates.
   /// @param[in,out] nodes  The mapping of gathered Variables.
   void GatherVariables(const mef::Formula& formula, bool ccf,
-                       ProcessedNodes* nodes) noexcept;
+                       ProcessedNodes* nodes) ;
 
   /// Initializes Variable from a Basic Event or
   /// continues the initialization of CCF Events
@@ -1049,7 +1049,7 @@ class Pdag : private boost::noncopyable {
   /// @param[in] ccf  A flag to gather CCF basic events and gates.
   /// @param[in,out] nodes  The mapping of gathered Variables.
   void GatherVariables(const mef::BasicEvent& basic_event, bool ccf,
-                       ProcessedNodes* nodes) noexcept;
+                       ProcessedNodes* nodes) ;
 
   /// Gathers Variables from substitutions.
   ///
@@ -1057,7 +1057,7 @@ class Pdag : private boost::noncopyable {
   /// @param[in] ccf  A flag to gather CCF basic events and gates.
   /// @param[in,out] nodes  The mapping of gathered Variables.
   void GatherVariables(const mef::Substitution& substitution, bool ccf,
-                       ProcessedNodes* nodes) noexcept;
+                       ProcessedNodes* nodes) ;
 
   /// Processes a Boolean formula of a gate into a PDAG.
   ///
@@ -1069,7 +1069,7 @@ class Pdag : private boost::noncopyable {
   ///
   /// @pre The Connective enum in the MEF is the same as in PDAG.
   GatePtr ConstructGate(const mef::Formula& formula, bool ccf,
-                        ProcessedNodes* nodes) noexcept;
+                        ProcessedNodes* nodes) ;
 
   /// Processes complex Boolean connectives
   /// that are not supported by PDAG directly.
@@ -1083,7 +1083,7 @@ class Pdag : private boost::noncopyable {
   ///
   /// @pre The formula connective is not supported by PDAG.
   GatePtr ConstructComplexGate(const mef::Formula& formula, bool ccf,
-                               ProcessedNodes* nodes) noexcept;
+                               ProcessedNodes* nodes) ;
 
   /// Processes declarative substitutions into corresponding implication gates.
   ///
@@ -1096,7 +1096,7 @@ class Pdag : private boost::noncopyable {
   /// @pre The substitution is declarative.
   /// @pre All the substitution variables have been gathered.
   GatePtr ConstructSubstitution(const mef::Substitution& substitution, bool ccf,
-                                ProcessedNodes* nodes) noexcept;
+                                ProcessedNodes* nodes) ;
 
   /// Collects non-declarative substitutions for later analysis.
   ///
@@ -1107,7 +1107,7 @@ class Pdag : private boost::noncopyable {
   /// @pre Non-declarative substitution events are not in CCF groups.
   /// @pre All the substitution variables have been gathered.
   void CollectSubstitution(const mef::Substitution& substitution,
-                           ProcessedNodes* nodes) noexcept;
+                           ProcessedNodes* nodes) ;
 
   /// Processes a Boolean formula's argument events
   /// into arguments of an indexed gate in the PDAG.
@@ -1124,11 +1124,11 @@ class Pdag : private boost::noncopyable {
   /// @{
   template <class T>
   void AddArg(const GatePtr& parent, const T& event, bool complement, bool ccf,
-              ProcessedNodes* nodes) noexcept;
+              ProcessedNodes* nodes) ;
   void AddArg(
       const GatePtr& parent,
       const std::variant<mef::Gate*, mef::BasicEvent*, mef::HouseEvent*>& event,
-      bool complement, bool ccf, ProcessedNodes* nodes) noexcept;
+      bool complement, bool ccf, ProcessedNodes* nodes) ;
   /// @}
 
   /// Propagate NULL type gates bottom-up.
@@ -1138,7 +1138,7 @@ class Pdag : private boost::noncopyable {
   /// @param[in,out] gate  The gate that is NULL type.
   ///
   /// @post Null logic gates have no parents.
-  void PropagateNullGate(const GatePtr& gate) noexcept;
+  void PropagateNullGate(const GatePtr& gate) ;
 
   int node_index_;  ///< Automatic index of the new node.
   bool complement_;  ///< The indication of a complement graph.
@@ -1165,7 +1165,7 @@ class Pdag : private boost::noncopyable {
 ///
 /// @{
 template <bool Mark = true, typename T>
-void TraverseGates(const GatePtr& gate, T&& visit) noexcept {
+void TraverseGates(const GatePtr& gate, T&& visit)  {
   if (gate->mark() == Mark)
     return;
   gate->mark(Mark);
@@ -1175,7 +1175,7 @@ void TraverseGates(const GatePtr& gate, T&& visit) noexcept {
   }
 }
 template <typename T>
-void TraverseNodes(const GatePtr& gate, T&& visit) noexcept {
+void TraverseNodes(const GatePtr& gate, T&& visit)  {
   if (gate->mark())
     return;
   gate->mark(true);
@@ -1190,7 +1190,7 @@ void TraverseNodes(const GatePtr& gate, T&& visit) noexcept {
 /// @}
 
 template <Pdag::NodeMark Mark>
-void Pdag::Clear(const GatePtr& gate) noexcept {
+void Pdag::Clear(const GatePtr& gate)  {
   if constexpr (Mark == kGateMark) {
     TraverseGates<false>(gate, [](auto&&) {});
 

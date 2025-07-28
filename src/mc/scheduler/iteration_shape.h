@@ -11,14 +11,14 @@ public:
         : shape_{shape}, trials_{trials} {}
 
     // ---- getters -------------------------------------------------------
-    [[nodiscard]] std::size_t trials()     const noexcept { return trials_; }
-    [[nodiscard]] std::size_t iterations() const noexcept {
+    [[nodiscard]] std::size_t trials()     const  { return trials_; }
+    [[nodiscard]] std::size_t iterations() const  {
         return (trials_ + trials_per_iteration() - 1) / trials_per_iteration();
     }
 
     // ---- setters -------------------------------------------------------
-    void trials(const std::size_t t) noexcept { trials_ = t; }
-    void iterations(const std::size_t it) noexcept {
+    void trials(const std::size_t t)  { trials_ = t; }
+    void iterations(const std::size_t it)  {
         trials_ = it * trials_per_iteration();
     }
 
@@ -27,7 +27,7 @@ public:
     iteration_shape& operator--()            { iterations(iterations() - 1); return *this; }
     iteration_shape& operator+=(const std::size_t i){ iterations(iterations() + i); return *this; }
 
-    [[nodiscard]] std::size_t trials_per_iteration() const noexcept {
+    [[nodiscard]] std::size_t trials_per_iteration() const  {
         return shape_.num_bitpacks() * sizeof(bitpack_t_) * 8;
     }
 private:

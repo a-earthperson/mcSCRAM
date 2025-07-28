@@ -200,7 +200,7 @@ class Element : public ContainerElement, private boost::noncopyable {
   ///
   /// @warning Pointers or references
   ///          to existing attributes may get invalidated.
-  void SetAttribute(Attribute attr) noexcept;
+  void SetAttribute(Attribute attr) ;
 
   /// @param[in] name  The name of the attribute.
   ///
@@ -211,7 +211,7 @@ class Element : public ContainerElement, private boost::noncopyable {
   ///          Do not store the returned pointer.
   ///
   /// @note Attributes can be inherited from parent containers.
-  const Attribute* GetAttribute(std::string_view name) const noexcept;
+  const Attribute* GetAttribute(std::string_view name) const ;
 
   /// Removes an attribute of this element.
   ///
@@ -220,7 +220,7 @@ class Element : public ContainerElement, private boost::noncopyable {
   /// @returns The removed attribute if any.
   ///
   /// @post No inherited attributes are affected.
-  std::optional<Attribute> RemoveAttribute(std::string_view name) noexcept;
+  std::optional<Attribute> RemoveAttribute(std::string_view name) ;
 
  protected:
   ~Element() = default;

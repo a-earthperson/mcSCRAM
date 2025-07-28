@@ -108,7 +108,7 @@ class BasicEvent : public Event {
   ///
   /// @note The user of this function should make sure
   ///       that the returned value is acceptable for calculations.
-  double p() const noexcept {
+  double p() const  {
     assert(expression_ && "The basic event's expression is not set.");
     return expression_->value();
   }
@@ -369,7 +369,7 @@ using FormulaPtr = std::unique_ptr<Formula>;  ///< Convenience alias.
 
 /// Comparison of formula arguments.
 inline bool operator==(const Formula::Arg& lhs,
-                       const Formula::Arg& rhs) noexcept {
+                       const Formula::Arg& rhs)  {
   return lhs.complement == rhs.complement && lhs.event == rhs.event;
 }
 

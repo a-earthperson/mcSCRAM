@@ -31,7 +31,7 @@ namespace scram::mef {
 Expression::Expression(std::vector<Expression*> args)
     : args_(std::move(args)), sampled_value_(0), sampled_(false) {}
 
-double Expression::Sample() noexcept {
+double Expression::Sample()  {
   if (!sampled_) {
     sampled_ = true;
     sampled_value_ = this->DoSample();
@@ -39,7 +39,7 @@ double Expression::Sample() noexcept {
   return sampled_value_;
 }
 
-void Expression::Reset() noexcept {
+void Expression::Reset()  {
   if (!sampled_)
     return;
   sampled_ = false;
@@ -47,7 +47,7 @@ void Expression::Reset() noexcept {
     arg->Reset();
 }
 
-bool Expression::IsDeviate() noexcept {
+bool Expression::IsDeviate()  {
   return ext::any_of(args_, [](Expression* arg) { return arg->IsDeviate(); });
 }
 

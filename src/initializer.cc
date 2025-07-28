@@ -1507,7 +1507,7 @@ const int kNumInterfaces = 126;  ///< All possible interfaces.
 ///
 /// @pre The number of parameters is less than log_base(max int).
 template <class SinglePassRange>
-int Encode(const SinglePassRange& args) noexcept {
+int Encode(const SinglePassRange& args)  {
   assert(!args.empty());
   auto to_digit = [](const xml::Element& node) -> int {
     std::string_view name = node.name();
@@ -1531,7 +1531,7 @@ int Encode(const SinglePassRange& args) noexcept {
 
 /// Encodes function parameter types at compile-time.
 template <typename T, typename... Ts>
-constexpr int Encode(int base_power = 1) noexcept {
+constexpr int Encode(int base_power = 1)  {
   if constexpr (sizeof...(Ts)) {
     return Encode<T>(base_power) + Encode<Ts...>(base_power * kExternTypeBase);
 

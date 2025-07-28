@@ -44,7 +44,7 @@ namespace {  // The model cloning functions.
 std::unique_ptr<mef::Formula>
 Clone(const mef::Formula& formula,
       const std::unordered_map<std::string, bool>& set_instructions,
-      std::vector<std::unique_ptr<mef::Event>>* clones) noexcept {
+      std::vector<std::unique_ptr<mef::Event>>* clones)  {
   struct {
     mef::Formula::ArgEvent operator()(mef::BasicEvent* arg) { return arg; }
     mef::Formula::ArgEvent operator()(mef::HouseEvent* arg) {
@@ -93,7 +93,7 @@ EventTreeAnalysis::PathCollector::PathCollector(const PathCollector& other)
     formulas.push_back(std::make_unique<mef::Formula>(*formula));
 }
 
-void EventTreeAnalysis::Analyze() noexcept {
+void EventTreeAnalysis::Analyze()  {
   assert(initiating_event_.event_tree());
   int formula_id = 0;  // Enumeration of collected formulas turned into gates.
   // Creates an internal gate representing the formula.
@@ -166,7 +166,7 @@ void EventTreeAnalysis::Analyze() noexcept {
 }
 
 void EventTreeAnalysis::CollectSequences(const mef::Branch& initial_state,
-                                         SequenceCollector* result) noexcept {
+                                         SequenceCollector* result)  {
   struct Collector {
     class Visitor : public mef::InstructionVisitor {
      public:

@@ -79,9 +79,9 @@ Bdd::Bdd(const Pdag* graph, const Settings& settings)
   }
 }
 
-Bdd::~Bdd() noexcept = default;
+Bdd::~Bdd()  = default;
 
-void Bdd::Analyze(const Pdag* graph) noexcept {
+void Bdd::Analyze(const Pdag* graph)  {
   zbdd_ = std::make_unique<Zbdd>(this, kSettings_);
   zbdd_->Analyze(graph);
   if (!coherent_)  // The BDD has been used by the ZBDD.
@@ -90,7 +90,7 @@ void Bdd::Analyze(const Pdag* graph) noexcept {
 
 ItePtr Bdd::FindOrAddVertex(int index, const VertexPtr& high,
                             const VertexPtr& low, bool complement_edge,
-                            int order) noexcept {
+                            int order)  {
   assert(index > 0 && "Only positive indices are expected.");
   IteWeakPtr& in_table = unique_table_.FindOrAdd(
       index, high->id(), complement_edge ? -low->id() : low->id());
@@ -105,7 +105,7 @@ ItePtr Bdd::FindOrAddVertex(int index, const VertexPtr& high,
 
 ItePtr Bdd::FindOrAddVertex(const ItePtr& ite, const VertexPtr& high,
                             const VertexPtr& low,
-                            bool complement_edge) noexcept {
+                            bool complement_edge)  {
   ItePtr in_table =
       FindOrAddVertex(ite->index(), high, low, complement_edge, ite->order());
   if (in_table->unique()) {
@@ -119,7 +119,7 @@ ItePtr Bdd::FindOrAddVertex(const ItePtr& ite, const VertexPtr& high,
 
 ItePtr Bdd::FindOrAddVertex(const Gate& gate, const VertexPtr& high,
                             const VertexPtr& low,
-                            bool complement_edge) noexcept {
+                            bool complement_edge)  {
   assert(gate.module() && "Only module gates are expected for proxies.");
   ItePtr in_table =
       FindOrAddVertex(gate.index(), high, low, complement_edge, gate.order());
@@ -134,7 +134,7 @@ ItePtr Bdd::FindOrAddVertex(const Gate& gate, const VertexPtr& high,
 
 Bdd::Function Bdd::ConvertGraph(
     const Gate& gate,
-    std::unordered_map<int, std::pair<Function, int>>* gates) noexcept {
+    std::unordered_map<int, std::pair<Function, int>>* gates)  {
   assert(!gate.constant() && "Unexpected constant gate!");
   Function result;  // For the NRVO, due to memoization.
   // Memoization check.
@@ -187,7 +187,7 @@ Bdd::Function Bdd::ConvertGraph(
 std::pair<int, int> Bdd::GetMinMaxId(const VertexPtr& arg_one,
                                      const VertexPtr& arg_two,
                                      bool complement_one,
-                                     bool complement_two) noexcept {
+                                     bool complement_two)  {
   assert(!arg_one->terminal() && !arg_two->terminal());
   assert(arg_one->id() && arg_two->id());
   assert(arg_one->id() != arg_two->id());
@@ -202,7 +202,7 @@ std::pair<int, int> Bdd::GetMinMaxId(const VertexPtr& arg_one,
 template <>
 Bdd::Function Bdd::Apply<kAnd>(const VertexPtr& arg_one,
                                const VertexPtr& arg_two, bool complement_one,
-                               bool complement_two) noexcept {
+                               bool complement_two)  {
   assert(arg_one->id() && arg_two->id());  // Both are reduced function graphs.
   if (arg_one->terminal()) {
     if (complement_one)
@@ -233,7 +233,7 @@ Bdd::Function Bdd::Apply<kAnd>(const VertexPtr& arg_one,
 template <>
 Bdd::Function Bdd::Apply<kOr>(const VertexPtr& arg_one,
                               const VertexPtr& arg_two, bool complement_one,
-                              bool complement_two) noexcept {
+                              bool complement_two)  {
   assert(arg_one->id() && arg_two->id());  // Both are reduced function graphs.
   if (arg_one->terminal()) {
     if (!complement_one)
@@ -262,7 +262,7 @@ Bdd::Function Bdd::Apply<kOr>(const VertexPtr& arg_one,
 
 template <Connective Type>
 Bdd::Function Bdd::Apply(ItePtr ite_one, ItePtr ite_two, bool complement_one,
-                         bool complement_two) noexcept {
+                         bool complement_two)  {
   if (ite_one->order() > ite_two->order()) {
     ite_one.swap(ite_two);
     std::swap(complement_one, complement_two);
@@ -297,7 +297,7 @@ Bdd::Function Bdd::Apply(ItePtr ite_one, ItePtr ite_two, bool complement_one,
 
 Bdd::Function Bdd::Apply(Connective type, const VertexPtr& arg_one,
                          const VertexPtr& arg_two, bool complement_one,
-                         bool complement_two) noexcept {
+                         bool complement_two)  {
   assert(arg_one->id() && arg_two->id());  // Both are reduced function graphs.
   if (type == kAnd) {
     return Apply<kAnd>(arg_one, arg_two, complement_one, complement_two);
@@ -307,13 +307,13 @@ Bdd::Function Bdd::Apply(Connective type, const VertexPtr& arg_one,
 }
 
 Bdd::Function Bdd::CalculateConsensus(const ItePtr& ite,
-                                      bool complement) noexcept {
+                                      bool complement)  {
   ClearTables();
   return Apply<kAnd>(ite->high(), ite->low(), complement,
                      ite->complement_edge() ^ complement);
 }
 
-int Bdd::CountIteNodes(const VertexPtr& vertex) noexcept {
+int Bdd::CountIteNodes(const VertexPtr& vertex)  {
   if (vertex->terminal())
     return 0;
   Ite& ite = Ite::Ref(vertex);
@@ -328,7 +328,7 @@ int Bdd::CountIteNodes(const VertexPtr& vertex) noexcept {
   return 1 + in_module + CountIteNodes(ite.high()) + CountIteNodes(ite.low());
 }
 
-void Bdd::ClearMarks(const VertexPtr& vertex, bool mark) noexcept {
+void Bdd::ClearMarks(const VertexPtr& vertex, bool mark)  {
   if (vertex->terminal())
     return;
   Ite& ite = Ite::Ref(vertex);
@@ -343,7 +343,7 @@ void Bdd::ClearMarks(const VertexPtr& vertex, bool mark) noexcept {
   ClearMarks(ite.low(), mark);
 }
 
-void Bdd::TestStructure(const VertexPtr& vertex) noexcept {
+void Bdd::TestStructure(const VertexPtr& vertex)  {
   if (vertex->terminal())
     return;
   Ite& ite = Ite::Ref(vertex);

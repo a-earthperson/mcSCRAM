@@ -110,7 +110,7 @@ std::enable_if_t<std::is_arithmetic_v<T>, T> to(const std::string_view& value) {
 /// @param[in] xml_string  The string provided by the XML library.
 ///
 /// @returns The same string adapted for use as C string.
-inline const char* from_utf8(const xmlChar* xml_string) noexcept {
+inline const char* from_utf8(const xmlChar* xml_string)  {
   assert(xml_string);
   return reinterpret_cast<const char*>(xml_string);
 }
@@ -122,7 +122,7 @@ inline const char* from_utf8(const xmlChar* xml_string) noexcept {
 /// @returns The same string adapted for use in XML library functions.
 ///
 /// @pre The C string has UTF-8 encoding.
-inline const xmlChar* to_utf8(const char* c_string) noexcept {
+inline const xmlChar* to_utf8(const char* c_string)  {
   assert(c_string);
   return reinterpret_cast<const xmlChar*>(c_string);
 }
@@ -134,7 +134,7 @@ inline const xmlChar* to_utf8(const char* c_string) noexcept {
 /// @returns View to the trimmed substring.
 ///
 /// @pre The string is normalized by the XML parser.
-inline std::string_view trim(const std::string_view& text) noexcept {
+inline std::string_view trim(const std::string_view& text)  {
   auto pos_first = text.find_first_not_of(' ');
   if (pos_first == std::string_view::npos)
     return {};
@@ -238,7 +238,7 @@ class Element {
     ///
     /// @returns The first Element type node.
     ///          nullptr if the list does not contain any Element nodes.
-    static const xmlElement* findElement(const xmlNode* node) noexcept {
+    static const xmlElement* findElement(const xmlNode* node)  {
       while (node && node->type != XML_ELEMENT_NODE)
         node = node->next;
       return reinterpret_cast<const xmlElement*>(node);

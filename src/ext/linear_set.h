@@ -98,7 +98,7 @@ class linear_set {
   /// @}
 
   /// Friend swap definition for convenience sake.
-  friend void swap(linear_set& lhs, linear_set& rhs) noexcept { lhs.swap(rhs); }
+  friend void swap(linear_set& lhs, linear_set& rhs)  { lhs.swap(rhs); }
 
  public:
   /// Public typedefs similar to standard sets.
@@ -253,7 +253,7 @@ class linear_set {
   /// Swaps data with another linear set.
   ///
   /// @param[in] other  Another linear set.
-  void swap(linear_set& other) noexcept { set_.swap(other.set_); }
+  void swap(linear_set& other)  { set_.swap(other.set_); }
 
   /// @returns The number of entries in the set.
   size_type size() const { return set_.size(); }
@@ -262,7 +262,7 @@ class linear_set {
   bool empty() const { return set_.empty(); }
 
   /// Erases all entries in the set.
-  void clear() noexcept { set_.clear(); }
+  void clear()  { set_.clear(); }
 
   /// Prepares the linear set for a specified number of entries.
   ///

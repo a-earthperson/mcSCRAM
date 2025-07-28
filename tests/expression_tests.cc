@@ -45,12 +45,12 @@ class OpenExpression : public Expression {
   double sample;
   double min;  // This value is used only if explicitly set non-zero.
   double max;  // This value is used only if explicitly set non-zero.
-  double value() noexcept override { return mean; }
-  double DoSample() noexcept override { return sample; }
-  Interval interval() noexcept override {
+  double value()  override { return mean; }
+  double DoSample()  override { return sample; }
+  Interval interval()  override {
     return Interval::closed(min ? min : sample, max ? max : sample);
   }
-  bool IsDeviate() noexcept override { return min || max; }
+  bool IsDeviate()  override { return min || max; }
 };
 
 namespace {

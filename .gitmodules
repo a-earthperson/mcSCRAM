@@ -4,3 +4,6 @@
 [submodule "input/synthetic-models"]
 	path = input/synthetic-models
 	url = https://github.com/openpra-org/synthetic-models.git
+[submodule "input/generic-pwr-model"]
+	path = input/generic-pwr-model
+	url = https://github.com/openpra-org/generic-pwr-model.git

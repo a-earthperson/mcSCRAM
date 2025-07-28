@@ -41,7 +41,7 @@ class DirectEval : private boost::noncopyable {
   /// Finds minimal cut sets from the PDAG.
   /// STUB implementation:: broken
   /// @param[in] graph  The optional PDAG with non-declarative substitutions.
-  void Analyze(const core::Pdag* /*graph*/ = nullptr) noexcept {
+  void Analyze(const core::Pdag* /*graph*/ = nullptr)  {
       zbdd_ = std::make_unique<core::Zbdd>(graph_, kSettings_);
   }
 
@@ -59,7 +59,7 @@ class DirectEval : private boost::noncopyable {
   ///
   /// @returns stub/empty ZBDD container
   std::unique_ptr<core::zbdd::CutSetContainer>
-  AnalyzeModule(const core::Gate& gate, const core::Settings& /*settings*/) noexcept {
+  AnalyzeModule(const core::Gate& gate, const core::Settings& /*settings*/)  {
       const int kMaxVariableIndex = core::Pdag::kVariableStartIndex + static_cast<int>(graph_->basic_events().size()) - 1;
       auto empty_container = std::make_unique<core::zbdd::CutSetContainer>(kSettings_, gate.index(), kMaxVariableIndex);
       return empty_container;

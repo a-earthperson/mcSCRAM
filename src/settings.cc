@@ -27,7 +27,7 @@
 
 namespace scram::core {
 
-Settings& Settings::algorithm(Algorithm value) noexcept {
+Settings& Settings::algorithm(Algorithm value)  {
   algorithm_ = value;
   switch (algorithm_) {
     case Algorithm::kDirect:

@@ -30,7 +30,7 @@ namespace ext {
 /// @returns The bit value in the given index.
 ///
 /// @pre The index is in [0, size(bit-array)).
-constexpr bool test_bit(std::uint64_t bits, int index) noexcept {
+constexpr bool test_bit(std::uint64_t bits, int index)  {
   return bits & (std::uint64_t(1) << index);
 }
 
@@ -42,7 +42,7 @@ constexpr bool test_bit(std::uint64_t bits, int index) noexcept {
 ///          (the index of the first 1 bit).
 ///
 /// @pre bits is not 0.
-constexpr int count_trailing_zero_bits(std::uint64_t bits) noexcept {
+constexpr int count_trailing_zero_bits(std::uint64_t bits)  {
 #if defined(__GNUC__)
   return __builtin_ctzl(bits);
 #else
@@ -60,7 +60,7 @@ constexpr int count_trailing_zero_bits(std::uint64_t bits) noexcept {
 /// @returns The index of the first 1 bit in the positive bit array.
 ///
 /// @pre The bits value is not 0.
-constexpr int one_bit_index(std::uint64_t bits) noexcept {
+constexpr int one_bit_index(std::uint64_t bits)  {
   return count_trailing_zero_bits(bits);
 }
 
