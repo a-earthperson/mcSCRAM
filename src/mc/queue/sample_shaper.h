@@ -1,5 +1,5 @@
 /**
- * @file scheduler.h
+ * @file sample_shaper.h
  * @brief SYCL-based MC-scheduling helper for the compute graph layers.
  * @author Arjun Earthperson
  * @date 2025
@@ -103,7 +103,7 @@ struct sample_shaper {
             const std::double_t max_device_bitpacks = static_cast<std::double_t>(max_device_bytes_) / static_cast<std::double_t>(sizeof(bitpack_t_));
             const std::size_t bitpacks = static_cast<std::size_t>(std::floor(max_device_bitpacks / (num_nodes * 1.05)));
             const std::size_t cache_line_bytes = device.get_info<sycl::info::device::global_mem_cache_line_size>();
-            const std::size_t cache_line_bitpacks = static_cast<std::size_t>(cache_line_bytes / static_cast<std::double_t>(sizeof(bitpack_t_)));
+            const auto cache_line_bitpacks = static_cast<std::size_t>(cache_line_bytes / static_cast<std::double_t>(sizeof(bitpack_t_)));
             const std::size_t bitpacks_aligned = bitpacks - (bitpacks % cache_line_bitpacks);
             if (sample_shape.bitpacks_per_batch) {
                 sample_shape.bitpacks_per_batch = bitpacks_aligned;
@@ -126,20 +126,9 @@ struct sample_shaper {
 
     /**
      * @brief Formatted output operator for scheduler configuration
-     * 
-     * @details Provides comprehensive human-readable output of all scheduler
-     * parameters, memory calculations, and computed configuration. The output
-     * is organized into logical sections for easy interpretation.
-     * 
      * @param os Output stream for formatted output
      * @param sched Scheduler instance to format
      * @return Reference to the output stream for chaining
-     * 
-     * @example
-     * @code
-     * scheduler<uint64_t> sched(queue, 1000000, 555);
-     * std::cout << sched << std::endl;
-     * @endcode
      */
     friend std::ostream &operator<<(std::ostream &os, const sample_shaper &sched) {
         os << "requested_num_trials: " << sched.requested_num_trials_ << std::endl

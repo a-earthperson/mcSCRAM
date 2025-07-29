@@ -1,17 +1,6 @@
 /**
  * @file working_set.h
  * @brief Optimal working-set configuration for SYCL device performance tuning
- * 
- * @details This file provides sophisticated algorithms for determining optimal
- * working-set splits and memory configurations for SYCL devices across different
- * backends (CUDA, OpenCL, OpenMP). It analyzes device capabilities and computes
- * optimal work-group sizes, memory layouts, and occupancy rates to maximize
- * performance in parallel Monte Carlo simulations.
- * 
- * The working set configuration is critical for achieving optimal performance
- * across diverse hardware architectures, from GPUs with thousands of cores to
- * multi-core CPUs with different memory hierarchies.
- *
  * @author Arjun Earthperson
  * @date 11/06/2024
  *
@@ -28,22 +17,7 @@
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- * @see node.h for related data structures
- * @see scram::mc::sample_shape for memory layout configuration
- * 
- * @example
- * @code
- * // Configure working set for Monte Carlo simulation
- * sycl::queue queue;
- * const size_t num_events = 1000;
- * auto shape = working_set<uint32_t, uint64_t>::compute_optimal_sample_shape(queue, num_events);
- * working_set<uint32_t, uint64_t> ws(queue, num_events, shape);
- * 
- * // Use computed configuration
- * auto local_range = ws.compute_optimal_local_range_3d();
- * std::cout << "Optimal local range: " << local_range[0] << "x" 
- *           << local_range[1] << "x" << local_range[2] << std::endl;
- * @endcode
+ *
  */
 
 #pragma once
@@ -57,41 +31,9 @@ namespace scram::mc {
 
     /**
      * @struct working_set
-     * @brief Comprehensive SYCL device working-set configuration and optimization
-     * 
-     * @details This structure encapsulates all device capabilities, memory constraints,
-     * and computed optimal configurations for SYCL-based Monte Carlo simulations.
-     * It provides a complete characterization of the target device and computes
-     * optimal work-group sizes, memory layouts, and execution parameters.
-     * 
-     * The working set analysis considers:
-     * - Device type and compute capabilities
-     * - Memory hierarchy and allocation limits
-     * - Work-group and subgroup constraints
-     * - Sample buffer organization and bit-packing
-     * - Backend-specific performance characteristics
-     * 
+     * @brief SYCL device information
      * @tparam size_type Integer type for sizes and counts (typically uint32_t or uint64_t)
      * @tparam bitpack_type Integer type for bit-packed sample storage (typically uint64_t)
-     * 
-     * @note All device queries are performed during construction for optimal performance
-     * @note Memory allocations are validated against device limits
-     * 
-     * @example
-     * @code
-     * // Create working set for 1000 events
-     * sycl::queue queue;
-     * sample_shape<uint32_t> shape{1024, 16};
-     * working_set<uint32_t, uint64_t> ws(queue, 1000, shape);
-     * 
-     * // Query device capabilities
-     * std::cout << "Device: " << ws.device_type << std::endl;
-     * std::cout << "Compute units: " << ws.max_compute_units << std::endl;
-     * std::cout << "Memory: " << ws.global_mem_size / (1024*1024) << " MB" << std::endl;
-     * 
-     * // Compute optimal configuration
-     * auto local_range = ws.compute_optimal_local_range_3d();
-     * @endcode
      */
     template<typename size_type, typename bitpack_type>
     struct working_set {
@@ -206,12 +148,7 @@ namespace scram::mc {
 
         /**
          * @brief Constructs working set configuration for a SYCL device
-         * 
-         * @details Initializes the working set by querying all relevant device
-         * capabilities and computing sample buffer requirements. This constructor
-         * performs comprehensive device introspection to gather all information
-         * needed for optimal configuration.
-         * 
+         *
          * The constructor queries:
          * - Device type and compute capabilities
          * - Work-group and sub-group constraints
@@ -221,24 +158,6 @@ namespace scram::mc {
          * @param queue SYCL queue for device access and memory operations
          * @param num_events Number of events in the Monte Carlo simulation
          * @param requested_shape Desired sample buffer organization
-         * 
-         * @throws std::runtime_error if device queries fail
-         * @throws std::bad_alloc if memory requirements exceed device limits
-         * 
-         * @note All device queries are performed synchronously during construction
-         * @note Memory requirements are validated against device constraints
-         * 
-         * @example
-         * @code
-         * sycl::queue gpu_queue;
-         * sample_shape<uint32_t> shape{2048, 32};
-         * working_set<uint32_t, uint64_t> ws(gpu_queue, 5000, shape);
-         * 
-         * // Check if configuration is valid
-         * if (ws.samples_in_bytes_ > ws.max_mem_alloc_size) {
-         *     throw std::runtime_error("Sample buffer too large for device");
-         * }
-         * @endcode
          */
         working_set(const sycl::queue &queue, const size_type num_events, const event::sample_shape<size_type> &requested_shape) {
             const auto device = queue.get_device();
@@ -321,37 +240,9 @@ namespace scram::mc {
         // for OpenMP 8 CPU, 16 threads @ 3.80 GHz, 6400 * 8 = 51200 : 54.9s
         /**
          * @brief Formatted output operator for working set configuration
-         * 
-         * @details Provides comprehensive human-readable output of all device
-         * capabilities, memory constraints, and computed configuration parameters.
-         * The output is organized into logical sections for easy interpretation.
-         * 
-         * Output sections include:
-         * - Device type and compute capabilities
-         * - Work-item and work-group constraints
-         * - Sub-group characteristics
-         * - Memory hierarchy information
-         * - Sample buffer configuration
-         * 
          * @param os Output stream for formatted output
          * @param ws Working set instance to format
          * @return Reference to the output stream for chaining
-         * 
-         * @note Output format is designed for debugging and performance analysis
-         * @note All values are formatted with appropriate units and descriptions
-         * 
-         * @example
-         * @code
-         * working_set<uint32_t, uint64_t> ws(queue, 1000, shape);
-         * std::cout << ws << std::endl;
-         * 
-         * // Output includes:
-         * // device_type: gpu
-         * // max_compute_units: 20
-         * // max_clock_frequency: 1800
-         * // desired_occupancy: 204800
-         * // ...
-         * @endcode
          */
         friend std::ostream &operator<<(std::ostream &os, const working_set &ws) {
             os  << "device_type: ";
@@ -429,12 +320,7 @@ namespace scram::mc {
 
         /**
          * @brief Computes optimal nd_range for 1D tally kernels
-         * 
-         * @details Calculates the optimal SYCL nd_range for 1D tally operations
-         * by analyzing device capabilities and choosing appropriate work-group
-         * sizes. The algorithm considers sub-group sizes for GPUs and preferred
-         * vector widths for CPUs to maximize performance.
-         * 
+         *
          * The method uses different strategies based on device type:
          * - GPU devices: Use largest sub-group size with power-of-2 multipliers
          * - CPU devices: Use preferred vector width with power-of-2 scaling
@@ -443,22 +329,6 @@ namespace scram::mc {
          * @param queue SYCL queue for device capability queries
          * @param total_elements Total number of elements to process
          * @return Optimal nd_range with computed global and local sizes
-         * 
-         * @note Global range is rounded up to be a multiple of local range
-         * @note Local range is constrained by device maximum work-group size
-         * 
-         * @example
-         * @code
-         * // Compute optimal range for 10000 tally elements
-         * auto nd_range = working_set<uint32_t, uint64_t>::compute_optimal_nd_range_for_tally(queue, 10000);
-         * 
-         * // Submit kernel with optimal configuration
-         * queue.submit([&](sycl::handler& h) {
-         *     h.parallel_for(nd_range, [=](sycl::nd_item<1> item) {
-         *         // Tally kernel implementation
-         *     });
-         * });
-         * @endcode
          */
         static sycl::nd_range<1> compute_optimal_nd_range_for_tally(const sycl::queue &queue, const size_type total_elements) {
             const auto device = queue.get_device();
@@ -516,13 +386,7 @@ namespace scram::mc {
 
         /**
          * @brief Computes optimal sample shape for device memory constraints
-         * 
-         * @details Determines the optimal sample_shape configuration that fits
-         * within device memory allocation limits while maximizing computational
-         * efficiency. The algorithm searches through possible batch sizes and
-         * bitpacks per batch to find the largest configuration that doesn't
-         * exceed memory constraints.
-         * 
+         *
          * The search strategy:
          * 1. Start with maximum batch size (2^16) and sample size (2^16)
          * 2. Iteratively reduce sizes until memory requirements fit
@@ -532,21 +396,6 @@ namespace scram::mc {
          * @param queue SYCL queue for device capability queries
          * @param num_events Number of events requiring sample storage
          * @return Optimal sample_shape within memory constraints
-         * 
-         * @note Uses conservative maximum values to prevent memory overflow
-         * @note Falls back to minimal configuration (1x1) if no valid config found
-         * 
-         * @example
-         * @code
-         * // Find optimal shape for 5000 events
-         * auto shape = working_set<uint32_t, uint64_t>::compute_optimal_sample_shape(queue, 5000);
-         * 
-         * std::cout << "Optimal batch size: " << shape.batch_size << std::endl;
-         * std::cout << "Bitpacks per batch: " << shape.bitpacks_per_batch << std::endl;
-         * 
-         * // Use in working set construction
-         * working_set<uint32_t, uint64_t> ws(queue, 5000, shape);
-         * @endcode
          */
         static event::sample_shape<size_type> compute_optimal_sample_shape(const sycl::queue &queue, const size_type num_events) {
             const auto device = queue.get_device();
@@ -589,33 +438,8 @@ namespace scram::mc {
 
         /**
          * @brief Finds the closest power of 2 to a given value
-         * 
-         * @details Computes the power of 2 that minimizes the absolute difference
-         * with the input value. This utility function is used for optimizing
-         * work-group sizes and memory layouts to align with hardware preferences.
-         * 
-         * The algorithm:
-         * 1. Iterates through all possible powers of 2 up to the type limit
-         * 2. Computes absolute difference for each power
-         * 3. Returns the power with minimum difference
-         * 4. Breaks early when differences start increasing
-         * 
          * @param n Input value to find closest power of 2 for
          * @return Closest power of 2 to the input value
-         * 
-         * @note Returns 1 for input value 0 (edge case handling)
-         * @note Prefers smaller powers when there's a tie
-         * 
-         * @example
-         * @code
-         * // Find closest powers of 2
-         * auto p1 = working_set<uint32_t, uint64_t>::closest_power_of_2(100);  // Returns 128
-         * auto p2 = working_set<uint32_t, uint64_t>::closest_power_of_2(96);   // Returns 64
-         * auto p3 = working_set<uint32_t, uint64_t>::closest_power_of_2(96);   // Returns 128 (tie)
-         * 
-         * // Use for work-group size optimization
-         * size_t optimal_size = closest_power_of_2(device_preferred_size);
-         * @endcode
          */
         static size_type closest_power_of_2(const size_type n) {
             if (n == 0) return 1;  // Edge case: define closest power of 2 to 0 as 1
@@ -661,20 +485,6 @@ namespace scram::mc {
          * 
          * @param limits Optional constraints on each dimension (0 = no limit)
          * @return Optimal 3D local range for CPU execution
-         * 
-         * @note CPU devices typically use (1, 1, small_z) configurations
-         * @note Z dimension is aligned to data type size for vectorization
-         * 
-         * @example
-         * @code
-         * working_set<uint32_t, uint64_t> ws(cpu_queue, 1000, shape);
-         * 
-         * // Compute optimal CPU local range
-         * auto local_range = ws.compute_optimal_local_range_3d_for_cpu();
-         * std::cout << "CPU local range: " << local_range[0] << "x" 
-         *           << local_range[1] << "x" << local_range[2] << std::endl;
-         * // Typical output: "CPU local range: 1x1x8"
-         * @endcode
          */
         [[nodiscard]] sycl::range<3> compute_optimal_local_range_3d_for_cpu(const sycl::range<3> &limits = {0, 0, 0}) const {
             const auto num_bytes_in_dtype = sizeof(bitpack_type); // in bytes
@@ -704,17 +514,6 @@ namespace scram::mc {
          * 
          * @note GPU devices benefit from larger work-groups (e.g., 256, 512, 1024)
          * @note All dimensions are powers of 2 for optimal hardware utilization
-         * 
-         * @example
-         * @code
-         * working_set<uint32_t, uint64_t> ws(gpu_queue, 1000, shape);
-         * 
-         * // Compute optimal GPU local range
-         * auto local_range = ws.compute_optimal_local_range_3d_for_gpu();
-         * std::cout << "GPU local range: " << local_range[0] << "x" 
-         *           << local_range[1] << "x" << local_range[2] << std::endl;
-         * // Typical output: "GPU local range: 8x16x4" (total = 512)
-         * @endcode
          */
         [[nodiscard]] sycl::range<3> compute_optimal_local_range_3d_for_gpu(const sycl::range<3> &limits = {0, 0, 0}) const {
             const auto log_2_max_work_group_size = static_cast<std::uint8_t>(std::log2(max_work_group_size));
@@ -747,39 +546,8 @@ namespace scram::mc {
 
         /**
          * @brief Computes optimal 3D local range for current device type
-         * 
-         * @details Automatically selects the appropriate local range computation
-         * method based on the device type detected during working set construction.
-         * This method provides a unified interface for optimal work-group size
-         * calculation across different device architectures.
-         * 
-         * Device-specific optimizations:
-         * - CPU: Use CPU-optimized algorithm (small work-groups, cache-aligned)
-         * - GPU: Use GPU-optimized algorithm (large work-groups, power-of-2 sizes)
-         * - Other: Fall back to GPU algorithm for unknown device types
-         * 
          * @param limits Optional constraints on each dimension (0 = no limit)
          * @return Optimal 3D local range for the current device
-         * 
-         * @note Automatically validates that computed range doesn't exceed device limits
-         * @note Logs computed configuration for debugging and performance analysis
-         * 
-         * @example
-         * @code
-         * working_set<uint32_t, uint64_t> ws(queue, 1000, shape);
-         * 
-         * // Get optimal local range for any device type
-         * auto local_range = ws.compute_optimal_local_range_3d();
-         * 
-         * // Use in kernel submission
-         * queue.submit([&](sycl::handler& h) {
-         *     sycl::range<3> global_range{1000, shape.batch_size, shape.bitpacks_per_batch};
-         *     sycl::nd_range<3> nd_range{global_range, local_range};
-         *     h.parallel_for(nd_range, [=](sycl::nd_item<3> item) {
-         *         // Kernel implementation
-         *     });
-         * });
-         * @endcode
          */
         [[nodiscard]] sycl::range<3> compute_optimal_local_range_3d(const sycl::range<3> &limits = {0, 0, 0}) const {
             sycl::range<3> local_range;
@@ -798,63 +566,6 @@ namespace scram::mc {
             }
             assert(local_range[0] * local_range[1] * local_range[2] <= max_work_group_size);
             return local_range;
-        }
-
-        /**
-         * @brief Rounds sample shape dimensions (in-place version)
-         * 
-         * @details Modifies the provided sample_shape structure to round its
-         * dimensions to optimal values. This in-place version is useful when
-         * you want to modify an existing shape configuration.
-         * 
-         * @tparam dtype Data type used for shape dimensions
-         * @param shape Reference to shape structure to be modified
-         * @return Reference to the modified shape structure
-         * 
-         * @note Currently performs no actual rounding (placeholder implementation)
-         * @note Future versions may implement power-of-2 rounding or other optimizations
-         * 
-         * @example
-         * @code
-         * sample_shape<uint32_t> shape{1000, 15};
-         * working_set<uint32_t, uint64_t>::rounded(shape);
-         * // shape is now potentially modified for optimization
-         * @endcode
-         */
-        template<typename dtype>
-        static event::sample_shape<dtype> &rounded(event::sample_shape<dtype> &shape) {
-            shape.batch_size = (shape.batch_size);
-            shape.bitpacks_per_batch = (shape.bitpacks_per_batch);
-            return shape;
-        }
-
-        /**
-         * @brief Rounds sample shape dimensions (copy version)
-         * 
-         * @details Creates a new sample_shape structure with rounded dimensions
-         * from the input shape. This copy version is useful when you want to
-         * create an optimized copy without modifying the original shape.
-         * 
-         * @tparam dtype Data type used for shape dimensions
-         * @param shape Input shape structure to be rounded
-         * @return New shape structure with rounded dimensions
-         * 
-         * @note Currently performs no actual rounding (placeholder implementation)
-         * @note Future versions may implement power-of-2 rounding or other optimizations
-         * 
-         * @example
-         * @code
-         * sample_shape<uint32_t> original_shape{1000, 15};
-         * auto rounded_shape = working_set<uint32_t, uint64_t>::rounded(original_shape);
-         * // original_shape is unchanged, rounded_shape is potentially optimized
-         * @endcode
-         */
-        template<typename dtype>
-        static event::sample_shape<dtype> rounded(const event::sample_shape<dtype> &shape) {
-            event::sample_shape<dtype> new_shape;
-            new_shape.batch_size = (shape.batch_size);
-            new_shape.bitpacks_per_batch = (shape.bitpacks_per_batch);
-            return new_shape;
         }
     };
 }// namespace scram::mc
