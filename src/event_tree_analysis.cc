@@ -94,12 +94,11 @@ EventTreeAnalysis::PathCollector::PathCollector(const PathCollector& other)
 }
 
 void EventTreeAnalysis::Analyze()  {
-  assert(initiating_event_.event_tree());
+  // assert(initiating_event_.event_tree());
   int formula_id = 0;  // Enumeration of collected formulas turned into gates.
   // Creates an internal gate representing the formula.
   auto make_gate = [&formula_id, this](mef::FormulaPtr formula) {
-    std::string gate_name = "___" + initiating_event_.name() + "__formula_" +
-                            std::to_string(formula_id++) + "__";
+    std::string gate_name = "___" + initiating_event_.name() + "__formula_" + std::to_string(formula_id++) + "__";
     auto gate = std::make_unique<mef::Gate>(gate_name);
     gate->formula(std::move(formula));
     auto* address = gate.get();
@@ -118,17 +117,15 @@ void EventTreeAnalysis::Analyze()  {
         gate_formulas.push_back(std::move(path_collector.formulas.front()));
       } else if (path_collector.formulas.size() > 1) {
         mef::Formula::ArgSet arg_set;
-        for (mef::FormulaPtr& arg_formula : path_collector.formulas)
-          arg_set.Add(make_gate(std::move(arg_formula)));
-
-        gate_formulas.push_back(
-            std::make_unique<mef::Formula>(mef::kAnd, std::move(arg_set)));
+        for (mef::FormulaPtr& arg_formula : path_collector.formulas) {
+            arg_set.Add(make_gate(std::move(arg_formula)));
+        }
+        gate_formulas.push_back(std::make_unique<mef::Formula>(mef::kAnd, std::move(arg_set)));
       }
       if (path_collector.expressions.size() == 1) {
         arg_expressions.push_back(path_collector.expressions.front());
       } else if (path_collector.expressions.size() > 1) {
-        expressions_.push_back(
-            std::make_unique<mef::Mul>(std::move(path_collector.expressions)));
+        expressions_.push_back(std::make_unique<mef::Mul>(std::move(path_collector.expressions)));
         arg_expressions.push_back(expressions_.back().get());
       }
     }
@@ -138,30 +135,24 @@ void EventTreeAnalysis::Analyze()  {
       gate->formula(std::move(gate_formulas.front()));
     } else if (gate_formulas.size() > 1) {
       mef::Formula::ArgSet arg_set;
-      for (mef::FormulaPtr& arg_formula : gate_formulas)
-        arg_set.Add(make_gate(std::move(arg_formula)));
-
-      gate->formula(
-          std::make_unique<mef::Formula>(mef::kOr, std::move(arg_set)));
+      for (mef::FormulaPtr& arg_formula : gate_formulas) {
+          arg_set.Add(make_gate(std::move(arg_formula)));
+      }
+      gate->formula(std::make_unique<mef::Formula>(mef::kOr, std::move(arg_set)));
     } else if (!arg_expressions.empty()) {
-      auto event =
-          std::make_unique<mef::BasicEvent>("__" + sequence.first->name());
+      auto event = std::make_unique<mef::BasicEvent>("__" + sequence.first->name());
       if (arg_expressions.size() == 1) {
         event->expression(arg_expressions.front());
       } else if (arg_expressions.size() > 1) {
-        expressions_.push_back(
-            std::make_unique<mef::Add>(std::move(arg_expressions)));
+        expressions_.push_back(std::make_unique<mef::Add>(std::move(arg_expressions)));
         event->expression(expressions_.back().get());
       }
-      gate->formula(std::make_unique<mef::Formula>(
-          mef::kNull, mef::Formula::ArgSet{event.get()}));
+      gate->formula(std::make_unique<mef::Formula>(mef::kNull, mef::Formula::ArgSet{event.get()}));
       events_.push_back(std::move(event));
     } else {
-      gate->formula(std::make_unique<mef::Formula>(
-          mef::kNull, mef::Formula::ArgSet{&mef::HouseEvent::kTrue}));
+      gate->formula(std::make_unique<mef::Formula>(mef::kNull, mef::Formula::ArgSet{&mef::HouseEvent::kTrue}));
     }
-    sequences_.push_back(
-        {*sequence.first, std::move(gate), is_expression_only});
+    sequences_.push_back({*sequence.first, std::move(gate), is_expression_only});
   }
 }
 

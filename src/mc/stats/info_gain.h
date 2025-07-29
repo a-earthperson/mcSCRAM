@@ -106,12 +106,11 @@ namespace detail {
 // -----------------------------------------------------------------------------
 
 /**
- * Simple accumulator that tracks the Beta parameters, wall-clock and returns
- * *bits per second* after each `update(successes, failures)` call.
+ * Simple accumulator that tracks the Beta parameters
  */
-class InfoGainTracker {
+class info_gain {
 public:
-    explicit InfoGainTracker(double alpha0 = 0.5, double beta0 = 0.5)
+    explicit info_gain(const double alpha0 = 0.5, const double beta0 = 0.5)
         : alpha_(alpha0), beta_(beta0) {}
 
     /**
