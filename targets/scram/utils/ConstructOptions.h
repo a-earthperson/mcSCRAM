@@ -54,6 +54,7 @@ inline po::options_description ConstructOptions() {
         ("no-kn", "expand k/n to and/or [off]")
         ("no-xor", "expand xor to and/or [off]")
         ("nnf", "compile to negation normal form [off]")
+        ("preprocessor", "stop analysis after preprocessing")
         ("compilation-passes,c", OPT_VALUE(int)->default_value(2), "0=off 1=null-only 2=optimize 3+=multipass");
 
     // ------------------------------------------------------------------
@@ -66,7 +67,6 @@ inline po::options_description ConstructOptions() {
         ("help,h", "display this help message")
         ("verbosity,V", OPT_VALUE(int)->default_value(0), "set log verbosity [0,7]")
         ("version,v", "display version information")
-        ("preprocessor", "stop analysis after preprocessing")
         ("print", "print analysis results to terminal")
         ("serialize", "serialize the input model and exit")
         ("no-report", "don't generate analysis report")

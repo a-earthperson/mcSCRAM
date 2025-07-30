@@ -31,6 +31,21 @@
 #include <algorithm>
 #include <limits>
 #include <string>
+#include <vector>
+
+// Forward declare the sample_shaper template so we can reference it before its full definition.
+namespace scram::mc::queue {
+    template<typename bitpack_t_> struct sample_shaper;
+}
+
+namespace scram::log::sample_shaper {
+    // Forward declaration so that friend declaration inside mc::queue::sample_shaper
+    // can find the template before it is defined in log_sample_shaper.h.
+    template<typename bitpack_t_>
+    std::vector<std::pair<std::string, std::string>>
+    csv_pairs(const scram::mc::queue::sample_shaper<bitpack_t_>&);
+}
+
 
 namespace scram::mc::queue {
 template<typename bitpack_t_>
@@ -150,6 +165,10 @@ struct sample_shaper {
            << "TOTAL_ITERATIONS: " << sched.TOTAL_ITERATIONS << std::endl;
         return os;
     }
+
+    // Friend declaration for logging function
+    template<typename U>
+    friend std::vector<std::pair<std::string, std::string>> scram::log::sample_shaper::csv_pairs(const sample_shaper<U>&);
 
     static event::sample_shape<std::size_t> compute_optimal_sample_shape_for_bitpacks(const sycl::device &device,
                                                                                       const std::size_t bitpack_count) {

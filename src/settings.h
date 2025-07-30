@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include "model.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -28,6 +30,8 @@
 #include <stdexcept>
 
 #include <string_view>
+#include <string>
+#include <vector>
 
 namespace scram::core {
 
@@ -388,6 +392,26 @@ class Settings {
   /// Accepts non-negative values. Negative values are simply set as -1 to unset the variable.
   Settings &oracle_p(const double p) { oracle_p_ = p >= 0 ? p : -1.0; return *this; }
 
+  /// @returns the list of MEF input files provided for the analysis (can be empty).
+  [[nodiscard]] const std::vector<std::string>& input_files() const { return input_files_; }
+
+  /// Sets/overwrites the list of MEF input files (primarily called by CLI glue code).
+  /// A reference is not kept – a copy of the vector is stored inside the Settings instance.
+  Settings& input_files(const std::vector<std::string>& files) {
+    input_files_ = files;
+    return *this;
+  }
+
+  /// @returns an optional shared pointer to the MEF model
+  [[nodiscard]] mef::Model* model() const { return model_; }
+
+    /// Sets/overwrites the list of MEF input files (primarily called by CLI glue code).
+    /// A reference is not kept – a copy of the vector is stored inside the Settings instance.
+  Settings& model(mef::Model *model) {
+      model_ = model;
+      return *this;
+  }
+
   bool preprocessor = false;  ///< Stop analysis after preprocessor.
   bool print = false;  ///< Print analysis results in a terminal friendly way.
 
@@ -429,6 +453,11 @@ class Settings {
   bool expand_atleast_gates_ = false;
   bool expand_xor_gates_ = false;
   int compilation_level_ = 2;
+
+  // A copy of the final list of MEF input files passed on the command-line.  Read-only access is provided via the getter above.
+  std::vector<std::string> input_files_;
+
+  mef::Model* model_ = nullptr;
 };
 
 }  // namespace scram::core

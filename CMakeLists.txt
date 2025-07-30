@@ -5,7 +5,7 @@ set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(SCRAM VERSION 0.16.2 LANGUAGES C CXX)
+project(SCRAM VERSION 0.17.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 
 # Find and configure LLVM toolchain BEFORE project() call
@@ -200,6 +200,15 @@ else()
   message(STATUS "memory allocator: ${MALLOC_TYPE}")
 endif()
 
+
+# Expose build metadata to C++ via compile definitions
+add_compile_definitions(
+  SCRAM_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
+  SCRAM_WITH_COVERAGE=$<BOOL:${WITH_COVERAGE}>
+  SCRAM_WITH_PROFILE=$<BOOL:${WITH_PROFILE}>
+  SCRAM_OPTIMIZE_NATIVE=$<BOOL:${OPTIMIZE_FOR_NATIVE}>
+  SCRAM_MALLOC_TYPE="${MALLOC}"
+)
 
 # Find LibXML2 using our custom module
 find_package(LibXml2 REQUIRED)

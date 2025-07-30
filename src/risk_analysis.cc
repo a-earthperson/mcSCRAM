@@ -43,19 +43,6 @@ struct WatchGuard {
     ~WatchGuard() { scram::core::Pdag::SetWatchedGates(nullptr); }
 };
 
-// Helper: append PDAG indices corresponding to watched basic events to vector
-static void AppendWatchedBasicEventIndices(scram::core::Pdag *graph,
-                                           const std::unordered_set<const scram::mef::BasicEvent *> &watched,
-                                           std::vector<int> *out) {
-    if (watched.empty()) return;
-    const auto &bev = graph->basic_events();
-    for (int idx = 0; idx < static_cast<int>(bev.size()); ++idx) {
-        if (bev[idx] && watched.contains(bev[idx])) {
-            out->push_back(idx + scram::core::Pdag::kVariableStartIndex);  // basic event indices start here
-        }
-    }
-}
-
 namespace scram::core {
 
 RiskAnalysis::RiskAnalysis(mef::Model* model, const Settings& settings)

@@ -25,7 +25,6 @@ build/
 .cache
 .idea
 fixtures
-benchmarks
 
 .vscode
 .cursorrules

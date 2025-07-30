@@ -122,6 +122,7 @@ namespace scram::core {
         graph_ = std::make_unique<Pdag>(top_event_, Analysis::settings().ccf_analysis(), model_);
         this->Preprocess(graph_.get());
         if (settings().preprocessor || settings().skip_products()) {
+            Analysis::AddAnalysisTime(DUR(analysis_time));
             LOG(DEBUG2) << "Skipping products calculation...";
             return;
         }

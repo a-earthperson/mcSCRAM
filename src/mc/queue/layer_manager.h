@@ -34,6 +34,27 @@
 
 #include <sycl/sycl.hpp>
 
+#include <vector>
+#include <string>
+
+// ---------------------------------------------------------------------------
+//  Forward declarations to break circular header dependencies.
+// ---------------------------------------------------------------------------
+
+// Forward-declare layer_manager itself so that subsequent declarations can
+// reference it before its full definition appears later in this file.
+namespace scram::mc::queue {
+    template <typename bitpack_t_, typename prob_t_, typename size_t_>
+    class layer_manager;
+}
+
+// Forward declaration of the CSV logging helper.
+namespace scram::log::layers {
+    template <typename bt_, typename pt_, typename st_>
+    std::vector<std::pair<std::string, std::string>>
+    csv_pairs(const scram::mc::queue::layer_manager<bt_, pt_, st_>&);
+}
+
 namespace scram::mc::queue {
 
 /**
@@ -352,6 +373,13 @@ class layer_manager {
      */
     [[nodiscard]] inline const sample_shaper<bitpack_t_> &shaper() const  { return sample_shaper_; }
     [[nodiscard]] sycl::queue &queue() { return queue_; }
+
+    // ------------------------------------------------------------------
+    //  Logging helpers – grant access to scram::log::layers::csv_pairs
+    // ------------------------------------------------------------------
+    template <typename bt_, typename pt_, typename st_>
+    friend std::vector<std::pair<std::string, std::string>>
+    scram::log::layers::csv_pairs(const scram::mc::queue::layer_manager<bt_, pt_, st_>&);
     /**
      * @brief Destructor that cleans up allocated device memory
      *

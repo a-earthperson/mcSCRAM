@@ -18,6 +18,17 @@ set(MC_HEADERS
         kernel/gate.h
         kernel/tally.h
         #
+        logger/log_benchmark.h
+        logger/log_build.h
+        logger/log_compressratio.h
+        logger/log_pdag.h
+        logger/log_model.h
+        logger/log_settings.h
+        logger/log_layers.h
+        logger/log_tally.h
+        logger/log_sample_shaper.h
+        logger/csv.h
+        #
         prng/philox128.h
         prng/sfc64.h
         prng/state128.h
