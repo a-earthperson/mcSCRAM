@@ -115,7 +115,7 @@ namespace scram::mc::queue {
      * @param queueables_ [in,out] Vector to store the created queueable kernel
      * @param queueables_by_index_ [in,out] Map from node index to queueable for dependency tracking
      * @param allocated_basic_events_by_index_ [in,out] Map from node index to allocated basic event structures
-     * 
+     *
      * @return Shared pointer to the created queueable kernel, or nullptr if no variables provided
      * 
      * @throws std::bad_alloc if device memory allocation fails
@@ -160,7 +160,8 @@ namespace scram::mc::queue {
         const event::sample_shape<size_t_> &sample_shape_,
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
-        std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_) {
+        std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
+        std::vector<event::basic_event_block<prob_t_, bitpack_t_, index_t_>> &device_basic_event_blocks_) {
 
         if (variables_.empty()) {
             return nullptr;
@@ -210,7 +211,10 @@ namespace scram::mc::queue {
             queueables_by_index_[event_index_in_pdag] = queueable_partition;
         }
 
-        // 6) Enqueue for computation
+        // 6) Store the basic events block for dealloc
+        device_basic_event_blocks_.push_back(event_block);
+
+        // 7) Enqueue for computation
         queueables_.push_back(queueable_partition);
         return queueable_partition;
     }
@@ -238,19 +242,7 @@ namespace scram::mc::queue {
      * - Negated inputs: indices [negated_inputs_offset, num_inputs)
      * - Dependency collection ensures proper execution ordering
      * - Buffer pointer management enables direct device memory access
-     * 
-     * **Template Specialization Benefits:**
-     * - Compile-time optimization for each gate type
-     * - Elimination of runtime branching in kernel code
-     * - Optimal code generation for specific operations
-     * - Type-safe handling of different gate configurations
-     * 
-     * **Memory Layout Optimization:**
-     * - Contiguous allocation for all gates of the same type
-     * - Optimal alignment for GPU memory access patterns
-     * - Efficient input buffer organization
-     * - Minimal memory overhead through shared structures
-     * 
+     *
      * @tparam gate_type_ Compile-time constant specifying the logical operation type
      * @tparam index_t_ Signed integer type for node indexing
      * @tparam prob_t_ Floating-point type for probability calculations
@@ -311,7 +303,9 @@ namespace scram::mc::queue {
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
-        std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_) {
+        std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
+        std::vector<event::gate_block<bitpack_t_, size_t_>> &device_gate_blocks_,
+        std::vector<event::atleast_gate_block<bitpack_t_, size_t_>> &device_atleast_gate_blocks_) {
 
         if (gates_.empty()) {
             return nullptr;
@@ -395,6 +389,8 @@ namespace scram::mc::queue {
 
         if constexpr (gate_type_ == core::Connective::kAtleast) {
             auto gate_blk = event::create_atleast_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, atleast_args_by_gate, sample_shape_.num_bitpacks());
+            device_atleast_gate_blocks_.push_back(gate_blk);
+
             kernel_type typed_kernel(gate_blk, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
             queueable<kernel_type, 3> partition(queue_, typed_kernel, nd_range, layer_dependencies);
@@ -408,6 +404,7 @@ namespace scram::mc::queue {
             }
         } else {
             auto gate_blk = event::create_gate_block<bitpack_t_, size_t_>(queue_, inputs_by_gate_with_negated_offset, sample_shape_.num_bitpacks());
+            device_gate_blocks_.push_back(gate_blk);
 
             kernel_type typed_kernel(gate_blk, sample_shape_);
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
@@ -531,7 +528,9 @@ namespace scram::mc::queue {
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
-        std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_
+        std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
+        std::vector<event::gate_block<bitpack_t_, size_t_>> &device_gate_blocks_,
+        std::vector<event::atleast_gate_block<bitpack_t_, size_t_>> &device_atleast_gate_blocks_
         ) {
         std::vector<std::shared_ptr<queueable_base>> kernels;
         kernels.reserve(gates_by_type.size());
@@ -546,28 +545,28 @@ namespace scram::mc::queue {
 
             switch (gate_type) {
                 case core::kAnd:
-                    kernel = build_kernel_for_gates_of_type<core::kAnd, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
+                    kernel = build_kernel_for_gates_of_type<core::kAnd, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
                     break;
                 case core::kOr:
-                    kernel = build_kernel_for_gates_of_type<core::kOr, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
+                    kernel = build_kernel_for_gates_of_type<core::kOr, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
                     break;
                 case core::kAtleast:
-                    kernel = build_kernel_for_gates_of_type<core::kAtleast, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
+                    kernel = build_kernel_for_gates_of_type<core::kAtleast, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
                     break;
                 case core::kXor:
-                    kernel = build_kernel_for_gates_of_type<core::kXor, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
+                    kernel = build_kernel_for_gates_of_type<core::kXor, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
                     break;
                 case core::kNot:
-                    kernel = build_kernel_for_gates_of_type<core::kNot, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
+                    kernel = build_kernel_for_gates_of_type<core::kNot, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
                     break;
                 case core::kNand:
-                    kernel = build_kernel_for_gates_of_type<core::kNand, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
+                    kernel = build_kernel_for_gates_of_type<core::kNand, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
                     break;
                 case core::kNor:
-                    kernel = build_kernel_for_gates_of_type<core::kNor, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
+                    kernel = build_kernel_for_gates_of_type<core::kNor, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
                     break;
                 case core::kNull:
-                    kernel = build_kernel_for_gates_of_type<core::kNull, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_);
+                    kernel = build_kernel_for_gates_of_type<core::kNull, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
                     break;
             }
             // Build exactly one kernel for gates of this type in the layer
@@ -635,7 +634,8 @@ namespace scram::mc::queue {
      * @param allocated_basic_events_by_index_ [in] Map from node index to basic event structures
      * @param allocated_gates_by_index_ [in] Map from node index to gate structures
      * @param allocated_tally_events_by_index_ [in,out] Map from node index to allocated tally event structures
-     * 
+     * @param device_tally_blocks_
+     *
      * @return Shared pointer to the created queueable tally kernel, or nullptr if no nodes provided
      * 
      * @throws std::runtime_error if unknown node types are encountered
@@ -700,7 +700,8 @@ namespace scram::mc::queue {
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
         const std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
-        std::unordered_map<index_t_, event::tally<bitpack_t_> *> &allocated_tally_events_by_index_) {
+        std::unordered_map<index_t_, event::tally<bitpack_t_> *> &allocated_tally_events_by_index_,
+        std::vector<event::tally_block<bitpack_t_>> &device_tally_blocks_) {
         // collect all events in this layer
         std::vector<index_t_> indices;
         std::vector<bitpack_t_ *> node_buffers;
@@ -741,6 +742,8 @@ namespace scram::mc::queue {
         const auto num_events_in_layer = indices.size();
         using block_type = event::tally_block<bitpack_t_>;
         block_type tally_blk = event::create_tally_block<bitpack_t_>(queue_, node_buffers);
+        // track this allocated block.
+        device_tally_blocks_.push_back(tally_blk);
 
         // build the kernel
         using kernel_type = kernel::tally<prob_t_, bitpack_t_, size_t_>;

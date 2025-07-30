@@ -1,15 +1,15 @@
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(MC_SRC
-        ${CMAKE_CURRENT_SOURCE_DIR}/preprocessor.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/probability_analysis.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/importance_analysis.cc
+        core/preprocessor.cc
+        core/probability_analysis.cc
+        core/importance_analysis.cc
 )
 
 # Optionally collect public headers for installation
 set(MC_HEADERS
         #
-        direct_eval.h
+        core/direct_eval.h
         #
         event/node.h
         event/sample_shape.h
@@ -32,6 +32,7 @@ set(MC_HEADERS
         queue/queueable.h
         #
         scheduler/convergence_controller.h
+        scheduler/convergence_policy.h
         scheduler/iteration_shape.h
         scheduler/progressbar.h
         #

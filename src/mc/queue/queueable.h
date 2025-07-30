@@ -203,9 +203,10 @@ namespace scram::mc::queue {
          * my_queueable->submit();
          * @endcode
          */
-        void submit() {
+        sycl::event submit() {
             const std::vector<sycl::event> dependencies = fetch_dependencies();
             this->queued_event_ = perform_submission(dependencies);
+            return this->queued_event_;
         }
 
     private:
@@ -236,7 +237,7 @@ namespace scram::mc::queue {
          * // dep_events contains events from all dependencies
          * @endcode
          */
-        std::vector<sycl::event> fetch_dependencies() {
+        [[nodiscard]] std::vector<sycl::event> fetch_dependencies() const {
             std::vector<sycl::event> dep_events;
             dep_events.reserve(dependencies_.size());
             for (const std::shared_ptr<queueable_base> &dep: this->dependencies_) {

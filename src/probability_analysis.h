@@ -23,13 +23,17 @@
 
 #include <utility>
 #include <vector>
+#include <memory>
 
 #include "analysis.h"
 #include "bdd.h"
 #include "fault_tree_analysis.h"
+#include "logger.h"
 #include "pdag.h"
 
 #include "mc/stats/tally.h"
+#include "mc/stats/tally_node.h" // existing
+#include "mc/stats/tally_node_map.h" // new map
 
 namespace scram::mef {
 class MissionTime;
@@ -76,7 +80,7 @@ namespace scram::core {
         /// @pre Analysis is called only once.
         ///
         /// @post The mission time expression has its original value.
-        void Analyze() noexcept;
+        void Analyze() ;
 
         /// @returns The total probability calculated by the analysis.
         ///
@@ -107,16 +111,16 @@ namespace scram::core {
         /// Calculates the total probability.
         ///
         /// @returns The total probability of the graph or products.
-        virtual double CalculateTotalProbability() noexcept = 0;
+        virtual double CalculateTotalProbability()  = 0;
 
         /// Calculates the probability evolution through the mission time.
         ///
         /// @returns The probabilities at time steps.
         virtual std::vector<std::pair<double, double>>
-        CalculateProbabilityOverTime() noexcept = 0;
+        CalculateProbabilityOverTime()  = 0;
 
         /// Computes probability metrics related to the SIL.
-        void ComputeSil() noexcept;
+        void ComputeSil() ;
 
         double p_total_;                               ///< Total probability of the top event.
         mef::MissionTime *mission_time_;               ///< The mission time expression.
@@ -141,7 +145,7 @@ namespace scram::core {
         /// @pre Probability values are non-negative.
         /// @pre Indices of events directly map to vector indices.
         double Calculate(const std::vector<int> &cut_set,
-                         const Pdag::IndexMap<double> &p_vars) noexcept;
+                         const Pdag::IndexMap<double> &p_vars) ;
     };
 
     class Zbdd;// The container of analysis products for computations.
@@ -163,7 +167,7 @@ namespace scram::core {
         ///       It is very unwise to use the rare-event approximation
         ///       with large probability values.
         double Calculate(const Zbdd &cut_sets,
-                         const Pdag::IndexMap<double> &p_vars) noexcept;
+                         const Pdag::IndexMap<double> &p_vars) ;
     };
 
     /// Quantitative calculator of probability values
@@ -178,7 +182,7 @@ namespace scram::core {
         ///
         /// @returns The total probability with the MCUB approximation.
         double Calculate(const Zbdd &cut_sets,
-                         const Pdag::IndexMap<double> &p_vars) noexcept;
+                         const Pdag::IndexMap<double> &p_vars) ;
     };
 
     /// Base class for Probability analyzers.
@@ -224,14 +228,14 @@ namespace scram::core {
         ///
         /// @returns The total probability calculated with the given values.
         virtual double
-        CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept = 0;
+        CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) = 0;
 
-        double CalculateTotalProbability() noexcept override {
+        double CalculateTotalProbability()  override {
             return this->CalculateTotalProbability(p_vars_);
         }
 
         std::vector<std::pair<double, double>>
-        CalculateProbabilityOverTime() noexcept final;
+        CalculateProbabilityOverTime()  override;
 
         /// Upon construction of the probability analysis,
         /// stores the variable probabilities in a continuous container
@@ -258,7 +262,7 @@ namespace scram::core {
         using ProbabilityAnalyzerBase::ProbabilityAnalyzerBase;
 
         double CalculateTotalProbability(
-                const Pdag::IndexMap<double> &p_vars) noexcept final {
+                const Pdag::IndexMap<double> &p_vars)  final {
             return calc_.Calculate(ProbabilityAnalyzerBase::products(), p_vars);
         }
 
@@ -299,13 +303,13 @@ namespace scram::core {
 
         /// Deletes the PDAG and BDD
         /// only if ProbabilityAnalyzer is the owner of them.
-        ~ProbabilityAnalyzer() noexcept;
+        ~ProbabilityAnalyzer() ;
 
         /// @returns Binary decision diagram used for calculations.
         Bdd *bdd_graph() { return bdd_graph_; }
 
         double CalculateTotalProbability(
-                const Pdag::IndexMap<double> &p_vars) noexcept final;
+                const Pdag::IndexMap<double> &p_vars)  final;
 
     private:
         /// Creates a new BDD for use by the analyzer.
@@ -313,7 +317,7 @@ namespace scram::core {
         /// @param[in] fta  The fault tree analysis providing the root gate.
         ///
         /// @pre The function is called in the constructor only once.
-        void CreateBdd(const FaultTreeAnalysis &fta) noexcept;
+        void CreateBdd(const FaultTreeAnalysis &fta) ;
 
         /// Calculates exact probability
         /// of a function graph represented by its root BDD vertex.
@@ -328,7 +332,7 @@ namespace scram::core {
         /// @warning If a vertex is already marked with the input mark,
         ///          it will not be traversed and updated with a probability value.
         double CalculateProbability(const Bdd::VertexPtr &vertex, bool mark,
-                                    const Pdag::IndexMap<double> &p_vars) noexcept;
+                                    const Pdag::IndexMap<double> &p_vars) ;
 
         Bdd *bdd_graph_;   ///< The main BDD graph for analysis.
         bool current_mark_;///< To keep track of BDD current mark.
@@ -340,6 +344,9 @@ namespace scram::core {
     template<>
     class ProbabilityAnalyzer<mc::DirectEval> : public ProbabilityAnalyzerBase {
     public:
+        using TallyNode = mc::stats::TallyNode;
+        using index_t = int; // pdag index uses 32bit ints, negated values mean compliments
+
         /// Constructs probability analyzer from a fault tree analyzer
         /// with the same algorithm.
         ///
@@ -350,7 +357,7 @@ namespace scram::core {
         ProbabilityAnalyzer(const FaultTreeAnalyzer<Algorithm> *fta,
                             mef::MissionTime *mission_time)
             : ProbabilityAnalyzerBase(fta, mission_time) {
-            ComputeTallies(this->graph(), tallies_);
+            LOG(DEBUG2) << "Using PDAG from a different FaultTreeAnalyzer<Algorithm> for ProbabilityAnalyzer";
         }
 
         /// Reuses PDAG structures from Fault tree analyzer.
@@ -366,22 +373,43 @@ namespace scram::core {
 
         /// Deletes the PDAG
         /// only if ProbabilityAnalyzer is the owner of them.
-        ~ProbabilityAnalyzer() noexcept override;
+        ~ProbabilityAnalyzer()  override;
 
-        double CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars) noexcept final;
+        double CalculateTotalProbability(const Pdag::IndexMap<double> &p_vars)  final;
 
-        //double CalculateTotalProbability() noexcept override;
+        // double CalculateTotalProbability()  override;
+
+        std::vector<std::pair<double, double>>
+        CalculateProbabilityOverTime() override;
+
     protected:
-        void ComputeTallies(Pdag* pdag, std::unordered_map<int, mc::stats::tally> &to_compute);
-        std::unordered_map<int, mc::stats::tally> tallies_;
+        void ComputeTallies(bool converge_on_root_only = false);
 
+        mc::stats::TallyNodeMap monitored_; // all the monitored/observed nodes. always collect tallies for these.
+
+        static auto GatherGates(Pdag *pdag) -> std::unordered_set<index_t>;
+        static auto GatherGates(Pdag *pdag, std::unordered_set<index_t> *nodes);
+
+        static auto ObserveNodes(Pdag *pdag, mc::stats::TallyNodeMap &observing,
+                                 const std::unordered_set<index_t> &to_observe, bool track_convergence,
+                                 bool clear_stats) -> std::unordered_set<index_t>;
+
+        void SanitizeWatchState();
     public:
-        /// @brief Read-only access to Monte-Carlo tallies computed for each PDAG node.
-        ///
-        /// The key is the PDAG node index, the value is the sampling statistics
-        /// collected for that node.
-        [[nodiscard]] const std::unordered_map<int, mc::stats::tally>& tallies() const {
-            return tallies_;
+
+        void observe(const std::unordered_set<index_t> &node_indices, const bool track_convergence = false, const bool clear_stats = false) {
+            const auto will_observe = ObserveNodes(this->graph(), this->monitored_, node_indices, track_convergence, clear_stats);
+            LOG(DEBUG3)<<"Observing new nodes for "<<(track_convergence?"convergence":"tallies")<<" :: "<<will_observe.size();
         }
+
+        void observe(const std::vector<index_t> &node_indices, const bool track_convergence = false, const bool clear_stats = false) {
+            observe(std::unordered_set<index_t>{node_indices.begin(), node_indices.end()}, track_convergence, clear_stats);
+        }
+
+        void observe(const std::set<index_t> &node_indices, const bool track_convergence = false, const bool clear_stats = false) {
+            observe(std::unordered_set<index_t>{node_indices.begin(), node_indices.end()}, track_convergence, clear_stats);
+        }
+
+        [[nodiscard]] const mc::stats::TallyNodeMap& monitored() const { return monitored_; }
     };
 }// namespace scram::core

@@ -32,7 +32,7 @@
 
 #include "pdag.h"
 
-#include "mc/direct_eval.h"
+#include "mc/core/direct_eval.h"
 
 namespace scram::core {
 

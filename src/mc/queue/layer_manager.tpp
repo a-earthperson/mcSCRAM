@@ -149,14 +149,14 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::build_kernels_for_layer(
 
     // Step (2): Build a single kernel for all variables in this layer (if any)
     auto be_kernel = build_kernel_for_variables<index_t_, prob_t_, bitpack_t_, size_t_>(
-        variables, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_);
+        variables, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, device_basic_event_blocks_);
     // We could store or log “be_kernel” if we want direct reference, or just rely
     // on the global queueables_ list.
 
     // Step (3): Build one kernel per gate->type() in this layer
     auto gate_kernels = build_kernels_for_gates<index_t_, prob_t_, bitpack_t_, size_t_>(
         gates_by_type, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_,
-        allocated_gates_by_index_);
+        allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
 
     // Optionally do something with (be_kernel) and the (gate_kernels) vector.
     // The queueables_ container is updated in each subfunction, so
@@ -166,23 +166,10 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::build_kernels_for_layer(
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 void layer_manager<bitpack_t_, prob_t_, size_t_>::map_nodes_by_layer(
     const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer) {
-
-    // flatten the list of list of nodes
-    std::vector<std::shared_ptr<core::Node>> all_nodes_to_tally;
-    all_nodes_to_tally.reserve(pdag_nodes_.size());
-
     for (const auto &nodes_in_layer : nodes_by_layer) {
         // build kernels for nodes in this layer
         build_kernels_for_layer(nodes_in_layer);
-
-        // add all the nodes from this layer to all_nodes_to_tally
-        all_nodes_to_tally.insert(all_nodes_to_tally.end(), nodes_in_layer.begin(), nodes_in_layer.end());
     }
-
-    // now, add *ALL* nodes, including variables, to the final layer, which is one large tally block.
-    build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(
-        all_nodes_to_tally, queue_, sample_shape_, queueables_, queueables_by_index_,
-        allocated_basic_events_by_index_, allocated_gates_by_index_, allocated_tally_events_by_index_);
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
@@ -195,9 +182,6 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
     const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.total_bits = computed_tally->total_bits;
-    // to_tally.mean = computed_tally->mean;
-    // to_tally.std_err = computed_tally->std_err;
-    // to_tally.ci = computed_tally->ci;
     // ---------------------------------------------------------------------
     //  Host-side statistical post-processing
     // ---------------------------------------------------------------------
@@ -209,41 +193,6 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
     return std::move(to_tally);
 }
 
-// template <typename bitpack_t_, typename prob_t_, typename size_t_>
-// void layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_all_tallies(double eps, double confidence) {
-//     single_pass().wait_and_throw();
-//     for (auto &pair : allocated_tally_events_by_index_) {
-//         const index_t_ idx = pair.first;
-//         const event::tally<bitpack_t_> *tally = pair.second;
-//
-//         // ------------------------------------------------------------------
-//         //  Compose human-readable statistics line.
-//         //   format:  tally[idx] :: [std_err] :: [p05, mean, p95] :: CI(x%) :: ε[val]
-//         // ------------------------------------------------------------------
-//         const double conf_used = (confidence > 0.0) ? confidence : 0.95; // default to 95 %
-//         const double z_used    = scram::mc::stats::normal_quantile_two_sided(conf_used);
-//         const double half_width= z_used * tally->std_err;
-//
-//         LOG(WARNING) << "tally[" << idx << "] :: [std_err] :: [p05, mean, p95] :: [" << tally->std_err << "] :: ["
-//                     << tally->ci[0] << ", " << tally->mean << ", "
-//                     << tally->ci[1] << "] :: CI(" << conf_used * 100.0 << "%) :: ε["
-//                     << half_width << "]";
-//     }
-// }
-
-template <typename bitpack_t_, typename prob_t_, typename size_t_>
-layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials) {
-    // create and sort layers
-    layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
-    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, node_count());
-    sample_shape_ = sample_shaper_.SAMPLE_SHAPE;
-    
-    // Log sample_shaper configuration
-    LOG(DEBUG2) << sample_shaper_;
-    
-    map_nodes_by_layer(pdag_nodes_by_layer_);
-}
-
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 std::size_t layer_manager<bitpack_t_, prob_t_, size_t_>::node_count() const {
     const auto num_nodes = pdag_nodes_.size();
@@ -251,9 +200,18 @@ std::size_t layer_manager<bitpack_t_, prob_t_, size_t_>::node_count() const {
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::single_pass() {
+[[gnu::always_inline]] sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::single_pass() {
+    #pragma unroll
     for (const auto &queueable : queueables_) {
         queueable->submit();
+    }
+    return queue_;
+}
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::pass(const size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        single_pass();
     }
     return queue_;
 }
@@ -266,34 +224,80 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::single_pas
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-void layer_manager<bitpack_t_, prob_t_, size_t_>::collect_tallies(std::unordered_map<index_t_, stats::tally> &stats) {
+stats::TallyNodeMap &layer_manager<bitpack_t_, prob_t_, size_t_>::pass_wait_collect(
+        stats::TallyNodeMap &stats,
+        const std::size_t total_passes,
+        const std::size_t passes_between_waits) {
+    /*
+     * The purpose of this routine is to
+     *  1. enqueue `total_passes` Monte-Carlo passes, potentially amounting to
+     *     hundreds of thousands of kernel launches (10k+ queueables per pass!),
+     *  2. periodically wait for the device to drain the queue so that we do not
+     *     accumulate an unbounded number of in-flight kernels / SYCL events, and
+     *  3. finally aggregate the resulting tallies on the host.
+     *
+     *  `passes_between_waits` controls the waiting cadence:
+     *      – 0   : never wait in-between; we only wait once at the end.
+     *      – n>0 : wait after every *n* passes (or sooner if less than *n*
+     *              passes remain).
+     */
+
+    if (total_passes == 0) {
+        throw std::invalid_argument("pass_wait_collect: total_passes must be greater than 0");
+    }
+
+    // A value of 0 means "wait only after the final batch".
+    const auto interval = passes_between_waits == 0 ? total_passes : passes_between_waits;
+
+    auto passes_remaining = total_passes;
+    while (passes_remaining > 0) {
+        const auto batch_size = std::min(interval, passes_remaining);
+
+        // Enqueue `batch_size` passes without blocking.
+        auto queue = pass(batch_size);
+
+        // Flush the device so we do not let the queue grow without bound.
+        queue.wait_and_throw();
+
+        passes_remaining -= batch_size;
+    }
+
+    // Once all passes have completed on the device we can safely harvest the
+    // tallies and fold them into the caller-supplied statistics map.
+    return collect_tallies(stats);
+}
+
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+stats::TallyNodeMap &layer_manager<bitpack_t_, prob_t_, size_t_>::collect_tallies(stats::TallyNodeMap &stats) {
     for (auto &pair : allocated_tally_events_by_index_) {
         const auto &idx = pair.first;
         const auto *tally_on_device = allocated_tally_events_by_index_[idx];
-        stats[idx].num_one_bits = tally_on_device->num_one_bits;
-        stats[idx].total_bits = tally_on_device->total_bits;
-        stats::populate_point_estimates(stats[idx]);
+        mc::stats::tally &tally = stats[idx].tally_stats;
+        tally.update(tally_on_device);
     }
+    return stats;
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
+
     // Free allocated basic events
-    for (auto &pair : allocated_basic_events_by_index_) {
-        event::basic_event<prob_t_, bitpack_t_> *event = pair.second;
-        // destroy_basic_event(queue_, event);
+    for (auto &block : device_basic_event_blocks_) {
+        event::destroy_basic_event_block(queue_, block);
     }
 
     // Free allocated gates
-    for (auto &pair : allocated_gates_by_index_) {
-        event::gate<bitpack_t_, size_t_> *event = pair.second;
-        // destroy_gate(queue_, event);
+    for (auto &block : device_gate_blocks_) {
+        event::destroy_gate_block(queue_, block);
     }
 
-    // Free allocated tally events
-    for (auto &pair : allocated_tally_events_by_index_) {
-        event::tally<bitpack_t_> *event = pair.second;
-        // destroy_tally_event(queue_, event);
+    for (auto &block : device_atleast_gate_blocks_) {
+        event::destroy_atleast_gate_block(queue_, block);
+    }
+
+    for (auto &block : device_tally_blocks_) {
+        event::destroy_tally_block(queue_, block);
     }
 }
 
@@ -336,6 +340,39 @@ const scram::mef::Event *scram::mc::queue::layer_manager<bitpack_t_, prob_t_, si
 
     // Unsupported node type – provide a clear diagnostic.
     throw std::runtime_error("layer_manager::get_mef_event – resolution for non-variable nodes (gates / constants) is not implemented");
+}
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials, const stats::TallyNodeMap &to_tally) {
+    // create and sort layers
+    layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
+    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, node_count());
+    sample_shape_ = sample_shaper_.SAMPLE_SHAPE;
+
+    // create kernels for all basic-events, gates.
+    map_nodes_by_layer(pdag_nodes_by_layer_);
+
+    std::vector<std::shared_ptr<core::Node>> nodes_to_tally(to_tally.size());
+    auto i = 0;
+    for (const std::pair<int, stats::TallyNode> entry : to_tally) {
+        const stats::TallyNode &tally_node = entry.second;
+        const std::shared_ptr<core::Node> &node = tally_node.node;
+        nodes_to_tally[i++] = node;
+    }
+
+    // now, add the tally nodes to the final layer, which is one large tally block.
+    build_tallies_for_layer<index_t_, prob_t_, bitpack_t_, size_t_>(nodes_to_tally,
+        queue_,
+        sample_shape_,
+        queueables_,
+        queueables_by_index_,
+        allocated_basic_events_by_index_,
+        allocated_gates_by_index_,
+        allocated_tally_events_by_index_,
+        device_tally_blocks_);
+
+    // Log sample_shaper configuration
+    LOG(DEBUG2) << sample_shaper_;
 }
 
 } // namespace scram::mc::queue

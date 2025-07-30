@@ -21,8 +21,9 @@
  **/
 
 #include "importance_analysis.h"
-#include "mc/direct_eval.h"
 #include "probability_analysis.h"
+
+#include "mc/core/direct_eval.h"
 
 /// ---------------------------------------------------------------------------
 ///  Stub specialization of ImportanceAnalyzer for Monte-Carlo DirectEval path.

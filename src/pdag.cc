@@ -36,9 +36,17 @@
 #include "event.h"
 #include "logger.h"
 #include "model.h"
+#include "preprocessor.h"
 #include "substitution.h"
 
 namespace scram::core {
+
+// Initialize the static watched‐gate pointer
+const std::unordered_set<const mef::Gate *> *Pdag::watched_gates_ = nullptr;
+
+void Pdag::SetWatchedGates(const std::unordered_set<const mef::Gate *> *gates) {
+  watched_gates_ = gates;
+}
 
 void NodeParentManager::AddParent(const GatePtr& gate) {
   assert(!parents_.count(gate->index()) && "Adding an existing parent.");
@@ -65,6 +73,7 @@ Gate::Gate(Connective type, Pdag* graph)
       min_number_(0),
       descendant_(0),
       ancestor_(0),
+      origin_(nullptr),
       min_time_(0),
       max_time_(0) {}
 
@@ -75,6 +84,9 @@ void Gate::type(Connective type) {  // Don't use in Gate constructor!
   if (type_ == kNull)
     Pdag::NullGateRegistrar()(shared_from_this());
 }
+
+const mef::Gate* core::Gate::mef_origin_ptr() const { return origin_; }
+void core::Gate::mef_origin_ptr(const mef::Gate* g) { origin_ = g; }
 
 GatePtr Gate::Clone()  {
   BLOG(DEBUG5, module_) << "WARNING: Cloning module G" << Node::index();
@@ -87,6 +99,7 @@ GatePtr Gate::Clone()  {
   clone->gate_args_ = gate_args_;
   clone->variable_args_ = variable_args_;
   clone->constant_ = constant_;
+  clone->origin_ = origin_;
   // Introducing the new parent to the args.
   for (const auto& arg : gate_args_)
     arg.second->AddParent(clone);
@@ -567,6 +580,12 @@ void Pdag::AddArg(const GatePtr& parent, const T& event, bool complement,
     GatePtr& pdag_gate = nodes->gates.find(&event)->second;
     if (!pdag_gate) {
       pdag_gate = ConstructGate(event.formula(), ccf, nodes);
+    }
+
+    if (Pdag::watched_gates_ && Pdag::watched_gates_->contains(&event)) {
+      if (!pdag_gate->mef_origin_ptr()) {
+          pdag_gate->mef_origin_ptr(&event);
+      }
     }
     parent->AddArg(pdag_gate, complement);
 

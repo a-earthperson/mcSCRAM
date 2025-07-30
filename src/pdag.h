@@ -41,6 +41,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <unordered_set>
 
 #include <boost/container/flat_set.hpp>
 #include <boost/range/adaptor/transformed.hpp>
@@ -49,7 +50,8 @@
 #include "ext/index_map.h"
 #include "ext/linear_map.h"
 
-#include <event.h>
+#include "event.h"
+#include "ext/bimap.h"
 
 namespace scram::mef {  // Declarations to decouple from the MEF initialization.
 class Model;  // Provider of substitutions.
@@ -694,6 +696,10 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   /// @param[in] state  The value for the Boolean constant.
   void MakeConstant(bool state) ;
 
+  // Link back to original MEF gate. nullptr when not applicable.
+  const mef::Gate* mef_origin_ptr() const;
+  void mef_origin_ptr(const mef::Gate* g);
+
  private:
   using std::enable_shared_from_this<Gate>::shared_from_this;
 
@@ -753,8 +759,9 @@ class Gate : public Node, public std::enable_shared_from_this<Gate> {
   bool coherent_;  ///< Indication of a coherent graph.
   int min_number_;  ///< Min number for ATLEAST gate.
   int descendant_;  ///< Mark by descendant indices.
-  int ancestor_;  ///< Mark by ancestor indices.
-  int min_time_;  ///< Minimum time of visits of the sub-graph of the gate.
+  int ancestor_;  ///< Ancestor spanning the min/max times.
+  const mef::Gate* origin_{nullptr};
+  int min_time_;  ///< Minimum time of visit of this gate.
   int max_time_;  ///< Maximum time of visits of the sub-graph of the gate.
   ArgSet args_;  ///< Argument indices of the gate.
   /// Associative containers of gate arguments of certain type.
@@ -794,7 +801,7 @@ void Gate::AddArg<Constant>(int index, const ConstantPtr& arg) ;
 ///      all the other preprocessing and analysis algorithms.
 class Pdag : private boost::noncopyable {
  public:
-  static const int kVariableStartIndex = 2;  ///< The shift value for mapping.
+  static constexpr int kVariableStartIndex = 2;  ///< The shift value for mapping.
   /// Sequential mapping of Variable indices to other data of type T.
   template <typename T>
   using IndexMap = ext::index_map<kVariableStartIndex, T>;
@@ -1021,6 +1028,11 @@ class Pdag : private boost::noncopyable {
   template <NodeMark Mark>
   void Clear(const GatePtr& gate) ;
 
+  // Sets (or clears) the global list of MEF::Gate pointers that must be kept
+  // as immutable modules during PDAG construction / preprocessing.  Pass
+  // nullptr to clear.
+  static void SetWatchedGates(const std::unordered_set<const mef::Gate*> *gates);
+
  private:
   /// Holder for nodes that are created from fault tree events.
   /// This is a helper structure
@@ -1153,6 +1165,10 @@ class Pdag : private boost::noncopyable {
   /// NULL type gates are created by gates with only one argument.
   std::vector<GateWeakPtr> null_gates_;
   std::vector<Substitution> substitutions_;  ///< Non-declarative substitutions.
+  // Pointer to the current set of watched MEF::Gate* (nullptr when unused)
+  static const std::unordered_set<const mef::Gate*> *watched_gates_;
+  // Pointer to the current set of watched indices (nullptr when unused)
+  static std::unordered_set<int> *watched_indices_;
 };
 
 /// Traverses and visits gates and nodes in the graph.
@@ -1186,6 +1202,23 @@ void TraverseNodes(const GatePtr& gate, T&& visit)  {
   for (const auto& arg : gate->args<Variable>()) {
     visit(arg.second);
   }
+}
+
+static ext::bimap<int, const mef::Gate *> WalkAndCollectMefGatesWithIndices(Pdag *graph) {
+    if (!graph)
+        return {};
+    ext::bimap<int, const mef::Gate *> collected = {};
+    graph->Clear<Pdag::kGateMark>();
+    TraverseGates(graph->root_ptr(), [&collected](const std::shared_ptr<core::Gate> &pg) {
+      if (pg->mef_origin_ptr()) {
+        const mef::Gate *mef = pg->mef_origin_ptr();
+        const int idx = pg->index();
+        collected.A_to_B[idx] = mef;
+        collected.B_to_A[mef] = idx;
+      }
+    });
+    graph->Clear<Pdag::kGateMark>();
+    return collected;
 }
 /// @}
 

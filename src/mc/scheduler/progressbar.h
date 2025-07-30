@@ -14,21 +14,19 @@
 #include <atomic>
 #include <mutex>
 
-#include "mc/stats/ci_utils.h"
 #include "mc/stats/diagnostics.h"
-#include "mc/stats/info_gain.h"
 
 #define PRECISION_LOG_SCIENTIFIC_DIGITS 3
 
 namespace scram::mc::scheduler {
 
-template <typename bitpack_t_, typename prob_t_, typename size_t_>
+template <typename policy_t_, typename bitpack_t_, typename prob_t_, typename size_t_>
 class convergence_controller;
 
-template <typename bitpack_t_, typename prob_t_, typename size_t_>
+template <typename policy_t_, typename bitpack_t_, typename prob_t_, typename size_t_>
 struct progress {
 
-    void initialize(const convergence_controller<bitpack_t_, prob_t_, size_t_> *controller, const bool watch_mode) {
+    void initialize(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> *controller, const bool watch_mode) {
         // Initialize timing for throughput tracking
         last_tick_time_ = std::chrono::high_resolution_clock::now();
         first_tick_ = true;
@@ -72,7 +70,7 @@ struct progress {
         worker_thread_ = std::thread([this]() { worker_loop(); });
     }
 
-    void tick(const convergence_controller<bitpack_t_, prob_t_, size_t_> *controller) {
+    void tick(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> *controller) {
         // Fast path: if we are *not* in watch mode, behave exactly as before.
         if (!watch_mode_) {
             // No terminal attached – fallback to lightweight logging only.
@@ -107,7 +105,7 @@ struct progress {
         finalize();
     }
 
-    void tick_text(const convergence_controller<bitpack_t_, prob_t_, size_t_> *controller) const {
+    void tick_text(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> *controller) const {
         tick_estimate_bar(*controller);
         tick_diagnostics(*controller);
         tick_accuracy_metrics(*controller);
@@ -116,7 +114,7 @@ struct progress {
     }
 
     // Mark the convergence bar as complete once the controller reports success.
-    void mark_converged(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void mark_converged(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_convergence_bar(controller);
         if (convergence_ && !bars_->operator[](*convergence_).is_completed()) {
             bars_->operator[](*convergence_).mark_as_completed();
@@ -124,7 +122,7 @@ struct progress {
     }
 
     // Mark the convergence bar as complete once the controller reports success.
-    void mark_log_converged(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void mark_log_converged(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_log_convergence_bar(controller);
         if (log_convergence_ && !bars_->operator[](*log_convergence_).is_completed()) {
             bars_->operator[](*log_convergence_).mark_as_completed();
@@ -132,21 +130,21 @@ struct progress {
     }
 
     // Mark the iterations bar as complete when the planned iterations finish.
-    void mark_fixed_iterations_complete(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void mark_fixed_iterations_complete(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_fixed_bar(controller);
         if (fixed_iterations_ && !bars_->operator[](*fixed_iterations_).is_completed()) {
             bars_->operator[](*fixed_iterations_).mark_as_completed();
         }
     }
 
-    void mark_burn_in_complete(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void mark_burn_in_complete(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_burn_in(controller);
         if (burn_in_ && !bars_->operator[](*burn_in_).is_completed()) {
             bars_->operator[](*burn_in_).mark_as_completed();
         }
     }
 
-    void tick_burn_in(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_burn_in(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         // If watch mode is disabled we can perform the update synchronously.
         if (!watch_mode_) {
             LOG(DEBUG2) << controller.current_tally();
@@ -162,14 +160,14 @@ struct progress {
         cv_.notify_one();
     }
 
-    void perform_normal_update(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void perform_normal_update(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_fixed_bar(controller);
         tick_convergence_bar(controller);
         tick_log_convergence_bar(controller);
         tick_text(&controller);
     }
 
-    void perform_burn_in_update(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void perform_burn_in_update(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         tick_fixed_bar(controller);
         tick_text(&controller);
 
@@ -252,7 +250,7 @@ struct progress {
     // Pointer to the controller associated with the pending request.  We only
     // ever have one controller per progress instance, so keeping a raw pointer
     // is safe as long as the controller out-lives *this* progress object.
-    mutable const convergence_controller<bitpack_t_, prob_t_, size_t_>* pending_controller_{nullptr};
+    mutable const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_>* pending_controller_{nullptr};
 
     // Synchronisation primitives for the worker thread.
     mutable std::mutex cv_mutex_;
@@ -347,7 +345,7 @@ struct progress {
         return bars_->operator[](*idx);
     }
 
-    void setup_burn_in_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_burn_in_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         if (controller.burn_in_trials()) {
             auto &bar = add_iterations_bar(burn_in_);
             const auto tot_ite = controller.burn_in_trials_shape().iterations();
@@ -361,7 +359,7 @@ struct progress {
         }
     }
 
-    void setup_fixed_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_fixed_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         if (controller.fixed_iterations()) {
             auto &bar = add_iterations_bar(fixed_iterations_);
             const auto tot_ite = controller.fixed_iterations_shape().iterations();
@@ -377,34 +375,34 @@ struct progress {
         }
     }
 
-    void setup_convergence_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_convergence_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         auto &bar = add_iterations_bar(convergence_);
         bar.set_option(indicators::option::BarWidth{bar_width_});
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::white});
     }
 
-    void setup_log_convergence_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_log_convergence_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         auto &bar = add_iterations_bar(log_convergence_);
         bar.set_option(indicators::option::BarWidth{bar_width_});
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::white});
     }
 
-    void setup_throughput(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_throughput(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         auto &bar = add_text(throughput_, "[throughput]  ::");
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::magenta});
     }
 
-    void setup_info_gain(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_info_gain(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         auto &bar = add_text(info_gain_, "[info-gain]   ::");
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::cyan});
     }
 
-    void setup_estimate(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_estimate(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         auto &bar = add_text(estimate_, "[estimate]    ::");
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::yellow});
     }
 
-    void setup_accuracy_metrics(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_accuracy_metrics(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         std::ostringstream true_p_ss;
         true_p_ss << std::scientific << std::setprecision(PRECISION_LOG_SCIENTIFIC_DIGITS) << controller.ground_truth();
         const std::string str_prefix = "[accuracy]    :: true(p)= "+true_p_ss.str()+" |";
@@ -412,12 +410,12 @@ struct progress {
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::white});
     }
 
-    void setup_diagnostics(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) {
+    void setup_diagnostics(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) {
         auto &bar = add_text(diagnostics_,"[diagnostics] ::");
         bar.set_option(indicators::option::ForegroundColor{indicators::Color::green});
     }
 
-    void tick_convergence_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_convergence_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         if (convergence_ && !bars_->operator[](*convergence_).is_completed()) {
             auto &bar = bars_->operator[](*convergence_);
             const auto cur_ite = controller.current_steps().iterations();
@@ -440,7 +438,7 @@ struct progress {
         }
     }
 
-    void tick_log_convergence_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_log_convergence_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         if (log_convergence_ && !bars_->operator[](*log_convergence_).is_completed()) {
             auto &bar = bars_->operator[](*log_convergence_);
             const auto cur_ite = controller.current_steps().iterations();
@@ -463,7 +461,7 @@ struct progress {
         }
     }
 
-    void tick_fixed_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_fixed_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         if (fixed_iterations_ && !bars_->operator[](*fixed_iterations_).is_completed()) {
             auto &bar = bars_->operator[](*fixed_iterations_);
             const auto cur_ite = controller.current_steps().iterations();
@@ -474,7 +472,7 @@ struct progress {
         }
     }
 
-    void tick_estimate_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_estimate_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         if (!estimate_) {
             return;
         }
@@ -484,7 +482,7 @@ struct progress {
         bar.set_option(indicators::option::PostfixText{ss.str()});
     }
 
-    void tick_diagnostics(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_diagnostics(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         if (!diagnostics_) {
             return;
         }
@@ -494,7 +492,7 @@ struct progress {
         bar.set_option(indicators::option::PostfixText{ss.str()});
     }
 
-    void tick_accuracy_metrics(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_accuracy_metrics(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         if (!accuracy_metrics_) {
             return;
         }
@@ -505,7 +503,7 @@ struct progress {
     }
 
 
-    void tick_throughput_bar(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_throughput_bar(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         if (!throughput_) {
             return;
         }
@@ -630,7 +628,7 @@ struct progress {
          last_iteration_ = current_iteration;
     }
 
-    void tick_info_gain(const convergence_controller<bitpack_t_, prob_t_, size_t_> &controller) const {
+    void tick_info_gain(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
         if (!info_gain_) {
             return;
         }

@@ -17,10 +17,9 @@
 
 /// @file
 /// Helper functions to boost multi_index_container.
+#pragma once
 
 #include <boost/multi_index_container.hpp>
-
-#pragma once
 
 namespace ext {
 

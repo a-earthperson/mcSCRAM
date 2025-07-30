@@ -37,17 +37,11 @@ namespace scram::core {
                                              mef::MissionTime *mission_time)
         : Analysis(fta->settings()), p_total_(0), mission_time_(mission_time) {}
 
-    void ProbabilityAnalysis::Analyze() noexcept {
+    void ProbabilityAnalysis::Analyze()  {
         CLOCK(p_time);
         LOG(DEBUG3) << "Calculating probabilities...";
         // Get the total probability.
         p_total_ = this->CalculateTotalProbability();
-        assert(p_total_ >= 0 && p_total_ <= 1 && "The total probability is invalid.");
-        if (p_total_ == 1 &&
-            Analysis::settings().approximation() != Approximation::kNone) {
-            Analysis::AddWarning("Probability may have been adjusted to 1.");
-        }
-
         p_time_ = this->CalculateProbabilityOverTime();
         if (Analysis::settings().safety_integrity_levels())
             ComputeSil();
@@ -131,7 +125,7 @@ namespace scram::core {
 
     }// namespace
 
-    void ProbabilityAnalysis::ComputeSil() noexcept {
+    void ProbabilityAnalysis::ComputeSil()  {
         assert(!p_time_.empty() && "The probability over time must be available.");
         assert(!sil_ && "Recomputing the SIL.");
         sil_ = std::make_unique<Sil>();
@@ -160,7 +154,7 @@ namespace scram::core {
 
     double CutSetProbabilityCalculator::Calculate(
             const std::vector<int> &cut_set,
-            const Pdag::IndexMap<double> &p_vars) noexcept {
+            const Pdag::IndexMap<double> &p_vars)  {
         double p_sub_set = 1;// 1 is for multiplication.
         for (int member: cut_set) {
             assert(member > 0 && "Complements in a cut set.");
@@ -169,7 +163,7 @@ namespace scram::core {
         return p_sub_set;
     }
 
-    double RareEventCalculator::Calculate(const Zbdd &cut_sets, const Pdag::IndexMap<double> &p_vars) noexcept {
+    double RareEventCalculator::Calculate(const Zbdd &cut_sets, const Pdag::IndexMap<double> &p_vars)  {
         double sum = 0;
         for (const std::vector<int> &cut_set: cut_sets) {
             sum += CutSetProbabilityCalculator::Calculate(cut_set, p_vars);
@@ -177,7 +171,7 @@ namespace scram::core {
         return sum > 1 ? 1 : sum;
     }
     // #original implementation
-    double McubCalculator::Calculate(const Zbdd &cut_sets, const Pdag::IndexMap<double> &p_vars) noexcept {
+    double McubCalculator::Calculate(const Zbdd &cut_sets, const Pdag::IndexMap<double> &p_vars)  {
         double m = 1;
         for (const std::vector<int> &cut_set: cut_sets) {
             m *= 1 - CutSetProbabilityCalculator::Calculate(cut_set, p_vars);
@@ -192,7 +186,7 @@ namespace scram::core {
     }
 
     std::vector<std::pair<double, double>>
-    ProbabilityAnalyzerBase::CalculateProbabilityOverTime() noexcept {
+    ProbabilityAnalyzerBase::CalculateProbabilityOverTime()  {
         std::vector<std::pair<double, double>> p_time;
         double time_step = Analysis::settings().time_step();
         if (!time_step)
@@ -225,13 +219,13 @@ namespace scram::core {
         current_mark_ = root->terminal() ? false : Ite::Ref(root).mark();
     }
 
-    ProbabilityAnalyzer<Bdd>::~ProbabilityAnalyzer() noexcept {
+    ProbabilityAnalyzer<Bdd>::~ProbabilityAnalyzer()  {
         if (owner_)
             delete bdd_graph_;
     }
 
     double ProbabilityAnalyzer<Bdd>::CalculateTotalProbability(
-            const Pdag::IndexMap<double> &p_vars) noexcept {
+            const Pdag::IndexMap<double> &p_vars)  {
         CLOCK(calc_time);// BDD based calculation time.
         LOG(DEBUG4) << "Calculating probability with BDD...";
         current_mark_ = !current_mark_;
@@ -244,7 +238,7 @@ namespace scram::core {
     }
 
     void ProbabilityAnalyzer<Bdd>::CreateBdd(
-            const FaultTreeAnalysis &fta) noexcept {
+            const FaultTreeAnalysis &fta)  {
         CLOCK(total_time);
 
         CLOCK(ft_creation);
@@ -266,7 +260,7 @@ namespace scram::core {
 
     double ProbabilityAnalyzer<Bdd>::CalculateProbability(
             const Bdd::VertexPtr &vertex, bool mark,
-            const Pdag::IndexMap<double> &p_vars) noexcept {
+            const Pdag::IndexMap<double> &p_vars)  {
         if (vertex->terminal())
             return 1;
         Ite &ite = Ite::Ref(vertex);

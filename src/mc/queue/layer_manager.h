@@ -103,9 +103,6 @@ class layer_manager {
     /// @brief Vector of all queueable objects in execution order
     std::vector<std::shared_ptr<queueable_base>> queueables_;
 
-    /// @brief Map from node index to tally queueable for result computation
-    std::unordered_map<index_t_, std::shared_ptr<queueable_base>> tally_queueables_by_index_;
-
     /// @brief Map from node index to allocated device-side tally event structures
     std::unordered_map<index_t_, event::tally<bitpack_t_> *> allocated_tally_events_by_index_;
     
@@ -115,8 +112,17 @@ class layer_manager {
     /// @brief Map from node index to allocated device-side gate structures
     std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_> *> allocated_gates_by_index_;
 
-    /// @brief Map from node index to accumulated computation counts
-    std::unordered_map<index_t_, size_t_> accumulated_counts_by_index_;
+    /// @brief Map from node index to allocated blocks
+    std::vector<event::basic_event_block<prob_t_, bitpack_t_, index_t_>> device_basic_event_blocks_;
+
+    /// @brief Map from node index to allocated blocks
+    std::vector<event::gate_block<bitpack_t_, size_t_>> device_gate_blocks_;
+
+    /// @brief Map from node index to allocated blocks
+    std::vector<event::atleast_gate_block<bitpack_t_, size_t_>> device_atleast_gate_blocks_;
+
+    /// @brief Map from node index to allocated blocks
+    std::vector<event::tally_block<bitpack_t_>> device_tally_blocks_;
 
     /**
      * @brief Recursively gathers all nodes from a gate hierarchy
@@ -254,7 +260,7 @@ class layer_manager {
      * @note Sample shape is optimized for the target SYCL device
      *
      */
-    layer_manager(core::Pdag *pdag, size_t_ num_trials);
+    layer_manager(core::Pdag *pdag, size_t_ num_trials, const stats::TallyNodeMap &to_tally);
 
     /**
      * @brief Submits all queued computations to the SYCL device
@@ -281,6 +287,9 @@ class layer_manager {
      * @endcode
      */
     sycl::queue single_pass();
+
+
+    sycl::queue pass(size_t count = 1);
 
     /**
      * @brief Computes tally statistics for a specific event
@@ -316,7 +325,9 @@ class layer_manager {
      */
     event::tally<bitpack_t_> single_pass_and_tally(index_t_ evt_idx);
 
-    void collect_tallies(std::unordered_map<index_t_, stats::tally> &stats);
+    stats::TallyNodeMap &pass_wait_collect(stats::TallyNodeMap &stats, std::size_t total_passes = 1, std::size_t passes_between_waits = 0);
+
+    stats::TallyNodeMap &collect_tallies(stats::TallyNodeMap &stats);
 
     [[nodiscard]] std::size_t node_count() const;
 

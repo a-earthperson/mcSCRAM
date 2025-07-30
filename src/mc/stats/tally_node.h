@@ -16,12 +16,20 @@ namespace scram::mc::stats {
 
 using mef_type = mef::Gate; //std::variant<mef::Gate, mef::InitiatingEvent>;
 
+enum convergence : std::int8_t {
+    unknown       = -2,
+    not_tracked   = -1,
+    not_converged =  0,
+    converged     =  1,
+};
+
 /// A convenience aggregate that couples a Monte-Carlo tally with the PDAG
 /// node it describes.  This lets a single map keyed on the PDAG node index
 /// expose *both* statistical information and the underlying graph structure
 /// without having to maintain multiple parallel containers.
 struct TallyNode {
-    tally tally_stats;                              ///< Monte-Carlo statistics
+    convergence status;                      ///< State of convergence
+    tally tally_stats;                       ///< Monte-Carlo statistics
     std::shared_ptr<core::Node> node;        ///< Owning/shared pointer to the PDAG node
 };
 

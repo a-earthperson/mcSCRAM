@@ -21,9 +21,9 @@
 
 #pragma once
 
-#include "../pdag.h"
-#include "../settings.h"
-#include "../zbdd.h"
+#include "pdag.h"
+#include "settings.h"
+#include "zbdd.h"
 
 namespace scram::mc {
 

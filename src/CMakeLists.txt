@@ -4,6 +4,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 ### Begin SCRAM core source list ### {{{
 set(SCRAM_CORE_SRC
   ext/version.cc
+  ext/bimap.h
   env.cc
   logger.cc
   settings.cc

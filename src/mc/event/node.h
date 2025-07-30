@@ -241,6 +241,14 @@ namespace scram::mc::event {
         
         /// @brief Offset where negated inputs begin (inputs[0..offset-1] are positive, inputs[offset..num_inputs-1] are negated)
         size_t_ negated_inputs_offset;
+
+        // TODO:: unify atleast_gate into a single type of gate to simplify the datatype and to implement cardinality
+        // std::uint8_t atleast;
+        // std::uint8_t atmost;
+
+        // atmost(k) = ~atleast(n-k)
+        // atleast(k) = ~atmost(n-k)
+        // cardinality(l,h) = atleast(l) & atmost(h)
     };
 
     /**
