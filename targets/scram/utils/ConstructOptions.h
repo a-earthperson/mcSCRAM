@@ -38,12 +38,13 @@ inline po::options_description ConstructOptions() {
     po::options_description mc("Monte Carlo Options");
     mc.add_options()
         ("monte-carlo", "enable monte carlo sampling")
-        ("num-trials,N", OPT_VALUE(double)->default_value(0), "bernoulli trials [N ∈ ℕ, 0=auto]")
         ("early-stop", "stop on convergence (implied if N=0)")
         ("seed", OPT_VALUE(int)->default_value(372), "PRNG seed")
+        ("num-trials,N", OPT_VALUE(double)->default_value(0), "bernoulli trials [N ∈ ℕ, 0=auto]")
         ("delta,d", OPT_VALUE(double)->default_value(0.001),"compute as ε=δ·p̂ [δ > 0]")
         ("burn-in,b", OPT_VALUE(double)->default_value(1<<20), "trials before convergence check [0=off]")
-        ("confidence,a", OPT_VALUE(double), "two-sided conf. lvl [α ∈ (0,1)] (0.99)");
+        ("confidence,a", OPT_VALUE(double), "two-sided conf. lvl (0.99)")
+        ("policy,P", OPT_VALUE(std::string)->default_value("bayes"), "convergence policy [bayes|wald]");
 
     // ------------------------------------------------------------------
     //  graph compilation specific options
@@ -61,14 +62,15 @@ inline po::options_description ConstructOptions() {
     po::options_description debug("Debug Options");
     debug.add_options()
         ("watch,w", "enable watch mode [off]")
-        ("help,h", "display this help message")
-        ("no-report", "don't generate analysis report")
         ("oracle,p", OPT_VALUE(double)->default_value(-1.0), "true µ [µ ∈ [0,∞), -1=off]")
+        ("help,h", "display this help message")
+        ("verbosity,V", OPT_VALUE(int)->default_value(0), "set log verbosity [0,7]")
+        ("version,v", "display version information")
         ("preprocessor", "stop analysis after preprocessing")
         ("print", "print analysis results to terminal")
         ("serialize", "serialize the input model and exit")
-        ("verbosity,V", OPT_VALUE(int), "set log verbosity")
-        ("version,v", "display version information");
+        ("no-report", "don't generate analysis report")
+        ("no-indent", "omit indented whitespace in output XML");
 
         po::options_description desc("Legacy Options");
         desc.add_options()
@@ -93,8 +95,7 @@ inline po::options_description ConstructOptions() {
             ("time-step", OPT_VALUE(double), "timestep in hours")
             ("num-quantiles", OPT_VALUE(int),"number of quantiles for distributions")
             ("num-bins", OPT_VALUE(int), "number of bins for histograms")
-            ("output,o", OPT_VALUE(path), "output file for reports")
-            ("no-indent", "omit indented whitespace in output XML");
+            ("output,o", OPT_VALUE(path), "output file for reports");
 
         mc.add(gc).add(debug).add(desc);
     // clang-format on

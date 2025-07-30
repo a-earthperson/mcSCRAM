@@ -93,6 +93,10 @@ namespace ScramCLI {
         SET("delta", double, ci_rel_margin_error);
         SET("burn-in", double, ci_burnin_trials);
 
+        if (vm.contains("policy")) {
+            settings->ci_policy(vm["policy"].as<std::string>());
+        }
+
         SET("oracle", double, oracle_p);
 
         if (vm.contains("num-trials")) {

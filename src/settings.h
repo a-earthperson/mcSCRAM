@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 
 #include <string_view>
 
@@ -41,6 +42,11 @@ enum class Approximation : std::uint8_t { kNone = 0, kRareEvent, kMcub, kMonteCa
 
 /// String representations for approximations.
 const char* const kApproximationToString[] = { "none", "rare-event", "mcub", "monte-carlo" };
+
+/// Convergence interval policy for Monte-Carlo stopping criterion
+enum class CIPolicy : std::uint8_t { kBayes = 0, kWald };
+
+inline constexpr const char* kCIPolicyToString[] = { "bayes", "wald" };
 
 /// Builder for analysis settings.
 /// Analysis facilities are guaranteed not to throw or fail
@@ -338,6 +344,19 @@ class Settings {
   /// Sets the relative margin of error δ used to derive an absolute ε as δ·p̂. negative values are set to 0.
   Settings& ci_rel_margin_error(const double delta) { ci_rel_margin_error_ =  delta > 0 ? delta : 0; return *this; }
 
+  // ---------------------------------------------------------------------
+  //  Convergence policy selection (Bayes vs Wald)
+  // ---------------------------------------------------------------------
+  [[nodiscard]] CIPolicy ci_policy() const { return ci_policy_; }
+
+  Settings& ci_policy(const CIPolicy p) { ci_policy_ = p; return *this; }
+
+  Settings& ci_policy(std::string_view s) {
+    if (s == "bayes")      return ci_policy(CIPolicy::kBayes);
+    if (s == "wald")       return ci_policy(CIPolicy::kWald);
+    throw std::invalid_argument("unknown ci-policy: " + std::string{s});
+  }
+
   /// @returns Number of burn-in trials to run before enabling convergence checks.
   [[nodiscard]] std::size_t ci_burnin_trials() const { return static_cast<std::size_t>(ci_burnin_trials_); }
 
@@ -373,6 +392,7 @@ class Settings {
   bool print = false;  ///< Print analysis results in a terminal friendly way.
 
   bool watch_mode_ = false;  ///< Display analysis status on TTY.
+  CIPolicy ci_policy_ = CIPolicy::kBayes;
 
  private:
   Algorithm algorithm_ = Algorithm::kDirect;                  ///< Algorithm for minimal cut set / prime implicant analysis

@@ -201,7 +201,6 @@ std::size_t layer_manager<bitpack_t_, prob_t_, size_t_>::node_count() const {
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 [[gnu::always_inline]] sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::single_pass() {
-    #pragma unroll
     for (const auto &queueable : queueables_) {
         queueable->submit();
     }

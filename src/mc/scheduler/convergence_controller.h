@@ -167,9 +167,9 @@ class convergence_controller {
             // -----------------------------------------------------------------
             //  Update convergence metrics via selected statistical policy
             // -----------------------------------------------------------------
-            scram::mc::stats::update_convergence<policy_t_>(t, settings_.ci_rel_margin_error(), target_z);
+            mc::stats::update_convergence<policy_t_>(t, settings_.ci_rel_margin_error(), target_z);
 
-            LOG(DEBUG4) << "[" << idx << "]: " << t;
+            //LOG(DEBUG4) << "[" << idx << "]: " << t;
             // -----------------------------------------------------------------
             //  Track worst-case (largest ε) across all monitored tallies
             // -----------------------------------------------------------------

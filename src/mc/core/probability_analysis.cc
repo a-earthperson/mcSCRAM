@@ -29,7 +29,6 @@
  */
 
 #include "probability_analysis.h"
-#include "ext/bimap.h"
 #include "logger.h"
 #include "parameter.h"
 
@@ -39,6 +38,7 @@
 #include "mc/stats/diagnostics.h"
 #include "mc/stats/tally_node.h"
 #include "mc/stats/tally_node_map.h"
+#include <variant>
 
 namespace scram::core {
 
@@ -100,30 +100,44 @@ void ProbabilityAnalyzer<mc::DirectEval>::ComputeTallies(const bool converge_on_
     const mc::stats::TallyNodeMap &tally_node_map = this->monitored();
     mc::queue::layer_manager<bitpack_t_> manager(pdag, N, tally_node_map);
 
-    using policy_t_ = mc::stats::wald_policy;
-    mc::scheduler::convergence_controller<policy_t_, bitpack_t_> scheduler(manager, settings);
+    using bayes_t = mc::stats::bayes_policy;
+    using wald_t  = mc::stats::wald_policy;
 
-    mc::event::tally<bitpack_t_> tally;
-    if (converge_on_root_only) {
-        tally = scheduler.run_to_convergence(this->graph()->root()->index());
-    } else {
-        tally = scheduler.run_to_convergence(this->monitored_);
+    std::variant<mc::scheduler::convergence_controller<bayes_t, bitpack_t_>,
+                 mc::scheduler::convergence_controller<wald_t,  bitpack_t_>> scheduler_var{std::in_place_type<mc::scheduler::convergence_controller<bayes_t, bitpack_t_>>, manager, settings};
+
+    auto make_scheduler = [&](auto tag){
+        using pol_t = std::decay_t<decltype(tag)>;
+        return mc::scheduler::convergence_controller<pol_t, bitpack_t_>{manager, settings};
+    };
+
+    if (settings.ci_policy() == scram::core::CIPolicy::kWald) {
+        scheduler_var.emplace<mc::scheduler::convergence_controller<wald_t, bitpack_t_> >(manager, settings);
     }
 
-    // collect observed tallies anyway
-    manager.collect_tallies(this->monitored_);
+    auto visit_sched = [&](auto &scheduler){
+        mc::event::tally<bitpack_t_> tally;
+        if (converge_on_root_only) {
+            tally = scheduler.run_to_convergence(this->graph()->root()->index());
+        } else {
+            tally = scheduler.run_to_convergence(this->monitored_);
+        }
 
-    LOG(DEBUG1) << "Calculated observed tallies for " << monitored_.size() << " events in " << DUR(calc_time);
-    LOG(DEBUG1) << tally;
-    for (auto [idx, t_ref] : mc::stats::tally_view(monitored_)) {
-        const auto &t = t_ref;
-        LOG(DEBUG2) << "[" << idx << "] | " << t;
-    }
-    // ------------------------------------------------------------------
-    //  Diagnostic statistics when a ground-truth probability is supplied
-    // ------------------------------------------------------------------
-    LOG(DEBUG1) << *scheduler.accuracy_metrics();
-    LOG(DEBUG1) << *scheduler.sampling_diagnostics();
+        // collect observed tallies anyway
+        manager.collect_tallies(this->monitored_);
+
+        LOG(DEBUG1) << "Calculated observed tallies for " << monitored_.size() << " events in " << DUR(calc_time);
+        LOG(DEBUG1) << tally;
+        for (auto [idx, t_ref] : mc::stats::tally_view(monitored_)) {
+            const auto &t = t_ref;
+            LOG(DEBUG2) << "[" << idx << "] | " << t;
+        }
+        // diagnostic stats
+        LOG(DEBUG1) << *scheduler.accuracy_metrics();
+        LOG(DEBUG1) << *scheduler.sampling_diagnostics();
+    };
+
+    std::visit(visit_sched, scheduler_var);
 }
 
 std::unordered_set<int> ProbabilityAnalyzer<mc::DirectEval>::ObserveNodes(Pdag *pdag,
