@@ -1,5 +1,7 @@
 #pragma once
 #include <string>
+#include <sstream>
+#include <iomanip>
 
 namespace scram::log {
 // Generic value → string conversion for CSV.
@@ -10,6 +12,21 @@ inline std::string csv_string(const T &v) {
     } else {
         return std::to_string(v);
     }
+}
+
+// Specializations for floating-point types to use scientific notation with precision 8
+template <>
+inline std::string csv_string(const float &v) {
+    std::ostringstream oss;
+    oss << std::scientific << std::setprecision(8) << v;
+    return oss.str();
+}
+
+template <>
+inline std::string csv_string(const double &v) {
+    std::ostringstream oss;
+    oss << std::scientific << std::setprecision(8) << v;
+    return oss.str();
 }
 
 inline std::string csv_string(const char *s) { return std::string{s}; }

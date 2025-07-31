@@ -124,6 +124,14 @@ class Preprocessor : private boost::noncopyable {
   void operator()() ;
 
  protected:
+
+ enum NormalizationType {
+     NONE,
+     XOR,
+     ATLEAST,
+     ALL,
+ };
+
   class GateSet;  ///< Container of unique gates by semantics.
 
   /// Runs the default preprocessing
@@ -202,7 +210,9 @@ class Preprocessor : private boost::noncopyable {
   /// @warning Gate marks are used.
   /// @warning Node ordering may be used for full normalization.
   /// @warning Node visit information is used.
-  void NormalizeGates(bool full) ;
+  void NormalizeGates(bool full);
+
+  void NormalizeGates(NormalizationType type);
 
   /// Notifies all parents of negative gates,
   /// such as NOT, NOR, and NAND,
@@ -233,6 +243,8 @@ class Preprocessor : private boost::noncopyable {
   /// @warning The parents of negative gates are assumed to be
   ///          notified about the change of their arguments' types.
   void NormalizeGate(const GatePtr& gate, bool full) ;
+
+  void NormalizeGate(const GatePtr& gate, NormalizationType type) ;
 
   /// Normalizes a gate with XOR logic.
   /// This is a helper function

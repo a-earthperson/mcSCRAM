@@ -154,12 +154,12 @@ namespace scram::mc {
          * - Work-group and sub-group constraints
          * - Memory hierarchy characteristics
          * - Backend-specific optimal occupancy rates
-         * 
+         *
          * @param queue SYCL queue for device access and memory operations
          * @param num_events Number of events in the Monte Carlo simulation
          * @param requested_shape Desired sample buffer organization
          */
-        working_set(const sycl::queue &queue, const size_type num_events, const event::sample_shape<size_type> &requested_shape) {
+        explicit working_set(const sycl::queue &queue, const size_type num_events = 0, const event::sample_shape<size_type> &requested_shape = {}) {
             const auto device = queue.get_device();
             num_events_ = num_events;
             bitpack_buffer_shape_ = requested_shape;

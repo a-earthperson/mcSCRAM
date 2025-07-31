@@ -30,14 +30,25 @@
 
 #include "probability_analysis.h"
 #include "logger.h"
+#include "logger/log_convergence.h"
+#include "logger/log_pdag.h"
+#include "logger/log_tally.h"
+#include "logger/log_working_set.h"
 #include "parameter.h"
 
 #include "mc/core/direct_eval.h"
+#include "mc/logger/log_benchmark.h"
+#include "mc/logger/log_layers.h"
+#include "mc/logger/log_settings.h"
 #include "mc/queue/layer_manager.h"
 #include "mc/scheduler/convergence_controller.h"
-#include "mc/stats/diagnostics.h"
 #include "mc/stats/tally_node.h"
 #include "mc/stats/tally_node_map.h"
+
+#include <vector>
+#include <string>
+#include <chrono>
+#include <ctime>
 #include <variant>
 
 namespace scram::core {
@@ -116,25 +127,93 @@ void ProbabilityAnalyzer<mc::DirectEval>::ComputeTallies(const bool converge_on_
     }
 
     auto visit_sched = [&](auto &scheduler){
+        // Time the result() execution with high precision
+        const auto start_time = std::chrono::high_resolution_clock::now();
+
         mc::event::tally<bitpack_t_> tally;
         if (converge_on_root_only) {
             tally = scheduler.run_to_convergence(this->graph()->root()->index());
         } else {
             tally = scheduler.run_to_convergence(this->monitored_);
         }
-
         // collect observed tallies anyway
         manager.collect_tallies(this->monitored_);
+        const auto end_time = std::chrono::high_resolution_clock::now();
 
-        LOG(DEBUG1) << "Calculated observed tallies for " << monitored_.size() << " events in " << DUR(calc_time);
-        LOG(DEBUG1) << tally;
-        for (auto [idx, t_ref] : mc::stats::tally_view(monitored_)) {
-            const auto &t = t_ref;
-            LOG(DEBUG2) << "[" << idx << "] | " << t;
+        // Calculate duration in milliseconds
+        const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        long long convergence_time_ms = duration.count();
+
+
+        // benchmark specific log
+        {
+            using namespace scram;
+            const auto &cur_state  = scheduler.current_state();
+            const auto &steps_cur  = scheduler.current_steps();
+            const auto &steps_proj = scheduler.projected_steps();
+
+            const auto &root_tally = monitored_.at(this->graph()->root()->index()).tally_stats;
+
+            std::vector<std::pair<std::string,std::string>> kv;
+            // settings
+            {
+                auto s_pairs = log::settings::csv_pairs(this->settings());
+                kv.insert(kv.end(), s_pairs.begin(), s_pairs.end());
+            }
+            // working_set
+            {
+                auto s_pairs = log::working_set::csv_pairs(mc::working_set<size_t, bitpack_t_>(manager.queue()));
+                kv.insert(kv.end(), s_pairs.begin(), s_pairs.end());
+            }
+            // layer_manager
+            {
+                auto s_pairs = log::layers::csv_pairs<bitpack_t_>(manager);
+                kv.insert(kv.end(), s_pairs.begin(), s_pairs.end());
+            }
+            // pdag
+            {
+                auto s_pairs = log::pdag::csv_pairs(*this->graph());
+                kv.insert(kv.end(), s_pairs.begin(), s_pairs.end());
+            }
+            // tally
+            {
+                auto s_pairs = log::tally::csv_pairs(root_tally);
+                kv.insert(kv.end(), s_pairs.begin(), s_pairs.end());
+            }
+            {
+                // Add convergence time
+                kv.emplace_back("convergence_time_ms", log::csv_string(convergence_time_ms));
+            }
+            // convergence / run metrics
+            {
+                log::convergence::csv_pairs(kv);
+            }
+
+            // kv.emplace_back("realized_trials", std::to_string(steps_cur.trials()));
+            // kv.emplace_back("projected_trials", std::to_string(steps_proj.trials()));
+            // kv.emplace_back("realized_eps", std::to_string(cur_state.half_width_epsilon));
+            // kv.emplace_back("realized_eps_log10", std::to_string(cur_state.half_width_epsilon_log10));
+            // kv.emplace_back("prob_mean", std::to_string(root_tally.mean));
+            // kv.emplace_back("std_err", std::to_string(root_tally.std_err));
+            // kv.emplace_back("ci95_low", std::to_string(root_tally.ci[0]));
+            // kv.emplace_back("ci95_hi",  std::to_string(root_tally.ci[1]));
+            // processing time
+
+            log::BenchmarkLogger mc_logger{"convergence.csv"};
+            mc_logger.log_pairs(kv);
         }
-        // diagnostic stats
-        LOG(DEBUG1) << *scheduler.accuracy_metrics();
-        LOG(DEBUG1) << *scheduler.sampling_diagnostics();
+        // generic log
+        {
+            LOG(DEBUG1) << "Calculated observed tallies for " << monitored_.size() << " events in " << DUR(calc_time);
+            LOG(DEBUG1) << tally;
+            for (auto [idx, t_ref] : mc::stats::tally_view(monitored_)) {
+                const auto &t = t_ref;
+                LOG(DEBUG2) << "[" << idx << "] | " << t;
+            }
+            // diagnostic stats
+            LOG(DEBUG1) << *scheduler.accuracy_metrics();
+            LOG(DEBUG1) << *scheduler.sampling_diagnostics();
+        }
     };
 
     std::visit(visit_sched, scheduler_var);
@@ -147,6 +226,7 @@ std::unordered_set<int> ProbabilityAnalyzer<mc::DirectEval>::ObserveNodes(Pdag *
                                                                           const bool clear_stats) {
     std::unordered_set<index_t> will_observe;
     // Depth-first traversal collecting every Node
+    pdag->Clear<Pdag::kGateMark>();
     TraverseNodes(pdag->root(), [&will_observe, &observing, &to_observe, &track_convergence, &clear_stats](const std::shared_ptr<Node> &n) {
         // we want to observe this node
         // node from pdag is in to_observe set, i.e. we intend to observe this node
@@ -184,6 +264,7 @@ auto ProbabilityAnalyzer<mc::DirectEval>::GatherGates(Pdag *pdag, std::unordered
     if (!pdag || !nodes) {
         return;
     }
+    pdag->Clear<Pdag::kGateMark>();
     // Depth-first traversal collecting every Node
     TraverseNodes(pdag->root(), [&nodes](const std::shared_ptr<Node> &n) {
         if (std::dynamic_pointer_cast<core::Gate>(n)) {
@@ -245,6 +326,7 @@ inline ProbabilityAnalyzer<mc::DirectEval>::~ProbabilityAnalyzer() = default;
 // Helper: collect indices of PDAG gates that have an origin pointer.
 static void FillIndicesWithMefOrigin(Pdag *graph, std::unordered_set<int> *out) {
     if (!graph || !out) return;
+    graph->Clear<Pdag::kGateMark>();
     TraverseGates(graph->root_ptr(), [out](const std::shared_ptr<core::Gate> &g) {
       // if gate has origin (was watched using watch-guard and mef_origin_ptr)
       if (g->mef_origin_ptr()) {
@@ -262,6 +344,7 @@ static void FillIndicesWithMefOrigin(Pdag *graph, std::unordered_set<int> *out) 
 
 static int FindIndexForMEFGate(Pdag *graph, const mef::Gate *gptr) {
     int result = 0;
+    graph->Clear<Pdag::kGateMark>();
     TraverseGates(graph->root_ptr(), [&result, gptr](const std::shared_ptr<core::Gate> &pg) {
       if (pg->mef_origin_ptr() == gptr) {
         result = pg->index();

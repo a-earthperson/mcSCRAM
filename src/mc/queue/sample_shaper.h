@@ -106,7 +106,7 @@ struct sample_shaper {
                                                                                               per_iteration_target_bits,
                                                                                               target_bits_per_iteration_);
 
-        if (device.has(sycl::aspect::cpu)) {
+        if (device.has(sycl::aspect::cpu) || device.has(sycl::aspect::gpu)) {
             if (sample_shape.bitpacks_per_batch) {
                 sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
                 sample_shape.batch_size = 1;

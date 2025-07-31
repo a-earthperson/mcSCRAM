@@ -55,7 +55,7 @@ inline po::options_description ConstructOptions() {
         ("no-xor", "expand xor to and/or [off]")
         ("nnf", "compile to negation normal form [off]")
         ("preprocessor", "stop analysis after preprocessing")
-        ("compilation-passes,c", OPT_VALUE(int)->default_value(2), "0=off 1=null-only 2=optimize 3+=multipass");
+        ("compilation-passes,c", OPT_VALUE(int)->default_value(2), "0=off 1=null-only 2=optimize 4-8=multipass");
 
     // ------------------------------------------------------------------
     //  Debug options

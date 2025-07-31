@@ -39,13 +39,22 @@ csv_pairs(const mc::queue::layer_manager<bitpack_t_, prob_t_, size_t_> &lm) {
     // ---------------------------------------------------------------------
     out.emplace_back("num_nodes",                  csv_string(lm.pdag_nodes_.size()));
     out.emplace_back("num_layers",                 csv_string(lm.pdag_nodes_by_layer_.size()));
-    out.emplace_back("num_queueables",             csv_string(lm.queueables_.size()));
+    out.emplace_back("num_kernels",             csv_string(lm.queueables_.size()));
+
+    const auto avg_kernels_per_layer = static_cast<double>(lm.queueables_.size())/static_cast<double>(lm.pdag_nodes_by_layer_.size());
+    out.emplace_back("avg_kernels_per_layer",             csv_string(avg_kernels_per_layer));
 
     // Device-side resource blocks.
     out.emplace_back("device_basic_event_blocks",  csv_string(lm.device_basic_event_blocks_.size()));
     out.emplace_back("device_gate_blocks",         csv_string(lm.device_gate_blocks_.size()));
     out.emplace_back("device_atleast_gate_blocks", csv_string(lm.device_atleast_gate_blocks_.size()));
     out.emplace_back("device_tally_blocks",        csv_string(lm.device_tally_blocks_.size()));
+
+    const auto all_blocks = lm.device_basic_event_blocks_.size() + lm.device_gate_blocks_.size() + lm.device_atleast_gate_blocks_.size() + lm.device_tally_blocks_.size();
+    out.emplace_back("device_total_blocks",        csv_string(all_blocks));
+
+    const auto avg_blocks_per_kernel = static_cast<double>(all_blocks)/static_cast<double>(lm.queueables_.size());
+    out.emplace_back("avg_blocks_per_kernel",             csv_string(avg_kernels_per_layer));
 
     // Tally-related bookkeeping.
     out.emplace_back("tally_events_tracked",       csv_string(lm.allocated_tally_events_by_index_.size()));

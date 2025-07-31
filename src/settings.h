@@ -383,7 +383,7 @@ class Settings {
   Settings& expand_xor_gates(const bool on) { expand_xor_gates_ = on; return *this; }
   Settings& expand_atleast_gates(const bool on) { expand_atleast_gates_ = on; return *this; }
   Settings& keep_null_gates(const bool on) { keep_null_gates_ = on; return *this; }
-  Settings& compilation_level(const int level) { compilation_level_ = std::clamp(level, 0, 5); return *this; }
+  Settings& compilation_level(const int level) { compilation_level_ = std::clamp(level, 0, 8); return *this; }
 
   /// @returns The known ground-truth probability provided by the user (negative when unset).
   [[nodiscard]] double oracle_p() const { return oracle_p_; }

@@ -528,11 +528,16 @@ bool IsSubgraphWithinGraph(const GatePtr& root, int enter_time,
 
 }  // namespace
 
-void Preprocessor::NormalizeGates(bool full)  {
-  TIMER(DEBUG3, (full ? "Full normalization" : "Partial normalization"));
+void Preprocessor::NormalizeGates(NormalizationType normalization_type)  {
+  TIMER(DEBUG3, "NormalizeGates :: ");
+  if (graph_->HasNullGates()) {
+      TIMER(DEBUG3, "Removing NULL gates first");
+      graph_->RemoveNullGates();
+  }
   assert(!graph_->HasNullGates());
-  if (full)
-    pdag::TopologicalOrder(graph_);  // K/N gates need order.
+  if (normalization_type == NormalizationType::ALL || normalization_type == NormalizationType::ATLEAST) {
+      pdag::TopologicalOrder(graph_);  // K/N gates need order.
+  }
 
   const GatePtr& root_gate = graph_->root();
   Connective type = root_gate->type();
@@ -553,10 +558,14 @@ void Preprocessor::NormalizeGates(bool full)  {
   NotifyParentsOfNegativeGates(root_gate);
 
   graph_->Clear<Pdag::kGateMark>();
-  NormalizeGate(root_gate, full);  // Registers null gates only.
+  NormalizeGate(root_gate, normalization_type);  // Registers null gates only.
 
   assert(!graph_->HasConstants());
   graph_->RemoveNullGates();
+}
+
+void Preprocessor::NormalizeGates(const bool full)  {
+    Preprocessor::NormalizeGates(full ? NormalizationType::ALL : NormalizationType::NONE);
 }
 
 void Preprocessor::NotifyParentsOfNegativeGates(const GatePtr& gate)  {
@@ -569,45 +578,49 @@ void Preprocessor::NotifyParentsOfNegativeGates(const GatePtr& gate)  {
   }
 }
 
-void Preprocessor::NormalizeGate(const GatePtr& gate, bool full)  {
-  if (gate->mark())
-    return;
-  gate->mark(true);
-  assert(!gate->constant());
-  assert(!gate->args().empty());
-  // Depth-first traversal before the arguments may get changed.
-  for (const Gate::Arg<Gate>& arg : gate->args<Gate>()) {
-    NormalizeGate(arg.second, full);
-  }
+void Preprocessor::NormalizeGate(const GatePtr& gate, NormalizationType normalization_type)  {
+    if (gate->mark())
+        return;
+    gate->mark(true);
+    assert(!gate->constant());
+    assert(!gate->args().empty());
+    // Depth-first traversal before the arguments may get changed.
+    for (const Gate::Arg<Gate>& arg : gate->args<Gate>()) {
+        NormalizeGate(arg.second, normalization_type);
+    }
 
-  switch (gate->type()) {  // Negation is already processed.
+    switch (gate->type()) {  // Negation is already processed.
     case kNor:
-      assert(gate->args().size() > 1);
-      gate->type(kOr);
-      break;
+        assert(gate->args().size() > 1);
+        gate->type(kOr);
+        break;
     case kNand:
-      assert(gate->args().size() > 1);
-      gate->type(kAnd);
-      break;
+        assert(gate->args().size() > 1);
+        gate->type(kAnd);
+        break;
     case kXor:
-      assert(gate->args().size() == 2);
-      if (full)
-        NormalizeXorGate(gate);
-      break;
+        assert(gate->args().size() == 2);
+        if (normalization_type == NormalizationType::XOR || normalization_type == NormalizationType::ALL)
+            NormalizeXorGate(gate);
+        break;
     case kAtleast:
-      assert(gate->args().size() > 2);
-      assert(gate->min_number() > 1);
-      if (full)
-        NormalizeAtleastGate(gate);
-      break;
+        assert(gate->args().size() > 2);
+        assert(gate->min_number() > 1);
+        if (normalization_type == NormalizationType::ATLEAST || normalization_type == NormalizationType::ALL)
+            NormalizeAtleastGate(gate);
+        break;
     case kNot:
-      assert(gate->args().size() == 1);
-      gate->type(kNull);
-      break;
+        assert(gate->args().size() == 1);
+        gate->type(kNull);
+        break;
     default:  // Already normal gates.
-      assert(gate->type() == kAnd || gate->type() == kOr);
-      assert(gate->args().size() > 1);
-  }
+        assert(gate->type() == kAnd || gate->type() == kOr);
+        assert(gate->args().size() > 1);
+    }
+}
+
+void Preprocessor::NormalizeGate(const GatePtr& gate, bool full)  {
+    Preprocessor::NormalizeGate(gate, full ? NormalizationType::ALL : NormalizationType::NONE);
 }
 
 void Preprocessor::NormalizeXorGate(const GatePtr& gate)  {

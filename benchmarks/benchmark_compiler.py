@@ -15,14 +15,15 @@ import json
 import os
 
 
-def run_scram_cli(xml_file: str, compilation_pass: int, use_no_kn: bool = False, timeout: int = 300) -> Dict[str, Any]:
+def run_scram_cli(xml_file: str, compilation_pass: int, use_no_kn: bool = False, use_no_xor: bool = False, timeout: int = 300) -> Dict[str, Any]:
     """
     Run scram-cli on a single XML file with specified compilation pass.
     
     Args:
         xml_file: Path to the XML input file
-        compilation_pass: Compilation pass value (0-5)
+        compilation_pass: Compilation pass value (0-8)
         use_no_kn: Whether to use the --no-kn flag
+        use_no_xor: Whether to use the --no-xor flag
         timeout: Timeout in seconds for the subprocess
         
     Returns:
@@ -32,6 +33,7 @@ def run_scram_cli(xml_file: str, compilation_pass: int, use_no_kn: bool = False,
         'file': xml_file,
         'compilation_pass': compilation_pass,
         'no_kn': use_no_kn,
+        'no_xor': use_no_xor,
         'success': False,
         'duration': None,
         'error': None,
@@ -48,6 +50,9 @@ def run_scram_cli(xml_file: str, compilation_pass: int, use_no_kn: bool = False,
     
     if use_no_kn:
         cmd.append('--no-kn')
+    
+    if use_no_xor:
+        cmd.append('--no-xor')
     
     cmd.extend([
         '--compilation-passes', str(compilation_pass),
@@ -92,7 +97,7 @@ def run_scram_cli(xml_file: str, compilation_pass: int, use_no_kn: bool = False,
 def benchmark_compilation_passes(
     files_or_pattern: Any,
     min_pass: int = 0,
-    max_pass: int = 5,
+    max_pass: int = 8,
     timeout: int = 300,
     output_file: str = None,
     run_variants: str = 'both'
@@ -103,10 +108,10 @@ def benchmark_compilation_passes(
     Args:
         files_or_pattern: Either a glob pattern string or a list of file paths
         min_pass: Minimum compilation pass value (default: 0)
-        max_pass: Maximum compilation pass value (default: 5)
+        max_pass: Maximum compilation pass value (default: 8)
         timeout: Timeout per run in seconds (default: 300)
         output_file: Optional JSON file to save results
-        run_variants: Which variants to run: 'both', 'default', or 'no-kn' (default: 'both')
+        run_variants: Which variants to run: 'all', 'default', 'no-kn', 'no-xor', or 'both-flags' (default: 'all')
         
     Returns:
         List of result dictionaries
@@ -136,13 +141,17 @@ def benchmark_compilation_passes(
     
     # Determine which variants to run
     variants_to_run = []
-    if run_variants in ['both', 'default']:
-        variants_to_run.append(('default', False))
-    if run_variants in ['both', 'no-kn']:
-        variants_to_run.append(('--no-kn', True))
+    if run_variants in ['all', 'default']:
+        variants_to_run.append(('default', False, False))
+    if run_variants in ['all', 'no-kn']:
+        variants_to_run.append(('--no-kn', True, False))
+    if run_variants in ['all', 'no-xor']:
+        variants_to_run.append(('--no-xor', False, True))
+    if run_variants in ['all', 'both-flags']:
+        variants_to_run.append(('--no-kn+--no-xor', True, True))
     
     if not variants_to_run:
-        print(f"Error: Invalid run_variants value: {run_variants}. Use 'both', 'default', or 'no-kn'")
+        print(f"Error: Invalid run_variants value: {run_variants}. Use 'all', 'default', 'no-kn', 'no-xor', or 'both-flags'")
         return []
     
     # Calculate total runs
@@ -154,11 +163,11 @@ def benchmark_compilation_passes(
         print(f"\nProcessing: {xml_file}")
         
         for compilation_pass in range(min_pass, max_pass + 1):
-            for variant_name, use_no_kn in variants_to_run:
+            for variant_name, use_no_kn, use_no_xor in variants_to_run:
                 completed_runs += 1
                 print(f"  Pass {compilation_pass} ({variant_name}) ({completed_runs}/{total_runs})...", end='', flush=True)
                 
-                result = run_scram_cli(xml_file, compilation_pass, use_no_kn=use_no_kn, timeout=timeout)
+                result = run_scram_cli(xml_file, compilation_pass, use_no_kn=use_no_kn, use_no_xor=use_no_xor, timeout=timeout)
                 results.append(result)
                 
                 if result['success']:
@@ -199,69 +208,101 @@ def print_performance_table(results: List[Dict[str, Any]]):
     
     for result in results:
         if result['success']:
-            variant = 'no_kn' if result.get('no_kn', False) else 'default'
-            by_file[result['file']][variant][result['compilation_pass']] = result['duration']
+            # Create variant key based on flags
+            variant_key = 'default'
+            if result.get('no_kn', False) and result.get('no_xor', False):
+                variant_key = 'both_flags'
+            elif result.get('no_kn', False):
+                variant_key = 'no_kn'
+            elif result.get('no_xor', False):
+                variant_key = 'no_xor'
+            
+            by_file[result['file']][variant_key][result['compilation_pass']] = result['duration']
     
     print("\nPerformance Comparison (seconds):")
-    print("=" * 120)
+    print("Legend: Def=Default, KN=--no-kn, XOR=--no-xor, BF=both flags")
+    print("=" * 140)
     
-    # Print header
-    header = f"{'File':<35} | "
-    for p in range(6):
-        header += f"{'Pass ' + str(p):^16} | "
+    # Print header for passes 0-8
+    header = f"{'File':<25} | "
+    for p in range(9):
+        header += f"{'Pass ' + str(p):^12} | "
     print(header)
     
-    sub_header = f"{' ':<35} | "
-    for p in range(6):
-        sub_header += f"{'Default':>7} {'--no-kn':>8} | "
+    sub_header = f"{' ':<25} | "
+    for p in range(9):
+        sub_header += f"{'Def':>3} {'KN':>3} {'XOR':>3} {'BF':>3} | "
     print(sub_header)
-    print("-" * 120)
+    print("-" * 140)
     
     for file_path, variants in sorted(by_file.items()):
-        file_name = Path(file_path).name[:34]
-        row = f"{file_name:<35} | "
+        file_name = Path(file_path).name[:24]
+        row = f"{file_name:<25} | "
         
-        for p in range(6):
+        for p in range(9):
             # Default variant
             if 'default' in variants and p in variants['default']:
-                row += f"{variants['default'][p]:>7.2f}"
+                row += f"{variants['default'][p]:>3.1f}"
             else:
-                row += f"{'--':>7}"
+                row += f"{'--':>3}"
             
             row += " "
             
             # --no-kn variant
             if 'no_kn' in variants and p in variants['no_kn']:
-                row += f"{variants['no_kn'][p]:>7.2f}"
+                row += f"{variants['no_kn'][p]:>3.1f}"
             else:
-                row += f"{'--':>7}"
+                row += f"{'--':>3}"
+            
+            row += " "
+            
+            # --no-xor variant
+            if 'no_xor' in variants and p in variants['no_xor']:
+                row += f"{variants['no_xor'][p]:>3.1f}"
+            else:
+                row += f"{'--':>3}"
+            
+            row += " "
+            
+            # both flags variant
+            if 'both_flags' in variants and p in variants['both_flags']:
+                row += f"{variants['both_flags'][p]:>3.1f}"
+            else:
+                row += f"{'--':>3}"
             
             row += " | "
         
         print(row)
     
     # Print summary statistics
-    print("\n" + "=" * 120)
+    print("\n" + "=" * 140)
     print("\nSummary Statistics:")
     
-    # Calculate speedup/slowdown
-    speedups = []
-    for file_path, variants in by_file.items():
-        if 'default' in variants and 'no_kn' in variants:
-            for p in range(6):
-                if p in variants['default'] and p in variants['no_kn']:
-                    default_time = variants['default'][p]
-                    no_kn_time = variants['no_kn'][p]
-                    speedup = (default_time - no_kn_time) / default_time * 100
-                    speedups.append(speedup)
+    # Calculate speedup/slowdown for each variant compared to default
+    variant_comparisons = {
+        'no_kn': '--no-kn',
+        'no_xor': '--no-xor', 
+        'both_flags': '--no-kn+--no-xor'
+    }
     
-    if speedups:
-        avg_speedup = sum(speedups) / len(speedups)
-        print(f"Average performance change with --no-kn: {avg_speedup:+.1f}%")
-        if avg_speedup > 0:
-            print("(Positive means --no-kn is faster)")
-        else:
-            print("(Negative means --no-kn is slower)")
+    for variant_key, variant_name in variant_comparisons.items():
+        speedups = []
+        for file_path, variants in by_file.items():
+            if 'default' in variants and variant_key in variants:
+                for p in range(9):
+                    if p in variants['default'] and p in variants[variant_key]:
+                        default_time = variants['default'][p]
+                        variant_time = variants[variant_key][p]
+                        speedup = (default_time - variant_time) / default_time * 100
+                        speedups.append(speedup)
+        
+        if speedups:
+            avg_speedup = sum(speedups) / len(speedups)
+            print(f"Average performance change with {variant_name}: {avg_speedup:+.1f}%")
+            if avg_speedup > 0:
+                print(f"  (Positive means {variant_name} is faster)")
+            else:
+                print(f"  (Negative means {variant_name} is slower)")
 
 
 def main():
@@ -282,8 +323,8 @@ def main():
     parser.add_argument(
         '--max-pass',
         type=int,
-        default=5,
-        help='Maximum compilation pass value (default: 5)'
+        default=8,
+        help='Maximum compilation pass value (default: 8)'
     )
     parser.add_argument(
         '--timeout',
@@ -303,9 +344,9 @@ def main():
     )
     parser.add_argument(
         '--variants',
-        choices=['both', 'default', 'no-kn'],
-        default='both',
-        help='Which variants to run (default: both)'
+        choices=['all', 'default', 'no-kn', 'no-xor', 'both-flags'],
+        default='all',
+        help='Which variants to run (default: all)'
     )
     
     args = parser.parse_args()
