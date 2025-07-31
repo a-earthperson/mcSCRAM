@@ -15,6 +15,8 @@
 #include <mutex>
 
 #include "mc/stats/diagnostics.h"
+#include "mc/logger/log_benchmark.h"
+#include "mc/logger/log_progress.h"
 
 #define PRECISION_LOG_SCIENTIFIC_DIGITS 3
 
@@ -26,15 +28,22 @@ class convergence_controller;
 template <typename policy_t_, typename bitpack_t_, typename prob_t_, typename size_t_>
 struct progress {
 
-    void initialize(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> *controller, const bool watch_mode) {
+    void initialize(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> *controller, const bool watch_mode, const std::optional<std::string> &log_to_file = std::nullopt) {
         // Initialize timing for throughput tracking
         last_tick_time_ = std::chrono::high_resolution_clock::now();
         first_tick_ = true;
 
-        watch_mode_ = watch_mode;
+        watch_mode_ = watch_mode || log_to_file; // watch if explicitly asked to watch, or passed a progressbar logfile
 
-        // Configure progress bar
-        if (!isatty(fileno(stdout)) || !isatty(fileno(stderr))) {
+        // if passed a progressbar log file, initialize the logger
+        if (log_to_file) {
+            const std::string& filepath = *log_to_file;
+            progress_logger_.emplace(filepath);
+            LOG(DEBUG2) << "Progress log in :: " << filepath;
+        }
+
+        // Configure progress bar only if watch mode is supported OR if progress bar log file is set
+        if ((!isatty(fileno(stdout)) || !isatty(fileno(stderr))) && !log_to_file) {
             LOG(WARNING) << "Disabling progressbar since neither STDOUT nor STDERR are TTYs.";
             watch_mode_ = false;
             return;
@@ -165,6 +174,14 @@ struct progress {
         tick_convergence_bar(controller);
         tick_log_convergence_bar(controller);
         tick_text(&controller);
+
+        // -----------------------------------------------------------------
+        //  CSV logging – one row per normal update
+        // -----------------------------------------------------------------
+        if (progress_logger_) {
+            const auto pairs = scram::log::progress::csv_pairs(controller);
+            progress_logger_->log_pairs(pairs);
+        }
     }
 
     void perform_burn_in_update(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
@@ -228,6 +245,8 @@ struct progress {
     mutable std::size_t prev_info_iteration_ = 0;
 
     bool watch_mode_ = false;
+
+    mutable std::optional<scram::log::BenchmarkLogger> progress_logger_{};
 
     // -------------------------------------------------------------------------
     // Deferred tick machinery.  Updates to the (potentially slow) terminal UI

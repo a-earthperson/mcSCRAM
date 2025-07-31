@@ -342,10 +342,10 @@ const scram::mef::Event *scram::mc::queue::layer_manager<bitpack_t_, prob_t_, si
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials, const stats::TallyNodeMap &to_tally) {
+layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials, const stats::TallyNodeMap &to_tally, const std::double_t overhead_ratio) {
     // create and sort layers
     layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
-    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, node_count());
+    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, node_count(), overhead_ratio);
     sample_shape_ = sample_shaper_.SAMPLE_SHAPE;
 
     // create kernels for all basic-events, gates.

@@ -93,6 +93,9 @@ namespace ScramCLI {
         SET("delta", double, ci_rel_margin_error);
         SET("burn-in", double, ci_burnin_trials);
 
+        SET("overhead-ratio", double, overhead_ratio);
+
+
         if (vm.contains("policy")) {
             settings->ci_policy(vm["policy"].as<std::string>());
         }

@@ -41,7 +41,8 @@ inline auto csv_pairs(const core::Settings &s) {
         // {"keep",          csv_string(static_cast<bool>(s.keep_null_gates()))},
         {"req_compile",        "C"+csv_string(s.compilation_level())},
         {"req_ccf",             csv_string(static_cast<bool>(s.ccf_analysis()))},
+        {"req_overhead_ratio",             csv_string(s.overhead_ratio())},
         // {"oracle_p",                 csv_string(s.oracle_p())},
     };
 }
-} // namespace scram::bench
+} // namespace scram::log::settings

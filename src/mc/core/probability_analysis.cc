@@ -109,7 +109,7 @@ void ProbabilityAnalyzer<mc::DirectEval>::ComputeTallies(const bool converge_on_
 
     using bitpack_t_ = std::uint64_t;
     const mc::stats::TallyNodeMap &tally_node_map = this->monitored();
-    mc::queue::layer_manager<bitpack_t_> manager(pdag, N, tally_node_map);
+    mc::queue::layer_manager<bitpack_t_> manager(pdag, N, tally_node_map, settings.overhead_ratio());
 
     using bayes_t = mc::stats::bayes_policy;
     using wald_t  = mc::stats::wald_policy;
@@ -188,17 +188,6 @@ void ProbabilityAnalyzer<mc::DirectEval>::ComputeTallies(const bool converge_on_
             {
                 log::convergence::csv_pairs(kv);
             }
-
-            // kv.emplace_back("realized_trials", std::to_string(steps_cur.trials()));
-            // kv.emplace_back("projected_trials", std::to_string(steps_proj.trials()));
-            // kv.emplace_back("realized_eps", std::to_string(cur_state.half_width_epsilon));
-            // kv.emplace_back("realized_eps_log10", std::to_string(cur_state.half_width_epsilon_log10));
-            // kv.emplace_back("prob_mean", std::to_string(root_tally.mean));
-            // kv.emplace_back("std_err", std::to_string(root_tally.std_err));
-            // kv.emplace_back("ci95_low", std::to_string(root_tally.ci[0]));
-            // kv.emplace_back("ci95_hi",  std::to_string(root_tally.ci[1]));
-            // processing time
-
             log::BenchmarkLogger mc_logger{"convergence.csv"};
             mc_logger.log_pairs(kv);
         }

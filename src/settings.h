@@ -392,6 +392,13 @@ class Settings {
   /// Accepts non-negative values. Negative values are simply set as -1 to unset the variable.
   Settings &oracle_p(const double p) { oracle_p_ = p >= 0 ? p : -1.0; return *this; }
 
+    /// @returns Node allocation overhead ratio
+    [[nodiscard]] double overhead_ratio() const { return overhead_ratio_; }
+
+    /// Sets the ground-truth probability/frequency that will be used for diagnostic statistics.
+    /// Accepts non-negative values. Negative values are simply set as -1 to unset the variable.
+    Settings &overhead_ratio(const double r) { overhead_ratio_ = r >= 0 ? r : 0.; return *this; }
+
   /// @returns the list of MEF input files provided for the analysis (can be empty).
   [[nodiscard]] const std::vector<std::string>& input_files() const { return input_files_; }
 
@@ -453,6 +460,8 @@ class Settings {
   bool expand_atleast_gates_ = false;
   bool expand_xor_gates_ = false;
   int compilation_level_ = 2;
+
+  double overhead_ratio_ = 0.05;
 
   // A copy of the final list of MEF input files passed on the command-line.  Read-only access is provided via the getter above.
   std::vector<std::string> input_files_;

@@ -281,7 +281,7 @@ class layer_manager {
      * @note Sample shape is optimized for the target SYCL device
      *
      */
-    layer_manager(core::Pdag *pdag, size_t_ num_trials, const stats::TallyNodeMap &to_tally);
+    layer_manager(core::Pdag *pdag, size_t_ num_trials, const stats::TallyNodeMap &to_tally, std::double_t overhead_ratio);
 
     /**
      * @brief Submits all queued computations to the SYCL device

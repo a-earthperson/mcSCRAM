@@ -29,11 +29,13 @@
 #include "mc/stats/ci_utils.h"
 #include "mc/stats/diagnostics.h"
 #include "mc/stats/info_gain.h"
+#include "mc/logger/csv.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <optional>
+
 
 #define PRECISION_LOG_SCIENTIFIC_DIGITS 3
 
@@ -81,7 +83,11 @@ class convergence_controller {
                 .normal_quantile_two_sided = stats::normal_quantile_two_sided(settings_.ci_confidence()), // compute once
             },
         };
-        progress_.initialize(this, settings.watch_mode());
+        // ---------------------------------------------------------------------
+        //  Build unique progress-log filename: <input>_<YYYYMMDD_HHMMSS>_convergence.csv
+        // ---------------------------------------------------------------------
+        const std::string progress_log = scram::log::timestamp_string( settings.input_files()[0], "convergence");
+        progress_.initialize(this, settings.watch_mode(), progress_log);
     }
 
     void process_tally(const event::tally<bitpack_t_> &tally) {
@@ -421,11 +427,12 @@ public:
     [[nodiscard]] const iteration_shape<bitpack_t_> &projected_steps_epsilon() const { return projected_steps_epsilon_; }
     [[nodiscard]] const iteration_shape<bitpack_t_> &projected_steps_epsilon_log10() const { return projected_steps_epsilon_log10_; }
 
-    [[nodiscard]] const iteration_shape<bitpack_t_> &remaining_steps() const {
-        return {
-            .iterations = projected_steps().iterations() - current_steps().iterations(),
-            .trials = projected_steps().trials() - current_steps().trials(),
-        };
+    [[nodiscard]] iteration_shape<bitpack_t_> remaining_steps() const {
+        auto rem = current_steps();
+        const std::size_t rem_trials = (projected_steps().trials() > current_steps().trials()) ?
+                                       (projected_steps().trials() - current_steps().trials()) : 0;
+        rem.trials(rem_trials);
+        return rem;
     }
 
     [[nodiscard]] bool stop_on_convergence() const { return settings_.early_stop(); }

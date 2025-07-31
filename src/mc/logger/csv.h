@@ -2,6 +2,8 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <chrono>
+#include <ctime>
 
 namespace scram::log {
 // Generic value → string conversion for CSV.
@@ -32,6 +34,27 @@ inline std::string csv_string(const double &v) {
 inline std::string csv_string(const char *s) { return std::string{s}; }
 inline std::string csv_string(const std::string &s) { return s; }
 
+/**
+ * @brief Generate a timestamp string in YYYYMMDD_HHMMSS format.
+ * 
+ * Useful for creating unique filenames with current local time.
+ * 
+ * @return Formatted timestamp string
+ */
+inline std::string timestamp_string(const std::string &prefix = "", const std::string &suffix = "") {
+    std::ostringstream ts_ss;
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#if defined(_MSC_VER)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    ts_ss << std::put_time(&tm, "%Y%m%d_%H%M%S");
+    return prefix + "_" + ts_ss.str() + "_" +suffix + ".csv";
+}
+
 
 template<typename pair_type>
 inline void write_csv_header(std::ostream &os) {
@@ -52,5 +75,7 @@ inline void write_csv_row(const pair_type &s, std::ostream &os) {
         os << p.second;
     }
 }
+
+
 
 }

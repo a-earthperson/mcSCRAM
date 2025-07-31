@@ -56,7 +56,7 @@ struct sample_shaper {
 
     explicit sample_shaper()= default;
 
-    sample_shaper(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes)
+    sample_shaper(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes, const std::double_t overhead_ratio)
         : requested_num_trials_(requested_num_trials), num_nodes_(num_nodes) {
 
         const sycl::device device = queue.get_device();
@@ -106,18 +106,25 @@ struct sample_shaper {
                                                                                               per_iteration_target_bits,
                                                                                               target_bits_per_iteration_);
 
-        if (device.has(sycl::aspect::cpu) || device.has(sycl::aspect::gpu)) {
-            if (sample_shape.bitpacks_per_batch) {
-                sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
-                sample_shape.batch_size = 1;
-            }
+        // move all the work to the last dimension
+        if (sample_shape.bitpacks_per_batch) {
+            sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
+            sample_shape.batch_size = 1;
         }
-        // device maximum memory
-        // hacky hack
+
+        //const auto cu = device.get_info<sycl::info::device::max_compute_units>(); // thread count
+        //const auto cf = device.get_info<sycl::info::device::max_clock_frequency>();
+
+        // nvidia backend is exceptional at maximizing block-level throughput, all we need to do is be greedy
+        // about the work we want to assign -- perform a max allocation
         if (device.has(sycl::aspect::gpu) && device.get_info<sycl::info::device::vendor>() == "NVIDIA") {
             const std::double_t max_device_bitpacks = static_cast<std::double_t>(max_device_bytes_) / static_cast<std::double_t>(sizeof(bitpack_t_));
-            const std::size_t bitpacks = static_cast<std::size_t>(std::floor(max_device_bitpacks / (num_nodes * 1.05)));
-            const std::size_t cache_line_bytes = device.get_info<sycl::info::device::global_mem_cache_line_size>();
+            // Allow a 5 % allocator overhead per node so we don't exceed the device limit
+            // once buffers are rounded-up internally.
+            const auto num_nodes_d = static_cast<std::double_t>(num_nodes);
+            const std::double_t effective_nodes = num_nodes_d * (1.0 + std::clamp(overhead_ratio, 0.0, 1e6));
+            const auto bitpacks = static_cast<std::size_t>(std::floor(max_device_bitpacks / effective_nodes));
+            const auto cache_line_bytes = static_cast<std::double_t>(device.get_info<sycl::info::device::global_mem_cache_line_size>());
             const auto cache_line_bitpacks = static_cast<std::size_t>(cache_line_bytes / static_cast<std::double_t>(sizeof(bitpack_t_)));
             const std::size_t bitpacks_aligned = bitpacks - (bitpacks % cache_line_bitpacks);
             if (sample_shape.bitpacks_per_batch) {
