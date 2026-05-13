@@ -41,8 +41,10 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "artifacts", label: "Artifacts" },
 ];
 
+const HOST_SHORT = "Core i7 10700";
+
 const DEVICE_ORDER = [
-  "OpenMP host",
+  HOST_SHORT,
   "UHD 630",
   "GTX 1660 S",
   "RTX 4090",
@@ -51,7 +53,7 @@ const DEVICE_ORDER = [
 ];
 
 const DEVICE_COLOR: Record<string, string> = {
-  "OpenMP host": inkPalette.paynes,
+  [HOST_SHORT]: inkPalette.paynes,
   "UHD 630": inkPalette.ochre,
   "GTX 1660 S": inkPalette.indigo,
   "RTX 4090": inkPalette.madder,
@@ -155,7 +157,7 @@ function Hero({ data }: { data: SiteData }) {
   return (
     <header className="hero">
       <div className="hero-copy">
-        <p className="eyebrow">Aralia Fault Tree Atlas · mcSCRAM</p>
+        <p className="eyebrow">Aralia Fault Tree Dataset · mcSCRAM</p>
         <h1>Benchmarks for a GPU Monte-Carlo PRA engine</h1>
         <p className="lede">
           mcSCRAM is a Monte-Carlo successor to the SCRAM probabilistic risk-assessment toolkit that compiles
@@ -164,7 +166,7 @@ function Hero({ data }: { data: SiteData }) {
           cross-device runs over <strong>{summary.counts.devices}</strong> devices,{" "}
           <strong>{formatInteger(summary.counts.compilerRows)}</strong> compiler ablation rows, and{" "}
           <strong>{formatInteger(summary.counts.traceFiles)}</strong> sampled convergence traces into one
-          interactive archive — for {summary.counts.models} Aralia fault-tree models.
+          interactive archive — for {summary.counts.models} models, 43 of which are from the Aralia Fault Tree dataset.
         </p>
         <div className="hero-actions">
           <a href={summary.mcScramRepo}>mcSCRAM</a>
@@ -268,10 +270,10 @@ function Overview({ data, onPreviewAsset }: { data: SiteData; onPreviewAsset: (a
       </div>
 
       <div className="panel">
-        <SectionTitle eyebrow="Matched speedup" title="Per-device speedup over the OpenMP host" />
+        <SectionTitle eyebrow="Matched speedup" title="Per-device speedup over the 8-core Core i7 10700 CPU host" />
         <Plot
           data={DEVICE_ORDER
-            .filter((d) => d !== "OpenMP host" && speedupsByDevice[d]?.length)
+            .filter((d) => d !== HOST_SHORT && speedupsByDevice[d]?.length)
             .map((dev) => ({
               type: "box",
               y: speedupsByDevice[dev]!.map((row) => row.speedupVsHost),
@@ -284,7 +286,7 @@ function Overview({ data, onPreviewAsset }: { data: SiteData; onPreviewAsset: (a
               hovertemplate: `${dev}<br>speedup=%{y:.2f}x<extra></extra>`,
             }))}
           layout={{
-            yaxis: { title: "speedup vs OpenMP host", type: "log" },
+            yaxis: { title: "speedup vs 8-core Core i7 10700 CPU host", type: "log" },
             showlegend: false,
             margin: { l: 64, r: 16, t: 22, b: 80 },
           }}
@@ -378,7 +380,7 @@ function Overview({ data, onPreviewAsset }: { data: SiteData; onPreviewAsset: (a
       </div>
 
       <div className="panel span-3">
-        <SectionTitle eyebrow="Curated figures" title="Pre-rendered scientific plates" text="Browser-friendly copies of the original MATLAB-generated plates. EPS originals and source scripts are linked in the Artifacts tab." />
+        <SectionTitle eyebrow="Artifacts" title="Pre-rendered plots and artifacts" text="Copies of the original MATLAB-generated figures. EPS originals and source scripts are linked in the Artifacts tab." />
         <div className="asset-strip">
           {data.artifacts.plots
             .filter((asset) => ["Throughput", "Compiler", "Device speedup", "Information theory", "Convergence", "Graph structure"].includes(asset.category))
@@ -431,7 +433,7 @@ function PerformanceDashboard({ data }: { data: SiteData }) {
         <SectionTitle
           eyebrow="Device leaderboard"
           title="Raw and matched per-device statistics"
-          text="For each device, the median and p05/p95 are taken over every measured run; the matched-config speedup uses only (model, flag, kn, xor, δ, ccf) tuples that also ran on the OpenMP host."
+          text="For each device, the median and p05/p95 are taken over every measured run; the matched-config speedup uses only (model, flag, kn, xor, δ, ccf) tuples that also ran on the 8-core CPU host."
         />
         <DeviceLeaderboard devices={orderedDevices} speedups={data.speedups} />
       </div>
@@ -528,7 +530,7 @@ function PerformanceDashboard({ data }: { data: SiteData }) {
       <div className="panel span-2">
         <SectionTitle eyebrow="Distribution" title="Matched-configuration speedup distribution per device" />
         <Plot
-          data={DEVICE_ORDER.filter((dev) => dev !== "OpenMP host").map((dev) => {
+          data={DEVICE_ORDER.filter((dev) => dev !== HOST_SHORT).map((dev) => {
             const rows = data.speedups.rows.filter((r) => r.deviceShort === dev);
             if (!rows.length) return null;
             return {
@@ -546,7 +548,7 @@ function PerformanceDashboard({ data }: { data: SiteData }) {
             };
           }).filter(Boolean) as Record<string, unknown>[]}
           layout={{
-            yaxis: { title: "speedup vs OpenMP host", type: "log" },
+            yaxis: { title: "speedup vs 8-core CPU host", type: "log" },
             showlegend: false,
             margin: { l: 64, r: 16, t: 22, b: 80 },
           }}
