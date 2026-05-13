@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plot } from "./components/Plot";
+import { Plot, inkColorscale, inkPalette } from "./components/Plot";
 import {
   Artifacts,
   CompilerData,
@@ -96,6 +96,7 @@ function Hero({ data }: { data: SiteData }) {
       <div className="hero-copy">
         <p className="eyebrow">Static research supplement</p>
         <h1>mcSCRAM Benchmarks</h1>
+        <h2>Aralia Fault Trees</h2>
         <p className="lede">
           Interactive benchmark results for mcSCRAM: convergence behavior, GPU throughput, compiler reductions, per-model traces,
           generated plots, and the low-level artifacts that back the headline comparisons.
@@ -237,7 +238,14 @@ function PerformanceDashboard({ data }: { data: SiteData }) {
               x: filtered.map((run) => run.convergenceTimeMs),
               y: filtered.map((run) => run.relError),
               text: filtered.map((run) => `${run.modelName}<br>${run.deviceName}<br>${run.compileFlag}`),
-              marker: { size: 9, color: filtered.map((run) => run.numNodes ?? 0), colorscale: "Viridis", showscale: true },
+              marker: {
+                size: 9,
+                color: filtered.map((run) => run.numNodes ?? 0),
+                colorscale: inkColorscale,
+                showscale: true,
+                line: { color: inkPalette.ink, width: 0.5 },
+                opacity: 0.85,
+              },
               hovertemplate: "%{text}<br>time=%{x:.3s} ms<br>rel error=%{y:.3e}<extra></extra>",
             },
           ]}
@@ -254,7 +262,12 @@ function PerformanceDashboard({ data }: { data: SiteData }) {
               x: filtered.map((run) => run.numLayers),
               y: filtered.map((run) => run.numKernels),
               text: filtered.map((run) => `${run.modelName}<br>${run.numNodes} nodes`),
-              marker: { size: filtered.map((run) => Math.max(7, Math.log10((run.numNodes ?? 1) + 1) * 5)), color: "#38bdf8" },
+              marker: {
+                size: filtered.map((run) => Math.max(7, Math.log10((run.numNodes ?? 1) + 1) * 5)),
+                color: inkPalette.ink,
+                opacity: 0.7,
+                line: { color: inkPalette.paper, width: 0.5 },
+              },
               hovertemplate: "%{text}<br>layers=%{x}<br>kernels=%{y}<extra></extra>",
             },
           ]}
@@ -269,7 +282,10 @@ function PerformanceDashboard({ data }: { data: SiteData }) {
               type: "bar",
               x: data.tallies.topEvents.slice(0, 35).map((event) => event.eventId),
               y: data.tallies.topEvents.slice(0, 35).map((event) => event.mean),
-              marker: { color: "#a78bfa" },
+              marker: {
+                color: inkPalette.ink,
+                line: { color: inkPalette.ink, width: 0.5 },
+              },
               hovertemplate: "%{x}<br>mean=%{y:.3e}<extra></extra>",
             },
           ]}
@@ -322,7 +338,10 @@ function CompilerDashboard({ data }: { data: SiteData }) {
                 array: summaries.map((row) => Math.max(0, (row.compressionAllNodes.p95 ?? 0) - (row.compressionAllNodes.median ?? 0))),
                 arrayminus: summaries.map((row) => Math.max(0, (row.compressionAllNodes.median ?? 0) - (row.compressionAllNodes.p05 ?? 0))),
               },
-              marker: { color: "#22c55e" },
+              marker: {
+                color: inkPalette.indigo,
+                line: { color: inkPalette.ink, width: 0.5 },
+              },
               hovertemplate: "%{x}<br>median=%{y:.3f}<extra></extra>",
             },
           ]}
@@ -339,7 +358,14 @@ function CompilerDashboard({ data }: { data: SiteData }) {
               x: rows.map((row) => row.pdagAvgFanIn),
               y: rows.map((row) => row.compressionAllNodes),
               text: rows.map((row) => `${row.modelName}<br>${row.compileFlag}`),
-              marker: { size: 7, color: rows.map((row) => row.pdagGates ?? 0), colorscale: "Turbo", showscale: true },
+              marker: {
+                size: 7,
+                color: rows.map((row) => row.pdagGates ?? 0),
+                colorscale: inkColorscale,
+                showscale: true,
+                line: { color: inkPalette.ink, width: 0.5 },
+                opacity: 0.85,
+              },
               hovertemplate: "%{text}<br>avg fan-in=%{x:.3f}<br>compression=%{y:.3f}<extra></extra>",
             },
           ]}
@@ -356,7 +382,12 @@ function CompilerDashboard({ data }: { data: SiteData }) {
               x: rows.map((row) => row.modelGates),
               y: rows.map((row) => row.preprocessingTimeUs),
               text: rows.map((row) => `${row.modelName}<br>${row.compileFlag}`),
-              marker: { size: 7, color: "#f59e0b" },
+              marker: {
+                size: 7,
+                color: inkPalette.ochre,
+                opacity: 0.78,
+                line: { color: inkPalette.ink, width: 0.5 },
+              },
               hovertemplate: "%{text}<br>gates=%{x}<br>time=%{y:.3s} us<extra></extra>",
             },
           ]}
@@ -559,7 +590,7 @@ function ThroughputPlot({ runs }: { runs: PerformanceRun[] }) {
       x: subset.map((run) => run.numNodes),
       y: subset.map((run) => run.bitsPerSecond),
       text: subset.map((run) => `${run.modelName}<br>${run.compileFlag}<br>${formatDurationMs(run.convergenceTimeMs)}`),
-      marker: { size: 9, opacity: 0.86 },
+      marker: { size: 8, opacity: 0.75, line: { color: inkPalette.paper, width: 0.5 } },
       hovertemplate: "%{text}<br>nodes=%{x}<br>bits/s=%{y:.3s}<extra></extra>",
     };
   });
@@ -584,11 +615,11 @@ function TracePlot({ trace }: { trace: TraceSeries }) {
         {
           type: "scatter",
           mode: "lines",
-          name: "p01-p99 band",
+          name: "p01\u2013p99 band",
           x,
           y: trace.pointsData.map((point) => point.p01),
           fill: "tonexty",
-          fillcolor: "rgba(56,189,248,0.18)",
+          fillcolor: "rgba(28,26,22,0.12)",
           line: { width: 0 },
           hoverinfo: "skip",
         },
@@ -598,8 +629,8 @@ function TracePlot({ trace }: { trace: TraceSeries }) {
           name: "mean",
           x,
           y: trace.pointsData.map((point) => point.mean),
-          line: { color: "#38bdf8", width: 3 },
-          marker: { size: 5 },
+          line: { color: inkPalette.ink, width: 1.6 },
+          marker: { size: 4, color: inkPalette.ink },
           hovertemplate: "trials=%{x:.3s}<br>mean=%{y:.4e}<extra></extra>",
         },
         {
@@ -608,7 +639,7 @@ function TracePlot({ trace }: { trace: TraceSeries }) {
           name: "oracle",
           x,
           y: trace.pointsData.map(() => trace.oracleP),
-          line: { color: "#f97316", dash: "dot", width: 2 },
+          line: { color: inkPalette.madder, dash: "dot", width: 1.5 },
           hovertemplate: "oracle=%{y:.4e}<extra></extra>",
         },
       ]}
