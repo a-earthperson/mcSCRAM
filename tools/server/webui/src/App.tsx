@@ -7,6 +7,8 @@ import {
   ConvergenceView,
   DeviceSummary,
   ExactResult,
+  HardwareData,
+  HardwareDevice,
   LogFit,
   ModelCard,
   NarrativeCard,
@@ -30,10 +32,11 @@ import {
   formatNumber,
 } from "./lib/format";
 
-type Tab = "overview" | "performance" | "compiler" | "convergence" | "models" | "artifacts";
+type Tab = "overview" | "hardware" | "performance" | "compiler" | "convergence" | "models" | "artifacts";
 
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: "overview", label: "Overview" },
+  { id: "hardware", label: "Hardware" },
   { id: "performance", label: "Performance" },
   { id: "compiler", label: "Compiler" },
   { id: "convergence", label: "Convergence" },
@@ -99,9 +102,10 @@ function App() {
       loadJson<Artifacts>("artifacts.json"),
       loadJson<Tallies>("tallies.json"),
       loadJson<ExactResult[]>("exact-results.json"),
+      loadJson<HardwareData>("hardware.json"),
     ])
-      .then(([summary, narrative, models, performance, devices, speedups, compiler, convergence, traces, setIndex, artifacts, tallies, exactResults]) => {
-        setData({ summary, narrative, models, performance, devices, speedups, compiler, convergence, traces, setIndex, artifacts, tallies, exactResults });
+      .then(([summary, narrative, models, performance, devices, speedups, compiler, convergence, traces, setIndex, artifacts, tallies, exactResults, hardware]) => {
+        setData({ summary, narrative, models, performance, devices, speedups, compiler, convergence, traces, setIndex, artifacts, tallies, exactResults, hardware });
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
@@ -130,6 +134,7 @@ function App() {
         ))}
       </nav>
       {tab === "overview" && <Overview data={data} onPreviewAsset={setPreviewAsset} />}
+      {tab === "hardware" && <HardwareDashboard data={data} />}
       {tab === "performance" && <PerformanceDashboard data={data} />}
       {tab === "compiler" && <CompilerDashboard data={data} />}
       {tab === "convergence" && <ConvergenceDashboard data={data} />}
@@ -392,6 +397,480 @@ function Overview({ data, onPreviewAsset }: { data: SiteData; onPreviewAsset: (a
       </div>
     </section>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Hardware
+// ---------------------------------------------------------------------------
+
+function HardwareDashboard({ data }: { data: SiteData }) {
+  const ordered = useMemo(() => orderHardware(data.hardware.devices), [data.hardware.devices]);
+  const fleetSpan = useMemo(() => {
+    const lanes = ordered.map((d) => d.lanes);
+    const bandwidth = ordered.map((d) => d.bandwidthGBs);
+    const peak = ordered.map((d) => d.measuredPeakBps ?? 0).filter((v) => v > 0);
+    return {
+      laneRatio: Math.max(...lanes) / Math.min(...lanes),
+      bandwidthRatio: Math.max(...bandwidth) / Math.min(...bandwidth),
+      peakRatio: Math.max(...peak) / Math.min(...peak),
+      yearSpan: [Math.min(...ordered.map((d) => d.year)), Math.max(...ordered.map((d) => d.year))] as [number, number],
+    };
+  }, [ordered]);
+
+  return (
+    <section className="section-grid">
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="Fleet at a glance"
+          title="Six devices across five vendor generations"
+          text="mcSCRAM runs the same SYCL kernel against an Intel Comet Lake CPU host, an Intel Gen9 integrated GPU, a Turing consumer GPU, two Ada Lovelace cards (one consumer, one datacenter), and a Blackwell consumer flagship. The spread is roughly 3 orders of magnitude in compute lanes and a 40× span in memory bandwidth, which makes the fleet a clean instrument for separating compute-bound from memory-bound behaviour."
+        />
+        <div className="metric-grid">
+          <Metric label="Devices" value={formatInteger(ordered.length)} detail={`${fleetSpan.yearSpan[0]} → ${fleetSpan.yearSpan[1]}`} />
+          <Metric label="Compute-lane span" value={`${fleetSpan.laneRatio.toFixed(0)}×`} detail="UHD 630 → RTX 5090" />
+          <Metric label="Bandwidth span" value={`${fleetSpan.bandwidthRatio.toFixed(0)}×`} detail="45.8 GB/s → 1.79 TB/s" />
+          <Metric label="Measured peak span" value={`${fleetSpan.peakRatio.toFixed(0)}×`} detail="Core i7 vs GTX 1660 S" />
+        </div>
+      </div>
+
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="Specification ledger"
+          title="Vendor-published specifications for the fleet"
+          text="Values are normalized to the conventions in benchmarks/hardware-setup.md: cache totals in KiB (NVIDIA's 1024-byte convention), CUDA cores aggregated as SMs × cores/SM, resident-warp slots from the architectural cap (CC 7.5 → 32, CC 8.9 and 12.x → 48). Each row links to the original vendor specification page."
+        />
+        <HardwareSpecTable devices={ordered} />
+      </div>
+
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="Architecture roofline"
+          title="Where does measured throughput come from?"
+          text={`A six-point log-log regression of median bits/s against three hardware quantities. Bandwidth dominates: med ∝ BW^${formatFitSlope(data.hardware.bandwidthMedianFit)} (R² = ${formatNumber(data.hardware.bandwidthMedianFit.r2, 2)}). Lane scaling is sublinear (slope ${formatFitSlope(data.hardware.laneMedianFit)}, R² = ${formatNumber(data.hardware.laneMedianFit.r2, 2)}), so adding CUDA cores past the bandwidth wall does not buy throughput. We use the median rather than the peak because the GTX 1660 S has 23× more measured runs than the RTX 4090 — peak ordering would be sample-size-biased.`}
+        />
+        <div className="roofline-grid">
+          <ScalingScatter
+            devices={ordered}
+            xField="bandwidthGBs"
+            yField="measuredMedianBps"
+            xLabel="vendor bandwidth (GB/s)"
+            yLabel="median bits/s"
+            fit={data.hardware.bandwidthMedianFit}
+            title="vs bandwidth"
+          />
+          <ScalingScatter
+            devices={ordered}
+            xField="lanes"
+            yField="measuredMedianBps"
+            xLabel="compute lanes"
+            yLabel="median bits/s"
+            fit={data.hardware.laneMedianFit}
+            title="vs lanes"
+          />
+          <ScalingScatter
+            devices={ordered}
+            xField="fp32TFlops"
+            yField="measuredMedianBps"
+            xLabel="FP32 TFLOP/s"
+            yLabel="median bits/s"
+            fit={data.hardware.flopsMedianFit}
+            title="vs FP32 FLOPS"
+          />
+        </div>
+      </div>
+
+      <div className="panel span-2">
+        <SectionTitle eyebrow="Compute hierarchy" title="Lane count per device" text="Log y-axis; the UHD 630 sits 100× below the consumer GPUs, the Blackwell flagship 100× above them again." />
+        <Plot
+          data={[
+            {
+              type: "bar",
+              x: ordered.map((d) => d.deviceShort),
+              y: ordered.map((d) => d.lanes),
+              text: ordered.map((d) => d.lanesNote),
+              marker: { color: ordered.map((d) => DEVICE_COLOR[d.deviceShort] ?? inkPalette.ink) },
+              hovertemplate: "%{x}<br>%{y} %{customdata}<br>%{text}<extra></extra>",
+              customdata: ordered.map((d) => d.lanesLabel),
+            },
+          ]}
+          layout={{
+            xaxis: { title: "device", tickangle: -15 },
+            yaxis: { title: "lanes", type: "log" },
+            margin: { l: 70, r: 16, t: 22, b: 80 },
+          }}
+        />
+      </div>
+
+      <div className="panel">
+        <SectionTitle eyebrow="Memory hierarchy" title="L1 / L2 / global memory capacity" text="Aggregate per-device on a log axis. The Ada/Blackwell L2 cache (≥72 MiB) is the dominant new architectural lever: it holds entire PDAGs that previously spilled to VRAM." />
+        <MemoryHierarchyPlot devices={ordered} />
+      </div>
+
+      <div className="panel">
+        <SectionTitle
+          eyebrow="Throughput efficiency"
+          title="Bits/s per compute lane"
+          text="Peak bits/s divided by the device's lane count. Smaller GPUs are dramatically more efficient per lane — they spend less of their fleet idling on memory."
+        />
+        <Plot
+          data={[
+            {
+              type: "bar",
+              x: ordered.map((d) => d.deviceShort),
+              y: ordered.map((d) => d.bpsPerLane ?? 0),
+              marker: { color: ordered.map((d) => DEVICE_COLOR[d.deviceShort] ?? inkPalette.ink) },
+              hovertemplate: "%{x}<br>%{y:.3s} bits/s/lane<extra></extra>",
+            },
+          ]}
+          layout={{
+            xaxis: { tickangle: -15 },
+            yaxis: { title: "peak bits/s per lane", type: "log" },
+            margin: { l: 70, r: 16, t: 22, b: 80 },
+          }}
+        />
+      </div>
+
+      <div className="panel">
+        <SectionTitle
+          eyebrow="Bandwidth efficiency"
+          title="Bits/s emitted per GB/s of available bandwidth"
+          text="Throughput divided by vendor bandwidth — the workload's effective utilization ratio. Higher means the device is closer to its memory wall; lower means there is headroom that smaller PDAGs would consume."
+        />
+        <Plot
+          data={[
+            {
+              type: "bar",
+              x: ordered.map((d) => d.deviceShort),
+              y: ordered.map((d) => d.bpsPerGBs ?? 0),
+              marker: { color: ordered.map((d) => DEVICE_COLOR[d.deviceShort] ?? inkPalette.ink) },
+              hovertemplate: "%{x}<br>%{y:.3s} bits/s / (GB/s)<extra></extra>",
+            },
+          ]}
+          layout={{
+            xaxis: { tickangle: -15 },
+            yaxis: { title: "peak bits/s ÷ vendor GB/s", type: "log" },
+            margin: { l: 70, r: 16, t: 22, b: 80 },
+          }}
+        />
+      </div>
+
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="Calculation checks"
+          title="Independent cross-checks against vendor materials"
+          text="Selected derivations from the hardware specification table — sanity checks for resident-warp counts, peak FP32, and memory bandwidth."
+        />
+        <CalcChecks devices={ordered} />
+      </div>
+
+      <div className="panel span-2">
+        <SectionTitle
+          eyebrow="SYCL terminology"
+          title="Glossary: work-item, sub-group, warp, SM, EU"
+          text="The vendor mapping for SYCL primitives is not symmetric across the fleet.  This glossary captures the mapping that benchmark numbers depend on."
+        />
+        <dl className="glossary">
+          {data.hardware.glossary.map((entry) => (
+            <div key={entry.term}>
+              <dt>{entry.term}</dt>
+              <dd>
+                <p>{entry.summary}</p>
+                <p className="glossary-mapping">{entry.mapping}</p>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="panel">
+        <SectionTitle
+          eyebrow="SYCL ↔ hardware"
+          title="What the runtime observes"
+          text="At kernel launch mcSCRAM reads SYCL's device descriptors. These are the values that flowed into every benchmark row alongside the published spec."
+        />
+        <RuntimeObservedTable devices={ordered} />
+      </div>
+
+      <div className="panel span-3">
+        <SectionTitle eyebrow="Normalization notes" title="How the specification table was assembled" />
+        <ul className="footnote-list">
+          {data.hardware.normalizationNotes.map((note, idx) => (
+            <li key={idx}>{note}</li>
+          ))}
+        </ul>
+        <p className="provenance">
+          Source markdown: <a href={data.hardware.sourceUrl}>{data.hardware.source}</a>
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function HardwareSpecTable({ devices }: { devices: HardwareDevice[] }) {
+  return (
+    <div className="table-wrap spec-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Architecture · year</th>
+            <th>Compute</th>
+            <th>Resident warps</th>
+            <th>Clock (boost)</th>
+            <th>Bandwidth</th>
+            <th>L1 · L2</th>
+            <th>Global memory</th>
+            <th>FP32 peak</th>
+          </tr>
+        </thead>
+        <tbody>
+          {devices.map((d) => (
+            <tr key={d.deviceShort}>
+              <td>
+                <strong>{d.deviceShort}</strong>
+                <span className="cell-sub">{d.deviceLong}</span>
+                <a className="cell-link" href={d.sourceUrl}>vendor spec</a>
+              </td>
+              <td>
+                {d.architecture}
+                <span className="cell-sub">{d.cudaCompute ? `CC ${d.cudaCompute} · ` : ""}{d.process} · {d.year}</span>
+              </td>
+              <td>
+                {formatInteger(d.lanes)} {d.lanesLabel}
+                <span className="cell-sub">{d.computeUnits} {d.computeUnitsLabel}{d.smCount ? ` · ${d.smCount} SMs` : ""}</span>
+              </td>
+              <td>{d.residentWarps ? `${formatInteger(d.residentWarps)} (${d.smCount} × ${(d.residentWarps / (d.smCount ?? 1)).toFixed(0)})` : "—"}</td>
+              <td>
+                {formatNumber(d.boostClockMHz / 1000, 2)} GHz
+                <span className="cell-sub">base {formatNumber(d.baseClockMHz / 1000, 2)} GHz</span>
+              </td>
+              <td>
+                {formatNumber(d.bandwidthGBs, 3)} GB/s
+                <span className="cell-sub">{formatNumber(d.memoryRateGbps, 2)} Gb/s × {d.memoryBusBits}-bit</span>
+              </td>
+              <td>
+                {d.l1KiB ? `${formatInteger(d.l1KiB)} KiB` : "n/a"} · {d.l2KiB ? `${formatInteger(d.l2KiB)} KiB` : "n/a"}
+                <span className="cell-sub">{d.l1Note}</span>
+              </td>
+              <td>
+                {d.globalMemMiB >= 1024 ? `${(d.globalMemMiB / 1024).toFixed(0)} GiB` : `${d.globalMemMiB} MiB`}
+                <span className="cell-sub">{d.memoryType}</span>
+              </td>
+              <td>
+                {formatNumber(d.fp32TFlops, 3)} TFLOP/s
+                <span className="cell-sub">{d.fp32Note}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MemoryHierarchyPlot({ devices }: { devices: HardwareDevice[] }) {
+  const buildTrace = (key: "l1KiB" | "l2KiB" | "globalKiB", name: string, color: string) => ({
+    type: "bar" as const,
+    name,
+    x: devices.map((d) => d.deviceShort),
+    y: devices.map((d) => {
+      if (key === "globalKiB") return d.globalMemMiB * 1024;
+      return d[key] ?? null;
+    }),
+    marker: { color },
+    hovertemplate: `%{x} ${name}=%{y:.3s} KiB<extra></extra>`,
+  });
+  return (
+    <Plot
+      data={[
+        buildTrace("l1KiB", "L1 / shared", inkPalette.indigo),
+        buildTrace("l2KiB", "L2", inkPalette.madder),
+        buildTrace("globalKiB", "global", inkPalette.sage),
+      ]}
+      layout={{
+        barmode: "group",
+        xaxis: { tickangle: -15 },
+        yaxis: { title: "capacity (KiB)", type: "log" },
+        legend: { y: -0.22, orientation: "h" },
+        margin: { l: 70, r: 16, t: 22, b: 100 },
+      }}
+    />
+  );
+}
+
+function ScalingScatter({
+  devices,
+  xField,
+  yField,
+  xLabel,
+  yLabel,
+  fit,
+  title,
+}: {
+  devices: HardwareDevice[];
+  xField: keyof HardwareDevice;
+  yField: keyof HardwareDevice;
+  xLabel: string;
+  yLabel: string;
+  fit: LogFit;
+  title?: string;
+}) {
+  const data = devices
+    .map((d) => ({ device: d, x: d[xField] as number | null, y: d[yField] as number | null }))
+    .filter((p): p is { device: HardwareDevice; x: number; y: number } => typeof p.x === "number" && typeof p.y === "number" && p.x > 0 && p.y > 0);
+  const xMin = Math.min(...data.map((p) => p.x));
+  const xMax = Math.max(...data.map((p) => p.x));
+  const traces: Record<string, unknown>[] = [
+    {
+      type: "scatter",
+      mode: "markers+text",
+      x: data.map((p) => p.x),
+      y: data.map((p) => p.y),
+      text: data.map((p) => p.device.deviceShort),
+      textposition: "top right",
+      textfont: { family: "Inter Tight, sans-serif", size: 11, color: inkPalette.ink },
+      marker: {
+        color: data.map((p) => DEVICE_COLOR[p.device.deviceShort] ?? inkPalette.ink),
+        size: 12,
+        line: { color: inkPalette.ink, width: 0.6 },
+      },
+      hovertemplate: "%{text}<br>%{x:.3s}<br>%{y:.3s}<extra></extra>",
+    },
+  ];
+  const line = fitLine(fit, inkPalette.ink, "log–log fit", [xMin, xMax]);
+  if (line) traces.push(line);
+  return (
+    <figure className="roofline-figure">
+      {title ? <figcaption>{title} · slope {formatFitSlope(fit)} · R² {formatNumber(fit.r2, 2)}</figcaption> : null}
+      <Plot
+        className="plot roofline-plot"
+        data={traces}
+        layout={{
+          xaxis: { title: xLabel, type: "log" },
+          yaxis: { title: yLabel, type: "log" },
+          showlegend: false,
+          margin: { l: 64, r: 24, t: 12, b: 50 },
+        }}
+      />
+    </figure>
+  );
+}
+
+function CalcChecks({ devices }: { devices: HardwareDevice[] }) {
+  const checks: Array<{ device: string; quantity: string; derivation: string; result: string; check: string }> = [];
+  for (const d of devices) {
+    if (d.smCount && d.residentWarps) {
+      const perSm = d.residentWarps / d.smCount;
+      checks.push({
+        device: d.deviceShort,
+        quantity: "resident warps",
+        derivation: `${d.smCount} SMs × ${perSm.toFixed(0)} warps/SM`,
+        result: formatInteger(d.residentWarps),
+        check: d.cudaCompute ? `CC ${d.cudaCompute} arch cap` : "—",
+      });
+    }
+    if (d.smCount && d.l1KiB) {
+      const perSm = d.l1KiB / d.smCount;
+      checks.push({
+        device: d.deviceShort,
+        quantity: "L1 / shared total",
+        derivation: `${d.smCount} SMs × ${perSm.toFixed(0)} KiB/SM`,
+        result: `${formatInteger(d.l1KiB)} KiB`,
+        check: "matches whitepaper",
+      });
+    }
+    if (d.memoryRateGbps && d.memoryBusBits) {
+      const bw = (d.memoryRateGbps * d.memoryBusBits) / 8;
+      checks.push({
+        device: d.deviceShort,
+        quantity: "memory bandwidth",
+        derivation: `${d.memoryRateGbps} Gb/s × ${d.memoryBusBits}-bit ÷ 8`,
+        result: `${formatNumber(bw, 3)} GB/s`,
+        check: `vendor lists ${formatNumber(d.bandwidthGBs, 3)} GB/s`,
+      });
+    }
+    if (d.lanes && d.fp32TFlops && d.boostClockMHz) {
+      const implied = (d.fp32TFlops * 1e12) / (2 * d.lanes);
+      checks.push({
+        device: d.deviceShort,
+        quantity: "boost clock (FP32 implied)",
+        derivation: `${formatNumber(d.fp32TFlops, 3)} TF ÷ (2 FLOP × ${formatInteger(d.lanes)} lanes)`,
+        result: `${formatNumber(implied / 1e9, 3)} GHz`,
+        check: `published ${formatNumber(d.boostClockMHz / 1000, 2)} GHz`,
+      });
+    }
+  }
+  return (
+    <div className="table-wrap calc-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Quantity</th>
+            <th>Derivation</th>
+            <th>Computed</th>
+            <th>Check</th>
+          </tr>
+        </thead>
+        <tbody>
+          {checks.map((row, idx) => (
+            <tr key={`${row.device}-${idx}`}>
+              <td>{row.device}</td>
+              <td>{row.quantity}</td>
+              <td className="mono-cell">{row.derivation}</td>
+              <td className="mono-cell">{row.result}</td>
+              <td>{row.check}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RuntimeObservedTable({ devices }: { devices: HardwareDevice[] }) {
+  return (
+    <div className="table-wrap compact-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>SYCL compute units</th>
+            <th>SYCL clock (MHz)</th>
+            <th>SYCL global mem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {devices.map((d) => {
+            const o = d.observed ?? {};
+            const gmem = typeof o.globalMemBytes === "number" ? formatBytes(o.globalMemBytes) : "—";
+            return (
+              <tr key={d.deviceShort}>
+                <td>{d.deviceShort}</td>
+                <td>
+                  {formatInteger(o.maxComputeUnits ?? null)}
+                  <span className="cell-sub">spec: {d.computeUnits} {d.computeUnitsLabel}</span>
+                </td>
+                <td>{formatInteger(o.maxClockMHz ?? null)}</td>
+                <td>{gmem}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function orderHardware(devices: HardwareDevice[]): HardwareDevice[] {
+  return [...devices].sort((a, b) => {
+    const ai = DEVICE_ORDER.indexOf(a.deviceShort);
+    const bi = DEVICE_ORDER.indexOf(b.deviceShort);
+    if (ai === -1 && bi === -1) return a.deviceShort.localeCompare(b.deviceShort);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
 }
 
 // ---------------------------------------------------------------------------
