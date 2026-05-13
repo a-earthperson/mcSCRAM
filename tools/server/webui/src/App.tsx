@@ -94,12 +94,11 @@ function Hero({ data }: { data: SiteData }) {
   return (
     <header className="hero">
       <div className="hero-copy">
-        <p className="eyebrow">Static research supplement</p>
+        <p className="eyebrow">Aralia Fault Tree Dataset</p>
         <h1>mcSCRAM Benchmarks</h1>
-        <h2>Aralia Fault Trees</h2>
         <p className="lede">
           Interactive benchmark results for mcSCRAM: convergence behavior, GPU throughput, compiler reductions, per-model traces,
-          generated plots, and the low-level artifacts that back the headline comparisons.
+          generated plots, and the low-level artifacts for the Aralia Fault Tree dataset.
         </p>
         <div className="hero-actions">
           <a href={summary.mcScramRepo}>mcSCRAM</a>
