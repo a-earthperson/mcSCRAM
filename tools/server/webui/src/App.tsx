@@ -619,7 +619,7 @@ function TracePlot({ trace }: { trace: TraceSeries }) {
           x,
           y: trace.pointsData.map((point) => point.p01),
           fill: "tonexty",
-          fillcolor: "rgba(27, 29, 32, 0.12)",
+          fillcolor: "rgba(139, 161, 137, 0.22)",
           line: { width: 0 },
           hoverinfo: "skip",
         },
