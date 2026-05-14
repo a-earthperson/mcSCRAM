@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Plot, inkColorscale, inkColorway, inkPalette } from "./components/Plot";
 import {
   Artifacts,
+  CompileLevel,
+  CompileLevelStats,
   CompilerData,
   CompilerSummary,
+  ConnectiveEffectGroup,
+  ConnectiveSwitch,
   ConvergenceView,
   DeviceSummary,
   ExactResult,
@@ -1112,9 +1116,101 @@ function CompilerDashboard({ data }: { data: SiteData }) {
         .slice(0, 35),
     [visibleRows],
   );
+  const activeLevels = useMemo(
+    () => data.compiler.levelStats.filter((s) => ACTIVE_COMPILER_FLAGS.includes(s.compileFlag)),
+    [data.compiler.levelStats],
+  );
+  const activeTaxonomy = useMemo(
+    () => data.compiler.taxonomy.filter((entry) => ACTIVE_COMPILER_FLAGS.includes(entry.id)),
+    [data.compiler.taxonomy],
+  );
 
   return (
     <section className="section-grid">
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="From fault tree to bit-parallel kernel"
+          title="The PDAG is the contract between SCRAM's parser and mcSCRAM's GPU sampler"
+          text="The SCRAM front end parses an MEF fault tree, normalises identifiers, and hands the result to the compiler as a propagation DAG (PDAG). Every gate becomes one device kernel and every basic event a bit-packed Boolean buffer; one Monte-Carlo iteration evaluates one column of bits across the entire PDAG. So compressing the PDAG is not merely a 'compile-time' nicety — bits/s ≈ (bits per iteration · iterations / s) drops nearly inversely with PDAG node count on every device we measured (Performance tab). The DirectEval preprocessor exposes one knob (compilation_level, the Cn flag) plus two switches (kn / xor) that toggle expansion of threshold and exclusive-or connectives."
+        />
+        <div className="metric-grid compiler-headline">
+          <Metric
+            label="Best compression"
+            value={formatNumber(activeLevels.find((l) => l.compileFlag === "C2")?.pdagGates.median ?? null, 0)}
+            detail={`median gates @ C2 (was ${formatNumber(activeLevels.find((l) => l.compileFlag === "C0")?.pdagGates.median ?? null, 0)} @ C0)`}
+          />
+          <Metric
+            label="C2 preprocessing cost"
+            value={`${formatNumber(activeLevels.find((l) => l.compileFlag === "C2")?.preprocessingTimeUs.median ?? null, 0)} µs`}
+            detail="median per model on the C2 default"
+          />
+          <Metric
+            label="Cost of full pipeline"
+            value={`${formatNumber(activeLevels.find((l) => l.compileFlag === "C8")?.preprocessingTimeUs.median ?? null, 0)} µs`}
+            detail="median preprocessing @ C8"
+          />
+          <Metric
+            label="Models with k-of-N"
+            value={`${data.compiler.connectiveEffect.kn.modelCount} of ${formatInteger(data.summary.counts.models)}`}
+            detail={`${data.compiler.connectiveEffect.xor.modelCount} contain XOR`}
+          />
+        </div>
+      </div>
+
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="Pipeline"
+          title="Where compilation sits in the Monte-Carlo pipeline"
+          text="One forward sweep of mcSCRAM. Solid stages always run; the three optional phases (III–V) are gated on compile level and on the kn/xor expansion switches."
+        />
+        <PipelineFlow />
+      </div>
+
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="DirectEval level taxonomy"
+          title="What each Cn flag adds, in pipeline order"
+          text="Cumulative levels: Cn runs every pass in C0…Cn−1 then the row's additions. The 'mcSCRAM impact' column scopes the textbook KC rationale to our bit-parallel sampler. Median PDAG size and preprocessing time below come from the 172-row ablation slice — same 43 models across every flag."
+        />
+        <LevelTaxonomyTable taxonomy={activeTaxonomy} levelStats={activeLevels} />
+      </div>
+
+      <div className="panel span-2">
+        <SectionTitle
+          eyebrow="Cost vs value"
+          title="PDAG size and compile time as the level dial turns"
+          text="Two-axis log plot: median PDAG nodes (left) and median preprocessing time (right) across the 43-model ablation. C2 is the throughput sweet spot; C3–C4 spend time without shrinking; C8 trades 6× more compile time for a slightly flatter graph."
+        />
+        <LevelCostValuePlot levels={activeLevels} />
+      </div>
+
+      <div className="panel">
+        <SectionTitle
+          eyebrow="Median gate budget per level"
+          title="How many AND / OR / k-of-N / XOR survive at each level"
+          text="Stacked share of the median model's PDAG after each level. Phase III expansion at C6+ would convert k-of-N → AND/OR, but C5/C6/C7 are not in the production archive (gaps in the bar)."
+        />
+        <LevelCompositionPlot levels={activeLevels} />
+      </div>
+
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="Connective expansion"
+          title="kn and xor are not boolean flags on compression — they pick which rewrite to apply"
+          text="The CSV's req_no_kn / req_no_xor are the inverses of the compiler's expand_atleast_gates / expand_xor_gates settings. When expansion is enabled, Phase III (or its targeted variants at lower levels) rewrites the connective into its AND/OR form using the rules below. At C6 with either flag = true the compiler is committed to a fully AND/OR PDAG via Phase III."
+        />
+        <ConnectiveSwitchesPanel switches={data.compiler.connectiveSwitches} />
+      </div>
+
+      <div className="panel span-3">
+        <SectionTitle
+          eyebrow="Connective effect — focused subset"
+          title="What the kn / xor switches actually do, on the models that contain them"
+          text="The aggregate matrix is dominated by AND/OR-only models that ignore both switches. Here we restrict to the model subset that actually contains the relevant connective in its MEF source: 7 Aralia trees have k-of-N gates and 1 has XOR. Lower bars = smaller PDAG."
+        />
+        <ConnectiveEffectPanel kn={data.compiler.connectiveEffect.kn} xor={data.compiler.connectiveEffect.xor} />
+      </div>
+
       <div className="panel span-3 controls">
         <Select label="Compile flag" value={flag} onChange={setFlag} options={["all", ...ACTIVE_COMPILER_FLAGS]} />
         <Metric label="Rows" value={formatInteger(visibleRows.length)} />
@@ -1124,25 +1220,9 @@ function CompilerDashboard({ data }: { data: SiteData }) {
 
       <div className="panel span-3">
         <SectionTitle
-          eyebrow="Flag dictionary"
-          title="What each compile level does"
-          text="mcSCRAM's PDAG compiler is staged.  Each level layers in more rewrites; the kn / xor switches selectively disable K-of-N expansion and XOR canonicalization."
-        />
-        <dl className="flag-dict">
-          {ACTIVE_COMPILER_FLAGS.map((flagId) => (
-            <div key={flagId}>
-              <dt>{flagId}</dt>
-              <dd>{data.summary.flagDocs[flagId] ?? "(no description)"}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      <div className="panel span-3">
-        <SectionTitle
           eyebrow="Ablation matrix"
           title="Compression factor by compile flag × (kn, xor)"
-          text="Each column is a compile flag (C0 = no preprocessing → C8 = full); within each column the four bars correspond to the four kn/xor switches. compression_factor < 1 means the PDAG ends up smaller than the source fault tree; > 1 means preprocessing introduced helper gates (e.g., expanding K-of-N)."
+          text="The headline measurement: every grouped bar collapses 43 models. compression_factor = |PDAG nodes| / |source-model nodes|; values < 1 mean the compiler shrunk the graph, > 1 mean it expanded helper gates."
         />
         <CompressionMatrixPlot summaries={visible} />
       </div>
@@ -1151,7 +1231,7 @@ function CompilerDashboard({ data }: { data: SiteData }) {
         <SectionTitle
           eyebrow="Structure → reduction"
           title="Fan-in vs compression factor (per flag)"
-          text="Each panel shows compressionAllNodes vs PDAG average gate fan-in, with the linear fit slope above. The fan-in regression files in derived/ are reproduced here."
+          text="High average fan-in is correlated with stronger compression — wide gates accept more common-argument factoring and associative coalescing. The slope is reported per level."
         />
         <Plot
           data={ACTIVE_COMPILER_FLAGS.flatMap((flagId) => {
@@ -1214,7 +1294,7 @@ function CompilerDashboard({ data }: { data: SiteData }) {
         <SectionTitle
           eyebrow="Compiler cost"
           title="Preprocessing time vs model gates (per flag)"
-          text="Log-log fit slope close to 1 indicates near-linear preprocessing in model size. Higher flags do more rewrites and shift the line up rather than steepening it."
+          text="Log-log fit slope close to 1 indicates near-linear preprocessing in model size — Phase II is O(N log N) in practice on these models. Higher flags shift the line up; they do not steepen it."
         />
         <Plot
           data={ACTIVE_COMPILER_FLAGS.flatMap((flagId) => {
@@ -1244,7 +1324,7 @@ function CompilerDashboard({ data }: { data: SiteData }) {
       </div>
 
       <div className="panel">
-        <SectionTitle eyebrow="Top reductions" title="Most aggressive compressions in the archive" />
+        <SectionTitle eyebrow="Top reductions" title="Most aggressive compressions in the archive" text="The smallest compression_factor rows — these are the models that respond best to the compiler. The kn / xor columns identify whether the saving came from connective expansion." />
         <CompactTable
           headers={["Model", "Flag", "kn", "xor", "Factor"]}
           rows={topCompression.map((row) => [
@@ -1257,6 +1337,340 @@ function CompilerDashboard({ data }: { data: SiteData }) {
         />
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Compiler sub-components
+// ---------------------------------------------------------------------------
+
+const PIPELINE_STAGES: Array<{
+  kind: "source" | "compile-stage" | "compile-optional" | "runtime";
+  title: string;
+  subtitle: string;
+  detail?: string;
+}> = [
+  { kind: "source", title: "MEF XML", subtitle: "fault-tree source", detail: "SCRAM parser" },
+  { kind: "source", title: "PDAG build", subtitle: "raw connectives + signed edges", detail: "construction" },
+  { kind: "compile-stage", title: "Phase I", subtitle: "cleanup", detail: "NOT/NAND/NOR → signed edges; remove null/constants" },
+  { kind: "compile-stage", title: "Phase II", subtitle: "structural compression", detail: "CSE · modules · coalesce · common-args · distributivity · decomposition" },
+  { kind: "compile-optional", title: "Phase III", subtitle: "AND/OR normalize", detail: "XOR & k-of-N expansion (gated by kn / xor)" },
+  { kind: "compile-optional", title: "Phase IV", subtitle: "complement propagate", detail: "De Morgan push toward leaves" },
+  { kind: "compile-optional", title: "Phase V", subtitle: "aggressive coalesce", detail: "flatten ∧/∨ across modules" },
+  { kind: "runtime", title: "Device blocks", subtitle: "SYCL kernel layers", detail: "1 layer = 1 kernel launch" },
+  { kind: "runtime", title: "Bit-parallel trials", subtitle: "Monte-Carlo sampling", detail: "trial-bits per iteration" },
+];
+
+function PipelineFlow() {
+  return (
+    <div className="pipeline-flow" role="list">
+      {PIPELINE_STAGES.map((stage, idx) => (
+        <Fragment key={stage.title}>
+          <article className={classNames("pipeline-stage", `pipeline-stage--${stage.kind}`)} role="listitem">
+            <strong>{stage.title}</strong>
+            <span>{stage.subtitle}</span>
+            {stage.detail ? <small>{stage.detail}</small> : null}
+          </article>
+          {idx < PIPELINE_STAGES.length - 1 ? (
+            <span className="pipeline-arrow" aria-hidden="true">›</span>
+          ) : null}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+function LevelTaxonomyTable({
+  taxonomy,
+  levelStats,
+}: {
+  taxonomy: CompileLevel[];
+  levelStats: CompileLevelStats[];
+}) {
+  const statsById = useMemo(() => {
+    const map = new Map<string, CompileLevelStats>();
+    for (const entry of levelStats) map.set(entry.compileFlag, entry);
+    return map;
+  }, [levelStats]);
+  const baseline = statsById.get("C0");
+  const baselineGates = baseline?.pdagGates.median ?? null;
+  return (
+    <div className="table-wrap level-taxonomy">
+      <table>
+        <thead>
+          <tr>
+            <th>Cn</th>
+            <th>Stage</th>
+            <th>Adds passes (incremental)</th>
+            <th>mcSCRAM impact</th>
+            <th>Median PDAG gates</th>
+            <th>Δ vs C0</th>
+            <th>Median compile time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {taxonomy.map((entry) => {
+            const stats = statsById.get(entry.id);
+            const gates = stats?.pdagGates.median ?? null;
+            const deltaPct =
+              gates !== null && baselineGates && baselineGates > 0
+                ? ((gates - baselineGates) / baselineGates) * 100
+                : null;
+            return (
+              <tr key={entry.id}>
+                <td>
+                  <strong>{entry.id}</strong>
+                  <span className="cell-sub">level {entry.level} · {entry.name}</span>
+                </td>
+                <td>
+                  <span className={`stage-tag stage-tag--${entry.stage}`}>{entry.stage}</span>
+                </td>
+                <td className="pass-cell">
+                  {entry.passes.length ? (
+                    <ul>
+                      {entry.passes.map((pass) => (
+                        <li key={pass.name}>
+                          <code>{pass.name}</code>
+                          <span>{pass.what}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <em className="cell-sub">no preprocessing passes</em>
+                  )}
+                  {entry.rewrites?.length ? (
+                    <div className="rewrite-list">
+                      {entry.rewrites.map((rw) => (
+                        <div key={rw.from} className="rewrite">
+                          <code>{rw.from}</code>
+                          <span className="rewrite-arrow">→</span>
+                          <code>{rw.to}</code>
+                          <small>{rw.note}</small>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </td>
+                <td className="impact-cell">{entry.mcImpact}</td>
+                <td className="mono-cell">{stats ? formatNumber(gates, 0) : "—"}</td>
+                <td className="mono-cell">
+                  {deltaPct === null ? "—" : `${deltaPct > 0 ? "+" : ""}${deltaPct.toFixed(1)}%`}
+                </td>
+                <td className="mono-cell">{stats ? `${formatNumber(stats.preprocessingTimeUs.median, 0)} µs` : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LevelCostValuePlot({ levels }: { levels: CompileLevelStats[] }) {
+  const ordered = [...levels].sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+  return (
+    <Plot
+      data={[
+        {
+          type: "scatter",
+          mode: "lines+markers",
+          name: "median PDAG gates",
+          x: ordered.map((l) => l.compileFlag),
+          y: ordered.map((l) => l.pdagGates.median ?? null),
+          line: { color: inkPalette.indigoDeep, width: 2 },
+          marker: { color: inkPalette.indigoDeep, size: 10 },
+          yaxis: "y",
+          hovertemplate: "%{x}<br>median %{y:.0f} PDAG gates<extra></extra>",
+        },
+        {
+          type: "scatter",
+          mode: "lines+markers",
+          name: "median preprocessing (µs)",
+          x: ordered.map((l) => l.compileFlag),
+          y: ordered.map((l) => l.preprocessingTimeUs.median ?? null),
+          line: { color: inkPalette.madder, width: 2, dash: "dash" },
+          marker: { color: inkPalette.madder, size: 10, symbol: "diamond" },
+          yaxis: "y2",
+          hovertemplate: "%{x}<br>median %{y:.0f} µs preprocessing<extra></extra>",
+        },
+      ]}
+      layout={{
+        xaxis: { title: "compile level" },
+        yaxis: { title: "median PDAG gates", type: "log", side: "left" },
+        yaxis2: {
+          title: "median preprocessing (µs)",
+          type: "log",
+          side: "right",
+          overlaying: "y",
+          showgrid: false,
+        },
+        legend: { y: -0.22, orientation: "h" },
+        margin: { l: 70, r: 70, t: 22, b: 90 },
+      }}
+    />
+  );
+}
+
+function LevelCompositionPlot({ levels }: { levels: CompileLevelStats[] }) {
+  const ordered = [...levels].sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+  const types = [
+    { key: "and" as const, label: "AND", color: inkPalette.indigoDeep },
+    { key: "or" as const, label: "OR", color: inkPalette.indigo },
+    { key: "atleast" as const, label: "k-of-N", color: inkPalette.madder },
+    { key: "xor" as const, label: "XOR", color: inkPalette.ochre },
+  ];
+  return (
+    <Plot
+      data={types.map((t) => ({
+        type: "bar",
+        name: t.label,
+        x: ordered.map((l) => l.compileFlag),
+        y: ordered.map((l) => l.compositionShare[t.key] ?? 0),
+        marker: { color: t.color },
+        hovertemplate: `%{x} ${t.label}=%{y:.1%}<extra></extra>`,
+      }))}
+      layout={{
+        barmode: "stack",
+        xaxis: { title: "compile level" },
+        yaxis: { title: "PDAG gate-type share", tickformat: ".0%" },
+        legend: { y: -0.22, orientation: "h" },
+        margin: { l: 70, r: 16, t: 22, b: 90 },
+      }}
+    />
+  );
+}
+
+function ConnectiveSwitchesPanel({ switches }: { switches: ConnectiveSwitch[] }) {
+  return (
+    <div className="connective-switches">
+      {switches.map((sw) => (
+        <article key={sw.id} className="connective-switch">
+          <header>
+            <p className="eyebrow">{sw.cliFlag} · expand when {sw.expandsWhen}</p>
+            <h3>{sw.title}</h3>
+            <p>{sw.subtitle}</p>
+          </header>
+          <div className="formula">
+            <span className="formula-label">rewrite</span>
+            <code>{sw.formula}</code>
+          </div>
+          <dl>
+            <div>
+              <dt>bases</dt>
+              <dd>{sw.bases}</dd>
+            </div>
+            <div>
+              <dt>graph effect</dt>
+              <dd>{sw.growth}</dd>
+            </div>
+            <div>
+              <dt>mcSCRAM impact</dt>
+              <dd>{sw.mcImpact}</dd>
+            </div>
+          </dl>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ConnectiveEffectPanel({
+  kn,
+  xor,
+}: {
+  kn: ConnectiveEffectGroup;
+  xor: ConnectiveEffectGroup;
+}) {
+  return (
+    <div className="connective-effect-grid">
+      <ConnectiveEffectChart label="k-of-N (req_no_kn)" group={kn} />
+      <ConnectiveEffectChart label="XOR (req_no_xor)" group={xor} />
+    </div>
+  );
+}
+
+function ConnectiveEffectChart({
+  label,
+  group,
+}: {
+  label: string;
+  group: ConnectiveEffectGroup;
+}) {
+  const ordered = useMemo(
+    () => group.levels.filter((entry) => entry.expandOn.pdagGates.median || entry.expandOff.pdagGates.median),
+    [group.levels],
+  );
+  if (!ordered.length || !group.modelCount) {
+    return (
+      <div className="connective-effect-card">
+        <header>
+          <p className="eyebrow">{label}</p>
+          <h3>no eligible models</h3>
+        </header>
+        <EmptyState text="The Aralia corpus has no models with this connective type." />
+      </div>
+    );
+  }
+  return (
+    <div className="connective-effect-card">
+      <header>
+        <p className="eyebrow">{label}</p>
+        <h3>{group.modelCount} model{group.modelCount === 1 ? "" : "s"} · {formatInteger(group.rowCount)} rows</h3>
+        <p className="cell-sub">{group.models.join(" · ")}</p>
+      </header>
+      <Plot
+        className="plot connective-plot"
+        data={[
+          {
+            type: "bar",
+            name: "expand on",
+            x: ordered.map((entry) => entry.compileFlag),
+            y: ordered.map((entry) => entry.expandOn.pdagGates.median ?? null),
+            marker: { color: inkPalette.indigoDeep },
+            hovertemplate: "%{x} expand on · median %{y:.0f} gates<extra></extra>",
+          },
+          {
+            type: "bar",
+            name: "expand off",
+            x: ordered.map((entry) => entry.compileFlag),
+            y: ordered.map((entry) => entry.expandOff.pdagGates.median ?? null),
+            marker: { color: inkPalette.madder },
+            hovertemplate: "%{x} expand off · median %{y:.0f} gates<extra></extra>",
+          },
+        ]}
+        layout={{
+          barmode: "group",
+          xaxis: { title: "compile level" },
+          yaxis: { title: "median PDAG gates" },
+          legend: { y: -0.25, orientation: "h" },
+          margin: { l: 70, r: 16, t: 14, b: 80 },
+        }}
+      />
+      <table className="connective-ratio-table">
+        <thead>
+          <tr>
+            <th>Level</th>
+            <th>on / off ratio</th>
+            <th>median Δ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordered.map((entry) => {
+            const onMed = entry.expandOn.pdagGates.median ?? null;
+            const offMed = entry.expandOff.pdagGates.median ?? null;
+            const ratio = entry.pdagRatioOnVsOff;
+            const delta = onMed !== null && offMed !== null ? onMed - offMed : null;
+            return (
+              <tr key={entry.compileFlag}>
+                <td>{entry.compileFlag}</td>
+                <td className="mono-cell">{ratio === null ? "—" : ratio.toFixed(2)}</td>
+                <td className="mono-cell">{delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(0)}`}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
