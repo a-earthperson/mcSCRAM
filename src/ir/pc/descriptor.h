@@ -32,6 +32,8 @@ struct shape_summary final {
 
 // PC uses stable public ids so api::ir_handle can carry the concrete storage
 // without requiring pipeline/compiler/solver public headers to expose it.
+[[nodiscard]] inline auto provider_id() -> api::provider_id { return api::provider_id("scram.pc"); }
+
 [[nodiscard]] inline auto backend_id() -> api::backend_id { return api::backend_id("scram.ir.pc"); }
 
 [[nodiscard]] inline auto storage_type_id() -> api::type_id { return api::type_id("scram.ir.pc.circuit"); }
@@ -93,6 +95,7 @@ namespace capability {
     }
 
     return api::ir_backend_descriptor{
+        .provider = provider_id(),
         .backend = backend_id(),
         .storage_type = storage_type_id(),
         .kind = api::ir_kind::probabilistic_boolean_dag,
