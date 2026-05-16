@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cstdint>
-
 #include "ir/pc/id.h"
+
+#include <cstdint>
 
 namespace fuzzybits::ir::pc {
 

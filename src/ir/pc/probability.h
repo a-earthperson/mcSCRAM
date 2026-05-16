@@ -24,7 +24,7 @@ struct probability_source final {
     std::string parameter_name;
     std::string diagnostic;
 
-    [[nodiscard]] static auto literal_probability(double value) -> probability_source {
+    [[nodiscard]] static auto literal_probability(const double value) -> probability_source {
         return probability_source{
             .kind = probability_source_kind::literal,
             .literal = value,

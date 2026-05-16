@@ -1,11 +1,5 @@
 #pragma once
 
-#include <cstdint>
-#include <memory>
-#include <span>
-#include <utility>
-#include <vector>
-
 #include "api/ir.h"
 #include "ir/pc/descriptor.h"
 #include "ir/pc/edge.h"
@@ -13,6 +7,12 @@
 #include "ir/pc/op_code.h"
 #include "ir/pc/probability.h"
 #include "ir/pc/target.h"
+
+#include <cstdint>
+#include <memory>
+#include <span>
+#include <utility>
+#include <vector>
 
 namespace fuzzybits::ir::pc {
 

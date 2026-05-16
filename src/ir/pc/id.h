@@ -16,7 +16,7 @@ template <typename tag_type> class id final {
 
     constexpr id() = default;
 
-    explicit constexpr id(value_type value) noexcept : value_(value) {}
+    explicit constexpr id(const value_type value) noexcept : value_(value) {}
 
     [[nodiscard]] static constexpr auto invalid() noexcept -> id { return id(); }
 

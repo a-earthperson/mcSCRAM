@@ -1,5 +1,13 @@
 #pragma once
 
+#include "api/diagnostics.h"
+#include "ir/pc/circuit.h"
+#include "ir/pc/edge.h"
+#include "ir/pc/id.h"
+#include "ir/pc/op_code.h"
+#include "ir/pc/probability.h"
+#include "ir/pc/target.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -9,14 +17,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-
-#include "api/diagnostics.h"
-#include "ir/pc/circuit.h"
-#include "ir/pc/edge.h"
-#include "ir/pc/id.h"
-#include "ir/pc/op_code.h"
-#include "ir/pc/probability.h"
-#include "ir/pc/target.h"
 
 namespace fuzzybits::ir::pc {
 
