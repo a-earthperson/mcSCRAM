@@ -162,7 +162,7 @@ Forbidden from canonical PC v1:
 - pcfb tensor/signal operators such as `conv_*`, `fft_*`, `adder`, `comparator`, `muxed`, and `demux`;
 - backend-specific compiled artifact operations.
 
-Such operations may appear in pcfb compatibility layers or compiled artifacts, but they are not part of the SCRAM probabilistic Boolean interoperability layer unless a later RFC proves their semantics belong here.
+Such operations may appear in pcfb compatibility layers or compiled artifacts, but they are not part of the FuzzyBits probabilistic Boolean interoperability layer unless a later RFC proves their semantics belong here.
 
 ## 5) Probability Sources
 

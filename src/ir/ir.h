@@ -1,17 +1,17 @@
 #pragma once
 
+#include "api/identifiers.h"
 #include "api/ir.h"
-#include "api/result.h"
 
 namespace fuzzybits::ir {
 
 [[nodiscard]] inline auto module_descriptor() -> api::ir_backend_descriptor {
     return api::ir_backend_descriptor{
-        .provider = api::provider_id("scram"),
+        .provider = api::provider_id("fuzzybits"),
         .backend = api::backend_id("ir"),
         .storage_type = api::type_id("ir.module"),
         .kind = api::ir_kind::unknown,
-        .name = "SCRAM IR module",
+        .name = "FuzzyBits IR module",
     };
 }
 
