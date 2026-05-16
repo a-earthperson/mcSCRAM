@@ -1,0 +1,16 @@
+#pragma once
+
+#include "api/capabilities.h"
+#include "api/cli.h"
+#include "api/compiler.h"
+#include "api/diagnostics.h"
+#include "api/identifiers.h"
+#include "api/io.h"
+#include "api/ir.h"
+#include "api/options.h"
+#include "api/pipeline.h"
+#include "api/provider.h"
+#include "api/registry.h"
+#include "api/result.h"
+#include "api/results.h"
+#include "api/solver.h"

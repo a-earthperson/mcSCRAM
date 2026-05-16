@@ -23,8 +23,7 @@ namespace fuzzybits::api {
         text_list,
     };
 
-    using option_value =
-        std::variant<std::monostate, bool, std::int64_t, double, std::string, std::vector<std::string>>;
+    using option_value = std::variant<std::monostate, bool, std::int64_t, double, std::string, std::vector<std::string>>;
 
     struct option_constraint final {
         diagnostic_code code;
