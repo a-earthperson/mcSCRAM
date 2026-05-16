@@ -1,10 +1,10 @@
-# scram::ir::pc Requirements
+# fuzzybits::ir::pc Requirements
 
 Status: design contract for the probabilistic circuit IR
 Scope: `src/ir/pc`, plus the public API and backend boundaries that reference it
 Audience: contributors designing IR ingestion, compiler/solver lowering, PC transforms, and PC serialization
 
-This document defines the lock-in-safe requirements for `scram::ir::pc`. The PC IR is the canonical semantic representation of probabilistic Boolean circuits in the target architecture, but it is not a promise that one physical layout, one serializer, or one solver schedule is the IR.
+This document defines the lock-in-safe requirements for `fuzzybits::ir::pc`. The PC IR is the canonical semantic representation of probabilistic Boolean circuits in the target architecture, but it is not a promise that one physical layout, one serializer, or one solver schedule is the IR.
 
 The design intentionally separates:
 
@@ -478,7 +478,7 @@ The migration phases are requirements gates, not permission to add placeholders 
 - `pc::circuit` is public `src/ir/pc` storage.
 - Public orchestration remains `api::ir_handle`.
 - Compiler/solver public headers stay dependency-light.
-- Backend implementations may opt into `scram_ir_pc`.
+- Backend implementations may opt into `fuzzybits_ir_pc`.
 - Architecture docs must record this boundary.
 
 ### R1: Semantic Core

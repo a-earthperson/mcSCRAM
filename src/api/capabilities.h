@@ -10,7 +10,7 @@
 #include "api/diagnostics.h"
 #include "api/identifiers.h"
 
-namespace scram::api {
+namespace fuzzybits::api {
 
 class feature_set final {
   public:
@@ -95,4 +95,4 @@ check_features(feature_set required, feature_set available,
     };
 }
 
-} // namespace scram::api
+} // namespace fuzzybits::api

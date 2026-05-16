@@ -2,7 +2,7 @@
 
 #include "ir/pc/id.h"
 
-namespace scram::ir::pc {
+namespace fuzzybits::ir::pc {
 
 // Edges keep polarity explicit. Packed complement encodings may exist in
 // derived views, but the semantic API never relies on signed node ids.
@@ -11,4 +11,4 @@ struct edge_ref final {
     bool complement = false;
 };
 
-} // namespace scram::ir::pc
+} // namespace fuzzybits::ir::pc

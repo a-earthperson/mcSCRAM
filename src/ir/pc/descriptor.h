@@ -9,7 +9,7 @@
 #include "ir/pc/probability.h"
 #include "ir/pc/target.h"
 
-namespace scram::ir::pc {
+namespace fuzzybits::ir::pc {
 
 // Structured shape data carries parameterized compatibility facts that do not
 // fit in api::feature_set, such as present opcodes and probability source kinds.
@@ -104,4 +104,4 @@ namespace capability {
     };
 }
 
-} // namespace scram::ir::pc
+} // namespace fuzzybits::ir::pc

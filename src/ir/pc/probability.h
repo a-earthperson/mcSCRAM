@@ -4,7 +4,7 @@
 #include <string>
 #include <utility>
 
-namespace scram::ir::pc {
+namespace fuzzybits::ir::pc {
 
 // R1 supports only probability sources that can be represented before the full
 // expression evaluator RFC. Unsupported sources survive ingestion as diagnostics
@@ -50,4 +50,4 @@ struct probability_source final {
     return source.kind == probability_source_kind::literal || source.kind == probability_source_kind::parameter;
 }
 
-} // namespace scram::ir::pc
+} // namespace fuzzybits::ir::pc

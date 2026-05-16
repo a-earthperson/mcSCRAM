@@ -36,9 +36,9 @@ template <typename value_type>
     return false;
 }
 
-[[nodiscard]] auto diagnostic_messages(scram::api::diagnostic_list const &diagnostics) -> std::string {
+[[nodiscard]] auto diagnostic_messages(fuzzybits::api::diagnostic_list const &diagnostics) -> std::string {
     std::string joined;
-    for (scram::api::diagnostic const &diagnostic : diagnostics) {
+    for (fuzzybits::api::diagnostic const &diagnostic : diagnostics) {
         if (!joined.empty()) {
             joined += '\n';
         }
@@ -49,8 +49,8 @@ template <typename value_type>
     return joined;
 }
 
-[[nodiscard]] auto has_diagnostic(scram::api::diagnostic_list const &diagnostics, std::string_view code) -> bool {
-    for (scram::api::diagnostic const &diagnostic : diagnostics) {
+[[nodiscard]] auto has_diagnostic(fuzzybits::api::diagnostic_list const &diagnostics, std::string_view code) -> bool {
+    for (fuzzybits::api::diagnostic const &diagnostic : diagnostics) {
         if (diagnostic.code.view() == code) {
             return true;
         }
@@ -59,7 +59,7 @@ template <typename value_type>
 }
 
 void builds_literal_probability_circuit_and_ir_handle() {
-    namespace pc = scram::ir::pc;
+    namespace pc = fuzzybits::ir::pc;
 
     pc::builder builder;
     builder.reserve_nodes(4);
@@ -109,7 +109,7 @@ void builds_literal_probability_circuit_and_ir_handle() {
     auto handle = circuit.to_ir_handle();
     require(handle.valid(), "valid circuit should wrap as api::ir_handle");
     require(handle.storage_type() == pc::storage_type_id(), "ir_handle should carry PC storage type");
-    require(handle.descriptor().kind == scram::api::ir_kind::probabilistic_boolean_dag,
+    require(handle.descriptor().kind == fuzzybits::api::ir_kind::probabilistic_boolean_dag,
             "PC descriptor should declare probabilistic Boolean DAG kind");
     require(handle.descriptor().properties.contains(pc::capability::acyclic()),
             "PC descriptor should expose acyclic capability");
@@ -118,7 +118,7 @@ void builds_literal_probability_circuit_and_ir_handle() {
 }
 
 void accepts_acyclic_forward_references_without_requiring_topological_ids() {
-    namespace pc = scram::ir::pc;
+    namespace pc = fuzzybits::ir::pc;
 
     pc::builder builder;
     const std::vector<pc::edge_ref> operands{
@@ -140,7 +140,7 @@ void accepts_acyclic_forward_references_without_requiring_topological_ids() {
 }
 
 void supports_cardinality_and_parameter_probability_sources() {
-    namespace pc = scram::ir::pc;
+    namespace pc = fuzzybits::ir::pc;
 
     pc::builder builder;
     const auto parameter = builder.add_parameter_probability("pump_failure_probability");
@@ -169,7 +169,7 @@ void supports_cardinality_and_parameter_probability_sources() {
 }
 
 void preserves_unsupported_probability_sources_as_planning_visible_shape() {
-    namespace pc = scram::ir::pc;
+    namespace pc = fuzzybits::ir::pc;
 
     pc::builder builder;
     const auto unsupported = builder.add_unsupported_probability("MEF random deviate requires expression RFC");
@@ -189,7 +189,7 @@ void preserves_unsupported_probability_sources_as_planning_visible_shape() {
 }
 
 void reports_multiple_semantic_validation_failures() {
-    namespace pc = scram::ir::pc;
+    namespace pc = fuzzybits::ir::pc;
 
     pc::builder builder;
     const auto invalid_literal = builder.add_literal_probability(1.25);
@@ -236,7 +236,7 @@ void reports_multiple_semantic_validation_failures() {
 }
 
 void detects_cycles_even_when_all_edge_endpoints_exist() {
-    namespace pc = scram::ir::pc;
+    namespace pc = fuzzybits::ir::pc;
 
     pc::builder builder;
     const std::vector<pc::edge_ref> first_operands{
@@ -256,7 +256,7 @@ void detects_cycles_even_when_all_edge_endpoints_exist() {
 }
 
 void rejects_empty_circuits() {
-    namespace pc = scram::ir::pc;
+    namespace pc = fuzzybits::ir::pc;
 
     pc::builder builder;
     auto result = std::move(builder).seal();

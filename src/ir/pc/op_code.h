@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace scram::ir::pc {
+namespace fuzzybits::ir::pc {
 
 // R1 intentionally admits only probabilistic Boolean semantics. Solver scratch
 // operations, pcfb tensor operators, and expression opcodes belong elsewhere.
@@ -36,4 +36,4 @@ enum class op_code : std::uint8_t {
     return is_boolean_gate(code) || code == op_code::cardinality;
 }
 
-} // namespace scram::ir::pc
+} // namespace fuzzybits::ir::pc

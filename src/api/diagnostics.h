@@ -10,7 +10,7 @@
 
 #include "api/identifiers.h"
 
-namespace scram::api {
+namespace fuzzybits::api {
 
 enum class diagnostic_severity : std::uint8_t {
     note,
@@ -88,4 +88,4 @@ class diagnostic_list final {
     };
 }
 
-} // namespace scram::api
+} // namespace fuzzybits::api

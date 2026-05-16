@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace scram::ir::pc {
+namespace fuzzybits::ir::pc {
 
 // Strongly typed dense ids prevent accidental cross-table indexing while still
 // compiling down to a single integer in storage and hot traversal paths.
@@ -42,4 +42,4 @@ using bool_node_id = id<id_tags::bool_node>;
 using probability_source_id = id<id_tags::probability_source>;
 using target_id = id<id_tags::target>;
 
-} // namespace scram::ir::pc
+} // namespace fuzzybits::ir::pc

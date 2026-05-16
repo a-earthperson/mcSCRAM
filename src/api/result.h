@@ -6,7 +6,7 @@
 
 #include "api/diagnostics.h"
 
-namespace scram::api {
+namespace fuzzybits::api {
 
 template <typename value_type> class result final {
   public:
@@ -73,4 +73,4 @@ template <> class result<void> final {
     diagnostic_list diagnostics_;
 };
 
-} // namespace scram::api
+} // namespace fuzzybits::api

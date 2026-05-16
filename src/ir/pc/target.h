@@ -4,7 +4,7 @@
 
 #include "ir/pc/id.h"
 
-namespace scram::ir::pc {
+namespace fuzzybits::ir::pc {
 
 // Targets are observable nodes in the PC, not solver requests. Result kinds,
 // convergence policy, and domain projection payloads live outside this table.
@@ -31,4 +31,4 @@ struct target_view final {
     observable_role role = observable_role::primary;
 };
 
-} // namespace scram::ir::pc
+} // namespace fuzzybits::ir::pc

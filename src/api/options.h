@@ -12,7 +12,7 @@
 #include "api/diagnostics.h"
 #include "api/identifiers.h"
 
-namespace scram::api {
+namespace fuzzybits::api {
 
 enum class option_value_kind : std::uint8_t {
     none,
@@ -121,4 +121,4 @@ struct resolved_options final {
     [[nodiscard]] auto ok() const -> bool { return !diagnostics.has_errors(); }
 };
 
-} // namespace scram::api
+} // namespace fuzzybits::api

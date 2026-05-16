@@ -3,7 +3,7 @@
 #include "api/ir.h"
 #include "api/result.h"
 
-namespace scram::ir {
+namespace fuzzybits::ir {
 
 [[nodiscard]] inline auto module_descriptor() -> api::ir_backend_descriptor {
     return api::ir_backend_descriptor{
@@ -15,4 +15,4 @@ namespace scram::ir {
     };
 }
 
-} // namespace scram::ir
+} // namespace fuzzybits::ir

@@ -14,7 +14,7 @@
 #include "ir/pc/probability.h"
 #include "ir/pc/target.h"
 
-namespace scram::ir::pc {
+namespace fuzzybits::ir::pc {
 
 class builder;
 
@@ -146,4 +146,4 @@ class circuit final {
     return is_pc(handle) ? handle.storage_as<circuit>() : nullptr;
 }
 
-} // namespace scram::ir::pc
+} // namespace fuzzybits::ir::pc

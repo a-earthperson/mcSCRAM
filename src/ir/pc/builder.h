@@ -18,7 +18,7 @@
 #include "ir/pc/probability.h"
 #include "ir/pc/target.h"
 
-namespace scram::ir::pc {
+namespace fuzzybits::ir::pc {
 
 // Finalization is fallible because validation is part of sealing the semantic
 // contract: malformed graphs produce diagnostics instead of partially valid IR.
@@ -369,4 +369,4 @@ class builder final {
     detail::circuit_storage storage_;
 };
 
-} // namespace scram::ir::pc
+} // namespace fuzzybits::ir::pc
