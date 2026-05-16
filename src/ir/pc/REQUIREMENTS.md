@@ -36,7 +36,7 @@ Allowed:
 Not allowed:
 
 - public solver/compiler APIs that require users to include backend-private headers;
-- direct dependencies on MEF, pcfb, or legacy PDAG headers from `src/ir/pc`;
+- direct dependencies on MEF, pcfb, or scramble headers from `src/ir/pc`;
 - treating `api::ir_view` as the high-performance PC contract;
 - exposing solver execution scratch state as PC semantic nodes.
 
@@ -513,7 +513,7 @@ The migration phases are requirements gates, not permission to add placeholders 
 ### R6: Transform API
 
 - Add transform reports and memory budgets.
-- Replace legacy PDAG preprocessing only after semantic parity and projection behavior are proven.
+- Replace scramble preprocessing only after semantic parity and projection behavior are proven.
 
 ### R7: Serialization
 
