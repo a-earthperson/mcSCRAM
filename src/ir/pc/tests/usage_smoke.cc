@@ -1,4 +1,6 @@
-#include "ir/pc/pc.h"
+#include "ir/pc/edge.h"
+#include "ir/pc/circuit.h"
+#include "ir/pc/builder.h"
 
 #include <utility>
 

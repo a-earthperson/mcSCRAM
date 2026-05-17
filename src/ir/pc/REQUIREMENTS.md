@@ -4,7 +4,9 @@ Status: design contract for the probabilistic circuit IR
 Scope: `src/ir/pc`, plus the public API and backend boundaries that reference it
 Audience: contributors designing IR ingestion, compiler/solver lowering, PC transforms, and PC serialization
 
-This document defines the lock-in-safe requirements for `fuzzybits::ir::pc`. The PC IR is the canonical semantic representation of probabilistic Boolean circuits in the target architecture, but it is not a promise that one physical layout, one serializer, or one solver schedule is the IR.
+This document defines the lock-in-safe requirements for `fuzzybits::ir::pc`. The PC IR is the canonical semantic
+representation of probabilistic Boolean circuits in the target architecture, but it is not a promise that one physical
+layout, one serializer, or one solver schedule is the IR.
 
 The design intentionally separates:
 
@@ -16,7 +18,8 @@ The design intentionally separates:
 
 ## 1) Boundary Decision
 
-`pc::circuit` is a public IR storage and view type owned by `src/ir/pc`, but it is not the public orchestration protocol.
+`pc::circuit` is a public IR storage and view type owned by `src/ir/pc`, but it is not the public orchestration
+protocol.
 
 The cross-layer protocol remains:
 
@@ -25,12 +28,16 @@ The cross-layer protocol remains:
 - `api::diagnostic_list` for unsupported or lossy conversions;
 - backend-private lowering code for solver/compiler execution details.
 
-The concrete `pc::circuit` type may be used by backend implementations that explicitly opt into PC consumption. Public compiler and solver headers must not expose PC implementation details unless the architecture contract is deliberately revised in the same change. This keeps `pc` available as the high-performance canonical IR while preserving the API-layer dependency rule.
+The concrete `pc::circuit` type may be used by backend implementations that explicitly opt into PC consumption. Public
+compiler and solver headers must not expose PC implementation details unless the architecture contract is deliberately
+revised in the same change. This keeps `pc` available as the high-performance canonical IR while preserving the
+API-layer dependency rule.
 
 Allowed:
 
 - an IR backend constructs `pc::circuit` and wraps it in `api::ir_handle`;
-- a compiler or solver backend checks the handle descriptor, then extracts a `pc::circuit` through a public `src/ir/pc` accessor in its private implementation;
+- a compiler or solver backend checks the handle descriptor, then extracts a `pc::circuit` through a public `src/ir/pc`
+  accessor in its private implementation;
 - pipeline planning reasons over PC descriptors, capabilities, and conversion diagnostics.
 
 Not allowed:
@@ -55,7 +62,9 @@ The initial core must support:
 - cardinality gates as a single semantic operator;
 - multiple target observables.
 
-Node ids are storage ids, not stable semantic identity. Transforms that reorder, compact, expand, or decompose nodes must return identity/provenance maps whenever diagnostics, target projection, CCF projection, or result attribution can be affected.
+Node ids are storage ids, not stable semantic identity. Transforms that reorder, compact, expand, or decompose nodes
+must return identity/provenance maps whenever diagnostics, target projection, CCF projection, or result attribution can
+be affected.
 
 R1 intentionally fixes node and edge indexing columns to 32-bit unsigned storage
 instead of templating `pc::circuit` on an index type. This is an R1 semantic-core
@@ -86,7 +95,8 @@ struct target_view {
 };
 ```
 
-Observable roles classify why a node is observable, for example `primary`, `watch`, or `projection_anchor`. Targets must not encode requested result kinds, convergence tracking, solver policies, or report-only domain payloads.
+Observable roles classify why a node is observable, for example `primary`, `watch`, or `projection_anchor`. Targets must
+not encode requested result kinds, convergence tracking, solver policies, or report-only domain payloads.
 
 Domain-specific structures stay outside the Boolean/probability core:
 
@@ -97,7 +107,8 @@ Domain-specific structures stay outside the Boolean/probability core:
 - initiating events;
 - report layout metadata.
 
-Those structures belong in IR-backend domain wrappers and typed API projection contracts. If a projection has to survive into reporting, it must be modeled as typed API data or transform provenance, not as an opaque blob inside the PC core.
+Those structures belong in IR-backend domain wrappers and typed API projection contracts. If a projection has to survive
+into reporting, it must be modeled as typed API data or transform provenance, not as an opaque blob inside the PC core.
 
 ## 3) Edge Encoding
 
@@ -123,7 +134,8 @@ Packed edge representations are allowed only as physical views. A packed represe
 - conversion to and from pcfb `inputs` and `inverted_inputs`;
 - diagnostics for unrepresentable ids.
 
-This avoids inheriting PDAG sign conventions, `INT_MIN` hazards, `abs()` ambiguity, sentinel collisions, and ABI leakage from `id_t` template choices.
+This avoids inheriting PDAG sign conventions, `INT_MIN` hazards, `abs()` ambiguity, sentinel collisions, and ABI leakage
+from `id_t` template choices.
 
 ## 4) Boolean Opcode Scope
 
@@ -136,7 +148,8 @@ Required leaves:
 
 Conditionally allowed leaf:
 
-- `house_event`, only if house-event identity must survive ingestion after resolution. If not required for diagnostics/projection, it should lower to `constant`.
+- `house_event`, only if house-event identity must survive ingestion after resolution. If not required for
+  diagnostics/projection, it should lower to `constant`.
 
 Allowed Boolean gates:
 
@@ -154,7 +167,8 @@ Cardinality gates should use one semantic form:
 cardinality(low, high)
 ```
 
-with `0 <= low <= high <= fanin`. `atleast(k)`, `atmost(k)`, and `exactly(k)` are views or builder conveniences over this semantic form, not separate irreversible payload conventions.
+with `0 <= low <= high <= fanin`. `atleast(k)`, `atmost(k)`, and `exactly(k)` are views or builder conveniences over
+this semantic form, not separate irreversible payload conventions.
 
 Forbidden from canonical PC v1:
 
@@ -162,11 +176,13 @@ Forbidden from canonical PC v1:
 - pcfb tensor/signal operators such as `conv_*`, `fft_*`, `adder`, `comparator`, `muxed`, and `demux`;
 - backend-specific compiled artifact operations.
 
-Such operations may appear in pcfb compatibility layers or compiled artifacts, but they are not part of the FuzzyBits probabilistic Boolean interoperability layer unless a later RFC proves their semantics belong here.
+Such operations may appear in pcfb compatibility layers or compiled artifacts, but they are not part of the FuzzyBits
+probabilistic Boolean interoperability layer unless a later RFC proves their semantics belong here.
 
 ## 5) Probability Sources
 
-The v1 semantic core needs probability sources sufficient for current probability and Monte Carlo ingestion without freezing a full expression DAG.
+The v1 semantic core needs probability sources sufficient for current probability and Monte Carlo ingestion without
+freezing a full expression DAG.
 
 Required v1 probability sources:
 
@@ -174,7 +190,9 @@ Required v1 probability sources:
 - named parameter reference with declared probability domain;
 - unavailable or unsupported source carrying diagnostics.
 
-Each `basic_event` refers to one probability source. A solver may consume only the source kinds it declares in its descriptor. If a source cannot be evaluated under the current request, planning or lowering must produce diagnostics before execution.
+Each `basic_event` refers to one probability source. A solver may consume only the source kinds it declares in its
+descriptor. If a source cannot be evaluated under the current request, planning or lowering must produce diagnostics
+before execution.
 
 The probability-source table must define:
 
@@ -238,7 +256,8 @@ For the PC IR, uniqueness is an invariant and vectors are the storage mechanism.
 
 ## 7) Physical Views
 
-Physical layout is not semantic identity. A valid `pc::circuit` is not required to be kind-partitioned, topologically ordered, or serialized in pcfb order.
+Physical layout is not semantic identity. A valid `pc::circuit` is not required to be kind-partitioned, topologically
+ordered, or serialized in pcfb order.
 
 The implementation should expose derived or cached physical views:
 
@@ -262,7 +281,8 @@ The CSR view is the primary no-pointer-chasing traversal shape for generic consu
 - a side permutation over base node ids;
 - a lowered schedule for a specific consumer.
 
-Consumers that require dependency order must request this view or require a property saying the base layout already satisfies it.
+Consumers that require dependency order must request this view or require a property saying the base layout already
+satisfies it.
 
 ### 7.3 Kind Bucket View
 
@@ -276,7 +296,9 @@ Kind buckets are not canonical circuit identity. They must not invalidate topolo
 
 ### 7.4 Solver Schedule View
 
-`solver_schedule_view` is backend-specific lowering metadata. Monte Carlo, BDD, exact enumeration, and compiler backends may require different schedules. These schedules belong to derived views or compiled artifacts, not to the semantic circuit itself.
+`solver_schedule_view` is backend-specific lowering metadata. Monte Carlo, BDD, exact enumeration, and compiler backends
+may require different schedules. These schedules belong to derived views or compiled artifacts, not to the semantic
+circuit itself.
 
 ## 8) Shape And Capability Metadata
 
@@ -317,9 +339,12 @@ The expression DAG must not be frozen until the evaluator semantics are specifie
 
 The RFC must define:
 
-- whether an expression evaluates to probability, rate, time-dependent probability, distribution over probabilities, symbolic parameter, or another typed quantity;
-- evaluation context fields: mission time, parameter bindings, epistemic sample index, RNG stream, unit system, and backend options;
-- domain validation for probability intervals, non-negative rates, positive scales, finite arithmetic, and invalid operations;
+- whether an expression evaluates to probability, rate, time-dependent probability, distribution over probabilities,
+  symbolic parameter, or another typed quantity;
+- evaluation context fields: mission time, parameter bindings, epistemic sample index, RNG stream, unit system, and
+  backend options;
+- domain validation for probability intervals, non-negative rates, positive scales, finite arithmetic, and invalid
+  operations;
 - random-variable identity, including shared deviates, independent deviates, and correlated deviates;
 - deterministic expression identity for common subexpression and diagnostics;
 - external function policy;
@@ -327,7 +352,8 @@ The RFC must define:
 - serialization and round-trip rules;
 - backend compatibility diagnostics.
 
-Only after this RFC is accepted may a `basic_event` carry a mandatory `expr_ref`. Until then, basic events refer to the narrower probability-source table.
+Only after this RFC is accepted may a `basic_event` carry a mandatory `expr_ref`. Until then, basic events refer to the
+narrower probability-source table.
 
 ## 10) CCF RFC Gate
 
@@ -389,7 +415,9 @@ Transforms that may materially alter graph identity include:
 - compaction;
 - CCF expansion.
 
-For 10M-node inputs, the implementation must support move-aware, fused, or builder-backed transforms where safe. Immutability is the consumption contract for sealed circuits, not a requirement that every transform allocate a complete copy for every phase.
+For 10M-node inputs, the implementation must support move-aware, fused, or builder-backed transforms where safe.
+Immutability is the consumption contract for sealed circuits, not a requirement that every transform allocate a complete
+copy for every phase.
 
 ## 12) MEF Ingestion Requirements
 
@@ -413,7 +441,9 @@ Unsupported or deferred MEF features must not be silently erased:
 - event-tree sequence projection unless represented by typed API projection data;
 - unsupported connectives or malformed cardinality bounds.
 
-The converter must return diagnostics for unsupported features and must mark the resulting PC descriptor with any unsupported placeholders. Solver/compiler backends that require fully evaluable probabilities must reject those placeholders during planning.
+The converter must return diagnostics for unsupported features and must mark the resulting PC descriptor with any
+unsupported placeholders. Solver/compiler backends that require fully evaluable probabilities must reject those
+placeholders during planning.
 
 ## 13) Serialization And pcfb Mapping
 
@@ -448,7 +478,8 @@ Known mapping hazards that must be addressed:
 - CCF declarations and expansion provenance;
 - target and projection metadata.
 
-Zero-copy mmap construction is a physical-view optimization. It requires a separate contract for lifetime, alignment, endianness, edge encoding, string storage, and unsupported schema features.
+Zero-copy mmap construction is a physical-view optimization. It requires a separate contract for lifetime, alignment,
+endianness, edge encoding, string storage, and unsupported schema features.
 
 ## 14) Subcircuits And Modules
 
@@ -467,7 +498,8 @@ The module RFC must define:
 - flattening provenance maps;
 - view/schedule generation for module-aware and flattened consumers.
 
-R1 must remain a flat DAG with multi-target observables. Module detection and module lowering are transforms after the above semantics exist.
+R1 must remain a flat DAG with multi-target observables. Module detection and module lowering are transforms after the
+above semantics exist.
 
 ## 15) Migration Phases
 
@@ -539,4 +571,5 @@ The PC v1 requirements do not commit to:
 - solver convergence flags inside IR targets;
 - pure-copy transform implementations for large graphs.
 
-Any of these may become valid implementation choices later, but none may become v1 ABI without a semantic RFC and compatibility story.
+Any of these may become valid implementation choices later, but none may become v1 ABI without a semantic RFC and
+compatibility story.
