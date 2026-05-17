@@ -9,6 +9,7 @@
 #include "io/formats.h"
 
 #include <fstream>
+#include <ios>
 #include <istream>
 #include <utility>
 #include <variant>
@@ -37,7 +38,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger {
     }
 
     auto read(std::istream &input) -> aiger_read_result {
-        api::option_set options;
+        const api::option_set options;
         return read(input, options);
     }
 
@@ -47,13 +48,13 @@ namespace fuzzybits::io::backend::fuzzybits::aiger {
         if (model.diagnostics.has_errors()) {
             return aiger_read_result::fail(std::move(model.diagnostics));
         }
-        auto finalized = detail::build_pc(model);
-        model.diagnostics.append(std::move(finalized.diagnostics));
-        if (model.diagnostics.has_errors() || !finalized.output.valid()) {
+        auto [output, diagnostics] = detail::build_pc(model);
+        model.diagnostics.append(std::move(diagnostics));
+        if (model.diagnostics.has_errors() || !output.valid()) {
             return aiger_read_result::fail(std::move(model.diagnostics));
         }
 
-        return aiger_read_result::ok(read_output{.model = finalized.output.to_handle()}, std::move(model.diagnostics));
+        return aiger_read_result::ok(read_output{.model = output.to_handle()}, std::move(model.diagnostics));
     }
 
     auto read(io::read_request const &request) -> io::read_result {

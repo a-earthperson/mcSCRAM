@@ -1,5 +1,7 @@
 #include <catch2/catch.hpp>
 
+#include "api/ids.h"
+#include "api/diagnostics.h"
 #include "io/aiger/descriptor.h"
 #include "io/formats.h"
 #include "ir/forms.h"

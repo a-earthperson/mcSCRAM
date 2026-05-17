@@ -1,8 +1,10 @@
+#include "api/options.h"
 #include "io/ftp/detail/model.h"
-
 #include "io/ftp/descriptor.h"
 
 #include <algorithm>
+#include <vector>
+#include <string>
 
 namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
 
@@ -15,6 +17,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
         }
 
         std::vector<std::string> targets;
+        targets.reserve(model.referencedNames.size());
         for (auto const &definition : model.definitions) {
             if (!model.referencedNames.contains(definition.name)) {
                 targets.push_back(definition.name);

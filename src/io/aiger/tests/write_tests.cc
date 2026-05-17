@@ -1,6 +1,5 @@
 #define CATCH_CONFIG_MAIN
-#include <catch2/catch.hpp>
-
+#include "api/ids.h"
 #include "api/diagnostics.h"
 #include "io/aiger/descriptor.h"
 #include "io/formats.h"
@@ -9,7 +8,11 @@
 #include "ir/pc/circuit.h"
 #include "ir/pc/edge.h"
 #include "ir/pc/op_code.h"
-#include "ir/pc/probability.h"
+
+#include <cstddef>
+#include <ios>
+#include <utility>
+#include <catch2/catch.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -32,7 +35,7 @@ namespace {
         return output.str();
     }
 
-    [[nodiscard]] auto checksum(std::string_view text) -> std::uint64_t {
+    [[nodiscard]] auto checksum(const std::string_view text) -> std::uint64_t {
         auto value = std::uint64_t{14695981039346656037ULL};
         for (const auto character : text) {
             value ^= static_cast<unsigned char>(character);

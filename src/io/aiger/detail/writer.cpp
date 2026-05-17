@@ -47,8 +47,8 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
         [[nodiscard]] auto dependentCounts(ir::pc::circuit const &model) -> std::vector<std::uint32_t> {
             std::vector<std::uint32_t> counts(model.node_count(), 0);
             for (std::uint32_t node = 0; node < model.node_count(); ++node) {
-                for (auto const &edge : model.operands(ir::pc::bool_node_id(node))) {
-                    ++counts[edge.source.raw()];
+                for (const auto &[source, complement] : model.operands(ir::pc::bool_node_id(node))) {
+                    ++counts[source.raw()];
                 }
             }
             return counts;
@@ -97,8 +97,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
                 }
             }
             for (std::uint32_t node = 0; node < model.node_count(); ++node) {
-                const auto code = model.op_codes()[node];
-                switch (code) {
+                switch (const auto code = model.op_codes()[node]) {
                 case ir::pc::op_code::basic_event:
                     validateProbabilitySource(model, node, diagnostics);
                     break;
@@ -136,7 +135,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             return diagnostics;
         }
 
-        void visitAnd(ir::pc::circuit const &model, ir::pc::bool_node_id node, std::vector<VisitState> &states, Layout &layout,
+        void visitAnd(ir::pc::circuit const &model, const ir::pc::bool_node_id node, std::vector<VisitState> &states, Layout &layout,
                       api::diagnostic_list &diagnostics) {
             const auto raw = node.raw();
             if (states[raw] == VisitState::done) {
@@ -147,9 +146,9 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
                 return;
             }
             states[raw] = VisitState::visiting;
-            for (auto const &edge : model.operands(node)) {
-                if (model.op_codes()[edge.source.raw()] == ir::pc::op_code::and_gate) {
-                    visitAnd(model, edge.source, states, layout, diagnostics);
+            for (const auto &[source, complement] : model.operands(node)) {
+                if (model.op_codes()[source.raw()] == ir::pc::op_code::and_gate) {
+                    visitAnd(model, source, states, layout, diagnostics);
                 }
             }
             states[raw] = VisitState::done;
@@ -175,7 +174,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
                     // recover prior AIGER variable numbers from symbols or names, so
                     // round-trips are structurally stable for this writer but not
                     // byte-identical to arbitrary source ordering.
-                    layout.inputs.push_back(ir::pc::bool_node_id(node));
+                    layout.inputs.emplace_back(node);
                     layout.inputVariableByNode[node] = static_cast<std::uint32_t>(layout.inputs.size());
                 }
             }
@@ -202,7 +201,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             return api::result<Layout>::ok(std::move(layout));
         }
 
-        [[nodiscard]] auto literalForNode(ir::pc::circuit const &model, Layout const &layout, ir::pc::bool_node_id node) -> std::uint32_t {
+        [[nodiscard]] auto literalForNode(ir::pc::circuit const &model, Layout const &layout, const ir::pc::bool_node_id node) -> std::uint32_t {
             switch (model.op_codes()[node.raw()]) {
             case ir::pc::op_code::constant:
                 return model.constant_values()[node.raw()] != 0 ? 1U : 0U;
@@ -227,7 +226,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             return literalForNode(model, layout, edge.source) ^ (edge.complement ? 1U : 0U);
         }
 
-        [[nodiscard]] auto literalForTarget(ir::pc::circuit const &model, Layout const &layout, ir::pc::bool_node_id node) -> std::uint32_t {
+        [[nodiscard]] auto literalForTarget(ir::pc::circuit const &model, Layout const &layout, const ir::pc::bool_node_id node) -> std::uint32_t {
             if (model.op_codes()[node.raw()] != ir::pc::op_code::not_gate) {
                 return literalForNode(model, layout, node);
             }
@@ -268,7 +267,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
         if (!layoutResult) {
             return io::write_result::fail(layoutResult.diagnostics());
         }
-        auto layout = std::move(layoutResult).value();
+        const auto layout = std::move(layoutResult).value();
 
         const auto inputCount = static_cast<std::uint32_t>(layout.inputs.size());
         const auto andCount = static_cast<std::uint32_t>(layout.ands.size());

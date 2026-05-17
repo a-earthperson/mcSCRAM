@@ -2,13 +2,13 @@
 
 #include "api/diagnostics.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <istream>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -25,7 +25,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
             while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0) {
                 text.remove_suffix(1);
             }
-            return text;
+            return text; // @warning: The address of the parameter text may escape the function
         }
 
         [[nodiscard]] auto splitWhitespace(std::string_view text) -> std::vector<std::string> {
@@ -45,8 +45,8 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
             return tokens;
         }
 
-        [[nodiscard]] auto parseDouble(std::string_view token) -> std::optional<double> {
-            std::string owned(token);
+        [[nodiscard]] auto parseDouble(const std::string_view token) -> std::optional<double> {
+            const std::string owned(token);
             char *end = nullptr;
             const auto value = std::strtod(owned.c_str(), &end);
             if (end == owned.c_str() || *end != '\0') {
@@ -55,19 +55,18 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
             return value;
         }
 
-        [[nodiscard]] auto parseUnsigned(std::string_view token) -> std::optional<std::uint32_t> {
+        [[nodiscard]] auto parseUnsigned(const std::string_view token) -> std::optional<std::uint32_t> {
             std::uint32_t value = 0;
             const auto begin = token.data();
             const auto end = token.data() + token.size();
-            const auto [cursor, error] = std::from_chars(begin, end, value);
-            if (error != std::errc{} || cursor != end) {
+            if (const auto [cursor, error] = std::from_chars(begin, end, value); error != std::errc{} || cursor != end) {
                 return std::nullopt;
             }
             return value;
         }
 
         [[nodiscard]] auto isGeneratedTargetName(std::string_view token) -> bool {
-            if (token.size() < 2 || token.front() != 'T') {
+            if (token.size() < 2 || token.front() != kFtpGeneratedTargetPrefix) {
                 return false;
             }
             token.remove_prefix(1);
@@ -77,7 +76,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
         }
 
         [[nodiscard]] auto parseOperand(std::string token) -> Operand {
-            if (token.size() > 1 && token.front() == '-') {
+            if (token.size() > 1 && token.front() == kFtpComplementToken) {
                 token.erase(token.begin());
                 return Operand{
                     .name = std::move(token),
@@ -90,8 +89,8 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
         }
 
         void addDefinition(ParsedModel &model, Definition definition) {
-            for (auto const &operand : definition.operands) {
-                model.referencedNames.insert(operand.name);
+            for (const auto &[name, complement] : definition.operands) {
+                model.referencedNames.insert(name);
             }
             const auto [position, inserted] = model.definitionByName.emplace(definition.name, model.definitions.size());
             if (!inserted) {
@@ -115,13 +114,13 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
             }
         }
 
-        void parseLine(std::string_view line, std::size_t lineNumber, ParsedModel &model) {
+        void parseLine(std::string_view line, const std::size_t lineNumber, ParsedModel &model) {
             const auto isIndented = !line.empty() && std::isspace(static_cast<unsigned char>(line.front())) != 0;
             line = trim(line);
-            if (line.empty() || line == "ENDTREE") {
+            if (line.empty() || line == kFtpEndTreeToken) {
                 return;
             }
-            if (line.front() == '*') {
+            if (line.front() == kFtpAndGateToken) {
                 return;
             }
 
@@ -129,7 +128,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
             if (tokens.empty()) {
                 return;
             }
-            if (tokens[0] == "LIMIT") {
+            if (tokens[0] == kFtpLimitToken) {
                 if (tokens.size() < 2) {
                     model.diagnostics.push(api::make_error("io.ftp.invalid-limit", "LIMIT requires a numeric value"));
                     return;
@@ -141,10 +140,10 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
                 model.diagnostics.push(api::make_error("io.ftp.invalid-limit", "LIMIT value is not numeric"));
                 return;
             }
-            if (tokens[0] == "PROCESS" || tokens[0] == "IMPORT") {
+            if (tokens[0] == kFtpProcessToken || tokens[0] == kFtpImportToken) {
                 return;
             }
-            if (tokens.size() == 3 && tokens[1] == "+" && isGeneratedTargetName(tokens[0])) {
+            if (tokens.size() == 3 && tokens[1].size() == 1 && tokens[1][0] == kFtpOrGateToken && isGeneratedTargetName(tokens[0])) {
                 model.explicitTargets.push_back(tokens[2]);
                 return;
             }
@@ -174,9 +173,9 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
             for (auto operand = tokens.begin() + 2; operand != tokens.end(); ++operand) {
                 definition.operands.push_back(parseOperand(*operand));
             }
-            if (tokens[1] == "+") {
+            if (tokens[1].size() == 1 && tokens[1][0] == kFtpOrGateToken) {
                 definition.kind = DefinitionKind::or_gate;
-            } else if (tokens[1] == "*") {
+            } else if (tokens[1].size() == 1 && tokens[1][0] == kFtpAndGateToken) {
                 definition.kind = DefinitionKind::and_gate;
             } else if (const auto threshold = parseUnsigned(tokens[1])) {
                 definition.kind = DefinitionKind::at_least;

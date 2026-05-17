@@ -1,8 +1,10 @@
 #include "io/ftp/detail/model.h"
+#include "io/ftp/descriptor.h"
 
 #include "api/diagnostics.h"
-#include "io/ftp/descriptor.h"
+#include "io/descriptor.h"
 #include "io/formats.h"
+#include "ir/pc/circuit.h"
 #include "ir/pc/edge.h"
 #include "ir/pc/id.h"
 #include "ir/pc/op_code.h"
@@ -10,6 +12,7 @@
 
 #include <cstdint>
 #include <iomanip>
+#include <ios>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -18,19 +21,18 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
     namespace {
 
         [[nodiscard]] auto nodeName(ir::pc::circuit const &model, const ir::pc::bool_node_id node) -> std::string {
-            const auto code = model.op_codes()[node.raw()];
-            if (code == ir::pc::op_code::basic_event || code == ir::pc::op_code::constant || code == ir::pc::op_code::house_event) {
-                return "E" + std::to_string(node.raw());
+            if (const auto code = model.op_codes()[node.raw()];
+                code == ir::pc::op_code::basic_event || code == ir::pc::op_code::constant || code == ir::pc::op_code::house_event) {
+                return std::string(1, kFtpBasicEventNodePrefix) + std::to_string(node.raw());
             }
-            return "N" + std::to_string(node.raw());
+            return std::string(1, kFtpCompositeNodePrefix) + std::to_string(node.raw());
         }
 
         [[nodiscard]] auto validateSerializable(ir::pc::circuit const &model) -> api::diagnostic_list {
             api::diagnostic_list diagnostics;
             for (std::uint32_t node = 0; node < model.node_count(); ++node) {
-                const auto code = model.op_codes()[node];
 
-                switch (code) {
+                switch (const auto code = model.op_codes()[node]) {
                 case ir::pc::op_code::basic_event: {
                     const auto source = model.probability_source_refs()[node];
                     if (!source.valid() || source.raw() >= model.probability_sources().size()) {
@@ -38,8 +40,8 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
                                                          "FTP writer requires a probability source for every basic event"));
                         break;
                     }
-                    const auto kind = model.probability_sources()[source.raw()].kind;
-                    if (kind == ir::pc::probability_source_kind::unsupported) {
+                    if (const auto kind = model.probability_sources()[source.raw()].kind;
+                        kind == ir::pc::probability_source_kind::unsupported) {
                         diagnostics.push(api::make_error("io.ftp.unsupported-probability",
                                                          "FTP writer cannot serialize unsupported probability sources"));
                     }
@@ -77,19 +79,19 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
 
             output << nodeName(model, node) << ' ';
             if (code == ir::pc::op_code::and_gate) {
-                output << '*';
+                output << kFtpAndGateToken;
             } else if (code == ir::pc::op_code::or_gate) {
-                output << '+';
+                output << kFtpOrGateToken;
             } else {
                 output << model.cardinality_low()[node.raw()];
             }
 
-            for (auto const &edge : model.operands(node)) {
+            for (const auto &[source, complement] : model.operands(node)) {
                 output << ' ';
-                if (edge.complement) {
-                    output << '-';
+                if (complement) {
+                    output << kFtpComplementToken;
                 }
-                output << nodeName(model, edge.source);
+                output << nodeName(model, source);
             }
             output << '\n';
         }
@@ -120,14 +122,13 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
             return io::write_result::fail(api::make_error("io.ftp.format-mismatch", "FTP writer received a non-FTP format request"));
         }
 
-        auto diagnostics = validateSerializable(model);
-        if (diagnostics.has_errors()) {
+        if (auto diagnostics = validateSerializable(model); diagnostics.has_errors()) {
             return io::write_result::fail(std::move(diagnostics));
         }
 
-        output << "**CHAR32\n";
+        output << kFtpEncodingLine;
         for (auto const &target : model.targets()) {
-            output << "T" << target.id.raw() << " + " << nodeName(model, target.node) << '\n';
+            output << kFtpGeneratedTargetPrefix << target.id.raw() << kFtpTargetLineJoin << nodeName(model, target.node) << '\n';
         }
         for (std::uint32_t node = 0; node < model.node_count(); ++node) {
             writeGateLine(model, ir::pc::bool_node_id(node), output);
@@ -135,11 +136,11 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
         for (std::uint32_t node = 0; node < model.node_count(); ++node) {
             writeProbabilityLine(model, ir::pc::bool_node_id(node), output);
         }
-        if (auto limit = request.options.get<double>(truncation_limit_option())) {
-            output << "LIMIT    " << std::scientific << std::setprecision(6) << *limit << '\n';
+        if (const auto limit = request.options.get<double>(truncation_limit_option())) {
+            output << kFtpLimitOutputPrefix << std::scientific << std::setprecision(6) << *limit << '\n';
         }
-        output << "**FTITLE:\n";
-        output << "*XEQ\n";
+        output << kFtpFtitleLine;
+        output << kFtpXeqLine;
         return io::write_result::ok(true);
     }
 

@@ -61,7 +61,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
     }
 
     auto read(std::istream &input) -> ftp_read_result {
-        api::option_set options;
+        const api::option_set options;
         return read(input, options);
     }
 
@@ -77,16 +77,16 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             return ftp_read_result::fail(std::move(model.diagnostics));
         }
 
-        auto finalized = detail::build_pc(model, targets);
-        model.diagnostics.append(std::move(finalized.diagnostics));
-        if (model.diagnostics.has_errors() || !finalized.output.valid()) {
+        auto [output, diagnostics] = detail::build_pc(model, targets);
+        model.diagnostics.append(std::move(diagnostics));
+        if (model.diagnostics.has_errors() || !output.valid()) {
             return ftp_read_result::fail(std::move(model.diagnostics));
         }
 
         return ftp_read_result::ok(
             read_output{
-                .model = finalized.output.to_handle(),
-                .metadata = std::move(model.metadata),
+                .model = output.to_handle(),
+                .metadata = model.metadata,
             },
             std::move(model.diagnostics));
     }

@@ -1,3 +1,4 @@
+#include "ir/pc/builder.h"
 #include "io/ftp/detail/model.h"
 
 #include "api/diagnostics.h"
@@ -21,8 +22,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
 
             [[nodiscard]] auto build(std::vector<std::string> const &targets) -> ir::pc::finalize_result {
                 for (auto const &target : targets) {
-                    const auto node = buildNode(target);
-                    if (node.valid()) {
+                    if (const auto node = buildNode(target); node.valid()) {
                         const auto targetId = builder_.add_target(node);
                         (void)targetId;
                     }
@@ -59,15 +59,15 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
 
                 std::vector<ir::pc::edge_ref> operands;
                 operands.reserve(definition.operands.size());
-                for (auto const &operandReference : definition.operands) {
-                    const auto operand = buildNode(operandReference.name);
+                for (const auto &[name, complement] : definition.operands) {
+                    const auto operand = buildNode(name);
                     if (!operand.valid()) {
                         visiting_.erase(definition.name);
                         return ir::pc::bool_node_id::invalid();
                     }
                     operands.push_back(ir::pc::edge_ref{
                         .source = operand,
-                        .complement = operandReference.complement,
+                        .complement = complement,
                     });
                 }
 
