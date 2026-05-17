@@ -266,6 +266,42 @@ namespace fuzzybits::io::backend::fuzzybits::aiger {
             }
         }
 
+        [[nodiscard]] auto writePc(ir::pc::circuit const &model, std::ostream &output, io::write_request const &request)
+            -> io::write_result {
+            if (!request.format.empty() && request.format != formats::aiger()) {
+                return io::write_result::fail(api::make_error("io.aiger.format-mismatch", "AIGER writer received a non-AIGER format request"));
+            }
+
+            auto layoutResult = makeLayout(model);
+            if (!layoutResult) {
+                return io::write_result::fail(layoutResult.diagnostics());
+            }
+            auto layout = std::move(layoutResult).value();
+
+            const auto inputCount = static_cast<std::uint32_t>(layout.inputs.size());
+            const auto andCount = static_cast<std::uint32_t>(layout.ands.size());
+            const auto maxVariable = inputCount + andCount;
+            // Always emit binary AIGER. The writer chooses a compact legal layout from
+            // the PC shape rather than preserving ASCII-vs-binary source syntax, unused
+            // variable gaps, comments, or symbol ordering from an earlier file.
+            output << "aig " << maxVariable << ' ' << inputCount << " 0 " << model.targets().size() << ' ' << andCount << '\n';
+            for (auto const &target : model.targets()) {
+                output << literalForTarget(model, layout, target.node) << '\n';
+            }
+            for (auto const node : layout.ands) {
+                const auto lhs = literalForNode(model, layout, node);
+                auto rhs0 = literalForEdge(model, layout, model.operands(node)[0]);
+                auto rhs1 = literalForEdge(model, layout, model.operands(node)[1]);
+                if (rhs0 < rhs1) {
+                    std::swap(rhs0, rhs1);
+                }
+                encodeDelta(output, lhs - rhs0);
+                encodeDelta(output, rhs0 - rhs1);
+            }
+            writeInputSymbols(model, layout, output);
+            return io::write_result::ok(true);
+        }
+
     } // namespace
 
     auto writer_endpoint_id() -> api::endpoint_id {
@@ -302,46 +338,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger {
         if (pc == nullptr) {
             return io::write_result::fail(api::make_error("io.aiger.unsupported-ir", "AIGER writer requires a PC IR handle"));
         }
-        return write(*pc, output, request);
-    }
-
-    auto write(ir::pc::circuit const &model, std::ostream &output) -> io::write_result {
-        return write(model, output, io::write_request{.format = formats::aiger()});
-    }
-
-    auto write(ir::pc::circuit const &model, std::ostream &output, io::write_request const &request) -> io::write_result {
-        if (!request.format.empty() && request.format != formats::aiger()) {
-            return io::write_result::fail(api::make_error("io.aiger.format-mismatch", "AIGER writer received a non-AIGER format request"));
-        }
-
-        auto layoutResult = makeLayout(model);
-        if (!layoutResult) {
-            return io::write_result::fail(layoutResult.diagnostics());
-        }
-        auto layout = std::move(layoutResult).value();
-
-        const auto inputCount = static_cast<std::uint32_t>(layout.inputs.size());
-        const auto andCount = static_cast<std::uint32_t>(layout.ands.size());
-        const auto maxVariable = inputCount + andCount;
-        // Always emit binary AIGER. The writer chooses a compact legal layout from
-        // the PC shape rather than preserving ASCII-vs-binary source syntax, unused
-        // variable gaps, comments, or symbol ordering from an earlier file.
-        output << "aig " << maxVariable << ' ' << inputCount << " 0 " << model.targets().size() << ' ' << andCount << '\n';
-        for (auto const &target : model.targets()) {
-            output << literalForTarget(model, layout, target.node) << '\n';
-        }
-        for (auto const node : layout.ands) {
-            const auto lhs = literalForNode(model, layout, node);
-            auto rhs0 = literalForEdge(model, layout, model.operands(node)[0]);
-            auto rhs1 = literalForEdge(model, layout, model.operands(node)[1]);
-            if (rhs0 < rhs1) {
-                std::swap(rhs0, rhs1);
-            }
-            encodeDelta(output, lhs - rhs0);
-            encodeDelta(output, rhs0 - rhs1);
-        }
-        writeInputSymbols(model, layout, output);
-        return io::write_result::ok(true);
+        return writePc(*pc, output, request);
     }
 
 } // namespace fuzzybits::io::backend::fuzzybits::aiger

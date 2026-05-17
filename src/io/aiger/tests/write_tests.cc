@@ -109,7 +109,7 @@ namespace {
 
     [[nodiscard]] auto writeOutput(fuzzybits::ir::pc::circuit const &model) -> std::string {
         std::ostringstream output;
-        const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(model, output);
+        const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(model.to_handle(), output);
         INFO(diagnosticsText(written.diagnostics()));
         REQUIRE(written);
         return output.str();
@@ -159,7 +159,7 @@ TEST_CASE("AIGER writer round-trips binary AIGER", "[io][aiger]") {
     auto model = makeAigCircuit();
 
     std::ostringstream output;
-    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(model, output);
+    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(model.to_handle(), output);
     INFO(diagnosticsText(written.diagnostics()));
     REQUIRE(written);
     REQUIRE(output.str().starts_with("aig 3 2 0 1 1\n"));
@@ -199,7 +199,7 @@ TEST_CASE("AIGER writer rejects PC that is not already marked AIG", "[io][aiger]
     REQUIRE(finalized.ok());
 
     std::ostringstream output;
-    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(finalized.output, output);
+    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(finalized.output.to_handle(), output);
 
     REQUIRE_FALSE(written);
     REQUIRE(written.diagnostics().has_errors());
@@ -223,7 +223,7 @@ TEST_CASE("AIGER writer rejects AIG-marked non-AIG opcodes", "[io][aiger]") {
     REQUIRE(finalized.ok());
 
     std::ostringstream output;
-    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(finalized.output, output);
+    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(finalized.output.to_handle(), output);
 
     REQUIRE_FALSE(written);
     REQUIRE(written.diagnostics().has_errors());

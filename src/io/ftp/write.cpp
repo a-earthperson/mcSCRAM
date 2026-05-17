@@ -119,6 +119,35 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             output << std::scientific << std::setprecision(6) << probability.literal << ' ' << nodeName(model, node) << '\n';
         }
 
+        [[nodiscard]] auto writePc(ir::pc::circuit const &model, std::ostream &output, io::write_request const &request)
+            -> io::write_result {
+            if (!request.format.empty() && request.format != formats::ftp()) {
+                return io::write_result::fail(api::make_error("io.ftp.format-mismatch", "FTP writer received a non-FTP format request"));
+            }
+
+            auto diagnostics = validateSerializable(model);
+            if (diagnostics.has_errors()) {
+                return io::write_result::fail(std::move(diagnostics));
+            }
+
+            output << "**CHAR32\n";
+            for (auto const &target : model.targets()) {
+                output << "T" << target.id.raw() << " + " << nodeName(model, target.node) << '\n';
+            }
+            for (std::uint32_t node = 0; node < model.node_count(); ++node) {
+                writeGateLine(model, ir::pc::bool_node_id(node), output);
+            }
+            for (std::uint32_t node = 0; node < model.node_count(); ++node) {
+                writeProbabilityLine(model, ir::pc::bool_node_id(node), output);
+            }
+            if (auto limit = request.options.get<double>(truncation_limit_option())) {
+                output << "LIMIT    " << std::scientific << std::setprecision(6) << *limit << '\n';
+            }
+            output << "**FTITLE:\n";
+            output << "*XEQ\n";
+            return io::write_result::ok(true);
+        }
+
     } // namespace
 
     auto writer_endpoint_id() -> api::endpoint_id {
@@ -164,39 +193,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
         if (pc == nullptr) {
             return io::write_result::fail(api::make_error("io.ftp.unsupported-ir", "FTP writer requires a PC IR handle"));
         }
-        return write(*pc, output, request);
-    }
-
-    auto write(ir::pc::circuit const &model, std::ostream &output) -> io::write_result {
-        return write(model, output, io::write_request{.format = formats::ftp()});
-    }
-
-    auto write(ir::pc::circuit const &model, std::ostream &output, io::write_request const &request) -> io::write_result {
-        if (!request.format.empty() && request.format != formats::ftp()) {
-            return io::write_result::fail(api::make_error("io.ftp.format-mismatch", "FTP writer received a non-FTP format request"));
-        }
-
-        auto diagnostics = validateSerializable(model);
-        if (diagnostics.has_errors()) {
-            return io::write_result::fail(std::move(diagnostics));
-        }
-
-        output << "**CHAR32\n";
-        for (auto const &target : model.targets()) {
-            output << "T" << target.id.raw() << " + " << nodeName(model, target.node) << '\n';
-        }
-        for (std::uint32_t node = 0; node < model.node_count(); ++node) {
-            writeGateLine(model, ir::pc::bool_node_id(node), output);
-        }
-        for (std::uint32_t node = 0; node < model.node_count(); ++node) {
-            writeProbabilityLine(model, ir::pc::bool_node_id(node), output);
-        }
-        if (auto limit = request.options.get<double>(truncation_limit_option())) {
-            output << "LIMIT    " << std::scientific << std::setprecision(6) << *limit << '\n';
-        }
-        output << "**FTITLE:\n";
-        output << "*XEQ\n";
-        return io::write_result::ok(true);
+        return writePc(*pc, output, request);
     }
 
 } // namespace fuzzybits::io::backend::fuzzybits::ftp

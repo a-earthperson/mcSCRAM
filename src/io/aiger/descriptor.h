@@ -5,7 +5,6 @@
 #include "api/result.h"
 #include "io/descriptor.h"
 #include "ir/handle.h"
-#include "ir/pc/circuit.h"
 
 #include <iosfwd>
 
@@ -28,7 +27,5 @@ namespace fuzzybits::io::backend::fuzzybits::aiger {
 
     [[nodiscard]] auto write(ir::handle const &model, std::ostream &output) -> io::write_result;
     [[nodiscard]] auto write(ir::handle const &model, std::ostream &output, io::write_request const &request) -> io::write_result;
-    [[nodiscard]] auto write(ir::pc::circuit const &model, std::ostream &output) -> io::write_result;
-    [[nodiscard]] auto write(ir::pc::circuit const &model, std::ostream &output, io::write_request const &request) -> io::write_result;
 
 } // namespace fuzzybits::io::backend::fuzzybits::aiger

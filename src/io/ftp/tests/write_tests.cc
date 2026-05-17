@@ -115,7 +115,7 @@ namespace {
         }
 
         std::ostringstream output;
-        const auto written = fuzzybits::io::backend::fuzzybits::ftp::write(model, output, request);
+        const auto written = fuzzybits::io::backend::fuzzybits::ftp::write(model.to_handle(), output, request);
         INFO(diagnosticsText(written.diagnostics()));
         REQUIRE(written);
         return output.str();
