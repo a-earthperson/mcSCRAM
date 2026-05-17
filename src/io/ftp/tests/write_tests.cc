@@ -4,7 +4,6 @@
 #include "api/diagnostics.h"
 #include "io/ftp/descriptor.h"
 #include "io/formats.h"
-#include "ir/handle.h"
 #include "ir/pc/builder.h"
 #include "ir/pc/circuit.h"
 #include "ir/pc/edge.h"
@@ -96,7 +95,18 @@ namespace {
         return fuzzybits::io::backend::fuzzybits::ftp::read(input);
     }
 
-    [[nodiscard]] auto writeOutput(fuzzybits::ir::handle const &model, std::optional<double> truncationLimit = std::nullopt) -> std::string {
+    [[nodiscard]] auto requirePcModel(fuzzybits::io::backend::fuzzybits::ftp::read_output const &read)
+        -> fuzzybits::ir::pc::circuit const & {
+        auto const *pc = fuzzybits::ir::pc::circuit_from(read.model);
+        REQUIRE(pc != nullptr);
+        REQUIRE(pc->valid());
+        REQUIRE(pc->node_count() > 0);
+        REQUIRE_FALSE(pc->targets().empty());
+        return *pc;
+    }
+
+    [[nodiscard]] auto writeOutput(fuzzybits::ir::pc::circuit const &model, std::optional<double> truncationLimit = std::nullopt)
+        -> std::string {
         fuzzybits::io::write_request request{
             .format = fuzzybits::io::formats::ftp(),
         };
@@ -137,7 +147,7 @@ TEST_CASE("FTP writer round-trips the writable PC subset", "[io][ftp]") {
     auto finalized = std::move(builder).seal();
     REQUIRE(finalized.ok());
 
-    const auto text = writeOutput(finalized.output.to_handle(), 1.0e-6);
+    const auto text = writeOutput(finalized.output, 1.0e-6);
 
     REQUIRE(text.find("LIMIT") != std::string::npos);
     REQUIRE(text.find("T0 + N") != std::string::npos);
@@ -163,13 +173,15 @@ TEST_CASE("FTP input corpus round-trips to stable write checksums", "[io][ftp][c
             INFO(diagnosticsText(firstRead.diagnostics()));
             REQUIRE(firstRead);
 
-            const auto firstOutput = writeOutput(firstRead.value().model, firstRead.value().metadata.truncation_limit);
+            auto const &firstPc = requirePcModel(firstRead.value());
+            const auto firstOutput = writeOutput(firstPc, firstRead.value().metadata.truncation_limit);
             std::istringstream reparsedInput(firstOutput);
             auto secondRead = fuzzybits::io::backend::fuzzybits::ftp::read(reparsedInput);
             INFO(diagnosticsText(secondRead.diagnostics()));
             REQUIRE(secondRead);
 
-            const auto secondOutput = writeOutput(secondRead.value().model, secondRead.value().metadata.truncation_limit);
+            auto const &secondPc = requirePcModel(secondRead.value());
+            const auto secondOutput = writeOutput(secondPc, secondRead.value().metadata.truncation_limit);
             INFO("first checksum: " << checksum(firstOutput));
             INFO("second checksum: " << checksum(secondOutput));
             REQUIRE(firstOutput.size() == secondOutput.size());
