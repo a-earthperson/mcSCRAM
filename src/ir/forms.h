@@ -6,6 +6,7 @@
 #include <span>
 #include <string_view>
 
+// TODO:: bool_dag forms are not PRA model forms, separate these.
 namespace fuzzybits::ir::forms {
 
     struct form_info final {
@@ -114,10 +115,15 @@ namespace fuzzybits::ir::forms {
         return api::form_id("ir.probabilistic_boolean_dag");
     }
 
+    [[nodiscard]] inline auto probabilistic_risk_model() -> api::form_id {
+        return api::form_id("ir.probabilistic_risk_model");
+    }
+
     [[nodiscard]] inline auto known_form_infos() -> std::span<form_info const> {
         static const std::array infos{
             form_info{bool_dag(), "Boolean DAG", "A Boolean directed acyclic graph with Boolean-valued nodes and target roots."},
             form_info{probabilistic_boolean_dag(), "Probabilistic Boolean DAG", "A Boolean DAG with probability-bearing leaves or side tables sufficient for probabilistic analysis."},
+            form_info{probabilistic_risk_model(), "Probabilistic Risk Model", "A domain PRA model with fault trees, event trees, initiators, hazards, systems, rules, and projection identity."},
             form_info{nnf(), "NNF", "Negation normal form; negation is pushed to leaves in a Boolean representation."},
             form_info{xag(), "XAG", "XOR-AND graph; a Boolean DAG over XOR, AND, constants, inputs, and edge or leaf polarity."},
             form_info{flat_nnf(), "f-NNF", "Flat negation normal form; a flattened NNF variant suitable for CNF/DNF-style products."},
