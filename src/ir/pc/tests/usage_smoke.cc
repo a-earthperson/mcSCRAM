@@ -5,18 +5,18 @@
 #include <utility>
 
 int main() {
-    fuzzybits::ir::pc::builder circuit_builder;
-    auto probability = circuit_builder.add_literal_probability(0.1);
-    auto event = circuit_builder.add_basic_event(probability);
-    auto other_event = circuit_builder.add_basic_event(probability);
-    auto gate = circuit_builder.add_and({
+    fuzzybits::ir::pc::builder circuitBuilder;
+    auto probability = circuitBuilder.add_literal_probability(0.1);
+    auto event = circuitBuilder.add_basic_event(probability);
+    auto otherEvent = circuitBuilder.add_basic_event(probability);
+    auto gate = circuitBuilder.add_and({
         fuzzybits::ir::pc::edge_ref{.source = event},
-        fuzzybits::ir::pc::edge_ref{.source = other_event},
+        fuzzybits::ir::pc::edge_ref{.source = otherEvent},
     });
-    auto target = circuit_builder.add_target(gate);
+    auto target = circuitBuilder.add_target(gate);
     (void)target;
 
-    auto result = std::move(circuit_builder).seal();
+    auto result = std::move(circuitBuilder).seal();
     if (!result.ok()) {
         return 1;
     }

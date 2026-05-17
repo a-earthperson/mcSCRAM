@@ -6,7 +6,7 @@
 
 namespace {
 
-    [[nodiscard]] auto builds_valid_circuit() -> bool {
+    [[nodiscard]] auto buildsValidCircuit() -> bool {
         fuzzybits::ir::pc::builder builder;
         const auto probability = builder.add_literal_probability(0.25);
         const auto event = builder.add_basic_event(probability);
@@ -27,7 +27,7 @@ namespace {
                circuit.descriptor().form == fuzzybits::ir::forms::pc() && circuit.to_handle().valid();
     }
 
-    [[nodiscard]] auto rejects_bad_probability() -> bool {
+    [[nodiscard]] auto rejectsBadProbability() -> bool {
         fuzzybits::ir::pc::builder builder;
         const auto probability = builder.add_literal_probability(2.0);
         const auto event = builder.add_basic_event(probability);
@@ -41,10 +41,10 @@ namespace {
 } // namespace
 
 int main() {
-    if (!builds_valid_circuit()) {
+    if (!buildsValidCircuit()) {
         return 1;
     }
-    if (!rejects_bad_probability()) {
+    if (!rejectsBadProbability()) {
         return 2;
     }
     return 0;
