@@ -40,11 +40,16 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             at_least,
         };
 
+        struct Operand final {
+            std::string name;
+            bool complement = false;
+        };
+
         struct Definition final {
             std::string name;
             DefinitionKind kind = DefinitionKind::or_gate;
             std::uint32_t threshold = 0;
-            std::vector<std::string> operands;
+            std::vector<Operand> operands;
             std::size_t line = 0;
         };
 
@@ -117,9 +122,22 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             });
         }
 
+        [[nodiscard]] auto parseOperand(std::string token) -> Operand {
+            if (token.size() > 1 && token.front() == '-') {
+                token.erase(token.begin());
+                return Operand{
+                    .name = std::move(token),
+                    .complement = true,
+                };
+            }
+            return Operand{
+                .name = std::move(token),
+            };
+        }
+
         void addDefinition(ParsedModel &model, Definition definition) {
             for (auto const &operand : definition.operands) {
-                model.referencedNames.insert(operand);
+                model.referencedNames.insert(operand.name);
             }
             const auto [position, inserted] = model.definitionByName.emplace(definition.name, model.definitions.size());
             if (!inserted) {
@@ -137,8 +155,9 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             }
             auto &definition = model.definitions.back();
             for (auto const &operand : operands) {
-                definition.operands.push_back(operand);
-                model.referencedNames.insert(operand);
+                auto parsed = parseOperand(operand);
+                model.referencedNames.insert(parsed.name);
+                definition.operands.push_back(std::move(parsed));
             }
         }
 
@@ -197,7 +216,10 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             Definition definition;
             definition.name = tokens[0];
             definition.line = lineNumber;
-            definition.operands.assign(tokens.begin() + 2, tokens.end());
+            definition.operands.reserve(tokens.size() - 2);
+            for (auto operand = tokens.begin() + 2; operand != tokens.end(); ++operand) {
+                definition.operands.push_back(parseOperand(*operand));
+            }
             if (tokens[1] == "+") {
                 definition.kind = DefinitionKind::or_gate;
             } else if (tokens[1] == "*") {
@@ -267,13 +289,16 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
 
                 std::vector<ir::pc::edge_ref> operands;
                 operands.reserve(definition.operands.size());
-                for (auto const &operandName : definition.operands) {
-                    const auto operand = buildNode(operandName);
+                for (auto const &operandReference : definition.operands) {
+                    const auto operand = buildNode(operandReference.name);
                     if (!operand.valid()) {
                         visiting_.erase(definition.name);
                         return ir::pc::bool_node_id::invalid();
                     }
-                    operands.push_back(ir::pc::edge_ref{.source = operand});
+                    operands.push_back(ir::pc::edge_ref{
+                        .source = operand,
+                        .complement = operandReference.complement,
+                    });
                 }
 
                 ir::pc::bool_node_id node;

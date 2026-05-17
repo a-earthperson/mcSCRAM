@@ -139,7 +139,7 @@ TEST_CASE("FTP writer round-trips the writable PC subset", "[io][ftp]") {
     const auto b = builder.add_basic_event(bProbability);
     const auto top = builder.add_and({
         fuzzybits::ir::pc::edge_ref{.source = a},
-        fuzzybits::ir::pc::edge_ref{.source = b},
+        fuzzybits::ir::pc::edge_ref{.source = b, .complement = true},
     });
     const auto target = builder.add_target(top);
     (void)target;
@@ -151,6 +151,7 @@ TEST_CASE("FTP writer round-trips the writable PC subset", "[io][ftp]") {
 
     REQUIRE(text.find("LIMIT") != std::string::npos);
     REQUIRE(text.find("T0 + N") != std::string::npos);
+    REQUIRE(text.find(" -E") != std::string::npos);
 
     std::istringstream input(text);
     auto read = fuzzybits::io::backend::fuzzybits::ftp::read(input);
@@ -161,6 +162,9 @@ TEST_CASE("FTP writer round-trips the writable PC subset", "[io][ftp]") {
     REQUIRE(pc != nullptr);
     REQUIRE(pc->targets().size() == 1);
     REQUIRE(pc->probability_sources().size() == 2);
+    const auto operands = pc->operands(pc->targets()[0].node);
+    REQUIRE(operands.size() == 2);
+    REQUIRE(operands[1].complement);
 }
 
 TEST_CASE("FTP input corpus round-trips to stable write checksums", "[io][ftp][corpus]") {

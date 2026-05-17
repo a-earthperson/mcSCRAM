@@ -44,3 +44,28 @@ LIMIT    1.000000E-05
     REQUIRE(pc->probability_sources()[0].kind == fuzzybits::ir::pc::probability_source_kind::literal);
     REQUIRE(pc->op_codes()[pc->targets()[0].node.raw()] == fuzzybits::ir::pc::op_code::or_gate);
 }
+
+TEST_CASE("FTP reader preserves complemented child references", "[io][ftp]") {
+    std::istringstream input(R"ftp(**CHAR32
+TOP * A -B
+         1.000000E-01 A
+         2.000000E-01 B
+LIMIT    1.000000E-05
+**FTITLE:
+*XEQ
+)ftp");
+
+    auto result = fuzzybits::io::backend::fuzzybits::ftp::read(input);
+
+    REQUIRE(result);
+    auto const *pc = fuzzybits::ir::pc::circuit_from(result.value().model);
+    REQUIRE(pc != nullptr);
+    REQUIRE(pc->targets().size() == 1);
+
+    const auto top = pc->targets()[0].node;
+    REQUIRE(pc->op_codes()[top.raw()] == fuzzybits::ir::pc::op_code::and_gate);
+    const auto operands = pc->operands(top);
+    REQUIRE(operands.size() == 2);
+    REQUIRE_FALSE(operands[0].complement);
+    REQUIRE(operands[1].complement);
+}

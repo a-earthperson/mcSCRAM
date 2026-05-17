@@ -34,15 +34,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
         [[nodiscard]] auto validateSerializable(ir::pc::circuit const &model) -> api::diagnostic_list {
             api::diagnostic_list diagnostics;
             for (std::uint32_t node = 0; node < model.node_count(); ++node) {
-                const auto id = ir::pc::bool_node_id(node);
                 const auto code = model.op_codes()[node];
-                for (auto const &edge : model.operands(id)) {
-                    if (edge.complement) {
-                        diagnostics.push(api::make_error("io.ftp.unsupported-complement",
-                                                         "FTP writer cannot serialize complemented PC edges"));
-                        break;
-                    }
-                }
 
                 switch (code) {
                 case ir::pc::op_code::basic_event: {
@@ -99,7 +91,11 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             }
 
             for (auto const &edge : model.operands(node)) {
-                output << ' ' << nodeName(model, edge.source);
+                output << ' ';
+                if (edge.complement) {
+                    output << '-';
+                }
+                output << nodeName(model, edge.source);
             }
             output << '\n';
         }
