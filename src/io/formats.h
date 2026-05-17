@@ -27,10 +27,10 @@ namespace fuzzybits::io::formats {
     [[nodiscard]] inline auto aiger() -> api::format_id {
         return api::format_id("aig");
     }
+
     [[nodiscard]] inline auto blif() -> api::format_id {
         return api::format_id("blif");
     }
-
 
     [[nodiscard]] inline auto pcfb() -> api::format_id {
         return api::format_id("pcfb");

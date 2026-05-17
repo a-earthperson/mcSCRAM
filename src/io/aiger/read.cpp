@@ -115,7 +115,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger {
             return header.maxVariable <= ((std::numeric_limits<std::uint32_t>::max() - 1U) >> 1U);
         }
 
-        [[nodiscard]] auto parseHeader(std::string_view line, api::diagnostic_list &diagnostics) -> std::optional<Header> {
+        [[nodiscard]] auto parseHeader(const std::string_view line, api::diagnostic_list &diagnostics) -> std::optional<Header> {
             const auto tokens = splitWhitespace(line);
             if (tokens.size() < 6) {
                 diagnostics.push(api::make_error("io.aiger.invalid-header", "AIGER header must contain format and MILOA counts"));

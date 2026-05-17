@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <utility>
 #include <vector>
 
 namespace fuzzybits::api {
@@ -11,7 +12,7 @@ namespace fuzzybits::api {
     class capability_set final {
     public:
         capability_set() = default;
-        capability_set(std::initializer_list<capability_id> capabilities) {
+        capability_set(const std::initializer_list<capability_id> capabilities) {
             for (auto capability : capabilities) {
                 add(std::move(capability));
             }
