@@ -2,7 +2,6 @@
 
 #include <utility>
 
-// TODO:: Migrate these to Catch2, if appropriate
 int main() {
     fuzzybits::ir::pc::builder circuit_builder;
     auto probability = circuit_builder.add_literal_probability(0.1);
@@ -20,6 +19,6 @@ int main() {
         return 1;
     }
 
-    auto handle = result.output.to_ir_handle();
+    auto handle = result.output.to_handle();
     return fuzzybits::ir::pc::circuit_from(handle) == nullptr ? 1 : 0;
 }

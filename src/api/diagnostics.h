@@ -1,9 +1,5 @@
 #pragma once
 
-#include "api/identifiers.h"
-
-#include <algorithm>
-#include <cstddef>
 #include <iterator>
 #include <string>
 #include <utility>
@@ -11,98 +7,56 @@
 
 namespace fuzzybits::api {
 
-    enum class diagnostic_severity : std::uint8_t {
-        note,
-        warning,
-        error,
-        fatal,
-    };
+using diagnostic_code = std::string;
 
-    struct source_location final {
-        std::string file;
-        std::uint64_t line = 0;
-        std::uint64_t column = 0;
+enum class diagnostic_severity {
+    note,
+    warning,
+    error,
+};
 
-        [[nodiscard]] auto known() const noexcept -> bool {
-            return !file.empty() || line != 0 || column != 0;
+struct diagnostic final {
+    diagnostic_severity severity = diagnostic_severity::note;
+    std::string code;
+    std::string message;
+};
+
+class diagnostic_list final {
+  public:
+    void push(diagnostic item) { items_.push_back(std::move(item)); }
+
+    [[nodiscard]] auto empty() const noexcept -> bool { return items_.empty(); }
+    [[nodiscard]] auto size() const noexcept -> std::size_t { return items_.size(); }
+    [[nodiscard]] auto items() const noexcept -> std::vector<diagnostic> const & { return items_; }
+
+    [[nodiscard]] auto has_errors() const noexcept -> bool {
+        for (auto const &item : items_) {
+            if (item.severity == diagnostic_severity::error) {
+                return true;
+            }
         }
-    };
-
-    struct diagnostic final {
-        diagnostic_severity severity = diagnostic_severity::error;
-        diagnostic_code code;
-        std::string message;
-        source_location location;
-        std::vector<std::string> notes;
-    };
-
-    class diagnostic_list final {
-    public:
-        using storage_type = std::vector<diagnostic>;
-        using iterator = storage_type::iterator;
-        using const_iterator = storage_type::const_iterator;
-
-        diagnostic_list() = default;
-
-        explicit diagnostic_list(diagnostic first) {
-            diagnostics_.push_back(std::move(first));
-        }
-
-        auto push(diagnostic item) -> diagnostic_list & {
-            diagnostics_.push_back(std::move(item));
-            return *this;
-        }
-
-        auto append(diagnostic_list other) -> diagnostic_list & {
-            diagnostics_.insert(diagnostics_.end(), std::make_move_iterator(other.diagnostics_.begin()),
-                                std::make_move_iterator(other.diagnostics_.end()));
-            return *this;
-        }
-
-        [[nodiscard]] auto empty() const noexcept -> bool {
-            return diagnostics_.empty();
-        }
-
-        [[nodiscard]] auto size() const noexcept -> std::size_t {
-            return diagnostics_.size();
-        }
-
-        [[nodiscard]] auto has_errors() const -> bool {
-            return std::ranges::any_of(diagnostics_, [](diagnostic const &item) {
-                return item.severity == diagnostic_severity::error || item.severity == diagnostic_severity::fatal;
-            });
-        }
-
-        [[nodiscard]] auto raw() const noexcept -> storage_type const & {
-            return diagnostics_;
-        }
-
-        [[nodiscard]] auto begin() noexcept -> iterator {
-            return diagnostics_.begin();
-        }
-
-        [[nodiscard]] auto end() noexcept -> iterator {
-            return diagnostics_.end();
-        }
-
-        [[nodiscard]] auto begin() const noexcept -> const_iterator {
-            return diagnostics_.begin();
-        }
-
-        [[nodiscard]] auto end() const noexcept -> const_iterator {
-            return diagnostics_.end();
-        }
-
-    private:
-        storage_type diagnostics_;
-    };
-
-    [[nodiscard]] inline auto make_error(diagnostic_code code, std::string message) -> diagnostic {
-        return diagnostic{
-            .severity = diagnostic_severity::error,
-            .code = std::move(code),
-            .message = std::move(message),
-        };
+        return false;
     }
+
+    void append(diagnostic_list other) {
+        items_.insert(items_.end(), std::make_move_iterator(other.items_.begin()),
+                      std::make_move_iterator(other.items_.end()));
+    }
+
+  private:
+    std::vector<diagnostic> items_;
+};
+
+[[nodiscard]] inline auto make_error(std::string code, std::string message) -> diagnostic {
+    return diagnostic{.severity = diagnostic_severity::error, .code = std::move(code), .message = std::move(message)};
+}
+
+[[nodiscard]] inline auto make_warning(std::string code, std::string message) -> diagnostic {
+    return diagnostic{.severity = diagnostic_severity::warning, .code = std::move(code), .message = std::move(message)};
+}
+
+[[nodiscard]] inline auto make_note(std::string code, std::string message) -> diagnostic {
+    return diagnostic{.severity = diagnostic_severity::note, .code = std::move(code), .message = std::move(message)};
+}
 
 } // namespace fuzzybits::api

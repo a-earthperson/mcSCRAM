@@ -1,18 +1,32 @@
 #pragma once
 
-#include "api/identifiers.h"
-#include "api/ir.h"
+#include "api/capabilities.h"
+#include "api/ids.h"
+#include "api/options.h"
+
+#include <string>
+#include <vector>
 
 namespace fuzzybits::ir {
 
-[[nodiscard]] inline auto module_descriptor() -> api::ir_backend_descriptor {
-    return api::ir_backend_descriptor{
-        .provider = api::provider_id("fuzzybits"),
-        .backend = api::backend_id("ir"),
-        .storage_type = api::type_id("ir.module"),
-        .kind = api::ir_kind::unknown,
-        .name = "FuzzyBits IR module",
-    };
-}
+struct descriptor final {
+    api::provider_id provider;
+    api::endpoint_id endpoint;
+    api::type_id storage_type;
+    api::form_id form;
+    std::string name;
+    api::capability_set capabilities;
+};
+
+struct conversion_descriptor final {
+    api::provider_id provider;
+    api::endpoint_id endpoint;
+    std::string name;
+    api::form_id input_form;
+    api::form_id output_form;
+    api::capability_set required;
+    api::capability_set produced;
+    api::option_schema options;
+};
 
 } // namespace fuzzybits::ir

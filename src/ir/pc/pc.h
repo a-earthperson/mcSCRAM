@@ -1,7 +1,7 @@
 #pragma once
 
 // Convenience umbrella for consumers that intentionally opt into the concrete
-// PC IR contract. Generic orchestration should continue to use api::ir_handle.
+// PC IR contract. Generic orchestration should continue to use ir::handle.
 #include "ir/pc/builder.h"
 #include "ir/pc/circuit.h"
 #include "ir/pc/descriptor.h"

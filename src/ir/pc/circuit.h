@@ -1,6 +1,6 @@
 #pragma once
 
-#include "api/ir.h"
+#include "ir/handle.h"
 #include "ir/pc/descriptor.h"
 #include "ir/pc/edge.h"
 #include "ir/pc/id.h"
@@ -20,8 +20,6 @@ class builder;
 
 namespace detail {
 
-// Finalized R1 storage is columnar and owned. Public accessors expose spans, so
-// consumers observe compact read-only ranges rather than mutable vectors.
 struct circuit_storage final {
     std::vector<op_code> op_codes;
     std::vector<std::uint32_t> operand_offsets;
@@ -37,19 +35,13 @@ struct circuit_storage final {
 
 } // namespace detail
 
-// Immutable R1 PC storage. The circuit owns finalized columns through shared
-// storage so api::ir_handle copies are cheap, while consumers only receive
-// read-only spans and descriptor metadata.
 class circuit final {
   public:
     circuit() = default;
 
     [[nodiscard]] auto valid() const noexcept -> bool { return storage_ != nullptr; }
-
     [[nodiscard]] explicit operator bool() const noexcept { return valid(); }
-
-    [[nodiscard]] auto descriptor() const noexcept -> api::ir_backend_descriptor const & { return descriptor_; }
-
+    [[nodiscard]] auto descriptor() const noexcept -> ir::descriptor const & { return descriptor_; }
     [[nodiscard]] auto shape() const noexcept -> shape_summary const & { return shape_; }
 
     [[nodiscard]] auto node_count() const noexcept -> std::uint32_t {
@@ -116,13 +108,11 @@ class circuit final {
         return std::span<edge_ref const>{storage_->edges}.subspan(offset, count);
     }
 
-    // Wrap this concrete PC circuit in the generic API handle used across the
-    // pipeline/compiler/solver boundary.
-    [[nodiscard]] auto to_ir_handle() const -> api::ir_handle {
+    [[nodiscard]] auto to_handle() const -> ir::handle {
         if (!valid()) {
             return {};
         }
-        return api::ir_handle::make(std::make_shared<circuit const>(*this), descriptor_);
+        return ir::handle::make(std::make_shared<circuit const>(*this), descriptor_);
     }
 
   private:
@@ -133,16 +123,14 @@ class circuit final {
 
     std::shared_ptr<detail::circuit_storage const> storage_;
     shape_summary shape_;
-    api::ir_backend_descriptor descriptor_ = make_descriptor();
+    ir::descriptor descriptor_ = make_descriptor();
 };
 
-// Private backend implementations can use these helpers after descriptor checks
-// to opt into the concrete PC contract without exposing it in their public API.
-[[nodiscard]] inline auto is_pc(api::ir_handle const &handle) -> bool {
+[[nodiscard]] inline auto is_pc(ir::handle const &handle) -> bool {
     return handle.valid() && handle.storage_type() == storage_type_id();
 }
 
-[[nodiscard]] inline auto circuit_from(api::ir_handle const &handle) -> circuit const * {
+[[nodiscard]] inline auto circuit_from(ir::handle const &handle) -> circuit const * {
     return is_pc(handle) ? handle.storage_as<circuit>() : nullptr;
 }
 
