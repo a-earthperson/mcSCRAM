@@ -15,11 +15,13 @@
 #include <algorithm>
 #include <charconv>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <istream>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -50,6 +52,8 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             std::vector<Definition> definitions;
             std::unordered_map<std::string, std::size_t> definitionByName;
             std::unordered_map<std::string, double> probabilities;
+            std::vector<std::string> probabilityNames;
+            std::vector<std::string> explicitTargets;
             std::unordered_set<std::string> referencedNames;
             read_metadata metadata;
             api::diagnostic_list diagnostics;
@@ -103,6 +107,16 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             return value;
         }
 
+        [[nodiscard]] auto isGeneratedTargetName(std::string_view token) -> bool {
+            if (token.size() < 2 || token.front() != 'T') {
+                return false;
+            }
+            token.remove_prefix(1);
+            return std::ranges::all_of(token, [](const char character) {
+                return std::isdigit(static_cast<unsigned char>(character)) != 0;
+            });
+        }
+
         void addDefinition(ParsedModel &model, Definition definition) {
             for (auto const &operand : definition.operands) {
                 model.referencedNames.insert(operand);
@@ -117,7 +131,19 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             model.definitions.push_back(std::move(definition));
         }
 
+        void appendOperandsToPreviousDefinition(ParsedModel &model, std::vector<std::string> const &operands) {
+            if (model.definitions.empty()) {
+                return;
+            }
+            auto &definition = model.definitions.back();
+            for (auto const &operand : operands) {
+                definition.operands.push_back(operand);
+                model.referencedNames.insert(operand);
+            }
+        }
+
         void parseLine(std::string_view line, std::size_t lineNumber, ParsedModel &model) {
+            const auto isIndented = !line.empty() && std::isspace(static_cast<unsigned char>(line.front())) != 0;
             line = trim(line);
             if (line.empty() || line == "ENDTREE") {
                 return;
@@ -142,9 +168,24 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
                 model.diagnostics.push(api::make_error("io.ftp.invalid-limit", "LIMIT value is not numeric"));
                 return;
             }
+            if (tokens[0] == "PROCESS" || tokens[0] == "IMPORT") {
+                return;
+            }
+            if (tokens.size() == 3 && tokens[1] == "+" && isGeneratedTargetName(tokens[0])) {
+                model.explicitTargets.push_back(tokens[2]);
+                return;
+            }
 
             if (const auto probability = parseDouble(tokens[0]); probability && tokens.size() >= 2) {
+                if (!model.probabilities.contains(tokens[1])) {
+                    model.probabilityNames.push_back(tokens[1]);
+                }
                 model.probabilities.insert_or_assign(tokens[1], *probability);
+                return;
+            }
+
+            if (isIndented) {
+                appendOperandsToPreviousDefinition(model, tokens);
                 return;
             }
 
@@ -256,7 +297,14 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             [[nodiscard]] auto buildBasicEvent(std::string const &name) -> ir::pc::bool_node_id {
                 ir::pc::probability_source_id probability;
                 if (const auto found = model_.probabilities.find(name); found != model_.probabilities.end()) {
-                    probability = builder_.add_literal_probability(found->second);
+                    if (std::isfinite(found->second) && found->second >= 0.0 && found->second <= 1.0) {
+                        probability = builder_.add_literal_probability(found->second);
+                    } else {
+                        probability = builder_.add_parameter_probability(name);
+                        diagnostics_.push(api::make_warning("io.ftp.non-probability-import",
+                                                            "imported value for basic event '" + name +
+                                                                "' is outside the literal probability range [0, 1]"));
+                    }
                 } else {
                     probability = builder_.add_parameter_probability(name);
                     diagnostics_.push(api::make_warning("io.ftp.missing-probability",
@@ -279,6 +327,9 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             if (auto requested = options.get<std::string>(target_option()); requested && !requested->empty()) {
                 return {*requested};
             }
+            if (!model.explicitTargets.empty()) {
+                return model.explicitTargets;
+            }
 
             std::vector<std::string> targets;
             for (auto const &definition : model.definitions) {
@@ -288,6 +339,10 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             }
             if (targets.empty() && !model.definitions.empty()) {
                 targets.push_back(model.definitions.front().name);
+            }
+            if (targets.empty() && !model.probabilityNames.empty()) {
+                targets = model.probabilityNames;
+                std::ranges::sort(targets);
             }
             return targets;
         }

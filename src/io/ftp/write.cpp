@@ -47,10 +47,15 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
                 switch (code) {
                 case ir::pc::op_code::basic_event: {
                     const auto source = model.probability_source_refs()[node];
-                    if (!source.valid() || source.raw() >= model.probability_sources().size() ||
-                        model.probability_sources()[source.raw()].kind != ir::pc::probability_source_kind::literal) {
+                    if (!source.valid() || source.raw() >= model.probability_sources().size()) {
                         diagnostics.push(api::make_error("io.ftp.unsupported-probability",
-                                                         "FTP writer requires literal probabilities for basic events"));
+                                                         "FTP writer requires a probability source for every basic event"));
+                        break;
+                    }
+                    const auto kind = model.probability_sources()[source.raw()].kind;
+                    if (kind == ir::pc::probability_source_kind::unsupported) {
+                        diagnostics.push(api::make_error("io.ftp.unsupported-probability",
+                                                         "FTP writer cannot serialize unsupported probability sources"));
                     }
                     break;
                 }
@@ -111,8 +116,11 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
             }
 
             const auto source = model.probability_source_refs()[node.raw()];
-            output << std::scientific << std::setprecision(6) << model.probability_sources()[source.raw()].literal << ' '
-                   << nodeName(model, node) << '\n';
+            auto const &probability = model.probability_sources()[source.raw()];
+            if (probability.kind != ir::pc::probability_source_kind::literal) {
+                return;
+            }
+            output << std::scientific << std::setprecision(6) << probability.literal << ' ' << nodeName(model, node) << '\n';
         }
 
     } // namespace
@@ -133,6 +141,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp {
                     api::capability_id("ir.explicit_edge_polarity"),
                     api::capability_id("ir.targets"),
                     api::capability_id("ir.literal_probabilities"),
+                    api::capability_id("ir.parameter_probabilities"),
                 },
             .options =
                 api::option_schema{.entries = {
