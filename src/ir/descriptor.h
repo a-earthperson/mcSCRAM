@@ -16,6 +16,7 @@ namespace fuzzybits::ir {
         api::form_id form;
         std::string name;
         api::capability_set capabilities;
+        std::vector<api::form_id> satisfied_forms;
     };
 
     struct conversion_descriptor final {

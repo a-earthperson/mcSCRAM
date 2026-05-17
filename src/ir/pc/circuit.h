@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -51,6 +52,15 @@ namespace fuzzybits::ir::pc {
         }
         [[nodiscard]] auto shape() const noexcept -> shape_summary const & {
             return shape_;
+        }
+        [[nodiscard]] auto form_profile() const noexcept -> ir::form_profile const & {
+            return shape_.form_profile;
+        }
+        [[nodiscard]] auto satisfies_form(api::form_id const &form) const -> bool {
+            return ir::descriptor_satisfies_form(descriptor_, form);
+        }
+        [[nodiscard]] auto satisfied_form_strings() const -> std::vector<std::string> {
+            return ir::form_profile_for(descriptor_).satisfied_form_strings();
         }
 
         [[nodiscard]] auto node_count() const noexcept -> std::uint32_t {

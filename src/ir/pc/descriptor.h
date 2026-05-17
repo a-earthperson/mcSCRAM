@@ -3,6 +3,7 @@
 #include "api/capabilities.h"
 #include "api/ids.h"
 #include "ir/descriptor.h"
+#include "ir/form_profile.h"
 #include "ir/forms.h"
 #include "ir/pc/op_code.h"
 #include "ir/pc/probability.h"
@@ -16,6 +17,7 @@ namespace fuzzybits::ir::pc {
     struct shape_summary final {
         std::size_t node_count = 0;
         std::size_t edge_count = 0;
+        ir::form_profile form_profile = ir::form_profile::from_exact_form(forms::probabilistic_boolean_dag());
         bool acyclic = true;
         bool has_csr_edge_view = false;
         bool has_unsupported_probability_sources = false;
@@ -31,12 +33,19 @@ namespace fuzzybits::ir::pc {
         return api::endpoint_id("ir.pc");
     }
 
-    [[nodiscard]] inline auto make_descriptor(shape_summary const & = {}) -> ir::descriptor {
+    [[nodiscard]] inline auto make_descriptor(shape_summary const &shape = {}) -> ir::descriptor {
+        auto form_profile = shape.form_profile;
+        form_profile.add_satisfied_form(forms::probabilistic_boolean_dag());
+        auto form = form_profile.exact_form();
+        if (form.empty()) {
+            form = forms::probabilistic_boolean_dag();
+        }
+
         return ir::descriptor{
             .provider = api::provider_id("fuzzybits"),
             .endpoint = endpoint_id(),
             .storage_type = storage_type_id(),
-            .form = forms::pc(),
+            .form = form,
             .name = "probabilistic circuit",
             .capabilities =
                 api::capability_set{
@@ -45,6 +54,7 @@ namespace fuzzybits::ir::pc {
                     api::capability_id("ir.targets"),
                     api::capability_id("ir.literal_probabilities"),
                 },
+            .satisfied_forms = form_profile.satisfied_form_ids(),
         };
     }
 

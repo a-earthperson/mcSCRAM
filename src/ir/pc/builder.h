@@ -1,6 +1,7 @@
 #pragma once
 
 #include "api/diagnostics.h"
+#include "ir/form_profile.h"
 #include "ir/pc/circuit.h"
 #include "ir/pc/descriptor.h"
 #include "ir/pc/edge.h"
@@ -39,6 +40,14 @@ namespace fuzzybits::ir::pc {
     class builder final {
     public:
         builder() = default;
+
+        void set_form(api::form_id form) {
+            form_profile_ = ir::form_profile::from_exact_form(std::move(form));
+        }
+
+        void set_form_profile(ir::form_profile profile) {
+            form_profile_ = std::move(profile);
+        }
 
         void reserve_nodes(const std::uint32_t count) {
             storage_.op_codes.reserve(count);
@@ -143,7 +152,7 @@ namespace fuzzybits::ir::pc {
             }
 
             auto storage = std::make_shared<detail::circuit_storage>(std::move(storage_));
-            auto shape = summarize(*storage);
+            auto shape = summarize(*storage, form_profile_);
             return finalize_result{
                 .output = circuit(std::move(storage), std::move(shape)),
                 .diagnostics = std::move(diagnostics),
@@ -332,10 +341,11 @@ namespace fuzzybits::ir::pc {
             return source.valid() && source.raw() < storage_.probability_sources.size();
         }
 
-        [[nodiscard]] static auto summarize(detail::circuit_storage const &storage) -> shape_summary {
+        [[nodiscard]] static auto summarize(detail::circuit_storage const &storage, ir::form_profile form_profile) -> shape_summary {
             shape_summary shape;
             shape.node_count = storage.op_codes.size();
             shape.edge_count = storage.edges.size();
+            shape.form_profile = std::move(form_profile);
             shape.acyclic = true;
             shape.has_csr_edge_view = true;
 
@@ -361,6 +371,7 @@ namespace fuzzybits::ir::pc {
         }
 
         detail::circuit_storage storage_;
+        ir::form_profile form_profile_ = ir::form_profile::from_exact_form(forms::probabilistic_boolean_dag());
     };
 
 } // namespace fuzzybits::ir::pc
