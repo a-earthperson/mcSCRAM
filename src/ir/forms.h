@@ -117,8 +117,7 @@ namespace fuzzybits::ir::forms {
     [[nodiscard]] inline auto known_form_infos() -> std::span<form_info const> {
         static const std::array infos{
             form_info{bool_dag(), "Boolean DAG", "A Boolean directed acyclic graph with Boolean-valued nodes and target roots."},
-            form_info{probabilistic_boolean_dag(), "Probabilistic Boolean DAG",
-                      "A Boolean DAG with probability-bearing leaves or side tables sufficient for probabilistic analysis."},
+            form_info{probabilistic_boolean_dag(), "Probabilistic Boolean DAG", "A Boolean DAG with probability-bearing leaves or side tables sufficient for probabilistic analysis."},
             form_info{nnf(), "NNF", "Negation normal form; negation is pushed to leaves in a Boolean representation."},
             form_info{xag(), "XAG", "XOR-AND graph; a Boolean DAG over XOR, AND, constants, inputs, and edge or leaf polarity."},
             form_info{flat_nnf(), "f-NNF", "Flat negation normal form; a flattened NNF variant suitable for CNF/DNF-style products."},

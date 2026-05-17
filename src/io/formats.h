@@ -20,6 +20,10 @@ namespace fuzzybits::io::formats {
         return api::format_id("fta");
     }
 
+    [[nodiscard]] inline auto ftp() -> api::format_id {
+        return api::format_id("ftp");
+    }
+
     [[nodiscard]] inline auto aiger() -> api::format_id {
         return api::format_id("aig");
     }
