@@ -1,4 +1,4 @@
-#include "io/ftp/detail/pc_builder.h"
+#include "io/ftp/detail/model.h"
 
 #include "api/diagnostics.h"
 #include "ir/pc/edge.h"

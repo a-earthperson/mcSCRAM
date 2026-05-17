@@ -2,10 +2,14 @@
 
 #include "api/diagnostics.h"
 #include "io/ftp/descriptor.h"
+#include "io/descriptor.h"
+#include "ir/pc/builder.h"
+#include "ir/pc/circuit.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <istream>
+#include <ostream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -44,5 +48,9 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
     };
 
     [[nodiscard]] auto parse(std::istream &input) -> ParsedModel;
+    [[nodiscard]] auto selected_targets(ParsedModel const &model, api::option_set const &options) -> std::vector<std::string>;
+    [[nodiscard]] auto build_pc(ParsedModel const &model, std::vector<std::string> const &targets) -> ir::pc::finalize_result;
+    [[nodiscard]] auto write_pc(ir::pc::circuit const &model, std::ostream &output, io::write_request const &request)
+        -> io::write_result;
 
 } // namespace fuzzybits::io::backend::fuzzybits::ftp::detail

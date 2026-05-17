@@ -1,12 +1,10 @@
 #include "io/ftp/descriptor.h"
+#include "io/ftp/detail/model.h"
 
 #include "api/capabilities.h"
 #include "api/diagnostics.h"
 #include "api/ids.h"
 #include "api/options.h"
-#include "io/ftp/detail/parser.h"
-#include "io/ftp/detail/pc_builder.h"
-#include "io/ftp/detail/target_selection.h"
 #include "io/descriptor.h"
 #include "io/formats.h"
 
