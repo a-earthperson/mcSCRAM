@@ -379,7 +379,7 @@ ir::descriptor{
     .provider = api::provider_id("fuzzybits"),
     .endpoint = pc::endpoint_id(),
     .storage_type = pc::storage_type_id(),
-    .form = ir::forms::pc(),
+    .form = ir::forms::probabilistic_boolean_dag(),
     .name = "probabilistic circuit",
     .capabilities = api::capability_set{
         api::capability_id("ir.probabilistic_boolean_dag"),
@@ -389,6 +389,9 @@ ir::descriptor{
     },
 };
 ```
+
+`ir.pc` is the PC endpoint/storage identity; the semantic form advertised for the canonical PC storage is
+`ir.probabilistic_boolean_dag`.
 
 R2+ shape metadata should add, as needed:
 
