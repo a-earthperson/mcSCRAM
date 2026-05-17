@@ -3,7 +3,9 @@
 #include "api/diagnostics.h"
 #include "io/ftp/descriptor.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <istream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -40,5 +42,7 @@ namespace fuzzybits::io::backend::fuzzybits::ftp::detail {
         read_metadata metadata;
         api::diagnostic_list diagnostics;
     };
+
+    [[nodiscard]] auto parse(std::istream &input) -> ParsedModel;
 
 } // namespace fuzzybits::io::backend::fuzzybits::ftp::detail

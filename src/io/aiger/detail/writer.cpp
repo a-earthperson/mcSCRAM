@@ -1,8 +1,10 @@
-#include "io/aiger/detail/pc_writer.h"
+#include "io/aiger/detail/model.h"
 
 #include "api/diagnostics.h"
 #include "api/result.h"
+#include "io/descriptor.h"
 #include "io/formats.h"
+#include "ir/pc/circuit.h"
 #include "ir/pc/edge.h"
 #include "ir/pc/id.h"
 #include "ir/pc/op_code.h"

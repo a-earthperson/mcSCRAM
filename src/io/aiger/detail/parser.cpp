@@ -1,10 +1,11 @@
-#include "io/aiger/detail/parser.h"
+#include "io/aiger/detail/model.h"
 
 #include "api/diagnostics.h"
 #include "ir/pc/id.h"
 
 #include <charconv>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <istream>
 #include <limits>
@@ -26,6 +27,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0) {
                 text.remove_suffix(1);
             }
+            /** @warning: fix 'The address of the parameter text may escape the function' **/
             return text;
         }
 
@@ -46,15 +48,15 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             return tokens;
         }
 
-        [[nodiscard]] auto parseUnsigned(std::string_view token) -> std::optional<std::uint32_t> {
+        [[nodiscard]] auto parseUnsigned(const std::string_view token) -> std::optional<std::uint32_t> {
             if (token.empty()) {
                 return std::nullopt;
             }
             std::uint64_t value = 0;
             const auto begin = token.data();
             const auto end = token.data() + token.size();
-            const auto [cursor, error] = std::from_chars(begin, end, value);
-            if (error != std::errc{} || cursor != end || value > std::numeric_limits<std::uint32_t>::max()) {
+            if (const auto [cursor, error] = std::from_chars(begin, end, value);
+                error != std::errc{} || cursor != end || value > std::numeric_limits<std::uint32_t>::max()) {
                 return std::nullopt;
             }
             return static_cast<std::uint32_t>(value);
@@ -128,9 +130,9 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             // targets point at nodes, not edge_ref values. The +outputCount bound
             // keeps that worst-case materialization inside the 32-bit PC node id
             // range before allocating builder storage.
-            const auto maxPcNodes = static_cast<std::uint64_t>(std::numeric_limits<ir::pc::bool_node_id::value_type>::max());
-            const auto worstCasePcNodes = static_cast<std::uint64_t>(header.inputCount) + header.andCount + header.outputCount + 2U;
-            if (worstCasePcNodes > maxPcNodes) {
+            constexpr auto maxPcNodes = static_cast<std::uint64_t>(std::numeric_limits<ir::pc::bool_node_id::value_type>::max());
+            if (const auto worstCasePcNodes = static_cast<std::uint64_t>(header.inputCount) + header.andCount + header.outputCount + 2U;
+                worstCasePcNodes > maxPcNodes) {
                 diagnostics.push(api::make_error("io.aiger.too-large", "AIGER input exceeds the PC reader's 32-bit node range"));
                 return std::nullopt;
             }
@@ -145,7 +147,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             return header;
         }
 
-        [[nodiscard]] auto readUnsignedLine(std::istream &input, std::string_view section, api::diagnostic_list &diagnostics)
+        [[nodiscard]] auto readUnsignedLine(std::istream &input, const std::string_view section, api::diagnostic_list &diagnostics)
             -> std::optional<std::uint32_t> {
             std::string line;
             if (!std::getline(input, line)) {
@@ -211,7 +213,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             return static_cast<std::uint32_t>(value);
         }
 
-        void parseSymbolLine(std::string_view line, ParsedModel &model, std::unordered_set<std::uint32_t> &seenInputSymbols) {
+        void parseSymbolLine(const std::string_view line, ParsedModel &model, std::unordered_set<std::uint32_t> &seenInputSymbols) {
             if (line.empty()) {
                 return;
             }
@@ -258,7 +260,8 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             }
         }
 
-        void validateLiteral(std::uint32_t literal, Header const &header, api::diagnostic_list &diagnostics, std::string_view context) {
+        void validateLiteral(const std::uint32_t literal, Header const &header, api::diagnostic_list &diagnostics,
+                             const std::string_view context) {
             if (literalVariable(literal) > header.maxVariable) {
                 diagnostics.push(api::make_error("io.aiger.literal-out-of-range",
                                                  "AIGER " + std::string(context) + " literal exceeds M"));
@@ -284,36 +287,34 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
                 validateLiteral(literal, model.header, model.diagnostics, "output");
             }
 
-            for (auto const &definition : model.andDefinitions) {
-                validateLiteral(definition.lhs, model.header, model.diagnostics, "AND lhs");
-                if (definition.lhs == 0 || (definition.lhs & 1U) != 0) {
+            for (const auto &[lhs, rhs] : model.andDefinitions) {
+                validateLiteral(lhs, model.header, model.diagnostics, "AND lhs");
+                if (lhs == 0 || (lhs & 1U) != 0) {
                     model.diagnostics.push(api::make_error("io.aiger.invalid-and", "AIGER AND lhs must be positive and even"));
                 }
-                if (!definedVariables.insert(literalVariable(definition.lhs)).second) {
+                if (!definedVariables.insert(literalVariable(lhs)).second) {
                     model.diagnostics.push(api::make_error("io.aiger.duplicate-definition", "AIGER variable is defined more than once"));
                 }
-                for (auto const rhs : definition.rhs) {
-                    validateLiteral(rhs, model.header, model.diagnostics, "AND rhs");
+                for (auto const val : rhs) {
+                    validateLiteral(val, model.header, model.diagnostics, "AND rhs");
                 }
             }
 
             for (auto const literal : model.outputLiterals) {
-                const auto variable = literalVariable(literal);
-                if (variable != 0 && !definedVariables.contains(variable)) {
+                if (const auto variable = literalVariable(literal); variable != 0 && !definedVariables.contains(variable)) {
                     model.diagnostics.push(api::make_error("io.aiger.undefined-literal", "AIGER output references an undefined literal"));
                 }
             }
-            for (auto const &definition : model.andDefinitions) {
-                for (auto const rhs : definition.rhs) {
-                    const auto variable = literalVariable(rhs);
-                    if (variable != 0 && !definedVariables.contains(variable)) {
+            for (const auto &[lhs, rhs] : model.andDefinitions) {
+                for (auto const val : rhs) {
+                    if (const auto variable = literalVariable(val); variable != 0 && !definedVariables.contains(variable)) {
                         model.diagnostics.push(api::make_error("io.aiger.undefined-literal", "AIGER AND references an undefined literal"));
                     }
                 }
             }
         }
 
-        [[nodiscard]] auto parseAscii(std::istream &input, Header header, api::diagnostic_list diagnostics) -> ParsedModel {
+        [[nodiscard]] auto parseAscii(std::istream &input, const Header &header, api::diagnostic_list diagnostics) -> ParsedModel {
             ParsedModel model{
                 .header = header,
                 .diagnostics = std::move(diagnostics),
@@ -343,7 +344,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             return model;
         }
 
-        [[nodiscard]] auto parseBinary(std::istream &input, Header header, api::diagnostic_list diagnostics) -> ParsedModel {
+        [[nodiscard]] auto parseBinary(std::istream &input, const Header &header, api::diagnostic_list diagnostics) -> ParsedModel {
             ParsedModel model{
                 .header = header,
                 .diagnostics = std::move(diagnostics),
@@ -404,7 +405,7 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
             diagnostics.push(api::make_error("io.aiger.empty-input", "AIGER input is empty"));
             return ParsedModel{.diagnostics = std::move(diagnostics)};
         }
-        auto header = parseHeader(headerLine, diagnostics);
+        const auto header = parseHeader(headerLine, diagnostics);
         if (!header) {
             return ParsedModel{.diagnostics = std::move(diagnostics)};
         }

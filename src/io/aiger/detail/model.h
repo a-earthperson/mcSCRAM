@@ -1,9 +1,14 @@
 #pragma once
 
 #include "api/diagnostics.h"
+#include "io/descriptor.h"
+#include "ir/pc/builder.h"
+#include "ir/pc/circuit.h"
 
 #include <array>
 #include <cstdint>
+#include <istream>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -44,5 +49,10 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
     [[nodiscard]] inline auto literalVariable(const std::uint32_t literal) -> std::uint32_t {
         return literal >> 1U;
     }
+
+    [[nodiscard]] auto parse(std::istream &input) -> ParsedModel;
+    [[nodiscard]] auto build_pc(ParsedModel const &model) -> ir::pc::finalize_result;
+    [[nodiscard]] auto write_pc(ir::pc::circuit const &model, std::ostream &output, io::write_request const &request)
+    -> io::write_result;
 
 } // namespace fuzzybits::io::backend::fuzzybits::aiger::detail

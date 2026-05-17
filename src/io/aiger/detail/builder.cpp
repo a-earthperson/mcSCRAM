@@ -1,9 +1,11 @@
-#include "io/aiger/detail/pc_builder.h"
+#include "io/aiger/detail/model.h"
 
-#include "api/diagnostics.h"
 #include "ir/forms.h"
+#include "ir/pc/builder.h"
 #include "ir/pc/edge.h"
 #include "ir/pc/id.h"
+
+#include "api/diagnostics.h"
 
 #include <array>
 #include <cstdint>
@@ -43,8 +45,8 @@ namespace fuzzybits::io::backend::fuzzybits::aiger::detail {
                 // not reachable from an output. ASCII AIGER permits unused ANDs;
                 // keeping them makes import/export a structural storage mapping,
                 // not a reachability-reducing compiler pass.
-                for (auto const &definition : model_.andDefinitions) {
-                    const auto node = buildVariable(literalVariable(definition.lhs));
+                for (const auto &[lhs, rhs] : model_.andDefinitions) {
+                    const auto node = buildVariable(literalVariable(lhs));
                     (void)node;
                 }
                 for (auto const literal : model_.outputLiterals) {
