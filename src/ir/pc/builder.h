@@ -1,7 +1,9 @@
 #pragma once
 
 #include "api/diagnostics.h"
+#include "api/ids.h"
 #include "ir/form_profile.h"
+#include "ir/forms.h"
 #include "ir/pc/circuit.h"
 #include "ir/pc/descriptor.h"
 #include "ir/pc/edge.h"

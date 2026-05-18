@@ -1,6 +1,8 @@
 #pragma once
 
+#include "api/ids.h"
 #include "ir/descriptor.h"
+#include "ir/form_profile.h"
 #include "ir/handle.h"
 #include "ir/pc/descriptor.h"
 #include "ir/pc/edge.h"
