@@ -1,10 +1,13 @@
+#define CATCH_CONFIG_MAIN
+#include <catch2/catch.hpp>
+
 #include "ir/pc/edge.h"
 #include "ir/pc/circuit.h"
 #include "ir/pc/builder.h"
 
 #include <utility>
 
-int main() {
+TEST_CASE("IR PC usage smoke: seal and round-trip handle", "[ir][pc][smoke]") {
     fuzzybits::ir::pc::builder circuitBuilder;
     auto probability = circuitBuilder.add_literal_probability(0.1);
     auto event = circuitBuilder.add_basic_event(probability);
@@ -17,10 +20,8 @@ int main() {
     (void)target;
 
     auto result = std::move(circuitBuilder).seal();
-    if (!result.ok()) {
-        return 1;
-    }
+    REQUIRE(result.ok());
 
     auto handle = result.output.to_handle();
-    return fuzzybits::ir::pc::circuit_from(handle) == nullptr ? 1 : 0;
+    REQUIRE(fuzzybits::ir::pc::circuit_from(handle) != nullptr);
 }
