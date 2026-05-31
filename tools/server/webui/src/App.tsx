@@ -30,6 +30,8 @@ import { ModelExplorer } from "./app/tabs/ModelsTab";
 import { Overview } from "./app/tabs/OverviewTab";
 import { PerformanceDashboard } from "./app/tabs/PerformanceTab";
 
+import "./styles/toc.css";
+
 type Tab = "live-demo" | "overview" | "hardware" | "performance" | "compiler" | "convergence" | "models" | "artifacts";
 
 const tabs: Array<{ id: Tab; label: string }> = [
@@ -86,8 +88,10 @@ function App() {
   }
 
   return (
-    <main className="shell">
+    <>
+     <main className="shell" style={{ paddingBottom: 0}}>
       <Hero data={data} />
+     </main>
       <nav className="tabs" aria-label="Benchmark site sections">
         {tabs.map((item) => (
           <button key={item.id} className={classNames("tab", tab === item.id && "active")} onClick={() => setTab(item.id)}>
@@ -95,6 +99,7 @@ function App() {
           </button>
         ))}
       </nav>
+    <main className="shell">
       {tab === "live-demo" && <LiveDemo />}
       {tab === "overview" && <Overview data={data} onPreviewAsset={setPreviewAsset} />}
       {tab === "hardware" && <HardwareDashboard data={data} />}
@@ -105,6 +110,7 @@ function App() {
       {tab === "artifacts" && <ArtifactGallery artifacts={data.artifacts} onPreviewAsset={setPreviewAsset} />}
       {previewAsset && <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}
     </main>
+    </>
   );
 }
 
