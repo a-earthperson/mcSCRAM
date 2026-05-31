@@ -8,15 +8,16 @@ import queue
 import threading
 import time
 import traceback
-import xml.etree.ElementTree as ET
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+
+from mcscram_server.fault_tree_payload import build_fault_tree_payload, resolve_model_xml_path
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -69,92 +70,6 @@ class CalculationConfig:
     @classmethod
     def from_env(cls) -> "CalculationConfig":
         return cls(input_files=_input_files_from_env(), options=_options_from_env())
-
-
-def _tag(element: ET.Element) -> str:
-    return element.tag.rsplit("}", 1)[-1]
-
-
-def _node_id(kind: str, name: str) -> str:
-    return f"{kind}:{name}"
-
-
-def build_fault_tree_payload(input_files: list[str]) -> dict[str, Any]:
-    if not input_files:
-        return {"model": None, "top": None, "nodes": [], "edges": []}
-
-    path = Path(input_files[0])
-    tree = ET.parse(path)
-    root = tree.getroot()
-    fault_tree = next((child for child in root.iter() if _tag(child) == "define-fault-tree"), None)
-    if fault_tree is None:
-        return {"model": path.name, "top": None, "nodes": [], "edges": []}
-
-    model_name = fault_tree.attrib.get("name") or path.stem
-    gate_defs = [child for child in fault_tree if _tag(child) == "define-gate"]
-    basic_defs = [child for child in fault_tree if _tag(child) == "define-basic-event"]
-    top_gate = gate_defs[0].attrib.get("name") if gate_defs else None
-
-    nodes: dict[str, dict[str, Any]] = {}
-    edges: list[dict[str, str]] = []
-
-    for basic in basic_defs:
-        name = basic.attrib.get("name")
-        if not name:
-            continue
-        nodes[_node_id("basic_event", name)] = {
-            "id": _node_id("basic_event", name),
-            "kind": "basic_event",
-            "label": name,
-        }
-
-    for gate in gate_defs:
-        name = gate.attrib.get("name")
-        if not name:
-            continue
-        gate_id = _node_id("gate", name)
-        connective = next((child for child in gate if _tag(child) not in {"label", "description"}), None)
-        connective_name = _tag(connective) if connective is not None else "unknown"
-        nodes[gate_id] = {
-            "id": gate_id,
-            "kind": "gate",
-            "label": name,
-            "connective": connective_name,
-            "min": connective.attrib.get("min") if connective is not None else None,
-        }
-        if connective is None:
-            continue
-        for child in connective:
-            child_tag = _tag(child)
-            child_name = child.attrib.get("name")
-            if not child_name:
-                continue
-            if child_tag == "gate":
-                child_id = _node_id("gate", child_name)
-                nodes.setdefault(child_id, {
-                    "id": child_id,
-                    "kind": "gate",
-                    "label": child_name,
-                    "connective": "unknown",
-                })
-            elif child_tag == "basic-event":
-                child_id = _node_id("basic_event", child_name)
-                nodes.setdefault(child_id, {
-                    "id": child_id,
-                    "kind": "basic_event",
-                    "label": child_name,
-                })
-            else:
-                continue
-            edges.append({"source": gate_id, "target": child_id})
-
-    return {
-        "model": model_name,
-        "source": str(path),
-        "top": _node_id("gate", top_gate) if top_gate else None,
-        "nodes": list(nodes.values()),
-        "edges": edges,
-    }
 
 
 class CalculationState:
@@ -513,7 +428,15 @@ def status() -> dict[str, Any]:
 
 
 @app.get("/model/fault-tree")
-def fault_tree_model() -> dict[str, Any]:
+def fault_tree_model(model_id: str | None = Query(default=None)) -> dict[str, Any]:
+    if model_id:
+        try:
+            path = resolve_model_xml_path(model_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return build_fault_tree_payload([str(path)])
     return build_fault_tree_payload(CalculationConfig.from_env().input_files)
 
 
