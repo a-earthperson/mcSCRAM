@@ -11,7 +11,6 @@ RUN npm ci
 
 COPY tsconfig.json vite.config.ts ./
 COPY benchmarks ./benchmarks
-COPY docs ./docs
 COPY derived ./derived
 COPY input ./input
 COPY plots ./plots
@@ -26,7 +25,7 @@ ENV VITE_MCSCRAM_WS_URL=${VITE_MCSCRAM_WS_URL} \
     VITE_MCSCRAM_WS_PATH=${VITE_MCSCRAM_WS_PATH} \
     VITE_BASE_PATH=${VITE_BASE_PATH}
 
-RUN npm run build
+RUN npm run build:app && npm run build:data
 
 EXPOSE 5173
 

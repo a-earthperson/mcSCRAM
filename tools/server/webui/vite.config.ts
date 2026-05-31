@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: 5173,
       strictPort: true,
-      allowedHosts: ["mc.earthperson.org", "www.mc.earthperson.org"],
+      allowedHosts: true,
     },
   };
 });

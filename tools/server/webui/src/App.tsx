@@ -1,6 +1,21 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { Hero } from "./app/Hero";
 import { loadJson } from "./app/loadJson";
+import {
+  ArtifactsTab,
+  CompilerTab,
+  ConvergenceTab,
+  defaultSection,
+  HardwareTab,
+  LiveDemoTab,
+  PlaygroundTab,
+  ModelsTab,
+  OverviewTab,
+  PerformanceTab,
+  sectionHref,
+  sections,
+} from "./app/lazyTabs";
 import { AssetPreviewModal } from "./app/ui";
 import {
   Artifacts,
@@ -21,32 +36,18 @@ import {
   TraceIndexData,
 } from "./types";
 import { classNames } from "./lib/format";
-import { ArtifactGallery } from "./app/tabs/ArtifactsTab";
-import { CompilerDashboard } from "./app/tabs/CompilerTab";
-import { ConvergenceDashboard } from "./app/tabs/ConvergenceTab";
-import { HardwareDashboard } from "./app/tabs/HardwareTab";
-import { LiveDemo } from "./app/tabs/LiveDemoTab";
-import { ModelExplorer } from "./app/tabs/ModelsTab";
-import { Overview } from "./app/tabs/OverviewTab";
-import { PerformanceDashboard } from "./app/tabs/PerformanceTab";
 
 import "./styles/toc.css";
 
-type Tab = "live-demo" | "overview" | "hardware" | "performance" | "compiler" | "convergence" | "models" | "artifacts";
-
-const tabs: Array<{ id: Tab; label: string }> = [
-  { id: "live-demo", label: "Live Demo" },
-  { id: "overview", label: "Overview" },
-  { id: "hardware", label: "Hardware" },
-  { id: "performance", label: "Performance" },
-  { id: "compiler", label: "Compiler" },
-  { id: "convergence", label: "Convergence" },
-  { id: "models", label: "Models" },
-  { id: "artifacts", label: "Artifacts" },
-];
+function TabFallback() {
+  return (
+    <div className="tab-fallback" aria-busy="true">
+      <div className="pulse" />
+    </div>
+  );
+}
 
 function App() {
-  const [tab, setTab] = useState<Tab>("live-demo");
   const [data, setData] = useState<SiteData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<PlotAsset | null>(null);
@@ -89,27 +90,38 @@ function App() {
 
   return (
     <>
-     <main className="shell" style={{ paddingBottom: 0}}>
-      <Hero data={data} />
-     </main>
+      <main className="shell" style={{ paddingBottom: 0 }}>
+        <Hero data={data} />
+      </main>
       <nav className="tabs" aria-label="Benchmark site sections">
-        {tabs.map((item) => (
-          <button key={item.id} className={classNames("tab", tab === item.id && "active")} onClick={() => setTab(item.id)}>
+        {sections.map((item) => (
+          <NavLink
+            key={item.path}
+            to={sectionHref(item.path)}
+            className={({ isActive }) => classNames("tab", isActive && "active")}
+          >
             {item.label}
-          </button>
+          </NavLink>
         ))}
       </nav>
-    <main className="shell">
-      {tab === "live-demo" && <LiveDemo />}
-      {tab === "overview" && <Overview data={data} onPreviewAsset={setPreviewAsset} />}
-      {tab === "hardware" && <HardwareDashboard data={data} />}
-      {tab === "performance" && <PerformanceDashboard data={data} />}
-      {tab === "compiler" && <CompilerDashboard data={data} />}
-      {tab === "convergence" && <ConvergenceDashboard data={data} />}
-      {tab === "models" && <ModelExplorer data={data} onPreviewAsset={setPreviewAsset} />}
-      {tab === "artifacts" && <ArtifactGallery artifacts={data.artifacts} onPreviewAsset={setPreviewAsset} />}
-      {previewAsset && <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}
-    </main>
+      <main className="shell">
+        <Suspense fallback={<TabFallback />}>
+          <Routes>
+            <Route path="/" element={<Navigate to={sectionHref(defaultSection)} replace />} />
+            <Route path="/live-demo" element={<LiveDemoTab />} />
+            <Route path="/playground" element={<PlaygroundTab data={data} />} />
+            <Route path="/overview" element={<OverviewTab data={data} onPreviewAsset={setPreviewAsset} />} />
+            <Route path="/hardware" element={<HardwareTab data={data} />} />
+            <Route path="/performance" element={<PerformanceTab data={data} />} />
+            <Route path="/compiler" element={<CompilerTab data={data} />} />
+            <Route path="/convergence" element={<ConvergenceTab data={data} />} />
+            <Route path="/models" element={<ModelsTab data={data} onPreviewAsset={setPreviewAsset} />} />
+            <Route path="/artifacts" element={<ArtifactsTab artifacts={data.artifacts} onPreviewAsset={setPreviewAsset} />} />
+            <Route path="*" element={<Navigate to={sectionHref(defaultSection)} replace />} />
+          </Routes>
+        </Suspense>
+        {previewAsset && <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}
+      </main>
     </>
   );
 }
