@@ -25,13 +25,15 @@ import { ArtifactGallery } from "./app/tabs/ArtifactsTab";
 import { CompilerDashboard } from "./app/tabs/CompilerTab";
 import { ConvergenceDashboard } from "./app/tabs/ConvergenceTab";
 import { HardwareDashboard } from "./app/tabs/HardwareTab";
+import { LiveDemo } from "./app/tabs/LiveDemoTab";
 import { ModelExplorer } from "./app/tabs/ModelsTab";
 import { Overview } from "./app/tabs/OverviewTab";
 import { PerformanceDashboard } from "./app/tabs/PerformanceTab";
 
-type Tab = "overview" | "hardware" | "performance" | "compiler" | "convergence" | "models" | "artifacts";
+type Tab = "live-demo" | "overview" | "hardware" | "performance" | "compiler" | "convergence" | "models" | "artifacts";
 
 const tabs: Array<{ id: Tab; label: string }> = [
+  { id: "live-demo", label: "Live Demo" },
   { id: "overview", label: "Overview" },
   { id: "hardware", label: "Hardware" },
   { id: "performance", label: "Performance" },
@@ -42,7 +44,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
 ];
 
 function App() {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("live-demo");
   const [data, setData] = useState<SiteData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<PlotAsset | null>(null);
@@ -93,6 +95,7 @@ function App() {
           </button>
         ))}
       </nav>
+      {tab === "live-demo" && <LiveDemo />}
       {tab === "overview" && <Overview data={data} onPreviewAsset={setPreviewAsset} />}
       {tab === "hardware" && <HardwareDashboard data={data} />}
       {tab === "performance" && <PerformanceDashboard data={data} />}
