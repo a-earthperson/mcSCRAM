@@ -84,6 +84,8 @@ export type DagPayload = {
     x: number[];
     y: number[];
     type: number[];
+    layer?: number[];
+    partition?: number[];
   };
   edges: {
     count: number;
@@ -94,5 +96,23 @@ export type DagPayload = {
     gate?: number;
     basic_event?: number;
     unknown_event?: number;
+    constant?: number;
+  };
+  graphKind?: string;
+  kernel?: {
+    partition_count?: number;
+    partitions?: Array<{
+      id: number;
+      layer: number;
+      kind: string;
+      connective: string;
+      node_indices: number[];
+      node_count: number;
+    }>;
+    sample_shape?: {
+      batch_size: number;
+      bitpacks_per_batch: number;
+      total_iterations: number;
+    };
   };
 };
