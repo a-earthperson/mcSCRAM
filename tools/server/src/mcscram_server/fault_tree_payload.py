@@ -19,7 +19,10 @@ DAG_NODE_TYPES: tuple[str, ...] = (
     "xnor_gate",
     "atleast_gate",
     "not_gate",
+    "null_gate",
+    "constant_event",
 )
+NODE_TYPE_BY_NAME = {name: index for index, name in enumerate(DAG_NODE_TYPES)}
 
 NODE_TYPE_BY_CONNECTIVE = {
     "and": 2,
@@ -201,7 +204,45 @@ def build_fault_tree_payload(input_files: list[str]) -> dict[str, Any]:
     }
 
 
-def build_dag_payload(input_files: list[str]) -> dict[str, Any]:
+def build_dag_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    return build_compiled_dag_payload(input_files, options)
+
+
+def build_source_dag_payload(input_files: list[str]) -> dict[str, Any]:
+    return _build_source_dag_payload(input_files)
+
+
+def build_compiled_dag_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build the WebGL DAG payload from the native compiled PDAG."""
+    if not input_files:
+        return _empty_dag_payload(None)
+
+    try:
+        import mcscram_native  # type: ignore[import-not-found]
+        run_compile = mcscram_native.run_compile
+    except (ImportError, AttributeError) as exc:
+        payload = _build_source_dag_payload(input_files)
+        payload["compiled"] = False
+        payload["compileError"] = str(exc)
+        return payload
+
+    compiled_pdag = run_compile(input_files, options or {})
+    compiled_graph = compiled_pdag.to_graph()
+    render_graph = _compiled_graph_to_render_graph(compiled_graph)
+    payload = _columnar_dag_payload(
+        model_name=compiled_graph.get("model"),
+        source=compiled_graph.get("source"),
+        top=render_graph["top"],
+        graph=render_graph,
+    )
+    payload["compiled"] = True
+    payload["target"] = compiled_graph.get("target")
+    payload["rootComplement"] = compiled_graph.get("root_complement", False)
+    payload["compilation"] = compiled_graph.get("compilation", {})
+    return payload
+
+
+def _build_source_dag_payload(input_files: list[str]) -> dict[str, Any]:
     """Build a render-ready, columnar DAG payload for the WebGL2 viewer.
 
     Shape contract:
@@ -224,6 +265,15 @@ def build_dag_payload(input_files: list[str]) -> dict[str, Any]:
 
     model_name = fault_tree.attrib.get("name") or path.stem
     graph = _parse_fault_tree_graph(fault_tree)
+    return _columnar_dag_payload(model_name=model_name, source=str(path), top=graph["top"], graph=graph)
+
+
+def _columnar_dag_payload(
+    model_name: str | None,
+    source: str | None,
+    top: str | None,
+    graph: dict[str, Any],
+) -> dict[str, Any]:
     node_ids = list(graph["nodes"].keys())
     index_by_id = {node_id: index for index, node_id in enumerate(node_ids)}
     depths = _dag_depths(node_ids, graph["children_by_source"], graph["parents_by_target"])
@@ -263,18 +313,18 @@ def build_dag_payload(input_files: list[str]) -> dict[str, Any]:
     sources: list[int] = []
     targets: list[int] = []
     for source_id, target_id in graph["edges"]:
-        source = index_by_id.get(source_id)
-        target = index_by_id.get(target_id)
-        if source is None or target is None:
+        source_index = index_by_id.get(source_id)
+        target_index = index_by_id.get(target_id)
+        if source_index is None or target_index is None:
             continue
-        sources.append(source)
-        targets.append(target)
+        sources.append(source_index)
+        targets.append(target_index)
 
     return {
         "version": 1,
         "model": model_name,
-        "source": str(path),
-        "top": index_by_id.get(graph["top"]) if graph["top"] else None,
+        "source": source,
+        "top": index_by_id.get(top) if top else None,
         "bounds": {
             "minX": min_x,
             "minY": min_y,
@@ -297,6 +347,61 @@ def build_dag_payload(input_files: list[str]) -> dict[str, Any]:
         },
         "counts": graph["counts"],
     }
+
+
+def _compiled_graph_to_render_graph(compiled_graph: dict[str, Any]) -> dict[str, Any]:
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[tuple[str, str]] = []
+    children_by_source: dict[str, list[str]] = {}
+    parents_by_target: dict[str, list[str]] = {}
+    counts = {"gate": 0, "basic_event": 0, "unknown_event": 0, "constant": 0}
+
+    for node in compiled_graph.get("nodes", []):
+        node_id = str(int(node["index"]))
+        kind = str(node.get("kind", "unknown_event"))
+        node_type = _compiled_node_type(node)
+        nodes[node_id] = {
+            "kind": kind,
+            "type": NODE_TYPE_BY_NAME.get(node_type, NODE_TYPE_BY_NAME["unknown_event"]),
+        }
+        if kind in counts:
+            counts[kind] += 1
+        else:
+            counts["unknown_event"] += 1
+
+    for edge in compiled_graph.get("edges", []):
+        source_id = str(int(edge["source"]))
+        target_id = str(abs(int(edge["target"])))
+        if source_id not in nodes or target_id not in nodes:
+            continue
+        edges.append((source_id, target_id))
+        children_by_source.setdefault(source_id, []).append(target_id)
+        parents_by_target.setdefault(target_id, []).append(source_id)
+
+    top = compiled_graph.get("top")
+    return {
+        "top": str(abs(int(top))) if top is not None else None,
+        "nodes": nodes,
+        "edges": edges,
+        "children_by_source": children_by_source,
+        "parents_by_target": parents_by_target,
+        "counts": counts,
+    }
+
+
+def _compiled_node_type(node: dict[str, Any]) -> str:
+    kind = node.get("kind")
+    if kind == "basic_event":
+        return "basic_event"
+    if kind == "constant":
+        return "constant_event"
+    if kind != "gate":
+        return "unknown_event"
+    connective = str(node.get("connective") or "unknown")
+    if connective == "atleast":
+        return "atleast_gate"
+    candidate = f"{connective}_gate"
+    return candidate if candidate in NODE_TYPE_BY_NAME else "unknown_event"
 
 
 def _empty_dag_payload(model: str | None, source: str | None = None) -> dict[str, Any]:

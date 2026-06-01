@@ -9,6 +9,7 @@ from mcscram_server.event_hub import EventHub
 from mcscram_server.fault_tree_payload import (
     build_dag_payload,
     build_fault_tree_payload,
+    build_source_dag_payload,
     list_aralia_xml_inputs,
     resolve_model_xml_path,
 )
@@ -43,7 +44,23 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         return build_fault_tree_payload(CalculationConfig.from_env().input_files)
 
     @router.get("/model/dag")
-    def dag_model(model_id: str | None = Query(default=None)) -> dict[str, Any]:
+    def dag_model(
+        model_id: str | None = Query(default=None),
+        compilation_level: int | None = Query(default=None, ge=0, le=8),
+        expand_atleast_gates: bool | None = Query(default=None),
+        expand_xor_gates: bool | None = Query(default=None),
+        ccf: bool | None = Query(default=None),
+        keep_null_gates: bool | None = Query(default=None),
+    ) -> dict[str, Any]:
+        config = CalculationConfig.from_env()
+        options = _compile_options(
+            config.options,
+            compilation_level=compilation_level,
+            expand_atleast_gates=expand_atleast_gates,
+            expand_xor_gates=expand_xor_gates,
+            ccf=ccf,
+            keep_null_gates=keep_null_gates,
+        )
         if model_id:
             try:
                 path = resolve_model_xml_path(model_id)
@@ -51,8 +68,20 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
-            return build_dag_payload([str(path)])
-        return build_dag_payload(CalculationConfig.from_env().input_files)
+            return build_dag_payload([str(path)], options)
+        return build_dag_payload(config.input_files, options)
+
+    @router.get("/model/source-dag")
+    def source_dag_model(model_id: str | None = Query(default=None)) -> dict[str, Any]:
+        if model_id:
+            try:
+                path = resolve_model_xml_path(model_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return build_source_dag_payload([str(path)])
+        return build_source_dag_payload(CalculationConfig.from_env().input_files)
 
     @router.post("/reset")
     def reset_calculation() -> dict[str, Any]:
@@ -81,3 +110,26 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
             event_hub.disconnect(websocket)
 
     return router
+
+
+def _compile_options(
+    base: dict[str, Any],
+    *,
+    compilation_level: int | None,
+    expand_atleast_gates: bool | None,
+    expand_xor_gates: bool | None,
+    ccf: bool | None,
+    keep_null_gates: bool | None,
+) -> dict[str, Any]:
+    options = dict(base)
+    if compilation_level is not None:
+        options["compilation_level"] = compilation_level
+    if expand_atleast_gates is not None:
+        options["expand_atleast_gates"] = expand_atleast_gates
+    if expand_xor_gates is not None:
+        options["expand_xor_gates"] = expand_xor_gates
+    if ccf is not None:
+        options["ccf"] = ccf
+    if keep_null_gates is not None:
+        options["keep_null_gates"] = keep_null_gates
+    return options
