@@ -100,7 +100,7 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
 
     let renderer: DagWebGlRenderer | null = null;
     try {
-      renderer = new DagWebGlRenderer(canvas, dag, frame);
+      renderer = new DagWebGlRenderer(canvas, dag);
       rendererRef.current = renderer;
       renderer.resize(sizeRef.current);
       viewRef.current = fitDagView(dag.bounds, sizeRef.current);

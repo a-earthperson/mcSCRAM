@@ -26,7 +26,7 @@
   --ft-gate-corner-radius-min: 2px;
   --ft-gate-corner-radius-scale: 3;
 
-  --ft-fill-basic-event: color-mix(in srgb, var(--pigment-ochre) 100%, transparent);
+  --ft-fill-basic-event: color-mix(in srgb, var(--pigment-ochre) 18%, transparent);
   --ft-fill-and: color-mix(in srgb, var(--pigment-indigo) 16%, transparent);
   --ft-fill-nand: color-mix(in srgb, var(--pigment-indigo) 66%, transparent);
   --ft-fill-or: color-mix(in srgb, var(--pigment-madder) 16%, transparent);
@@ -51,8 +51,6 @@
   --ft-connective-font-size: 9px;
   --ft-connective-font-size-min: 7px;
   --ft-connective-offset-y: 13px;
-
-  --dag-node-radius: 0.34;
 }
 
 .dag-webgl-frame {

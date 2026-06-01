@@ -1,7 +1,14 @@
+import {
+  DAG_WEBGL_EDGE_COLOR,
+  DAG_WEBGL_NODE_RADIUS,
+  DAG_WEBGL_STROKE_COLOR,
+  dagWebGlFill,
+  type DagWebGlFillKey,
+  type Rgba,
+} from "./dagWebGlPalette";
 import type { CanvasSize, DagNodeType, DagPayload, ViewTransform } from "./types";
 
 const MAX_NODE_TYPES = 16;
-const DEFAULT_NODE_RADIUS = 0.34;
 const SHAPE_CODES: Record<string, number> = {
   circle: 0,
   upright_triangle: 1,
@@ -11,33 +18,18 @@ const SHAPE_CODES: Record<string, number> = {
   circle_inside_circle: 5,
 };
 
-const NODE_TYPE_STYLES: Record<string, { shape: string; fill: string }> = {
-  basic_event: { shape: "circle", fill: "--ft-fill-basic-event" },
+const NODE_TYPE_STYLES: Record<string, { shape: string; fill: DagWebGlFillKey }> = {
+  basic_event: { shape: "circle", fill: "basic_event" },
   unknown_event: { shape: "circle", fill: "none" },
-  and_gate: { shape: "upright_triangle", fill: "--ft-fill-and" },
-  nand_gate: { shape: "upright_triangle", fill: "--ft-fill-nand" },
-  or_gate: { shape: "upsidedown_triangle", fill: "--ft-fill-or" },
-  nor_gate: { shape: "upsidedown_triangle", fill: "--ft-fill-nor" },
-  xor_gate: { shape: "circle_with_cross", fill: "--ft-fill-xor" },
-  xnor_gate: { shape: "circle_with_cross", fill: "--ft-fill-xnor" },
-  atleast_gate: { shape: "pentagon", fill: "--ft-fill-atleast" },
-  not_gate: { shape: "circle_inside_circle", fill: "--ft-fill-not" },
+  and_gate: { shape: "upright_triangle", fill: "and_gate" },
+  nand_gate: { shape: "upright_triangle", fill: "nand_gate" },
+  or_gate: { shape: "upsidedown_triangle", fill: "or_gate" },
+  nor_gate: { shape: "upsidedown_triangle", fill: "nor_gate" },
+  xor_gate: { shape: "circle_with_cross", fill: "xor_gate" },
+  xnor_gate: { shape: "circle_with_cross", fill: "xnor_gate" },
+  atleast_gate: { shape: "pentagon", fill: "atleast_gate" },
+  not_gate: { shape: "circle_inside_circle", fill: "not_gate" },
 };
-
-const FILL_FALLBACKS: Record<string, Rgba> = {
-  "--ft-fill-basic-event": [0.702, 0.596, 0.4, 0.18],
-  "--ft-fill-and": [0.42, 0.498, 0.588, 0.16],
-  "--ft-fill-nand": [0.42, 0.498, 0.588, 0.66],
-  "--ft-fill-or": [0.659, 0.502, 0.478, 0.16],
-  "--ft-fill-nor": [0.659, 0.502, 0.478, 0.66],
-  "--ft-fill-xor": [0.545, 0.631, 0.537, 0.16],
-  "--ft-fill-xnor": [0.545, 0.631, 0.537, 0.66],
-  "--ft-fill-atleast": [0.545, 0.631, 0.537, 0.18],
-  "--ft-fill-not": [0.545, 0.631, 0.537, 0.66],
-  none: [0, 0, 0, 0],
-};
-
-type Rgba = [number, number, number, number];
 
 type DagGeometry = {
   nodeCount: number;
@@ -92,7 +84,6 @@ export class DagWebGlRenderer {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     dag: DagPayload,
-    themeRoot: HTMLElement,
   ) {
     const gl = canvas.getContext("webgl2", {
       alpha: true,
@@ -110,13 +101,13 @@ export class DagWebGlRenderer {
     this.geometry = prepareDagGeometry(dag);
     this.edgeProgram = createEdgeProgram(gl);
     this.nodeProgram = createNodeProgram(gl);
-    this.edgeColor = resolveCssColor(themeRoot, "var(--ink-mute)", [0.345, 0.322, 0.302, 0.22]);
-    this.strokeColor = resolveCssColor(themeRoot, "var(--ft-stroke)", [0.133, 0.125, 0.118, 0.92]);
-    const styleUniforms = buildStyleUniforms(themeRoot, dag.nodeTypes);
+    this.edgeColor = DAG_WEBGL_EDGE_COLOR;
+    this.strokeColor = DAG_WEBGL_STROKE_COLOR;
+    const styleUniforms = buildStyleUniforms(dag.nodeTypes);
     this.fillColors = styleUniforms.fillColors;
     this.fillEnabled = styleUniforms.fillEnabled;
     this.shapeCodes = styleUniforms.shapeCodes;
-    this.nodeRadius = readCssNumber(themeRoot, "--dag-node-radius", DEFAULT_NODE_RADIUS);
+    this.nodeRadius = DAG_WEBGL_NODE_RADIUS;
     const pointSizeRange = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE) as Float32Array | number[];
     this.maxPointSize = Math.max(1, Number(pointSizeRange[1]) || 64);
 
@@ -319,107 +310,22 @@ function compileShader(gl: WebGL2RenderingContext, type: number, source: string)
   return shader;
 }
 
-function buildStyleUniforms(themeRoot: HTMLElement, nodeTypes: DagNodeType[]) {
+function buildStyleUniforms(nodeTypes: DagNodeType[]) {
   const fillColors = new Float32Array(MAX_NODE_TYPES * 4);
   const fillEnabled = new Float32Array(MAX_NODE_TYPES);
   const shapeCodes = new Float32Array(MAX_NODE_TYPES);
   for (let index = 0; index < MAX_NODE_TYPES; index += 1) {
     const style = nodeTypeStyle(nodeTypes[index]);
-    const fillToken = style.fill;
     shapeCodes[index] = SHAPE_CODES[style.shape] ?? SHAPE_CODES.circle;
-    fillEnabled[index] = fillToken === "none" ? 0 : 1;
-    fillColors.set(resolveCssColor(themeRoot, cssColorExpression(fillToken), FILL_FALLBACKS[fillToken] ?? FILL_FALLBACKS.none), index * 4);
+    fillEnabled[index] = style.fill === "none" ? 0 : 1;
+    fillColors.set(dagWebGlFill(style.fill), index * 4);
   }
   return { fillColors, fillEnabled, shapeCodes };
 }
 
-function nodeTypeStyle(nodeType: DagNodeType | undefined): { shape: string; fill: string } {
+function nodeTypeStyle(nodeType: DagNodeType | undefined): { shape: string; fill: DagWebGlFillKey } {
   if (!nodeType) return NODE_TYPE_STYLES.unknown_event;
   return NODE_TYPE_STYLES[nodeType] ?? NODE_TYPE_STYLES.unknown_event;
-}
-
-function cssColorExpression(fillToken: string): string {
-  if (fillToken === "none") return "rgba(0, 0, 0, 0)";
-  if (fillToken.startsWith("--")) return `var(${fillToken})`;
-  return fillToken;
-}
-
-function resolveCssColor(themeRoot: HTMLElement, cssColor: string, fallback: Rgba): Rgba {
-  if (cssColor === "none") {
-    return fallback;
-  }
-  const probe = document.createElement("span");
-  probe.style.color = cssColor;
-  probe.style.position = "absolute";
-  probe.style.pointerEvents = "none";
-  probe.style.visibility = "hidden";
-  themeRoot.appendChild(probe);
-  const computed = getComputedStyle(probe).color;
-  probe.remove();
-  return parseCssColor(computed) ?? fallback;
-}
-
-function parseCssColor(value: string): Rgba | null {
-  const rgb = value.match(/^rgba?\(([^)]+)\)$/i);
-  if (rgb) {
-    const parts = rgb[1].split(/[,/ ]+/).filter(Boolean);
-    if (parts.length >= 3) {
-      return [
-        cssChannel(parts[0]),
-        cssChannel(parts[1]),
-        cssChannel(parts[2]),
-        parts[3] === undefined ? 1 : cssAlpha(parts[3]),
-      ];
-    }
-  }
-
-  const srgb = value.match(/^color\(srgb\s+([^)]*)\)$/i);
-  if (srgb) {
-    const [channels, alpha] = srgb[1].split("/");
-    const parts = channels.trim().split(/\s+/);
-    if (parts.length >= 3) {
-      return [
-        clamp01(Number.parseFloat(parts[0])),
-        clamp01(Number.parseFloat(parts[1])),
-        clamp01(Number.parseFloat(parts[2])),
-        alpha === undefined ? 1 : cssAlpha(alpha.trim()),
-      ];
-    }
-  }
-
-  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (hex) {
-    const raw = hex[1];
-    const expanded = raw.length === 3 ? raw.split("").map((char) => `${char}${char}`).join("") : raw;
-    return [
-      Number.parseInt(expanded.slice(0, 2), 16) / 255,
-      Number.parseInt(expanded.slice(2, 4), 16) / 255,
-      Number.parseInt(expanded.slice(4, 6), 16) / 255,
-      1,
-    ];
-  }
-
-  return null;
-}
-
-function cssChannel(value: string): number {
-  if (value.endsWith("%")) return clamp01(Number.parseFloat(value) / 100);
-  return clamp01(Number.parseFloat(value) / 255);
-}
-
-function cssAlpha(value: string): number {
-  if (value.endsWith("%")) return clamp01(Number.parseFloat(value) / 100);
-  return clamp01(Number.parseFloat(value));
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
-}
-
-function readCssNumber(root: HTMLElement, name: string, fallback: number): number {
-  const value = Number.parseFloat(getComputedStyle(root).getPropertyValue(name));
-  return Number.isFinite(value) ? value : fallback;
 }
 
 function required<T>(value: T | null, message: string): T {
@@ -487,16 +393,22 @@ out vec4 out_color;
 
 const float PI = 3.141592653589793;
 const float TAU = 6.283185307179586;
+// Match circle outline; polygons use inradius so circumradius stays inside the point sprite.
+const float SHAPE_RADIUS = 0.78;
 
 float sdCircle(vec2 p, float r) {
   return length(p) - r;
 }
 
-float sdRegularPolygon(vec2 p, float sides, float r, float rotation) {
+float sdRegularPolygon(vec2 p, float sides, float inradius, float rotation) {
   float angle = atan(p.y, p.x) - rotation;
   float sector = TAU / sides;
   float local = mod(angle + sector * 0.5, sector) - sector * 0.5;
-  return length(p) * cos(local) - r;
+  return length(p) * cos(local) - inradius;
+}
+
+float polygonInradius(float sides, float circumradius) {
+  return circumradius * cos(PI / sides);
 }
 
 float strokeAlpha(float sd, float width, float aa) {
@@ -519,13 +431,13 @@ void main() {
   int shape = clamp(int(u_shape_codes[typeIndex] + 0.5), 0, 5);
   vec2 p = vec2(gl_PointCoord.x * 2.0 - 1.0, 1.0 - gl_PointCoord.y * 2.0);
 
-  float sd = sdCircle(p, 0.78);
+  float sd = sdCircle(p, SHAPE_RADIUS);
   if (shape == 1) {
-    sd = sdRegularPolygon(p, 3.0, 0.78, PI * 0.5);
+    sd = sdRegularPolygon(p, 3.0, polygonInradius(3.0, SHAPE_RADIUS), PI * 0.5);
   } else if (shape == 2) {
-    sd = sdRegularPolygon(p, 3.0, 0.78, -PI * 0.5);
+    sd = sdRegularPolygon(p, 3.0, polygonInradius(3.0, SHAPE_RADIUS), -PI * 0.5);
   } else if (shape == 4) {
-    sd = sdRegularPolygon(p, 5.0, 0.78, PI * 0.5);
+    sd = sdRegularPolygon(p, 5.0, polygonInradius(5.0, SHAPE_RADIUS), PI * 0.5);
   }
 
   float aa = max(fwidth(sd), 2.0 / max(v_point_size, 1.0));
