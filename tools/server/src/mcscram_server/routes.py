@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 
 from mcscram_server.config import CalculationConfig
 from mcscram_server.event_hub import EventHub
-from mcscram_server.fault_tree_payload import build_fault_tree_payload, resolve_model_xml_path
+from mcscram_server.fault_tree_payload import build_dag_payload, build_fault_tree_payload, resolve_model_xml_path
 from mcscram_server.supervisor import CalculationSupervisor
 
 
@@ -32,6 +32,18 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             return build_fault_tree_payload([str(path)])
         return build_fault_tree_payload(CalculationConfig.from_env().input_files)
+
+    @router.get("/model/dag")
+    def dag_model(model_id: str | None = Query(default=None)) -> dict[str, Any]:
+        if model_id:
+            try:
+                path = resolve_model_xml_path(model_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return build_dag_payload([str(path)])
+        return build_dag_payload(CalculationConfig.from_env().input_files)
 
     @router.post("/reset")
     def reset_calculation() -> dict[str, Any]:

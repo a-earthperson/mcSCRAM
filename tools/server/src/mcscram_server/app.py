@@ -33,7 +33,7 @@ def create_app(
     app.state.supervisor = calc_supervisor
     app.include_router(create_router(calc_supervisor, hub))
 
-    should_autostart = autostart if autostart is not None else env_bool("MCSCRAM_AUTOSTART", True)
+    should_autostart = autostart if autostart is not None else env_bool("MCSCRAM_AUTOSTART", False)
 
     @app.on_event("startup")
     async def on_startup() -> None:
