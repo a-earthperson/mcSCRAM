@@ -83,7 +83,7 @@ function App() {
     return (
       <main className="shell loading-state">
         <div className="pulse" />
-        <p>Loading mcSCRAM benchmark atlas...</p>
+        <p>Loading mcSCRAM benchmarks...</p>
       </main>
     );
   }
@@ -109,7 +109,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to={sectionHref(defaultSection)} replace />} />
             <Route path="/live-demo" element={<LiveDemoTab />} />
-            <Route path="/playground" element={<PlaygroundTab data={data} />} />
+            <Route path="/playground" element={<PlaygroundTab />} />
             <Route path="/overview" element={<OverviewTab data={data} onPreviewAsset={setPreviewAsset} />} />
             <Route path="/hardware" element={<HardwareTab data={data} />} />
             <Route path="/performance" element={<PerformanceTab data={data} />} />

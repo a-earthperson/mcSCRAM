@@ -57,6 +57,10 @@
   margin-top: 18px;
 }
 
+.dag-webgl-canvas {
+    mix-blend-mode: exclusion;
+}
+
 .fault-tree-toolbar {
   position: sticky;
   top: 0;

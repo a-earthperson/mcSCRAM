@@ -132,9 +132,9 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
     <div className="fault-tree-frame dag-webgl-frame" ref={frameRef}>
       <div className="fault-tree-toolbar">
         <span>
-          WebGL2 DAG · {formatInteger(counts.gates)} gates · {formatInteger(counts.basicEvents)} events · {formatInteger(dag.edges.count)} edges
+          {formatInteger(counts.gates)} gates · {formatInteger(counts.basicEvents)} events · {formatInteger(dag.edges.count)} edges
         </span>
-        <div className="fault-tree-controls" aria-label="WebGL DAG viewport controls">
+        <div className="fault-tree-controls" aria-label="DAG viewport controls">
           <button className="fault-tree-control fit" type="button" onClick={fitView}>Fit</button>
           <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(1.25)} aria-label="Zoom in">+</button>
           <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(0.8)} aria-label="Zoom out">−</button>
@@ -179,9 +179,6 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
           zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-event.deltaY * 0.0012));
         }}
       />
-      <p className="fault-tree-note">
-        {note ?? "Instanced WebGL2 renderer: triangles and line buffers are static; pan and zoom update shader uniforms only."}
-      </p>
     </div>
   );
 }

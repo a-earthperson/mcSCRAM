@@ -1,9 +1,10 @@
 import {
   DAG_WEBGL_EDGE_COLOR,
   DAG_WEBGL_NODE_RADIUS,
-  DAG_WEBGL_STROKE_COLOR,
   dagWebGlFill,
+  dagWebGlStroke,
   type DagWebGlFillKey,
+  type DagWebGlStrokeKey,
   type Rgba,
 } from "./dagWebGlPalette";
 import type { CanvasSize, DagNodeType, DagPayload, ViewTransform } from "./types";
@@ -18,17 +19,23 @@ const SHAPE_CODES: Record<string, number> = {
   circle_inside_circle: 5,
 };
 
-const NODE_TYPE_STYLES: Record<string, { shape: string; fill: DagWebGlFillKey }> = {
-  basic_event: { shape: "circle", fill: "basic_event" },
-  unknown_event: { shape: "circle", fill: "none" },
-  and_gate: { shape: "upright_triangle", fill: "and_gate" },
-  nand_gate: { shape: "upright_triangle", fill: "nand_gate" },
-  or_gate: { shape: "upsidedown_triangle", fill: "or_gate" },
-  nor_gate: { shape: "upsidedown_triangle", fill: "nor_gate" },
-  xor_gate: { shape: "circle_with_cross", fill: "xor_gate" },
-  xnor_gate: { shape: "circle_with_cross", fill: "xnor_gate" },
-  atleast_gate: { shape: "pentagon", fill: "atleast_gate" },
-  not_gate: { shape: "circle_inside_circle", fill: "not_gate" },
+type NodeTypeStyle = {
+  shape: string;
+  fill: DagWebGlFillKey;
+  stroke: DagWebGlStrokeKey;
+};
+
+const NODE_TYPE_STYLES: Record<string, NodeTypeStyle> = {
+  basic_event: { shape: "circle", fill: "basic_event", stroke: "basic_event" },
+  unknown_event: { shape: "circle", fill: "none", stroke: "none" },
+  and_gate: { shape: "upright_triangle", fill: "and_gate", stroke: "and_gate" },
+  nand_gate: { shape: "upright_triangle", fill: "nand_gate", stroke: "nand_gate" },
+  or_gate: { shape: "upsidedown_triangle", fill: "or_gate", stroke: "or_gate" },
+  nor_gate: { shape: "upsidedown_triangle", fill: "nor_gate", stroke: "nor_gate" },
+  xor_gate: { shape: "circle_with_cross", fill: "xor_gate", stroke: "xor_gate" },
+  xnor_gate: { shape: "circle_with_cross", fill: "xnor_gate", stroke: "xnor_gate" },
+  atleast_gate: { shape: "pentagon", fill: "atleast_gate", stroke: "atleast_gate" },
+  not_gate: { shape: "circle_inside_circle", fill: "not_gate", stroke: "not_gate" },
 };
 
 type DagGeometry = {
@@ -58,9 +65,9 @@ type NodeProgram = {
   nodeRadius: WebGLUniformLocation;
   maxPointSize: WebGLUniformLocation;
   fillColors: WebGLUniformLocation;
+  strokeColors: WebGLUniformLocation;
   fillEnabled: WebGLUniformLocation;
   shapeCodes: WebGLUniformLocation;
-  strokeColor: WebGLUniformLocation;
 };
 
 export class DagWebGlRenderer {
@@ -74,10 +81,10 @@ export class DagWebGlRenderer {
   private readonly centerBuffer: WebGLBuffer;
   private readonly typeBuffer: WebGLBuffer;
   private readonly fillColors: Float32Array;
+  private readonly strokeColors: Float32Array;
   private readonly fillEnabled: Float32Array;
   private readonly shapeCodes: Float32Array;
   private readonly edgeColor: Rgba;
-  private readonly strokeColor: Rgba;
   private readonly nodeRadius: number;
   private readonly maxPointSize: number;
 
@@ -102,9 +109,9 @@ export class DagWebGlRenderer {
     this.edgeProgram = createEdgeProgram(gl);
     this.nodeProgram = createNodeProgram(gl);
     this.edgeColor = DAG_WEBGL_EDGE_COLOR;
-    this.strokeColor = DAG_WEBGL_STROKE_COLOR;
     const styleUniforms = buildStyleUniforms(dag.nodeTypes);
     this.fillColors = styleUniforms.fillColors;
+    this.strokeColors = styleUniforms.strokeColors;
     this.fillEnabled = styleUniforms.fillEnabled;
     this.shapeCodes = styleUniforms.shapeCodes;
     this.nodeRadius = DAG_WEBGL_NODE_RADIUS;
@@ -158,9 +165,9 @@ export class DagWebGlRenderer {
       gl.uniform1f(this.nodeProgram.nodeRadius, this.nodeRadius);
       gl.uniform1f(this.nodeProgram.maxPointSize, this.maxPointSize);
       gl.uniform4fv(this.nodeProgram.fillColors, this.fillColors);
+      gl.uniform4fv(this.nodeProgram.strokeColors, this.strokeColors);
       gl.uniform1fv(this.nodeProgram.fillEnabled, this.fillEnabled);
       gl.uniform1fv(this.nodeProgram.shapeCodes, this.shapeCodes);
-      gl.uniform4fv(this.nodeProgram.strokeColor, this.strokeColor);
       gl.drawArrays(gl.POINTS, 0, this.geometry.nodeCount);
     }
 
@@ -275,9 +282,9 @@ function createNodeProgram(gl: WebGL2RenderingContext): NodeProgram {
     nodeRadius: required(gl.getUniformLocation(program, "u_node_radius"), "Missing u_node_radius."),
     maxPointSize: required(gl.getUniformLocation(program, "u_max_point_size"), "Missing u_max_point_size."),
     fillColors: required(gl.getUniformLocation(program, "u_fill_colors[0]"), "Missing u_fill_colors."),
+    strokeColors: required(gl.getUniformLocation(program, "u_stroke_colors[0]"), "Missing u_stroke_colors."),
     fillEnabled: required(gl.getUniformLocation(program, "u_fill_enabled[0]"), "Missing u_fill_enabled."),
     shapeCodes: required(gl.getUniformLocation(program, "u_shape_codes[0]"), "Missing u_shape_codes."),
-    strokeColor: required(gl.getUniformLocation(program, "u_stroke_color"), "Missing u_stroke_color."),
   };
 }
 
@@ -312,6 +319,7 @@ function compileShader(gl: WebGL2RenderingContext, type: number, source: string)
 
 function buildStyleUniforms(nodeTypes: DagNodeType[]) {
   const fillColors = new Float32Array(MAX_NODE_TYPES * 4);
+  const strokeColors = new Float32Array(MAX_NODE_TYPES * 4);
   const fillEnabled = new Float32Array(MAX_NODE_TYPES);
   const shapeCodes = new Float32Array(MAX_NODE_TYPES);
   for (let index = 0; index < MAX_NODE_TYPES; index += 1) {
@@ -319,11 +327,12 @@ function buildStyleUniforms(nodeTypes: DagNodeType[]) {
     shapeCodes[index] = SHAPE_CODES[style.shape] ?? SHAPE_CODES.circle;
     fillEnabled[index] = style.fill === "none" ? 0 : 1;
     fillColors.set(dagWebGlFill(style.fill), index * 4);
+    strokeColors.set(dagWebGlStroke(style.stroke), index * 4);
   }
-  return { fillColors, fillEnabled, shapeCodes };
+  return { fillColors, strokeColors, fillEnabled, shapeCodes };
 }
 
-function nodeTypeStyle(nodeType: DagNodeType | undefined): { shape: string; fill: DagWebGlFillKey } {
+function nodeTypeStyle(nodeType: DagNodeType | undefined): NodeTypeStyle {
   if (!nodeType) return NODE_TYPE_STYLES.unknown_event;
   return NODE_TYPE_STYLES[nodeType] ?? NODE_TYPE_STYLES.unknown_event;
 }
@@ -385,9 +394,9 @@ in float v_type_index;
 in float v_point_size;
 
 uniform vec4 u_fill_colors[${MAX_NODE_TYPES}];
+uniform vec4 u_stroke_colors[${MAX_NODE_TYPES}];
 uniform float u_fill_enabled[${MAX_NODE_TYPES}];
 uniform float u_shape_codes[${MAX_NODE_TYPES}];
-uniform vec4 u_stroke_color;
 
 out vec4 out_color;
 
@@ -446,19 +455,20 @@ void main() {
   float outline = strokeAlpha(sd, strokeWidth, aa);
 
   vec4 fill = u_fill_colors[typeIndex];
+  vec4 stroke = u_stroke_colors[typeIndex];
   vec4 color = vec4(fill.rgb, fill.a * u_fill_enabled[typeIndex] * inside);
-  color = over(vec4(u_stroke_color.rgb, u_stroke_color.a * outline), color);
+  color = over(vec4(stroke.rgb, stroke.a * outline), color);
 
   if (shape == 3) {
     float diagA = abs(p.x - p.y) * 0.7071067811865476;
     float diagB = abs(p.x + p.y) * 0.7071067811865476;
     float crossSd = min(diagA, diagB);
     float cross = (1.0 - smoothstep(strokeWidth, strokeWidth + aa, crossSd)) * inside;
-    color = over(vec4(u_stroke_color.rgb, u_stroke_color.a * cross), color);
+    color = over(vec4(stroke.rgb, stroke.a * cross), color);
   } else if (shape == 5) {
     float innerSd = sdCircle(p, 0.42);
     float inner = strokeAlpha(innerSd, strokeWidth, aa) * inside;
-    color = over(vec4(u_stroke_color.rgb, u_stroke_color.a * inner), color);
+    color = over(vec4(stroke.rgb, stroke.a * inner), color);
   }
 
   if (color.a <= 0.001) discard;
