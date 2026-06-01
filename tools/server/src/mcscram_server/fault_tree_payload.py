@@ -286,7 +286,37 @@ def _native_graph_to_payload(compiled_graph: dict[str, Any]) -> dict[str, Any]:
     payload["graphKind"] = compiled_graph.get("graph_kind", "compiled_pdag")
     if kernel := compiled_graph.get("kernel"):
         payload["kernel"] = kernel
+    if payload["graphKind"] == "kernel_dag":
+        _rotate_payload_counter_clockwise(payload)
     return payload
+
+
+def _rotate_payload_counter_clockwise(payload: dict[str, Any]) -> None:
+    """Rotate world coordinates 90 degrees counter-clockwise in canvas space."""
+    nodes = payload["nodes"]
+    x_coordinates = nodes["x"]
+    y_coordinates = nodes["y"]
+    if not x_coordinates or not y_coordinates:
+        return
+
+    # Canvas world-space y increases downward, so visual CCW is (x, y) -> (y, -x).
+    rotated_x = [float(y) for y in y_coordinates]
+    rotated_y = [-float(x) for x in x_coordinates]
+    nodes["x"] = rotated_x
+    nodes["y"] = rotated_y
+
+    min_x = min(rotated_x)
+    max_x = max(rotated_x)
+    min_y = min(rotated_y)
+    max_y = max(rotated_y)
+    payload["bounds"] = {
+        "minX": min_x,
+        "minY": min_y,
+        "maxX": max_x,
+        "maxY": max_y,
+        "width": max(max_x - min_x, 1.0),
+        "height": max(max_y - min_y, 1.0),
+    }
 
 
 def _build_source_dag_payload(input_files: list[str]) -> dict[str, Any]:
