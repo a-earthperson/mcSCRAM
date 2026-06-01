@@ -214,6 +214,46 @@ def build_source_dag_payload(input_files: list[str]) -> dict[str, Any]:
 
 def build_compiled_dag_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the WebGL DAG payload from the native compiled PDAG."""
+    return _build_native_dag_payload(input_files, options, graph_kind="compiled")
+
+
+def build_kernel_dag_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build the WebGL DAG payload from the DirectEval kernel execution DAG."""
+    return _build_native_dag_payload(input_files, options, graph_kind="kernel")
+
+
+def build_dag_bundle_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build source, compiled, and kernel DAG payloads with one native compilation."""
+    source_payload = _build_source_dag_payload(input_files)
+    if not input_files:
+        empty = _empty_dag_payload(None)
+        return {"source": source_payload, "compiled": empty, "kernel": empty}
+
+    try:
+        import mcscram_native  # type: ignore[import-not-found]
+        run_compile = mcscram_native.run_compile
+    except (ImportError, AttributeError) as exc:
+        compiled_payload = dict(source_payload)
+        compiled_payload["compiled"] = False
+        compiled_payload["compileError"] = str(exc)
+        kernel_payload = dict(compiled_payload)
+        kernel_payload["graphKind"] = "kernel_dag"
+        return {"source": source_payload, "compiled": compiled_payload, "kernel": kernel_payload}
+
+    compiled_pdag = run_compile(input_files, options or {})
+    return {
+        "source": source_payload,
+        "compiled": _native_graph_to_payload(compiled_pdag.to_graph()),
+        "kernel": _native_graph_to_payload(compiled_pdag.to_kernel_graph()),
+    }
+
+
+def _build_native_dag_payload(
+    input_files: list[str],
+    options: dict[str, Any] | None,
+    *,
+    graph_kind: str,
+) -> dict[str, Any]:
     if not input_files:
         return _empty_dag_payload(None)
 
@@ -227,7 +267,11 @@ def build_compiled_dag_payload(input_files: list[str], options: dict[str, Any] |
         return payload
 
     compiled_pdag = run_compile(input_files, options or {})
-    compiled_graph = compiled_pdag.to_graph()
+    compiled_graph = compiled_pdag.to_kernel_graph() if graph_kind == "kernel" else compiled_pdag.to_graph()
+    return _native_graph_to_payload(compiled_graph)
+
+
+def _native_graph_to_payload(compiled_graph: dict[str, Any]) -> dict[str, Any]:
     render_graph = _compiled_graph_to_render_graph(compiled_graph)
     payload = _columnar_dag_payload(
         model_name=compiled_graph.get("model"),
@@ -239,6 +283,9 @@ def build_compiled_dag_payload(input_files: list[str], options: dict[str, Any] |
     payload["target"] = compiled_graph.get("target")
     payload["rootComplement"] = compiled_graph.get("root_complement", False)
     payload["compilation"] = compiled_graph.get("compilation", {})
+    payload["graphKind"] = compiled_graph.get("graph_kind", "compiled_pdag")
+    if kernel := compiled_graph.get("kernel"):
+        payload["kernel"] = kernel
     return payload
 
 
@@ -277,29 +324,41 @@ def _columnar_dag_payload(
     node_ids = list(graph["nodes"].keys())
     index_by_id = {node_id: index for index, node_id in enumerate(node_ids)}
     depths = _dag_depths(node_ids, graph["children_by_source"], graph["parents_by_target"])
+    has_kernel_layout = all(
+        "layer" in graph["nodes"][node_id] and "partition" in graph["nodes"][node_id]
+        for node_id in node_ids
+    )
 
     layers: dict[int, list[str]] = {}
     for node_id in node_ids:
-        layer = depths.get(node_id, 0)
+        layer = int(graph["nodes"][node_id]["layer"]) if has_kernel_layout else depths.get(node_id, 0)
         layers.setdefault(layer, []).append(node_id)
 
     x_coordinates = [0.0] * len(node_ids)
     y_coordinates = [0.0] * len(node_ids)
     node_types = [0] * len(node_ids)
+    node_layers = [0] * len(node_ids)
+    node_partitions = [0] * len(node_ids)
     min_x = min_y = 0.0
     max_x = max_y = 0.0
     seen_coordinate = False
 
     for layer in sorted(layers):
         ids = layers[layer]
-        midpoint = (len(ids) - 1) / 2
-        for offset, node_id in enumerate(ids):
+        positioned = _position_layer_nodes(ids, graph["nodes"]) if has_kernel_layout else [
+            (node_id, float(offset - (len(ids) - 1) / 2))
+            for offset, node_id in enumerate(ids)
+        ]
+        for node_id, x in positioned:
             index = index_by_id[node_id]
-            x = float(offset - midpoint)
+            node = graph["nodes"][node_id]
+            partition = int(node.get("partition", 0))
             y = float(layer)
             x_coordinates[index] = x
             y_coordinates[index] = y
-            node_types[index] = int(graph["nodes"][node_id]["type"])
+            node_types[index] = int(node["type"])
+            node_layers[index] = int(layer)
+            node_partitions[index] = partition
             if not seen_coordinate:
                 min_x = max_x = x
                 min_y = max_y = y
@@ -339,6 +398,8 @@ def _columnar_dag_payload(
             "x": x_coordinates,
             "y": y_coordinates,
             "type": node_types,
+            "layer": node_layers,
+            "partition": node_partitions,
         },
         "edges": {
             "count": len(sources),
@@ -347,6 +408,28 @@ def _columnar_dag_payload(
         },
         "counts": graph["counts"],
     }
+
+
+def _position_layer_nodes(node_ids: list[str], nodes: dict[str, dict[str, Any]]) -> list[tuple[str, float]]:
+    groups: dict[int, list[str]] = {}
+    for node_id in node_ids:
+        groups.setdefault(int(nodes[node_id].get("partition", 0)), []).append(node_id)
+
+    ordered_groups = [(partition, groups[partition]) for partition in sorted(groups)]
+    widths = [max(1.0, 0.35 * (len(ids) - 1) + 1.0) for _, ids in ordered_groups]
+    total_width = sum(widths) + max(0, len(widths) - 1) * 0.8
+    cursor = -total_width / 2
+    positioned: list[tuple[str, float]] = []
+
+    for (_, ids), width in zip(ordered_groups, widths, strict=True):
+        ids.sort(key=lambda node_id: int(node_id))
+        center = cursor + width / 2
+        midpoint = (len(ids) - 1) / 2
+        for offset, node_id in enumerate(ids):
+            positioned.append((node_id, center + (offset - midpoint) * 0.35))
+        cursor += width + 0.8
+
+    return positioned
 
 
 def _compiled_graph_to_render_graph(compiled_graph: dict[str, Any]) -> dict[str, Any]:
@@ -364,6 +447,10 @@ def _compiled_graph_to_render_graph(compiled_graph: dict[str, Any]) -> dict[str,
             "kind": kind,
             "type": NODE_TYPE_BY_NAME.get(node_type, NODE_TYPE_BY_NAME["unknown_event"]),
         }
+        if "layer" in node:
+            nodes[node_id]["layer"] = int(node["layer"])
+        if "partition" in node:
+            nodes[node_id]["partition"] = int(node["partition"])
         if kind in counts:
             counts[kind] += 1
         else:

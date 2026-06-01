@@ -7,8 +7,10 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from mcscram_server.config import CalculationConfig
 from mcscram_server.event_hub import EventHub
 from mcscram_server.fault_tree_payload import (
+    build_dag_bundle_payload,
     build_dag_payload,
     build_fault_tree_payload,
+    build_kernel_dag_payload,
     build_source_dag_payload,
     list_aralia_xml_inputs,
     resolve_model_xml_path,
@@ -82,6 +84,62 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             return build_source_dag_payload([str(path)])
         return build_source_dag_payload(CalculationConfig.from_env().input_files)
+
+    @router.get("/model/kernel-dag")
+    def kernel_dag_model(
+        model_id: str | None = Query(default=None),
+        compilation_level: int | None = Query(default=None, ge=0, le=8),
+        expand_atleast_gates: bool | None = Query(default=None),
+        expand_xor_gates: bool | None = Query(default=None),
+        ccf: bool | None = Query(default=None),
+        keep_null_gates: bool | None = Query(default=None),
+    ) -> dict[str, Any]:
+        config = CalculationConfig.from_env()
+        options = _compile_options(
+            config.options,
+            compilation_level=compilation_level,
+            expand_atleast_gates=expand_atleast_gates,
+            expand_xor_gates=expand_xor_gates,
+            ccf=ccf,
+            keep_null_gates=keep_null_gates,
+        )
+        if model_id:
+            try:
+                path = resolve_model_xml_path(model_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return build_kernel_dag_payload([str(path)], options)
+        return build_kernel_dag_payload(config.input_files, options)
+
+    @router.get("/model/dag-bundle")
+    def dag_bundle_model(
+        model_id: str | None = Query(default=None),
+        compilation_level: int | None = Query(default=None, ge=0, le=8),
+        expand_atleast_gates: bool | None = Query(default=None),
+        expand_xor_gates: bool | None = Query(default=None),
+        ccf: bool | None = Query(default=None),
+        keep_null_gates: bool | None = Query(default=None),
+    ) -> dict[str, Any]:
+        config = CalculationConfig.from_env()
+        options = _compile_options(
+            config.options,
+            compilation_level=compilation_level,
+            expand_atleast_gates=expand_atleast_gates,
+            expand_xor_gates=expand_xor_gates,
+            ccf=ccf,
+            keep_null_gates=keep_null_gates,
+        )
+        if model_id:
+            try:
+                path = resolve_model_xml_path(model_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return build_dag_bundle_payload([str(path)], options)
+        return build_dag_bundle_payload(config.input_files, options)
 
     @router.post("/reset")
     def reset_calculation() -> dict[str, Any]:
