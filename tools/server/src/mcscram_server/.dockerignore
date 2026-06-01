@@ -1,0 +1,64 @@
+__pycache__
+.pytest_cache/
+.vscode/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.specstory
+.idea
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+node_modules/
+
+.git
+
+
+# Qt Generated Project Configuration
+CMakeLists.txt.user
+
+# Build directories
+build/
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+
+# Python compiled files
+*.pyc
+
+# Pytest cache
+.cache
+.idea
+fixtures
+benchmarks
+
+.vscode
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.specstory
+
+_deps
+CMakeCache.txt
+CMakeFiles
+
+cmake-build-*
+
+.env
+
+docker-compose.yml
+Dockerfile
