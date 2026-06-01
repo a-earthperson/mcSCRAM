@@ -49,3 +49,50 @@ export type CanvasSize = {
   width: number;
   height: number;
 };
+
+export type DagNodeType =
+  | "basic_event"
+  | "unknown_event"
+  | "and_gate"
+  | "nand_gate"
+  | "or_gate"
+  | "nor_gate"
+  | "xor_gate"
+  | "xnor_gate"
+  | "atleast_gate"
+  | "not_gate"
+  | string;
+
+export type DagBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+};
+
+export type DagPayload = {
+  version: 1;
+  model: string | null;
+  source?: string | null;
+  top: number | null;
+  bounds: DagBounds;
+  nodeTypes: DagNodeType[];
+  nodes: {
+    count: number;
+    x: number[];
+    y: number[];
+    type: number[];
+  };
+  edges: {
+    count: number;
+    source: number[];
+    target: number[];
+  };
+  counts?: {
+    gate?: number;
+    basic_event?: number;
+    unknown_event?: number;
+  };
+};

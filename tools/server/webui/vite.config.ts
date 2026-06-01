@@ -6,8 +6,20 @@ import react from "@vitejs/plugin-react";
 const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, ".", "VITE_");
+  const env = loadEnv(mode, repoRoot, "VITE_");
   const isDev = mode === "development";
+  const apiTarget = `http://127.0.0.1:${env.VITE_MCSCRAM_DEV_API_PORT || "8001"}`;
+  const mcscramProxy = isDev
+    ? {
+        "/ws": { target: apiTarget, ws: true, changeOrigin: true },
+        "/model": { target: apiTarget, changeOrigin: true },
+        "/healthz": { target: apiTarget, changeOrigin: true },
+        "/status": { target: apiTarget, changeOrigin: true },
+        "/reset": { target: apiTarget, changeOrigin: true },
+        "/start": { target: apiTarget, changeOrigin: true },
+        "/stop": { target: apiTarget, changeOrigin: true },
+      }
+    : undefined;
 
   return {
     base: env.VITE_BASE_PATH || "/",
@@ -22,6 +34,7 @@ export default defineConfig(({ mode }) => {
       fs: {
         allow: [repoRoot],
       },
+      proxy: mcscramProxy,
     },
     build: {
       outDir: "../docs",
