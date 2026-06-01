@@ -12,9 +12,12 @@
     "dev": "npm run predev && concurrently -k -n web,api -c blue,green \"npm:dev:client\" \"npm:dev:server\"",
     "dev:client": "vite",
     "dev:server": "bash scripts/dev-server.sh",
+    "dev:server:native": "npm run build:native && npm run dev:server",
     "preview": "npm run build && vite preview",
     "build:app": "tsc -b && vite build",
     "build:data": "python3 site/scripts/build_data.py",
+    "build:adaptivecpp:metal": "bash scripts/build-adaptivecpp-metal.sh",
+    "build:native": "bash scripts/build-native.sh",
     "build": "npm run build:app && npm run build:data"
   },
   "keywords": [],

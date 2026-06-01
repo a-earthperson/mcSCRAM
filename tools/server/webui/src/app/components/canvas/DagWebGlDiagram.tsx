@@ -22,6 +22,8 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
   const sizeRef = useRef<CanvasSize>(DEFAULT_SIZE);
   const viewRef = useRef<ViewTransform>(defaultView(DEFAULT_SIZE));
   const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const hasLayoutSizeRef = useRef(false);
+  const didInitialFitRef = useRef(false);
   const [size, setSize] = useState<CanvasSize>(DEFAULT_SIZE);
   const [renderError, setRenderError] = useState<string | null>(null);
 
@@ -78,6 +80,7 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
     const frame = frameRef.current;
     if (!frame) return undefined;
     const observer = new ResizeObserver(([entry]) => {
+      hasLayoutSizeRef.current = true;
       setSize({
         width: Math.max(320, entry.contentRect.width),
         height: Math.max(420, entry.contentRect.height),
@@ -103,7 +106,6 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
       renderer = new DagWebGlRenderer(canvas, dag);
       rendererRef.current = renderer;
       renderer.resize(sizeRef.current);
-      viewRef.current = fitDagView(dag.bounds, sizeRef.current);
       setRenderError(null);
       scheduleDraw();
     } catch (err) {
@@ -116,6 +118,18 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
       renderer?.destroy();
     };
   }, [dag, scheduleDraw]);
+
+  useEffect(() => {
+    didInitialFitRef.current = false;
+  }, [dag]);
+
+  useEffect(() => {
+    if (didInitialFitRef.current || renderError || !rendererRef.current || !hasLayoutSizeRef.current) {
+      return;
+    }
+    fitView();
+    didInitialFitRef.current = true;
+  }, [dag, fitView, renderError, size]);
 
   useEffect(() => () => {
     if (rafRef.current !== null) {

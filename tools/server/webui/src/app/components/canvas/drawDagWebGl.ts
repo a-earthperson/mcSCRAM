@@ -446,7 +446,7 @@ void main() {
   } else if (shape == 2) {
     sd = sdRegularPolygon(p, 3.0, polygonInradius(3.0, SHAPE_RADIUS), -PI * 0.5);
   } else if (shape == 4) {
-    sd = sdRegularPolygon(p, 5.0, polygonInradius(5.0, SHAPE_RADIUS), PI * 0.5);
+    sd = sdRegularPolygon(p, 5.0, polygonInradius(5.0, SHAPE_RADIUS), -PI * 0.5);
   }
 
   float aa = max(fwidth(sd), 2.0 / max(v_point_size, 1.0));

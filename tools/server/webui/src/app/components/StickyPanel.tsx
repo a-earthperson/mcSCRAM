@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef, CSSProperties } from "react";
+import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 import { classNames } from "../../lib/format";
 import "../../styles/flat-controls.css";
 
@@ -24,6 +24,61 @@ export function StickyPanel({ children, className, ...props }: StickyPanelProps)
     <aside className={classNames("panel", "sticky-panel", `sticky-panel__controls-grid`, className)} {...props}>
       {children}
     </aside>
+  );
+}
+
+export function StickyPanelCheckbox({
+  id,
+  label,
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="sticky-panel-checkbox">
+      <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      <label htmlFor={id}>{label}</label>
+    </div>
+  );
+}
+
+export function StickyPanelCheckboxGroup({
+  legend,
+  children,
+  className,
+  hSpan,
+  vSpan,
+  inline = false,
+}: {
+  legend: string;
+  children: ReactNode;
+  className?: string;
+  hSpan?: StickyPanelSlotProps["hSpan"];
+  vSpan?: StickyPanelSlotProps["vSpan"];
+  /** When true, omit the grid slot wrapper (for use inside a shared row). */
+  inline?: boolean;
+}) {
+  const body = (
+    <>
+      <p className="sticky-panel-checkbox-group__legend">{legend}</p>
+      <div className="sticky-panel-checkbox-group-container">{children}</div>
+    </>
+  );
+
+  if (inline) {
+    return <div className={classNames("sticky-panel-checkbox-group", className)}>{body}</div>;
+  }
+
+  return (
+    <StickyPanelSlot className={classNames("sticky-panel-checkbox-group", className)} hSpan={hSpan} vSpan={vSpan}>
+      {body}
+    </StickyPanelSlot>
   );
 }
 
