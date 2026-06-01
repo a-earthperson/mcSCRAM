@@ -55,6 +55,8 @@ def options_from_env() -> dict[str, Any]:
         ("MCSCRAM_WATCH", "watch"),
         ("MCSCRAM_NO_KN", "no_kn"),
         ("MCSCRAM_NO_XOR", "no_xor"),
+        ("MCSCRAM_RECOGNIZE_ATLEAST_GROUPS", "recognize_atleast_groups"),
+        ("MCSCRAM_RECOGNIZE_XOR_GROUPS", "recognize_xor_groups"),
         ("MCSCRAM_PREPROCESSOR", "preprocessor"),
         ("MCSCRAM_PRINT", "print"),
         ("MCSCRAM_IMPORTANCE", "importance"),

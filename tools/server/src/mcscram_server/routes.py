@@ -51,6 +51,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         compilation_level: int | None = Query(default=None, ge=0, le=8),
         expand_atleast_gates: bool | None = Query(default=None),
         expand_xor_gates: bool | None = Query(default=None),
+        recognize_atleast_groups: bool | None = Query(default=None),
+        recognize_xor_groups: bool | None = Query(default=None),
         ccf: bool | None = Query(default=None),
         keep_null_gates: bool | None = Query(default=None),
     ) -> dict[str, Any]:
@@ -60,6 +62,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
             compilation_level=compilation_level,
             expand_atleast_gates=expand_atleast_gates,
             expand_xor_gates=expand_xor_gates,
+            recognize_atleast_groups=recognize_atleast_groups,
+            recognize_xor_groups=recognize_xor_groups,
             ccf=ccf,
             keep_null_gates=keep_null_gates,
         )
@@ -91,6 +95,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         compilation_level: int | None = Query(default=None, ge=0, le=8),
         expand_atleast_gates: bool | None = Query(default=None),
         expand_xor_gates: bool | None = Query(default=None),
+        recognize_atleast_groups: bool | None = Query(default=None),
+        recognize_xor_groups: bool | None = Query(default=None),
         ccf: bool | None = Query(default=None),
         keep_null_gates: bool | None = Query(default=None),
     ) -> dict[str, Any]:
@@ -100,6 +106,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
             compilation_level=compilation_level,
             expand_atleast_gates=expand_atleast_gates,
             expand_xor_gates=expand_xor_gates,
+            recognize_atleast_groups=recognize_atleast_groups,
+            recognize_xor_groups=recognize_xor_groups,
             ccf=ccf,
             keep_null_gates=keep_null_gates,
         )
@@ -119,6 +127,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         compilation_level: int | None = Query(default=None, ge=0, le=8),
         expand_atleast_gates: bool | None = Query(default=None),
         expand_xor_gates: bool | None = Query(default=None),
+        recognize_atleast_groups: bool | None = Query(default=None),
+        recognize_xor_groups: bool | None = Query(default=None),
         ccf: bool | None = Query(default=None),
         keep_null_gates: bool | None = Query(default=None),
     ) -> dict[str, Any]:
@@ -128,6 +138,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
             compilation_level=compilation_level,
             expand_atleast_gates=expand_atleast_gates,
             expand_xor_gates=expand_xor_gates,
+            recognize_atleast_groups=recognize_atleast_groups,
+            recognize_xor_groups=recognize_xor_groups,
             ccf=ccf,
             keep_null_gates=keep_null_gates,
         )
@@ -176,6 +188,8 @@ def _compile_options(
     compilation_level: int | None,
     expand_atleast_gates: bool | None,
     expand_xor_gates: bool | None,
+    recognize_atleast_groups: bool | None,
+    recognize_xor_groups: bool | None,
     ccf: bool | None,
     keep_null_gates: bool | None,
 ) -> dict[str, Any]:
@@ -186,6 +200,10 @@ def _compile_options(
         options["expand_atleast_gates"] = expand_atleast_gates
     if expand_xor_gates is not None:
         options["expand_xor_gates"] = expand_xor_gates
+    if recognize_atleast_groups is not None:
+        options["recognize_atleast_groups"] = recognize_atleast_groups
+    if recognize_xor_groups is not None:
+        options["recognize_xor_groups"] = recognize_xor_groups
     if ccf is not None:
         options["ccf"] = ccf
     if keep_null_gates is not None:
