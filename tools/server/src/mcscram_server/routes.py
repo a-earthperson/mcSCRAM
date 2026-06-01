@@ -6,7 +6,12 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 
 from mcscram_server.config import CalculationConfig
 from mcscram_server.event_hub import EventHub
-from mcscram_server.fault_tree_payload import build_dag_payload, build_fault_tree_payload, resolve_model_xml_path
+from mcscram_server.fault_tree_payload import (
+    build_dag_payload,
+    build_fault_tree_payload,
+    list_aralia_xml_inputs,
+    resolve_model_xml_path,
+)
 from mcscram_server.supervisor import CalculationSupervisor
 
 
@@ -20,6 +25,10 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
     @router.get("/status")
     def status() -> dict[str, Any]:
         return supervisor.state.snapshot(alive=supervisor.alive())
+
+    @router.get("/model/xml-inputs")
+    def xml_inputs() -> dict[str, Any]:
+        return list_aralia_xml_inputs()
 
     @router.get("/model/fault-tree")
     def fault_tree_model(model_id: str | None = Query(default=None)) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.10.0
 #FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04 AS base
 # FROM nvidia/cuda:12.9.2-cudnn-devel-ubuntu24.04 AS base
-FROM nvcr.io/nvidia/cuda-dl-base:26.04-cuda13.2-devel-ubuntu24.04 as base
+FROM nvcr.io/nvidia/cuda-dl-base:26.04-cuda13.2-devel-ubuntu24.04 AS base
 
 ENV CODENAME="noble"
 ENV DEBIAN_FRONTEND=noninteractive

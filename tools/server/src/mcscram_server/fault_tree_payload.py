@@ -56,15 +56,71 @@ def aralia_model_search_roots() -> list[Path]:
     return roots
 
 
-def resolve_model_xml_path(model_id: str) -> Path:
+def _normalise_model_id_token(model_id: str) -> str:
     token = model_id.strip().lower().removesuffix(".xml")
     if not token:
         raise ValueError("model_id is required")
+    if any(part in {"", ".", ".."} for part in token.split("/")):
+        raise ValueError(f"invalid model_id: {model_id}")
+    return token
+
+
+def _model_id_for_path(root: Path, path: Path) -> str:
+    return path.relative_to(root).with_suffix("").as_posix().lower()
+
+
+def resolve_model_xml_path(model_id: str) -> Path:
+    token = _normalise_model_id_token(model_id)
+    rel_parts = token.split("/")
     for root in aralia_model_search_roots():
-        candidate = root / f"{token}.xml"
+        if not root.is_dir():
+            continue
+        candidate = root.joinpath(*rel_parts).with_suffix(".xml")
         if candidate.is_file():
             return candidate
+        for path in root.rglob("*.xml"):
+            if path.is_file() and _model_id_for_path(root, path) == token:
+                return path
     raise FileNotFoundError(f"Unknown model_id: {model_id}")
+
+
+def list_aralia_xml_inputs() -> dict[str, Any]:
+    """Discover ``*.xml`` under :func:`aralia_model_search_roots` (recursive).
+
+    Each entry's ``modelId`` is the path relative to its search root, without
+    the ``.xml`` suffix, lowercased and POSIX-normalised.  The first root in
+    search order wins when the same ``modelId`` appears in multiple roots.
+    """
+    models: list[dict[str, str]] = []
+    seen: set[str] = set()
+    roots_out: list[str] = []
+
+    for root in aralia_model_search_roots():
+        if not root.is_dir():
+            continue
+        roots_out.append(str(root.resolve()))
+        for path in sorted(root.rglob("*.xml")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(root)
+            model_id = _model_id_for_path(root, path)
+            if model_id in seen:
+                continue
+            seen.add(model_id)
+            models.append(
+                {
+                    "modelId": model_id,
+                    "relativePath": rel.as_posix(),
+                    "root": str(root.resolve()),
+                }
+            )
+
+    models.sort(key=lambda row: row["modelId"])
+    return {
+        "roots": roots_out,
+        "models": models,
+        "modelIds": [row["modelId"] for row in models],
+    }
 
 
 def build_fault_tree_payload(input_files: list[str]) -> dict[str, Any]:
@@ -294,8 +350,13 @@ def _parse_fault_tree_graph(fault_tree: ET.Element) -> dict[str, Any]:
                 child_id = _node_id("gate", child_name)
                 nodes.setdefault(child_id, {"kind": "gate", "type": 1})
             elif child_tag == "basic-event":
+                # A <basic-event> reference is a basic event by its tag, even
+                # when its <define-basic-event> lives under <model-data> rather
+                # than inside <define-fault-tree>. Type 0 keeps the circle
+                # filled; `unknown_event` (type 1) is reserved for truly
+                # unidentifiable references.
                 child_id = _node_id("basic_event", child_name)
-                nodes.setdefault(child_id, {"kind": "unknown_event", "type": 1})
+                nodes.setdefault(child_id, {"kind": "basic_event", "type": 0})
             else:
                 continue
             edges.append((gate_id, child_id))
