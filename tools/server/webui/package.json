@@ -17,8 +17,10 @@
     "build:app": "tsc -b && vite build",
     "build:data": "python3 site/scripts/build_data.py",
     "build:adaptivecpp:metal": "bash scripts/build-adaptivecpp-metal.sh",
+    "build:cli": "bash scripts/build-cli.sh",
     "build:native": "bash scripts/build-native.sh",
-    "build": "npm run build:app && npm run build:data"
+    "build": "npm run build:app && npm run build:data",
+    "scram-cli-debug": "bash scripts/build-cli-debug.sh"
   },
   "keywords": [],
   "author": "",
