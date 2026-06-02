@@ -325,6 +325,7 @@ def _build_source_dag_payload(input_files: list[str]) -> dict[str, Any]:
     Shape contract:
       - `nodes.x[i]`, `nodes.y[i]`, and `nodes.type[i]` describe vertex `i`.
       - `edges.source[j]` and `edges.target[j]` are integer node indices.
+      - `edges.complemented[j]` is 1 when the native edge target is signed negative.
       - coordinates are scale-agnostic world units; the client only applies a
         uniform affine transform for pan/zoom.
       - `nodeTypes[n]` is a stable semantic type string. Shape, fill, and
@@ -401,13 +402,20 @@ def _columnar_dag_payload(
 
     sources: list[int] = []
     targets: list[int] = []
-    for source_id, target_id in graph["edges"]:
+    complemented: list[int] = []
+    for edge in graph["edges"]:
+        if len(edge) == 3:
+            source_id, target_id, edge_complemented = edge
+        else:
+            source_id, target_id = edge
+            edge_complemented = False
         source_index = index_by_id.get(source_id)
         target_index = index_by_id.get(target_id)
         if source_index is None or target_index is None:
             continue
         sources.append(source_index)
         targets.append(target_index)
+        complemented.append(1 if edge_complemented else 0)
 
     return {
         "version": 1,
@@ -435,6 +443,7 @@ def _columnar_dag_payload(
             "count": len(sources),
             "source": sources,
             "target": targets,
+            "complemented": complemented,
         },
         "counts": graph["counts"],
     }
@@ -464,7 +473,7 @@ def _position_layer_nodes(node_ids: list[str], nodes: dict[str, dict[str, Any]])
 
 def _compiled_graph_to_render_graph(compiled_graph: dict[str, Any]) -> dict[str, Any]:
     nodes: dict[str, dict[str, Any]] = {}
-    edges: list[tuple[str, str]] = []
+    edges: list[tuple[str, str, bool]] = []
     children_by_source: dict[str, list[str]] = {}
     parents_by_target: dict[str, list[str]] = {}
     counts = {"gate": 0, "basic_event": 0, "unknown_event": 0, "constant": 0}
@@ -488,10 +497,11 @@ def _compiled_graph_to_render_graph(compiled_graph: dict[str, Any]) -> dict[str,
 
     for edge in compiled_graph.get("edges", []):
         source_id = str(int(edge["source"]))
-        target_id = str(abs(int(edge["target"])))
+        raw_target = int(edge["target"])
+        target_id = str(abs(raw_target))
         if source_id not in nodes or target_id not in nodes:
             continue
-        edges.append((source_id, target_id))
+        edges.append((source_id, target_id, raw_target < 0))
         children_by_source.setdefault(source_id, []).append(target_id)
         parents_by_target.setdefault(target_id, []).append(source_id)
 
@@ -530,7 +540,7 @@ def _empty_dag_payload(model: str | None, source: str | None = None) -> dict[str
         "bounds": {"minX": 0.0, "minY": 0.0, "maxX": 1.0, "maxY": 1.0, "width": 1.0, "height": 1.0},
         "nodeTypes": list(DAG_NODE_TYPES),
         "nodes": {"count": 0, "x": [], "y": [], "type": []},
-        "edges": {"count": 0, "source": [], "target": []},
+        "edges": {"count": 0, "source": [], "target": [], "complemented": []},
         "counts": {"gate": 0, "basic_event": 0, "unknown_event": 0},
     }
 
