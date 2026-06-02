@@ -6,6 +6,7 @@
   overflow: hidden;
   border: 1px solid var(--rule-faint);
   background: transparent;
+  filter: var(--global-lighting);
 
   /* ── Canvas 2D tokens (read by drawFaultTree.ts via getComputedStyle) ── */
   --ft-cull-pad: 120px;

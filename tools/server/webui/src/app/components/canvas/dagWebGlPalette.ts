@@ -20,10 +20,17 @@ export type Rgba = [number, number, number, number];
  *   xor / xnor     0.760 0.170 148 / #57ce70  0.680 0.170 148 / #39b457  electric viridian
  *   atleast        0.700 0.180 305 / #b97df7  0.650 0.180 305 / #a96de6  ultraviolet paynes
  *   not            0.780 0.160 68  / #f9a129  0.700 0.150 68  / #da8a11  amber resin
+ *   constant       0.720 0.050 250 / #9a9aa8  0.620 0.045 250 / #7d7d8a  graphite house
  *   edge           0.620 0.095 220 / #3493ae  -                         blue-green graph line
  */
 
 export const DAG_WEBGL_NODE_RADIUS = 0.666;
+
+/** World-space glyph shift toward the flat triangle base (× node radius). Graph (x, y) and edges stay put. */
+export const DAG_WEBGL_TRIANGLE_DISPLAY_OFFSET = 0.12;
+
+/** World-space shift so graph (x, y) sits on the flag staff foot (× node radius). */
+export const DAG_WEBGL_FLAG_DISPLAY_OFFSET = 0.42;
 
 export const DAG_WEBGL_EDGE_COLOR: Rgba = [0.205578, 0.577387, 0.680913, 0.5];
 
@@ -41,6 +48,7 @@ export const DAG_WEBGL_FILLS = {
   xnor_gate: [0.340127, 0.806187, 0.438209, 0.2] as Rgba,
   atleast_gate: [0.724892, 0.488624, 0.967278, 0.2] as Rgba,
   not_gate: [0.977485, 0.631504, 0.160365, 0.2] as Rgba,
+  constant_event: [0.603922, 0.603922, 0.658824, 0.2] as Rgba,
 } as const;
 
 export const DAG_WEBGL_STROKES = {
@@ -53,6 +61,7 @@ export const DAG_WEBGL_STROKES = {
   xnor_gate: [0.222174, 0.704073, 0.341718, 1.0] as Rgba,
   atleast_gate: [0.663468, 0.427058, 0.90006, 1.0] as Rgba,
   not_gate: [0.856043, 0.539825, 0.067185, 1.0] as Rgba,
+  constant_event: [0.490196, 0.490196, 0.541176, 1.0] as Rgba,
 } as const;
 
 export type DagWebGlFillKey = keyof typeof DAG_WEBGL_FILLS | "none";

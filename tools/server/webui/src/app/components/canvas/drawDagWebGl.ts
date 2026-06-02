@@ -1,6 +1,7 @@
 import {
   DAG_WEBGL_EDGE_COLOR,
   DAG_WEBGL_NODE_RADIUS,
+  DAG_WEBGL_TRIANGLE_DISPLAY_OFFSET,
   dagWebGlFill,
   dagWebGlStroke,
   type DagWebGlFillKey,
@@ -17,6 +18,10 @@ const SHAPE_CODES: Record<string, number> = {
   circle_with_cross: 3,
   pentagon: 4,
   circle_inside_circle: 5,
+  upright_triangle_inscribed: 6,
+  upsidedown_triangle_inscribed: 7,
+  circle_with_cross_inscribed: 8,
+  house: 9,
 };
 
 type NodeTypeStyle = {
@@ -29,19 +34,20 @@ const NODE_TYPE_STYLES: Record<string, NodeTypeStyle> = {
   basic_event: { shape: "circle", fill: "basic_event", stroke: "basic_event" },
   unknown_event: { shape: "circle", fill: "none", stroke: "none" },
   and_gate: { shape: "upright_triangle", fill: "and_gate", stroke: "and_gate" },
-  nand_gate: { shape: "upright_triangle", fill: "nand_gate", stroke: "nand_gate" },
+  nand_gate: { shape: "upright_triangle_inscribed", fill: "nand_gate", stroke: "nand_gate" },
   or_gate: { shape: "upsidedown_triangle", fill: "or_gate", stroke: "or_gate" },
-  nor_gate: { shape: "upsidedown_triangle", fill: "nor_gate", stroke: "nor_gate" },
+  nor_gate: { shape: "upsidedown_triangle_inscribed", fill: "nor_gate", stroke: "nor_gate" },
   xor_gate: { shape: "circle_with_cross", fill: "xor_gate", stroke: "xor_gate" },
-  xnor_gate: { shape: "circle_with_cross", fill: "xnor_gate", stroke: "xnor_gate" },
+  xnor_gate: { shape: "circle_with_cross_inscribed", fill: "xnor_gate", stroke: "xnor_gate" },
   atleast_gate: { shape: "pentagon", fill: "atleast_gate", stroke: "atleast_gate" },
   not_gate: { shape: "circle_inside_circle", fill: "not_gate", stroke: "not_gate" },
+  constant_event: { shape: "house", fill: "constant_event", stroke: "constant_event" },
 };
 
 type DagGeometry = {
   nodeCount: number;
   edgeVertexCount: number;
-  centers: Float32Array;
+  nodeCenters: Float32Array;
   typeIndices: Float32Array;
   edgePositions: Float32Array;
 };
@@ -122,7 +128,7 @@ export class DagWebGlRenderer {
     this.edgeVao = edge.vao;
     this.edgeBuffer = edge.buffer;
 
-    const node = createNodeVao(gl, this.nodeProgram, this.geometry.centers, this.geometry.typeIndices);
+    const node = createNodeVao(gl, this.nodeProgram, this.geometry.nodeCenters, this.geometry.typeIndices);
     this.nodeVao = node.vao;
     this.centerBuffer = node.centerBuffer;
     this.typeBuffer = node.typeBuffer;
@@ -188,12 +194,15 @@ export class DagWebGlRenderer {
 
 function prepareDagGeometry(dag: DagPayload): DagGeometry {
   const nodeCount = Math.min(dag.nodes.count, dag.nodes.x.length, dag.nodes.y.length, dag.nodes.type.length);
-  const centers = new Float32Array(nodeCount * 2);
+  const nodeCenters = new Float32Array(nodeCount * 2);
   const typeIndices = new Float32Array(nodeCount);
   for (let index = 0; index < nodeCount; index += 1) {
-    centers[index * 2] = dag.nodes.x[index];
-    centers[index * 2 + 1] = dag.nodes.y[index];
+    const graphX = dag.nodes.x[index];
+    const graphY = dag.nodes.y[index];
     typeIndices[index] = Math.max(0, Math.min(MAX_NODE_TYPES - 1, dag.nodes.type[index] ?? 0));
+    const displayOffset = triangleDisplayOffset(typeIndices[index], dag.nodeTypes);
+    nodeCenters[index * 2] = graphX + displayOffset.x;
+    nodeCenters[index * 2 + 1] = graphY + displayOffset.y;
   }
 
   const maxEdges = Math.min(dag.edges.count, dag.edges.source.length, dag.edges.target.length);
@@ -204,20 +213,36 @@ function prepareDagGeometry(dag: DagPayload): DagGeometry {
     const target = dag.edges.target[index];
     if (!Number.isInteger(source) || !Number.isInteger(target)) continue;
     if (source < 0 || source >= nodeCount || target < 0 || target >= nodeCount) continue;
-    edgePositions[edgeCursor * 4] = centers[source * 2];
-    edgePositions[edgeCursor * 4 + 1] = centers[source * 2 + 1];
-    edgePositions[edgeCursor * 4 + 2] = centers[target * 2];
-    edgePositions[edgeCursor * 4 + 3] = centers[target * 2 + 1];
+    edgePositions[edgeCursor * 4] = dag.nodes.x[source];
+    edgePositions[edgeCursor * 4 + 1] = dag.nodes.y[source];
+    edgePositions[edgeCursor * 4 + 2] = dag.nodes.x[target];
+    edgePositions[edgeCursor * 4 + 3] = dag.nodes.y[target];
     edgeCursor += 1;
   }
 
   return {
     nodeCount,
     edgeVertexCount: edgeCursor * 2,
-    centers,
+    nodeCenters,
     typeIndices,
     edgePositions: edgeCursor === maxEdges ? edgePositions : edgePositions.slice(0, edgeCursor * 4),
   };
+}
+
+function triangleDisplayOffset(typeIndex: number, nodeTypes: DagNodeType[]): { x: number; y: number } {
+  const shape = shapeCodeForTypeIndex(typeIndex, nodeTypes);
+  const magnitude = DAG_WEBGL_NODE_RADIUS * DAG_WEBGL_TRIANGLE_DISPLAY_OFFSET;
+  // Shift the glyph toward the flat base so graph (x, y) sits on the vertex side of the outline.
+  if (shape === 1 || shape === 6) return { x: 0, y: -magnitude };
+  if (shape === 2 || shape === 7) return { x: 0, y: magnitude };
+  // House: flat base at bottom — anchor graph (x, y) on the base like OR gates.
+  if (shape === 9) return { x: 0, y: magnitude };
+  return { x: 0, y: 0 };
+}
+
+function shapeCodeForTypeIndex(typeIndex: number, nodeTypes: DagNodeType[]): number {
+  const style = nodeTypeStyle(nodeTypes[typeIndex]);
+  return SHAPE_CODES[style.shape] ?? SHAPE_CODES.circle;
 }
 
 function createEdgeVao(gl: WebGL2RenderingContext, program: EdgeProgram, positions: Float32Array) {
@@ -404,6 +429,10 @@ const float PI = 3.141592653589793;
 const float TAU = 6.283185307179586;
 // Match circle outline; polygons use inradius so circumradius stays inside the point sprite.
 const float SHAPE_RADIUS = 0.78;
+// Inscribed inner marker for negated gates (matches NOT / XNOR inner ring scale).
+const float INSCRIBED_RADIUS = 0.42;
+// Triangles need a smaller circumradius than circles for the same visual inset.
+const float INSCRIBED_TRIANGLE_RADIUS = 0.34;
 
 float sdCircle(vec2 p, float r) {
   return length(p) - r;
@@ -418,6 +447,39 @@ float sdRegularPolygon(vec2 p, float sides, float inradius, float rotation) {
 
 float polygonInradius(float sides, float circumradius) {
   return circumradius * cos(PI / sides);
+}
+
+// Convex pentagon SDF (CCW vertices) for the constant "house" glyph.
+float sdPolygon5(vec2 p, vec2 a, vec2 b, vec2 c, vec2 d, vec2 e) {
+  vec2 verts[5] = vec2[5](a, b, c, d, e);
+  float d2 = 1e10;
+  float s = 1.0;
+  for (int i = 0; i < 5; i++) {
+    int j = i == 0 ? 4 : i - 1;
+    vec2 vi = verts[i];
+    vec2 vj = verts[j];
+    vec2 ev = vi - vj;
+    vec2 wv = p - vj;
+    vec2 bv = wv - ev * clamp(dot(wv, ev) / dot(ev, ev), 0.0, 1.0);
+    d2 = min(d2, dot(bv, bv));
+    if (wv.x * ev.y - wv.y * ev.x > 0.0) s = -1.0;
+  }
+  return sqrt(d2) * s;
+}
+
+float sdHouse(vec2 p) {
+  float w = SHAPE_RADIUS * 0.59;
+  float base = -SHAPE_RADIUS * 0.88;
+  float eave = SHAPE_RADIUS * 0.06;
+  float peak = SHAPE_RADIUS * 0.92;
+  return sdPolygon5(
+    p,
+    vec2(-w, base),
+    vec2(w, base),
+    vec2(w, eave),
+    vec2(0.0, peak),
+    vec2(-w, eave)
+  );
 }
 
 float strokeAlpha(float sd, float width, float aa) {
@@ -437,16 +499,18 @@ vec4 over(vec4 top, vec4 bottom) {
 
 void main() {
   int typeIndex = clamp(int(v_type_index + 0.5), 0, ${MAX_NODE_TYPES - 1});
-  int shape = clamp(int(u_shape_codes[typeIndex] + 0.5), 0, 5);
+  int shape = clamp(int(u_shape_codes[typeIndex] + 0.5), 0, 9);
   vec2 p = vec2(gl_PointCoord.x * 2.0 - 1.0, 1.0 - gl_PointCoord.y * 2.0);
 
   float sd = sdCircle(p, SHAPE_RADIUS);
-  if (shape == 1) {
+  if (shape == 1 || shape == 6) {
     sd = sdRegularPolygon(p, 3.0, polygonInradius(3.0, SHAPE_RADIUS), PI * 0.5);
-  } else if (shape == 2) {
+  } else if (shape == 2 || shape == 7) {
     sd = sdRegularPolygon(p, 3.0, polygonInradius(3.0, SHAPE_RADIUS), -PI * 0.5);
   } else if (shape == 4) {
     sd = sdRegularPolygon(p, 5.0, polygonInradius(5.0, SHAPE_RADIUS), -PI * 0.5);
+  } else if (shape == 9) {
+    sd = sdHouse(p);
   }
 
   float aa = max(fwidth(sd), 2.0 / max(v_point_size, 1.0));
@@ -459,14 +523,24 @@ void main() {
   vec4 color = vec4(fill.rgb, fill.a * u_fill_enabled[typeIndex] * inside);
   color = over(vec4(stroke.rgb, stroke.a * outline), color);
 
-  if (shape == 3) {
+  if (shape == 3 || shape == 8) {
     float diagA = abs(p.x - p.y) * 0.7071067811865476;
     float diagB = abs(p.x + p.y) * 0.7071067811865476;
     float crossSd = min(diagA, diagB);
     float cross = (1.0 - smoothstep(strokeWidth, strokeWidth + aa, crossSd)) * inside;
     color = over(vec4(stroke.rgb, stroke.a * cross), color);
-  } else if (shape == 5) {
-    float innerSd = sdCircle(p, 0.42);
+  }
+
+  if (shape == 5 || shape == 8) {
+    float innerSd = sdCircle(p, INSCRIBED_RADIUS);
+    float inner = strokeAlpha(innerSd, strokeWidth, aa) * inside;
+    color = over(vec4(stroke.rgb, stroke.a * inner), color);
+  } else if (shape == 6) {
+    float innerSd = sdRegularPolygon(p, 3.0, polygonInradius(3.0, INSCRIBED_TRIANGLE_RADIUS), PI * 0.5);
+    float inner = strokeAlpha(innerSd, strokeWidth, aa) * inside;
+    color = over(vec4(stroke.rgb, stroke.a * inner), color);
+  } else if (shape == 7) {
+    float innerSd = sdRegularPolygon(p, 3.0, polygonInradius(3.0, INSCRIBED_TRIANGLE_RADIUS), -PI * 0.5);
     float inner = strokeAlpha(innerSd, strokeWidth, aa) * inside;
     color = over(vec4(stroke.rgb, stroke.a * inner), color);
   }
