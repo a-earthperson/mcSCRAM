@@ -33,7 +33,11 @@ NODE_TYPE_BY_CONNECTIVE = {
     "xnor": 7,
     "atleast": 8,
     "not": 9,
+    "null": 10,
 }
+
+REFERENCE_TAGS = {"basic-event", "gate", "house-event", "event"}
+NON_OPERATIONAL_GATE_CHILDREN = {"label", "description"}
 
 
 def _tag(element: ET.Element) -> str:
@@ -42,6 +46,128 @@ def _tag(element: ET.Element) -> str:
 
 def _node_id(kind: str, name: str) -> str:
     return f"{kind}:{name}"
+
+
+def _qualified_gate_name(scope: str | None, name: str) -> str:
+    if not scope or "." in name:
+        return name
+    return f"{scope}.{name}"
+
+
+def _reference_node_id(element: ET.Element, scope: str | None = None) -> str | None:
+    """Map a connective child element to a stable canvas node id."""
+    tag = _tag(element)
+    name = element.attrib.get("name")
+    if not name:
+        return None
+    if tag == "basic-event":
+        return _node_id("basic_event", name)
+    if tag == "house-event":
+        return _node_id("house_event", name)
+    if tag == "gate":
+        return _node_id("gate", _qualified_gate_name(scope, name))
+    if tag == "event":
+        ref_type = (element.attrib.get("type") or "").strip().lower()
+        if ref_type == "gate":
+            return _node_id("gate", _qualified_gate_name(scope, name))
+        if ref_type in {"basic-event", "basic_event", "basic"}:
+            return _node_id("basic_event", name)
+        if ref_type in {"house-event", "house_event", "house"}:
+            return _node_id("house_event", name)
+    return None
+
+
+def _gate_connective(gate: ET.Element) -> tuple[ET.Element | None, str]:
+    child = next((child for child in gate if _tag(child) not in NON_OPERATIONAL_GATE_CHILDREN), None)
+    if child is None:
+        return None, "unknown"
+    if _tag(child) in REFERENCE_TAGS:
+        return child, "null"
+    return child, _tag(child)
+
+
+def _connective_children(connective: ET.Element | None, connective_name: str) -> list[ET.Element]:
+    if connective is None:
+        return []
+    if connective_name == "null":
+        return [connective]
+    return [child for child in connective if _tag(child) not in NON_OPERATIONAL_GATE_CHILDREN]
+
+
+def _ensure_reference_node(nodes: dict[str, dict[str, Any]], node_id: str) -> None:
+    if node_id in nodes:
+        return
+    kind, _, name = node_id.partition(":")
+    if kind == "gate":
+        nodes[node_id] = {
+            "id": node_id,
+            "kind": "gate",
+            "label": name,
+            "connective": "unknown",
+        }
+    elif kind == "basic_event":
+        nodes[node_id] = {
+            "id": node_id,
+            "kind": "basic_event",
+            "label": name,
+        }
+    elif kind == "house_event":
+        nodes[node_id] = {
+            "id": node_id,
+            "kind": "house_event",
+            "label": name,
+        }
+
+
+def _iter_scoped_gate_defs(
+    element: ET.Element,
+    scope: str | None = None,
+) -> list[tuple[str, ET.Element, str | None]]:
+    gate_defs: list[tuple[str, ET.Element, str | None]] = []
+    for child in element:
+        tag = _tag(child)
+        if tag == "define-gate":
+            name = child.attrib.get("name")
+            if name:
+                gate_defs.append((_qualified_gate_name(scope, name), child, scope))
+        elif tag == "define-component":
+            name = child.attrib.get("name")
+            component_scope = _qualified_gate_name(scope, name) if name else scope
+            gate_defs.extend(_iter_scoped_gate_defs(child, component_scope))
+    return gate_defs
+
+
+def _child_text(element: ET.Element, tag_name: str) -> str | None:
+    child = next((child for child in element if _tag(child) == tag_name), None)
+    if child is None or child.text is None:
+        return None
+    text = " ".join(child.text.split())
+    return text or None
+
+
+def _attribute_value(element: ET.Element, name: str) -> str | None:
+    for attribute in element.iter():
+        if _tag(attribute) == "attribute" and attribute.attrib.get("name") == name:
+            return attribute.attrib.get("value")
+    return None
+
+
+def _constant_value(element: ET.Element) -> str | None:
+    constant = next((child for child in element if _tag(child) == "constant"), None)
+    return constant.attrib.get("value") if constant is not None else None
+
+
+def _infer_fault_tree_top(
+    gate_defs: list[tuple[str, ET.Element, str | None]],
+    edges: list[dict[str, str]],
+) -> str | None:
+    """Use a single top gate only when the graph has one gate root."""
+    gate_ids = [_node_id("gate", name) for name, _, _ in gate_defs]
+    targets = {edge["target"] for edge in edges}
+    roots = [gate_id for gate_id in gate_ids if gate_id not in targets]
+    if len(roots) == 1:
+        return roots[0]
+    return None
 
 
 def aralia_model_search_roots() -> list[Path]:
@@ -138,9 +264,9 @@ def build_fault_tree_payload(input_files: list[str]) -> dict[str, Any]:
         return {"model": path.name, "top": None, "nodes": [], "edges": []}
 
     model_name = fault_tree.attrib.get("name") or path.stem
-    gate_defs = [child for child in fault_tree if _tag(child) == "define-gate"]
-    basic_defs = [child for child in fault_tree if _tag(child) == "define-basic-event"]
-    top_gate = gate_defs[0].attrib.get("name") if gate_defs else None
+    gate_defs = _iter_scoped_gate_defs(fault_tree)
+    basic_defs = [child for child in root.iter() if _tag(child) == "define-basic-event"]
+    house_defs = [child for child in root.iter() if _tag(child) == "define-house-event"]
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, str]] = []
@@ -153,52 +279,49 @@ def build_fault_tree_payload(input_files: list[str]) -> dict[str, Any]:
             "id": _node_id("basic_event", name),
             "kind": "basic_event",
             "label": name,
+            "description": _child_text(basic, "label"),
+            "flavor": _attribute_value(basic, "flavor"),
         }
 
-    for gate in gate_defs:
-        name = gate.attrib.get("name")
+    for house in house_defs:
+        name = house.attrib.get("name")
         if not name:
             continue
+        nodes[_node_id("house_event", name)] = {
+            "id": _node_id("house_event", name),
+            "kind": "house_event",
+            "label": name,
+            "description": _child_text(house, "label"),
+            "value": _constant_value(house),
+        }
+
+    for name, gate, scope in gate_defs:
         gate_id = _node_id("gate", name)
-        connective = next((child for child in gate if _tag(child) not in {"label", "description"}), None)
-        connective_name = _tag(connective) if connective is not None else "unknown"
+        connective, connective_name = _gate_connective(gate)
         nodes[gate_id] = {
             "id": gate_id,
             "kind": "gate",
             "label": name,
+            "description": _child_text(gate, "label"),
             "connective": connective_name,
             "min": connective.attrib.get("min") if connective is not None else None,
+            "max": connective.attrib.get("max") if connective is not None else None,
         }
         if connective is None:
             continue
-        for child in connective:
-            child_tag = _tag(child)
-            child_name = child.attrib.get("name")
-            if not child_name:
+        for child in _connective_children(connective, connective_name):
+            child_id = _reference_node_id(child, scope)
+            if child_id is None:
                 continue
-            if child_tag == "gate":
-                child_id = _node_id("gate", child_name)
-                nodes.setdefault(child_id, {
-                    "id": child_id,
-                    "kind": "gate",
-                    "label": child_name,
-                    "connective": "unknown",
-                })
-            elif child_tag == "basic-event":
-                child_id = _node_id("basic_event", child_name)
-                nodes.setdefault(child_id, {
-                    "id": child_id,
-                    "kind": "basic_event",
-                    "label": child_name,
-                })
-            else:
-                continue
+            _ensure_reference_node(nodes, child_id)
             edges.append({"source": gate_id, "target": child_id})
+
+    top = _infer_fault_tree_top(gate_defs, edges)
 
     return {
         "model": model_name,
         "source": str(path),
-        "top": _node_id("gate", top_gate) if top_gate else None,
+        "top": top,
         "nodes": list(nodes.values()),
         "edges": edges,
     }
@@ -546,9 +669,8 @@ def _empty_dag_payload(model: str | None, source: str | None = None) -> dict[str
 
 
 def _parse_fault_tree_graph(fault_tree: ET.Element) -> dict[str, Any]:
-    gate_defs = [child for child in fault_tree if _tag(child) == "define-gate"]
+    gate_defs = _iter_scoped_gate_defs(fault_tree)
     basic_defs = [child for child in fault_tree if _tag(child) == "define-basic-event"]
-    top_gate = gate_defs[0].attrib.get("name") if gate_defs else None
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[tuple[str, str]] = []
@@ -560,48 +682,42 @@ def _parse_fault_tree_graph(fault_tree: ET.Element) -> dict[str, Any]:
         if name:
             nodes[_node_id("basic_event", name)] = {"kind": "basic_event", "type": 0}
 
-    for gate in gate_defs:
-        name = gate.attrib.get("name")
-        if not name:
-            continue
+    for name, gate, scope in gate_defs:
         gate_id = _node_id("gate", name)
-        connective = next((child for child in gate if _tag(child) not in {"label", "description"}), None)
-        connective_name = _tag(connective) if connective is not None else "unknown"
+        connective, connective_name = _gate_connective(gate)
         nodes[gate_id] = {
             "kind": "gate",
             "type": NODE_TYPE_BY_CONNECTIVE.get(connective_name, 1),
         }
         if connective is None:
             continue
-        for child in connective:
-            child_tag = _tag(child)
-            child_name = child.attrib.get("name")
-            if not child_name:
+        for child in _connective_children(connective, connective_name):
+            child_id = _reference_node_id(child, scope)
+            if child_id is None:
                 continue
-            if child_tag == "gate":
-                child_id = _node_id("gate", child_name)
+            if child_id.startswith("gate:"):
                 nodes.setdefault(child_id, {"kind": "gate", "type": 1})
-            elif child_tag == "basic-event":
+            elif child_id.startswith("house_event:"):
+                nodes.setdefault(child_id, {"kind": "constant_event", "type": NODE_TYPE_BY_NAME["constant_event"]})
+            else:
                 # A <basic-event> reference is a basic event by its tag, even
                 # when its <define-basic-event> lives under <model-data> rather
                 # than inside <define-fault-tree>. Type 0 keeps the circle
                 # filled; `unknown_event` (type 1) is reserved for truly
                 # unidentifiable references.
-                child_id = _node_id("basic_event", child_name)
                 nodes.setdefault(child_id, {"kind": "basic_event", "type": 0})
-            else:
-                continue
             edges.append((gate_id, child_id))
             children_by_source.setdefault(gate_id, []).append(child_id)
             parents_by_target.setdefault(child_id, []).append(gate_id)
 
+    edge_dicts = [{"source": source, "target": target} for source, target in edges]
     counts = {
         "gate": sum(1 for node in nodes.values() if node["kind"] == "gate"),
         "basic_event": sum(1 for node in nodes.values() if node["kind"] == "basic_event"),
         "unknown_event": sum(1 for node in nodes.values() if node["kind"] == "unknown_event"),
     }
     return {
-        "top": _node_id("gate", top_gate) if top_gate else None,
+        "top": _infer_fault_tree_top(gate_defs, edge_dicts),
         "nodes": nodes,
         "edges": edges,
         "children_by_source": children_by_source,

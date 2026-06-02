@@ -245,9 +245,9 @@ RUN cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
           -DCMAKE_C_COMPILER=$CMAKE_C_COMPILER \
           -DCMAKE_CXX_COMPILER=$CMAKE_CXX_COMPILER \
           -DCLANG_EXECUTABLE_PATH=$CLANG_EXECUTABLE_PATH \
-          -DLLVM_DIR=$LLVM_DIR .. && \
-     make -j && \
-     make install
+          -DLLVM_DIR=$LLVM_DIR ..
+RUN make -j && \
+    make install
 
 ## setup a build/dev environment
 FROM generic_backend AS devimage
