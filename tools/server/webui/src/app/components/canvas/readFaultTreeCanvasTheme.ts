@@ -16,8 +16,14 @@ export type FaultTreeCanvasTheme = {
   gateCornerRadiusScale: number;
   fillBasicEvent: string;
   fillAnd: string;
+  fillNand: string;
   fillOr: string;
+  fillNor: string;
+  fillXor: string;
+  fillXnor: string;
   fillAtleast: string;
+  fillNot: string;
+  fillHouseEvent: string;
   fillGateDefault: string;
   labelColor: string;
   labelFontFamily: string;
@@ -71,8 +77,14 @@ export function readFaultTreeCanvasTheme(themeRoot: HTMLElement): FaultTreeCanva
     gateCornerRadiusScale: readCssNumber(style, "--ft-gate-corner-radius-scale", 3),
     fillBasicEvent: readCssString(style, "--ft-fill-basic-event", "rgba(179, 152, 102, 0.18)"),
     fillAnd: readCssString(style, "--ft-fill-and", "rgba(107, 127, 150, 0.16)"),
+    fillNand: readCssString(style, "--ft-fill-nand", "rgba(107, 127, 150, 0.66)"),
     fillOr: readCssString(style, "--ft-fill-or", "rgba(168, 128, 122, 0.16)"),
+    fillNor: readCssString(style, "--ft-fill-nor", "rgba(168, 128, 122, 0.66)"),
+    fillXor: readCssString(style, "--ft-fill-xor", "rgba(139, 161, 137, 0.16)"),
+    fillXnor: readCssString(style, "--ft-fill-xnor", "rgba(139, 161, 137, 0.66)"),
     fillAtleast: readCssString(style, "--ft-fill-atleast", "rgba(139, 161, 137, 0.18)"),
+    fillNot: readCssString(style, "--ft-fill-not", "rgba(139, 161, 137, 0.66)"),
+    fillHouseEvent: readCssString(style, "--ft-fill-house-event", "rgba(179, 152, 102, 0.42)"),
     fillGateDefault: readCssString(style, "--ft-fill-gate-default", "rgba(250, 247, 243, 0.72)"),
     labelColor: readCssString(style, "--ft-label-color", "#22201e"),
     labelFontFamily: readCssString(style, "--ft-label-font-family", "IBM Plex Mono, ui-monospace, monospace"),

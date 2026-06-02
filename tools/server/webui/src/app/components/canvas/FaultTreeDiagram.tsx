@@ -1,76 +1,80 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./canvas.css";
 import { formatInteger } from "../../../lib/format";
 import { EmptyState } from "../../ui";
+import { FAULT_TREE_CANVAS_VIEWPORT, useCanvasFrameSize } from "./canvasViewport";
+import {
+  fitLayoutView,
+  panViewTransform,
+  resetViewTransform,
+  wheelZoomAtCanvasPoint,
+  zoomAtPoint,
+} from "./canvasViewportTransform";
 import { drawFaultTreeCanvas } from "./drawFaultTree";
 import { layoutFaultTree } from "./layoutFaultTree";
-import type { CanvasSize, FaultTreePayload, ViewTransform } from "./types";
+import type { FaultTreePayload, ViewTransform } from "./types";
+import { useNonPassiveWheel } from "./useNonPassiveWheel";
 
-const DEFAULT_SIZE: CanvasSize = { width: 900, height: 620 };
-const DEFAULT_VIEW: ViewTransform = { scale: 1, offsetX: 72, offsetY: 72 };
+const VIEWPORT = FAULT_TREE_CANVAS_VIEWPORT;
 
 export type FaultTreeDiagramProps = {
   tree: FaultTreePayload;
-  /** Shown below the canvas when omitted. */
-  note?: string;
 };
 
-export function FaultTreeDiagram({ tree, note }: FaultTreeDiagramProps) {
+export function FaultTreeDiagram({ tree }: FaultTreeDiagramProps) {
   const layout = useMemo(() => layoutFaultTree(tree), [tree]);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
-  const [size, setSize] = useState<CanvasSize>(DEFAULT_SIZE);
-  const [view, setView] = useState<ViewTransform>(DEFAULT_VIEW);
+  const sizeRef = useRef(VIEWPORT.layout.defaultSize);
+  const didInitialFitRef = useRef(false);
+  const [view, setView] = useState<ViewTransform>(() =>
+    resetViewTransform(VIEWPORT.layout.defaultSize, VIEWPORT),
+  );
+  const { size, hasMeasured } = useCanvasFrameSize(frameRef, VIEWPORT.layout);
 
-  const fitView = () => {
-    const scale = Math.max(0.001, Math.min(1.4, Math.min(size.width / layout.width, size.height / layout.height) * 0.92));
-    setView({
-      scale,
-      offsetX: Math.max(24, (size.width - layout.width * scale) / 2),
-      offsetY: Math.max(24, (size.height - layout.height * scale) / 2),
-    });
-  };
+  const fitView = useCallback(() => {
+    setView(fitLayoutView(layout.width, layout.height, sizeRef.current, VIEWPORT));
+  }, [layout.width, layout.height]);
 
-  const resetView = () => setView(DEFAULT_VIEW);
-
-  const zoomAtCenter = (factor: number) => {
-    const px = size.width / 2;
-    const py = size.height / 2;
-    setView((prev) => {
-      const nextScale = Math.max(0.03, Math.min(2.5, prev.scale * factor));
-      const worldX = (px - prev.offsetX) / prev.scale;
-      const worldY = (py - prev.offsetY) / prev.scale;
-      return {
-        scale: nextScale,
-        offsetX: px - worldX * nextScale,
-        offsetY: py - worldY * nextScale,
-      };
-    });
-  };
-
-  const panView = (dx: number, dy: number) => {
-    setView((prev) => ({ ...prev, offsetX: prev.offsetX + dx, offsetY: prev.offsetY + dy }));
-  };
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return undefined;
-    const observer = new ResizeObserver(([entry]) => {
-      setSize({
-        width: Math.max(320, entry.contentRect.width),
-        height: Math.max(420, entry.contentRect.height),
-      });
-    });
-    observer.observe(frame);
-    return () => observer.disconnect();
+  const resetView = useCallback(() => {
+    setView(resetViewTransform(sizeRef.current, VIEWPORT));
   }, []);
 
+  const zoomAtCenter = useCallback((factor: number) => {
+    const currentSize = sizeRef.current;
+    setView((prev) =>
+      zoomAtPoint(prev, currentSize.width / 2, currentSize.height / 2, factor, VIEWPORT),
+    );
+  }, []);
+
+  const panView = useCallback((dx: number, dy: number) => {
+    setView((prev) => panViewTransform(prev, dx, dy));
+  }, []);
+
+  const handleWheel = useCallback((event: WheelEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setView((prev) => wheelZoomAtCanvasPoint(prev, canvas, event, VIEWPORT));
+  }, []);
+
+  useNonPassiveWheel(canvasRef, handleWheel, layout.nodes.length > 0);
+
   useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
+
+  useEffect(() => {
+    didInitialFitRef.current = false;
+  }, [tree]);
+
+  useEffect(() => {
+    if (didInitialFitRef.current || !hasMeasured) {
+      return;
+    }
     fitView();
-    // Fit when layout dimensions change; pan/zoom owns subsequent view updates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout.width, layout.height]);
+    didInitialFitRef.current = true;
+  }, [tree, fitView, hasMeasured, size]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -85,25 +89,13 @@ export function FaultTreeDiagram({ tree, note }: FaultTreeDiagramProps) {
 
   const gateCount = tree.nodes.filter((node) => node.kind === "gate").length;
   const basicEventCount = tree.nodes.filter((node) => node.kind === "basic_event").length;
-  const footerNote = note ?? "Canvas DAG renderer: shared nodes are drawn once; drag to pan, wheel to zoom. Labels appear as zoom increases.";
+  const houseEventCount = tree.nodes.filter((node) => node.kind === "house_event").length;
+  const eventSummary = houseEventCount
+    ? `${formatInteger(basicEventCount)} basic events · ${formatInteger(houseEventCount)} house events`
+    : `${formatInteger(basicEventCount)} basic events`;
 
   return (
     <div className="fault-tree-frame" ref={frameRef}>
-      <div className="fault-tree-toolbar">
-        <span>
-          {formatInteger(gateCount)} gates · {formatInteger(basicEventCount)} basic events · {formatInteger(tree.edges.length)} edges
-        </span>
-        <div className="fault-tree-controls" aria-label="Fault tree viewport controls">
-          <button className="fault-tree-control fit" type="button" onClick={fitView}>Fit</button>
-          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(1.25)} aria-label="Zoom in">+</button>
-          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(0.8)} aria-label="Zoom out">−</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, 90)} aria-label="Pan up">↑</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, -90)} aria-label="Pan down">↓</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(90, 0)} aria-label="Pan left">←</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(-90, 0)} aria-label="Pan right">→</button>
-          <button className="fault-tree-control reset-view" type="button" onClick={resetView}>Reset</button>
-        </div>
-      </div>
       <canvas
         ref={canvasRef}
         className="fault-tree-canvas"
@@ -128,22 +120,22 @@ export function FaultTreeDiagram({ tree, note }: FaultTreeDiagramProps) {
         onPointerCancel={() => {
           dragRef.current = null;
         }}
-        onWheel={(event) => {
-          event.preventDefault();
-          const rect = event.currentTarget.getBoundingClientRect();
-          const px = event.clientX - rect.left;
-          const py = event.clientY - rect.top;
-          const nextScale = Math.max(0.001, Math.min(2.5, view.scale * Math.exp(-event.deltaY * 0.0012)));
-          const worldX = (px - view.offsetX) / view.scale;
-          const worldY = (py - view.offsetY) / view.scale;
-          setView({
-            scale: nextScale,
-            offsetX: px - worldX * nextScale,
-            offsetY: py - worldY * nextScale,
-          });
-        }}
       />
-      <p className="fault-tree-note">{footerNote}</p>
+      <div className="fault-tree-toolbar">
+        <span>
+          {formatInteger(gateCount)} gates · {eventSummary} · {formatInteger(tree.edges.length)} edges
+        </span>
+        <div className="fault-tree-controls" aria-label="Fault tree viewport controls">
+          <button className="fault-tree-control fit" type="button" onClick={fitView}>Fit</button>
+          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(VIEWPORT.button.zoomInFactor)} aria-label="Zoom in">+</button>
+          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(VIEWPORT.button.zoomOutFactor)} aria-label="Zoom out">−</button>
+          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, VIEWPORT.button.panStepPx)} aria-label="Pan up">↑</button>
+          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, -VIEWPORT.button.panStepPx)} aria-label="Pan down">↓</button>
+          <button className="fault-tree-control pan" type="button" onClick={() => panView(VIEWPORT.button.panStepPx, 0)} aria-label="Pan left">←</button>
+          <button className="fault-tree-control pan" type="button" onClick={() => panView(-VIEWPORT.button.panStepPx, 0)} aria-label="Pan right">→</button>
+          <button className="fault-tree-control reset-view" type="button" onClick={resetView}>Reset</button>
+        </div>
+      </div>
     </div>
   );
 }

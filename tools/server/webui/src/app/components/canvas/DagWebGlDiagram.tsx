@@ -1,31 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatInteger } from "../../../lib/format";
 import { EmptyState } from "../../ui";
+import { DAG_CANVAS_VIEWPORT, useCanvasFrameSize } from "./canvasViewport";
+import {
+  fitBoundsView,
+  panViewTransform,
+  resetViewTransform,
+  wheelZoomAtCanvasPoint,
+  zoomAtPoint,
+} from "./canvasViewportTransform";
 import { DagWebGlRenderer } from "./drawDagWebGl";
-import type { CanvasSize, DagBounds, DagPayload, ViewTransform } from "./types";
+import type { DagPayload, ViewTransform } from "./types";
+import { useNonPassiveWheel } from "./useNonPassiveWheel";
 
-const DEFAULT_SIZE: CanvasSize = { width: 900, height: 620 };
-const MIN_SCALE = 0.000001;
-const MAX_SCALE = 512;
-const FIT_PADDING = 1.2;
+const VIEWPORT = DAG_CANVAS_VIEWPORT;
 
 export type DagWebGlDiagramProps = {
   dag: DagPayload;
-  note?: string;
 };
 
-export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
+export function DagWebGlDiagram({ dag }: DagWebGlDiagramProps) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<DagWebGlRenderer | null>(null);
   const rafRef = useRef<number | null>(null);
-  const sizeRef = useRef<CanvasSize>(DEFAULT_SIZE);
-  const viewRef = useRef<ViewTransform>(defaultView(DEFAULT_SIZE));
+  const sizeRef = useRef(VIEWPORT.layout.defaultSize);
+  const viewRef = useRef<ViewTransform>(resetViewTransform(VIEWPORT.layout.defaultSize, VIEWPORT));
   const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
-  const hasLayoutSizeRef = useRef(false);
   const didInitialFitRef = useRef(false);
-  const [size, setSize] = useState<CanvasSize>(DEFAULT_SIZE);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const { size, hasMeasured } = useCanvasFrameSize(frameRef, VIEWPORT.layout);
 
   const counts = useMemo(() => {
     const gates = dag.counts?.gate ?? dag.nodes.type.filter((typeIndex) => typeIndex > 1).length;
@@ -47,28 +51,19 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
   }, [scheduleDraw]);
 
   const fitView = useCallback(() => {
-    applyView(fitDagView(dag.bounds, sizeRef.current));
+    applyView(fitBoundsView(dag.bounds, sizeRef.current, VIEWPORT));
   }, [applyView, dag.bounds]);
 
   const resetView = useCallback(() => {
-    applyView(defaultView(sizeRef.current));
+    applyView(resetViewTransform(sizeRef.current, VIEWPORT));
   }, [applyView]);
 
   const panView = useCallback((dx: number, dy: number) => {
-    const view = viewRef.current;
-    applyView({ ...view, offsetX: view.offsetX + dx, offsetY: view.offsetY + dy });
+    applyView(panViewTransform(viewRef.current, dx, dy));
   }, [applyView]);
 
   const zoomAt = useCallback((px: number, py: number, factor: number) => {
-    const view = viewRef.current;
-    const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, view.scale * factor));
-    const worldX = (px - view.offsetX) / view.scale;
-    const worldY = (py - view.offsetY) / view.scale;
-    applyView({
-      scale: nextScale,
-      offsetX: px - worldX * nextScale,
-      offsetY: py - worldY * nextScale,
-    });
+    applyView(zoomAtPoint(viewRef.current, px, py, factor, VIEWPORT));
   }, [applyView]);
 
   const zoomAtCenter = useCallback((factor: number) => {
@@ -76,19 +71,13 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
     zoomAt(currentSize.width / 2, currentSize.height / 2, factor);
   }, [zoomAt]);
 
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return undefined;
-    const observer = new ResizeObserver(([entry]) => {
-      hasLayoutSizeRef.current = true;
-      setSize({
-        width: Math.max(320, entry.contentRect.width),
-        height: Math.max(420, entry.contentRect.height),
-      });
-    });
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, []);
+  const handleWheel = useCallback((event: WheelEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    applyView(wheelZoomAtCanvasPoint(viewRef.current, canvas, event, VIEWPORT));
+  }, [applyView]);
+
+  useNonPassiveWheel(canvasRef, handleWheel, dag.nodes.count > 0 && renderError === null);
 
   useEffect(() => {
     sizeRef.current = size;
@@ -124,12 +113,12 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
   }, [dag]);
 
   useEffect(() => {
-    if (didInitialFitRef.current || renderError || !rendererRef.current || !hasLayoutSizeRef.current) {
+    if (didInitialFitRef.current || renderError || !rendererRef.current || !hasMeasured) {
       return;
     }
     fitView();
     didInitialFitRef.current = true;
-  }, [dag, fitView, renderError, size]);
+  }, [dag, fitView, hasMeasured, renderError, size]);
 
   useEffect(() => () => {
     if (rafRef.current !== null) {
@@ -144,21 +133,6 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
 
   return (
     <div className="fault-tree-frame dag-webgl-frame" ref={frameRef}>
-      <div className="fault-tree-toolbar">
-        <span>
-          {formatInteger(counts.gates)} gates · {formatInteger(counts.basicEvents)} events · {formatInteger(dag.edges.count)} edges
-        </span>
-        <div className="fault-tree-controls" aria-label="DAG viewport controls">
-          <button className="fault-tree-control fit" type="button" onClick={fitView}>Fit</button>
-          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(1.25)} aria-label="Zoom in">+</button>
-          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(0.8)} aria-label="Zoom out">−</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, 90)} aria-label="Pan up">↑</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, -90)} aria-label="Pan down">↓</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(90, 0)} aria-label="Pan left">←</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(-90, 0)} aria-label="Pan right">→</button>
-          <button className="fault-tree-control reset-view" type="button" onClick={resetView}>Reset</button>
-        </div>
-      </div>
       {renderError ? <EmptyState text={renderError} /> : null}
       <canvas
         ref={canvasRef}
@@ -187,32 +161,22 @@ export function DagWebGlDiagram({ dag, note }: DagWebGlDiagramProps) {
         onPointerCancel={() => {
           dragRef.current = null;
         }}
-        onWheel={(event) => {
-          event.preventDefault();
-          const rect = event.currentTarget.getBoundingClientRect();
-          zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-event.deltaY * 0.0012));
-        }}
       />
+      <div className="fault-tree-toolbar">
+        <span>
+          {formatInteger(counts.gates)} gates · {formatInteger(counts.basicEvents)} events · {formatInteger(dag.edges.count)} edges
+        </span>
+        <div className="fault-tree-controls" aria-label="DAG viewport controls">
+          <button className="fault-tree-control fit" type="button" onClick={fitView}>Fit</button>
+          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(VIEWPORT.button.zoomInFactor)} aria-label="Zoom in">+</button>
+          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(VIEWPORT.button.zoomOutFactor)} aria-label="Zoom out">−</button>
+          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, VIEWPORT.button.panStepPx)} aria-label="Pan up">↑</button>
+          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, -VIEWPORT.button.panStepPx)} aria-label="Pan down">↓</button>
+          <button className="fault-tree-control pan" type="button" onClick={() => panView(VIEWPORT.button.panStepPx, 0)} aria-label="Pan left">←</button>
+          <button className="fault-tree-control pan" type="button" onClick={() => panView(-VIEWPORT.button.panStepPx, 0)} aria-label="Pan right">→</button>
+          <button className="fault-tree-control reset-view" type="button" onClick={resetView}>Reset</button>
+        </div>
+      </div>
     </div>
   );
-}
-
-function defaultView(size: CanvasSize): ViewTransform {
-  return { scale: 64, offsetX: size.width / 2, offsetY: 80 };
-}
-
-function fitDagView(bounds: DagBounds, size: CanvasSize): ViewTransform {
-  const paddedWidth = Math.max(bounds.width + FIT_PADDING * 2, 1);
-  const paddedHeight = Math.max(bounds.height + FIT_PADDING * 2, 1);
-  const scale = Math.max(
-    MIN_SCALE,
-    Math.min(MAX_SCALE, Math.min(size.width / paddedWidth, size.height / paddedHeight) * 0.92),
-  );
-  const centerX = (bounds.minX + bounds.maxX) / 2;
-  const centerY = (bounds.minY + bounds.maxY) / 2;
-  return {
-    scale,
-    offsetX: size.width / 2 - centerX * scale,
-    offsetY: size.height / 2 - centerY * scale,
-  };
 }

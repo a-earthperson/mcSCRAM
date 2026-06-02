@@ -1,6 +1,8 @@
 /* Fault-tree canvas viewer (FaultTreeDiagram) */
 
 .fault-tree-frame {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 680px;
   overflow: hidden;
@@ -36,6 +38,7 @@
   --ft-fill-xnor: color-mix(in srgb, var(--pigment-sage) 66%, transparent);
   --ft-fill-atleast: color-mix(in srgb, var(--pigment-sage) 18%, transparent);
   --ft-fill-not: color-mix(in srgb, var(--pigment-sage) 66%, transparent);
+  --ft-fill-house-event: color-mix(in srgb, var(--pigment-ochre) 42%, transparent);
   --ft-fill-gate-default: color-mix(in srgb, var(--paper) 72%, transparent);
 
   --ft-label-color: var(--ink);
@@ -55,7 +58,7 @@
 }
 
 .dag-webgl-frame {
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .dag-webgl-canvas {
@@ -63,15 +66,13 @@
 }
 
 .fault-tree-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   gap: 16px;
   align-items: center;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--rule-faint);
+  border-top: 1px solid var(--rule-faint);
   background: transparent;
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -127,8 +128,9 @@
 
 .fault-tree-canvas {
   display: block;
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
-  height: calc(100% - 38px);
   background: transparent;
   cursor: grab;
   touch-action: none;
@@ -136,13 +138,4 @@
 
 .fault-tree-canvas:active {
   cursor: grabbing;
-}
-
-.fault-tree-note {
-  margin: 0;
-  padding: 10px 14px;
-  border-top: 1px solid var(--rule-faint);
-  color: var(--ink-mute);
-  font-family: var(--mono);
-  font-size: 0.72rem;
 }

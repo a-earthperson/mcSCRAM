@@ -1,9 +1,13 @@
 export type FaultTreeNode = {
   id: string;
-  kind: "gate" | "basic_event";
+  kind: "gate" | "basic_event" | "house_event";
   label: string;
+  description?: string | null;
   connective?: string;
   min?: string | null;
+  max?: string | null;
+  flavor?: string | null;
+  value?: string | null;
 };
 
 export type FaultTreeEdge = {

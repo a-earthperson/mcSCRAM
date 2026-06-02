@@ -1,5 +1,11 @@
+import {
+  drawFaultTreeEvent,
+  drawFaultTreeGate,
+  faultTreeDetailLabel,
+  isFaultTreeNullGate,
+} from "./faultTreeGlyphs";
 import { readFaultTreeCanvasTheme, type FaultTreeCanvasTheme } from "./readFaultTreeCanvasTheme";
-import type { CanvasSize, FaultTreeLayout, FaultTreeNode, RenderNode, ViewTransform } from "./types";
+import type { CanvasSize, FaultTreeLayout, RenderNode, ViewTransform } from "./types";
 
 export function drawFaultTreeCanvas(
   canvas: HTMLCanvasElement,
@@ -37,10 +43,12 @@ export function drawFaultTreeCanvas(
     const target = layout.nodes[edge.target];
     if (!source || !target) continue;
     if (!visible(source) && !visible(target)) continue;
+    const sourceAnchor = isFaultTreeNullGate(source.node) ? 0 : theme.edgeSourceAnchor;
+    const targetAnchor = isFaultTreeNullGate(target.node) ? 0 : theme.edgeTargetAnchor;
     const sx = toScreenX(source.x);
-    const sy = toScreenY(source.y + theme.edgeSourceAnchor);
+    const sy = toScreenY(source.y + sourceAnchor);
     const tx = toScreenX(target.x);
-    const ty = toScreenY(target.y - theme.edgeTargetAnchor);
+    const ty = toScreenY(target.y - targetAnchor);
     const midY = (sy + ty) / 2;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
@@ -53,13 +61,6 @@ export function drawFaultTreeCanvas(
     if (!visible(node)) continue;
     drawFaultTreeNode(ctx, node, view, labelVisible, theme);
   }
-}
-
-function gateFill(node: FaultTreeNode, theme: FaultTreeCanvasTheme): string {
-  if (node.connective === "and") return theme.fillAnd;
-  if (node.connective === "or") return theme.fillOr;
-  if (node.connective === "atleast") return theme.fillAtleast;
-  return theme.fillGateDefault;
 }
 
 function scaledPx(base: number, min: number, scale: number): number {
@@ -80,49 +81,27 @@ function drawFaultTreeNode(
   const gateW = theme.gateWidth * scale;
   const gateH = theme.gateHeight * scale;
   const radius = theme.basicEventRadius * scale;
+  const cornerRadius = Math.max(theme.gateCornerRadiusMin, theme.gateCornerRadiusScale * scale);
 
   ctx.lineWidth = Math.max(theme.nodeStrokeWidthMin, scale * theme.nodeStrokeWidthScale);
   ctx.strokeStyle = theme.stroke;
-  if (node.kind === "basic_event") {
-    ctx.fillStyle = theme.fillBasicEvent;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+  if (node.kind === "gate") {
+    drawFaultTreeGate(ctx, node, x, y, gateW, gateH, cornerRadius, theme);
   } else {
-    ctx.fillStyle = gateFill(node, theme);
-    ctx.beginPath();
-    ctx.roundRect(
-      x - gateW / 2,
-      y - gateH / 2,
-      gateW,
-      gateH,
-      Math.max(theme.gateCornerRadiusMin, theme.gateCornerRadiusScale * scale),
-    );
-    ctx.fill();
-    ctx.stroke();
+    drawFaultTreeEvent(ctx, node, x, y, radius, theme);
   }
 
   if (!labelVisible) return;
+  const maxWidth = scaledPx(theme.labelMaxWidthScale, theme.labelMaxWidthMin, scale);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = theme.labelColor;
   ctx.font = `${scaledPx(theme.labelFontSize, theme.labelFontSizeMin, scale)}px ${theme.labelFontFamily}`;
-  ctx.fillText(
-    node.label,
-    x,
-    y + theme.labelOffsetY * scale,
-    scaledPx(theme.labelMaxWidthScale, theme.labelMaxWidthMin, scale),
-  );
+  ctx.fillText(node.label, x, y + theme.labelOffsetY * scale, maxWidth);
+
+  const detailLabel = faultTreeDetailLabel(node);
+  if (!detailLabel) return;
   ctx.fillStyle = theme.connectiveColor;
   ctx.font = `${theme.connectiveFontWeight} ${scaledPx(theme.connectiveFontSize, theme.connectiveFontSizeMin, scale)}px ${theme.connectiveFontFamily}`;
-  const connective = node.kind === "gate"
-    ? node.connective === "atleast" && node.min ? `K/${node.min}` : node.connective ?? "gate"
-    : "event";
-  ctx.fillText(
-    connective.toUpperCase(),
-    x,
-    y + theme.connectiveOffsetY * scale,
-    scaledPx(theme.labelMaxWidthScale, theme.labelMaxWidthMin, scale),
-  );
+  ctx.fillText(detailLabel, x, y + theme.connectiveOffsetY * scale, maxWidth);
 }
