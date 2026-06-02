@@ -106,22 +106,22 @@
 
 .fault-tree-control.fit {
   --tree-control-pigment: var(--pigment-indigo-deep);
-  --tree-control-wash: rgba(74, 94, 118, 0.15);
+  --tree-control-wash: var(--wash-control-indigo);
 }
 
 .fault-tree-control.zoom {
   --tree-control-pigment: var(--pigment-sage);
-  --tree-control-wash: rgba(139, 161, 137, 0.18);
+  --tree-control-wash: var(--wash-control-sage);
 }
 
 .fault-tree-control.pan {
   --tree-control-pigment: var(--pigment-ochre);
-  --tree-control-wash: rgba(179, 152, 102, 0.18);
+  --tree-control-wash: var(--wash-control-ochre);
 }
 
 .fault-tree-control.reset-view {
   --tree-control-pigment: var(--pigment-madder);
-  --tree-control-wash: rgba(168, 128, 122, 0.16);
+  --tree-control-wash: var(--wash-control-madder);
 }
 
 .fault-tree-canvas {
