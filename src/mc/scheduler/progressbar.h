@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <mutex>
+#include <functional>
 
 #include "mc/stats/diagnostics.h"
 #include "mc/logger/log_benchmark.h"
@@ -27,13 +28,19 @@ class convergence_controller;
 
 template <typename policy_t_, typename bitpack_t_, typename prob_t_, typename size_t_>
 struct progress {
+    using progress_pairs_t = std::vector<std::pair<std::string, std::string>>;
+    using progress_callback_t = std::function<void(const progress_pairs_t&)>;
 
-    void initialize(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> *controller, const bool watch_mode, const std::optional<std::string> &log_to_file = std::nullopt) {
+    void initialize(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> *controller,
+                    const bool watch_mode,
+                    const std::optional<std::string> &log_to_file = std::nullopt,
+                    progress_callback_t progress_callback = {}) {
         // Initialize timing for throughput tracking
         last_tick_time_ = std::chrono::high_resolution_clock::now();
         first_tick_ = true;
 
-        watch_mode_ = watch_mode || log_to_file; // watch if explicitly asked to watch, or passed a progressbar logfile
+        progress_callback_ = std::move(progress_callback);
+        watch_mode_ = watch_mode || log_to_file || progress_callback_;
 
         // if passed a progressbar log file, initialize the logger
         if (log_to_file) {
@@ -42,18 +49,16 @@ struct progress {
             LOG(DEBUG2) << "Progress log in :: " << filepath;
         }
 
-        // Configure progress bar only if watch mode is supported OR if progress bar log file is set
-        if ((!isatty(fileno(stdout)) || !isatty(fileno(stderr))) && !log_to_file) {
+        // Configure terminal rendering only when explicitly requested and attached to a TTY.
+        if (watch_mode && (!isatty(fileno(stdout)) || !isatty(fileno(stderr)))) {
             LOG(WARNING) << "Disabling progressbar since neither STDOUT nor STDERR are TTYs.";
-            watch_mode_ = false;
             return;
         }
 
         if (!watch_mode) {
-            LOG(WARNING) << "Disabling progressbar since watch mode is disabled. Enable with --watch flag";
-        }
-
-        if (!watch_mode_) {
+            if (!log_to_file && !progress_callback_) {
+                LOG(WARNING) << "Disabling progressbar since watch mode is disabled. Enable with --watch flag";
+            }
             return;
         }
 
@@ -104,7 +109,9 @@ struct progress {
             worker_thread_.join();
         }
 
-        indicators::show_console_cursor(true);
+        if (bars_) {
+            indicators::show_console_cursor(true);
+        }
         for (auto &bar: owned_bars_) {
             bar->mark_as_completed();
         }
@@ -124,6 +131,9 @@ struct progress {
 
     // Mark the convergence bar as complete once the controller reports success.
     void mark_converged(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
+        if (!bars_) {
+            return;
+        }
         tick_convergence_bar(controller);
         if (convergence_ && !bars_->operator[](*convergence_).is_completed()) {
             bars_->operator[](*convergence_).mark_as_completed();
@@ -132,6 +142,9 @@ struct progress {
 
     // Mark the convergence bar as complete once the controller reports success.
     void mark_log_converged(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
+        if (!bars_) {
+            return;
+        }
         tick_log_convergence_bar(controller);
         if (log_convergence_ && !bars_->operator[](*log_convergence_).is_completed()) {
             bars_->operator[](*log_convergence_).mark_as_completed();
@@ -140,6 +153,9 @@ struct progress {
 
     // Mark the iterations bar as complete when the planned iterations finish.
     void mark_fixed_iterations_complete(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
+        if (!bars_) {
+            return;
+        }
         tick_fixed_bar(controller);
         if (fixed_iterations_ && !bars_->operator[](*fixed_iterations_).is_completed()) {
             bars_->operator[](*fixed_iterations_).mark_as_completed();
@@ -147,6 +163,9 @@ struct progress {
     }
 
     void mark_burn_in_complete(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
+        if (!bars_) {
+            return;
+        }
         tick_burn_in(controller);
         if (burn_in_ && !bars_->operator[](*burn_in_).is_completed()) {
             bars_->operator[](*burn_in_).mark_as_completed();
@@ -170,25 +189,32 @@ struct progress {
     }
 
     void perform_normal_update(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
-        tick_fixed_bar(controller);
-        tick_convergence_bar(controller);
-        tick_log_convergence_bar(controller);
-        tick_text(&controller);
+        if (bars_) {
+            tick_fixed_bar(controller);
+            tick_convergence_bar(controller);
+            tick_log_convergence_bar(controller);
+            tick_text(&controller);
+        }
 
         // -----------------------------------------------------------------
         //  CSV logging – one row per normal update
         // -----------------------------------------------------------------
+        const auto pairs = progress_pairs(controller, "sampling");
         if (progress_logger_) {
-            const auto pairs = scram::log::progress::csv_pairs(controller);
             progress_logger_->log_pairs(pairs);
+        }
+        if (progress_callback_) {
+            progress_callback_(pairs);
         }
     }
 
     void perform_burn_in_update(const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller) const {
-        tick_fixed_bar(controller);
-        tick_text(&controller);
+        if (bars_) {
+            tick_fixed_bar(controller);
+            tick_text(&controller);
+        }
 
-        if (burn_in_ && !bars_->operator[](*burn_in_).is_completed()) {
+        if (bars_ && burn_in_ && !bars_->operator[](*burn_in_).is_completed()) {
             auto &bar = bars_->operator[](*burn_in_);
 
             std::ostringstream tar_ss;
@@ -208,6 +234,14 @@ struct progress {
             const std::string ite = std::to_string(cur_ite) + "/" + std::to_string(tot_ite);
             bar.set_option(indicators::option::PostfixText{"[" + ite + "]"});
             bar.set_progress(cur_ite);
+        }
+
+        const auto pairs = progress_pairs(controller, "burn_in");
+        if (progress_logger_) {
+            progress_logger_->log_pairs(pairs);
+        }
+        if (progress_callback_) {
+            progress_callback_(pairs);
         }
     }
 
@@ -247,6 +281,7 @@ struct progress {
     bool watch_mode_ = false;
 
     mutable std::optional<scram::log::BenchmarkLogger> progress_logger_{};
+    progress_callback_t progress_callback_{};
 
     // -------------------------------------------------------------------------
     // Deferred tick machinery.  Updates to the (potentially slow) terminal UI
@@ -344,6 +379,14 @@ struct progress {
             last_exec = std::chrono::high_resolution_clock::now();
             lock.lock();
         }
+    }
+
+    static progress_pairs_t progress_pairs(
+        const convergence_controller<policy_t_, bitpack_t_, prob_t_, size_t_> &controller,
+        const std::string &phase) {
+        auto pairs = scram::log::progress::csv_pairs(controller);
+        pairs.emplace_back("phase", phase);
+        return pairs;
     }
 
     indicators::ProgressBar &add_text(std::optional<std::size_t> &idx, const std::optional<std::string> &pretext) {

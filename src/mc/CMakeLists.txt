@@ -53,6 +53,17 @@ set(MC_HEADERS
         stats/tally.h
 )
 
+if(APPLE)
+  add_library(mc INTERFACE)
+  target_include_directories(mc
+    INTERFACE
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+      $<INSTALL_INTERFACE:include/mc>
+  )
+  target_link_libraries(mc INTERFACE scram AdaptiveCpp::acpp-rt)
+  return()
+endif()
+
 find_package(_adaptivecpp)
 # Add AdaptiveCpp libraries to the global LIBS list
 list(APPEND LIBS AdaptiveCpp::acpp-rt)
@@ -99,9 +110,9 @@ add_sycl_to_target(TARGET mc SOURCES ${MC_SRC})
 # consumers can find it in the same prefix.
 install(
   TARGETS mc
+  COMPONENT scram
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mc
-  COMPONENT scram
 )

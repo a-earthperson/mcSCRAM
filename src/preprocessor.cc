@@ -78,6 +78,7 @@
 #include <algorithm>
 #include <array>
 #include <list>
+#include <map>
 #include <queue>
 #include <unordered_set>
 
@@ -530,11 +531,11 @@ bool IsSubgraphWithinGraph(const GatePtr& root, int enter_time,
 
 void Preprocessor::NormalizeGates(NormalizationType normalization_type)  {
   TIMER(DEBUG3, "NormalizeGates :: ");
-  if (graph_->HasNullGates()) {
+  while (graph_->HasNullGates()) {
       TIMER(DEBUG3, "Removing NULL gates first");
       graph_->RemoveNullGates();
   }
-  assert(!graph_->HasNullGates());
+
   if (normalization_type == NormalizationType::ALL || normalization_type == NormalizationType::ATLEAST) {
       pdag::TopologicalOrder(graph_);  // K/N gates need order.
   }
@@ -561,7 +562,10 @@ void Preprocessor::NormalizeGates(NormalizationType normalization_type)  {
   NormalizeGate(root_gate, normalization_type);  // Registers null gates only.
 
   assert(!graph_->HasConstants());
-  graph_->RemoveNullGates();
+  while (graph_->HasNullGates()) {
+      TIMER(DEBUG3, "Removing NULL gates again");
+      graph_->RemoveNullGates();
+  }
 }
 
 void Preprocessor::NormalizeGates(const bool full)  {
@@ -644,6 +648,491 @@ void Preprocessor::NormalizeXorGate(const GatePtr& gate)  {
   gate->EraseArgs();
   gate->AddArg(gate_one);
   gate->AddArg(gate_two);
+}
+
+namespace {
+
+struct XorGroupMatch {
+  std::array<int, 2> xor_args{};
+  std::vector<int> delta_args;
+  bool xor_complement = false;
+};
+
+struct XorCandidate {
+  GatePtr gate;
+  int parent_arg = 0;
+  bool inverted = false;
+  std::vector<int> effective_args;
+};
+
+struct AtleastGroupMatch {
+  int min_number = 0;
+  std::vector<int> atleast_args;
+  std::vector<GatePtr> members;
+};
+
+bool TryMatchXorGroup(const XorCandidate& lhs, const XorCandidate& rhs,
+                      bool complement_xor, XorGroupMatch* match) {
+  assert(match);
+  match->xor_args = {};
+  match->delta_args.clear();
+  match->xor_complement = false;
+
+  std::vector<int> lhs_delta;
+  std::vector<int> rhs_delta;
+
+  for (int index : lhs.effective_args) {
+    if (boost::binary_search(rhs.effective_args, index)) {
+      match->delta_args.push_back(index);
+    } else {
+      lhs_delta.push_back(index);
+    }
+  }
+
+  for (int index : rhs.effective_args) {
+    if (!boost::binary_search(lhs.effective_args, index))
+      rhs_delta.push_back(index);
+  }
+
+  if (lhs_delta.size() != 2 || rhs_delta.size() != 2)
+    return false;
+
+  for (int index : lhs_delta) {
+    if (!boost::binary_search(rhs_delta, -index))
+      return false;
+  }
+
+  match->xor_complement =
+      complement_xor ^ ((lhs_delta[0] < 0) != (lhs_delta[1] < 0));
+  match->xor_args = {std::abs(lhs_delta[0]), std::abs(lhs_delta[1])};
+  if (match->xor_args[1] < match->xor_args[0])
+    std::swap(match->xor_args[0], match->xor_args[1]);
+  return true;
+}
+
+bool AddEffectiveArg(const XorCandidate& source, int desired_index,
+                     const GatePtr& recipient) {
+  assert(desired_index != 0);
+  int effective_index = desired_index;
+  if (!boost::binary_search(source.effective_args, effective_index)) {
+    effective_index = -desired_index;
+    if (!boost::binary_search(source.effective_args, effective_index))
+      return false;
+  }
+
+  const int source_index = source.inverted ? -effective_index : effective_index;
+  assert(source.gate->args().count(source_index));
+  source.gate->ShareArg(source_index, recipient);
+  if (source_index != desired_index)
+    recipient->NegateArg(source_index);
+  return true;
+}
+
+std::size_t BinomialCapped(int n, int r, std::size_t cap) {
+  if (r < 0 || n < r)
+    return cap + 1;
+  r = std::min(r, n - r);
+  std::size_t result = 1;
+  for (int i = 1; i <= r; ++i) {
+    const auto factor = static_cast<std::size_t>(n - r + i);
+    if (result > (cap * static_cast<std::size_t>(i)) / factor)
+      return cap + 1;
+    result = (result * factor) / static_cast<std::size_t>(i);
+    if (result > cap)
+      return cap + 1;
+  }
+  return result;
+}
+
+bool HasSignedComplementCollision(const std::vector<int>& args) {
+  for (int index : args) {
+    if (index < 0 && boost::binary_search(args, -index))
+      return true;
+  }
+  return false;
+}
+
+bool HaveCommonSignedArg(const GatePtr& lhs, const GatePtr& rhs) {
+  for (int index : lhs->args()) {
+    if (rhs->args().count(index))
+      return true;
+  }
+  return false;
+}
+
+std::vector<std::vector<GatePtr>> GroupConnectedAtleastCandidates(
+    const std::vector<GatePtr>& candidates) {
+  std::vector<std::vector<GatePtr>> groups;
+  std::vector<bool> visited(candidates.size(), false);
+
+  for (std::size_t seed = 0; seed < candidates.size(); ++seed) {
+    if (visited[seed])
+      continue;
+
+    std::vector<GatePtr> group;
+    std::queue<std::size_t> queue;
+    visited[seed] = true;
+    queue.push(seed);
+
+    while (!queue.empty()) {
+      std::size_t current = queue.front();
+      queue.pop();
+      group.push_back(candidates[current]);
+
+      for (std::size_t next = 0; next < candidates.size(); ++next) {
+        if (visited[next])
+          continue;
+        if (!HaveCommonSignedArg(candidates[current], candidates[next]))
+          continue;
+        visited[next] = true;
+        queue.push(next);
+      }
+    }
+
+    if (group.size() > 1)
+      groups.push_back(std::move(group));
+  }
+
+  return groups;
+}
+
+bool TryBuildAtleastMatchForUniverse(
+    const std::vector<int>& universe, int arity, Connective parent_type,
+    const std::map<std::vector<int>, GatePtr>& terms,
+    AtleastGroupMatch* match) {
+  const int n = static_cast<int>(universe.size());
+  if (arity <= 0 || arity > n)
+    return false;
+  if (HasSignedComplementCollision(universe))
+    return false;
+
+  int min_number = 0;
+  switch (parent_type) {
+    case kOr:
+      min_number = arity;
+      break;
+    case kAnd:
+      min_number = n - arity + 1;
+      break;
+    default:
+      assert(false && "Only AND/OR parents can contain threshold encodings.");
+  }
+
+  if (min_number <= 1 || min_number >= n)
+    return false;  // Existing OR/AND forms are already the reduced basis.
+  if (BinomialCapped(n, arity, terms.size()) > terms.size())
+    return false;
+
+  std::vector<GatePtr> members;
+
+  std::vector<int> positions(arity);
+  for (int i = 0; i < arity; ++i)
+    positions[i] = i;
+
+  while (true) {
+    std::vector<int> combination;
+    combination.reserve(arity);
+    for (int position : positions)
+      combination.push_back(universe[position]);
+    auto term = terms.find(combination);
+    if (term == terms.end())
+      return false;
+    members.push_back(term->second);
+
+    int advance = arity - 1;
+    while (advance >= 0 && positions[advance] == n - arity + advance)
+      --advance;
+    if (advance < 0)
+      break;
+
+    ++positions[advance];
+    for (int i = advance + 1; i < arity; ++i)
+      positions[i] = positions[i - 1] + 1;
+  }
+
+  match->min_number = min_number;
+  match->atleast_args = universe;
+  match->members = std::move(members);
+  return true;
+}
+
+bool TryMatchAtleastGroup(const std::vector<GatePtr>& component,
+                          Connective parent_type, AtleastGroupMatch* match) {
+  assert(match);
+  match->min_number = 0;
+  match->atleast_args.clear();
+  match->members.clear();
+
+  if (component.size() < 2)
+    return false;
+
+  const int arity = static_cast<int>(component.front()->args().size());
+  if (arity < 2)
+    return false;
+
+  std::vector<int> universe;
+  std::map<std::vector<int>, GatePtr> terms;
+  for (const GatePtr& member : component) {
+    if (static_cast<int>(member->args().size()) != arity)
+      return false;
+
+    std::vector<int> term(member->args().begin(), member->args().end());
+    universe.insert(universe.end(), term.begin(), term.end());
+    terms.emplace(std::move(term), member);
+  }
+
+  boost::sort(universe);
+  universe.erase(boost::unique(universe).end(), universe.end());
+
+  const int num_args = static_cast<int>(universe.size());
+  if (num_args <= arity)
+    return false;  // This is a single product/clause, not a threshold family.
+
+  if (BinomialCapped(num_args, arity, component.size()) == component.size() &&
+      terms.size() == component.size() &&
+      TryBuildAtleastMatchForUniverse(universe, arity, parent_type, terms, match))
+    return true;
+
+  constexpr std::size_t kMaxUniverseSubsets = 4096;
+  const int max_size = static_cast<int>(universe.size());
+  for (int size = max_size - 1; size > arity; --size) {
+    if (BinomialCapped(max_size, size, kMaxUniverseSubsets) > kMaxUniverseSubsets)
+      continue;
+    if (BinomialCapped(size, arity, component.size()) > component.size())
+      continue;
+
+    std::vector<int> positions(size);
+    for (int i = 0; i < size; ++i)
+      positions[i] = i;
+
+    while (true) {
+      std::vector<int> subset;
+      subset.reserve(size);
+      for (int position : positions)
+        subset.push_back(universe[position]);
+      if (TryBuildAtleastMatchForUniverse(subset, arity, parent_type, terms, match))
+        return true;
+
+      int advance = size - 1;
+      while (advance >= 0 && positions[advance] == max_size - size + advance)
+        --advance;
+      if (advance < 0)
+        break;
+
+      ++positions[advance];
+      for (int i = advance + 1; i < size; ++i)
+        positions[i] = positions[i - 1] + 1;
+    }
+  }
+
+  return false;
+}
+
+}  // namespace
+
+bool Preprocessor::RecognizeXorGroups()  {
+  TIMER(DEBUG3, "Recognizing expanded XOR/XNOR groups");
+  assert(!graph_->HasNullGates());
+  if (graph_->root()->constant())
+    return false;
+
+  graph_->Clear<Pdag::kGateMark>();
+  bool changed = RecognizeXorGroups(graph_->root());
+  if (changed) {
+    graph_->normal(false);
+    graph_->coherent(false);
+    graph_->RemoveNullGates();
+  }
+  return changed;
+}
+
+bool Preprocessor::RecognizeXorGroups(const GatePtr& gate)  {
+  if (gate->mark())
+    return false;
+  gate->mark(true);
+
+  for (const Gate::Arg<Gate>& arg : gate->args<Gate>()) {
+    if (RecognizeXorGroups(arg.second))
+      return true;
+  }
+
+  Connective child_type;
+  Connective wrapper_type;
+  bool complement_xor;
+  switch (gate->type()) {
+    case kOr:
+      child_type = kAnd;
+      wrapper_type = kAnd;
+      complement_xor = true;  // DNF pair is XNOR over the signed residuals.
+      break;
+    case kAnd:
+      child_type = kOr;
+      wrapper_type = kOr;
+      complement_xor = false;  // CNF pair is XOR over the signed residuals.
+      break;
+    default:
+      return false;
+  }
+
+  std::vector<XorCandidate> candidates;
+  for (const Gate::Arg<Gate>& arg : gate->args<Gate>()) {
+    const GatePtr& child = arg.second;
+    if (child->constant())
+      continue;
+    if (child->module())
+      continue;
+
+    bool inverted = false;
+    if (arg.first > 0 && child->type() == child_type) {
+      inverted = false;
+    } else if (arg.first < 0 && child->type() == gate->type()) {
+      inverted = true;
+    } else {
+      continue;
+    }
+
+    if (child->args().size() < 2)
+      continue;
+
+    XorCandidate candidate;
+    candidate.gate = child;
+    candidate.parent_arg = arg.first;
+    candidate.inverted = inverted;
+    candidate.effective_args.assign(child->args().begin(), child->args().end());
+    if (candidate.inverted) {
+      for (int& index : candidate.effective_args)
+        index = -index;
+      boost::sort(candidate.effective_args);
+    }
+    if (HasSignedComplementCollision(candidate.effective_args))
+      continue;
+    candidates.push_back(std::move(candidate));
+  }
+
+  for (auto lhs = candidates.begin(); lhs != candidates.end(); ++lhs) {
+    for (auto rhs = std::next(lhs); rhs != candidates.end(); ++rhs) {
+      XorGroupMatch match;
+      if (!TryMatchXorGroup(*lhs, *rhs, complement_xor, &match))
+        continue;
+
+      auto xor_gate = std::make_shared<Gate>(kXor, graph_);
+      bool added = AddEffectiveArg(*lhs, match.xor_args[0], xor_gate);
+      assert(added && "Matched XOR argument must have a source.");
+      added = AddEffectiveArg(*lhs, match.xor_args[1], xor_gate);
+      assert(added && "Matched XOR argument must have a source.");
+
+      GatePtr replacement = xor_gate;
+      bool replacement_complement = match.xor_complement;
+      if (!match.delta_args.empty()) {
+        replacement = std::make_shared<Gate>(wrapper_type, graph_);
+        for (int index : match.delta_args) {
+          added = AddEffectiveArg(*lhs, index, replacement);
+          assert(added && "Matched XOR delta argument must have a source.");
+        }
+        replacement->AddArg(xor_gate, match.xor_complement);
+        replacement_complement = false;
+      }
+
+      gate->EraseArg(lhs->parent_arg);
+      gate->EraseArg(rhs->parent_arg);
+      gate->AddArg(replacement, replacement_complement);
+
+      if (!gate->constant() && gate->args().size() == 1)
+        gate->type(kNull);
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool Preprocessor::RecognizeAtleastGroups()  {
+  TIMER(DEBUG3, "Recognizing expanded ATLEAST groups");
+  assert(!graph_->HasNullGates());
+  if (graph_->root()->constant())
+    return false;
+
+  graph_->Clear<Pdag::kGateMark>();
+  bool changed = RecognizeAtleastGroups(graph_->root());
+  if (changed) {
+    graph_->normal(false);
+    graph_->RemoveNullGates();
+  }
+  return changed;
+}
+
+bool Preprocessor::RecognizeAtleastGroups(const GatePtr& gate)  {
+  if (gate->mark())
+    return false;
+  gate->mark(true);
+
+  for (const Gate::Arg<Gate>& arg : gate->args<Gate>()) {
+    if (RecognizeAtleastGroups(arg.second))
+      return true;
+  }
+
+  Connective child_type;
+  switch (gate->type()) {
+    case kOr:
+      child_type = kAnd;
+      break;
+    case kAnd:
+      child_type = kOr;
+      break;
+    default:
+      return false;
+  }
+
+  std::unordered_map<int, std::vector<GatePtr>> candidates_by_arity;
+  for (const Gate::Arg<Gate>& arg : gate->args<Gate>()) {
+    const GatePtr& child = arg.second;
+    if (arg.first < 0)
+      continue;
+    if (child->constant())
+      continue;
+    if (child->module())
+      continue;
+    if (child->type() != child_type)
+      continue;
+    if (child->args().size() < 2)
+      continue;
+    candidates_by_arity[child->args().size()].push_back(child);
+  }
+
+  for (const auto& entry : candidates_by_arity) {
+    const auto& candidates = entry.second;
+    for (const auto& component : GroupConnectedAtleastCandidates(candidates)) {
+      AtleastGroupMatch match;
+      if (!TryMatchAtleastGroup(component, gate->type(), &match))
+        continue;
+
+      auto atleast_gate = std::make_shared<Gate>(kAtleast, graph_);
+      atleast_gate->min_number(match.min_number);
+      for (int index : match.atleast_args) {
+        bool shared = false;
+        for (const GatePtr& member : match.members) {
+          if (!member->args().count(index))
+            continue;
+          member->ShareArg(index, atleast_gate);
+          shared = true;
+          break;
+        }
+        assert(shared && "Matched threshold argument must have a source.");
+      }
+
+      for (const GatePtr& member : match.members)
+        gate->EraseArg(member->index());
+      gate->AddArg(atleast_gate);
+
+      if (!gate->constant() && gate->args().size() == 1)
+        gate->type(kNull);
+
+      return true;
+    }
+  }
+
+  return false;
 }
 
 void Preprocessor::NormalizeAtleastGate(const GatePtr& gate)  {

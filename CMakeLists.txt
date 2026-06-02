@@ -40,6 +40,7 @@ option(WITH_COVERAGE "Instrument for coverage analysis" OFF)
 option(WITH_PROFILE "Instrument for performance profiling" OFF)
 option(BUILD_TESTS "Build the tests" ON)  # Influences CTest.
 option(OPTIMIZE_FOR_NATIVE "Build with -march=native" ON)
+option(BUILD_PYTHON_BINDINGS "Build the native Python extension module" ON)
 
 ####################### End Options ##################### }}}
 
@@ -103,7 +104,7 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   CHECK_COMPILER_VERSION("9.0")
   list(APPEND SCRAM_CXX_FLAGS_DEBUG -Wno-missing-braces -Wshadow -Wno-unused-exception-parameter -Wno-sign-compare -Wno-missing-field-initializers -Wno-string-plus-int -Wno-unused-lambda-capture -Wno-old-style-cast -Wno-deprecated-declarations -Wno-unused-parameter)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations -Wno-enum-constexpr-conversion")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
 
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
   CHECK_COMPILER_VERSION("18.0.1")
@@ -271,6 +272,17 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(indicators)
 include_directories(${indicators_SOURCE_DIR}/include)
 
+if(BUILD_PYTHON_BINDINGS)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
+  FetchContent_Declare(
+    pybind11
+    GIT_REPOSITORY https://github.com/pybind/pybind11.git
+    GIT_TAG        v2.13.6
+    GIT_SHALLOW    TRUE
+  )
+  FetchContent_MakeAvailable(pybind11)
+endif()
+
 include_directories("${CMAKE_SOURCE_DIR}")  # Include the core headers via "src".
 include_directories("src")  # Include the core headers via "src".
 include_directories(${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR})
@@ -284,6 +296,10 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateEmbeddedSchemas.cmake")
 add_subdirectory(src)
 
 add_subdirectory(targets/scram)
+
+if(BUILD_PYTHON_BINDINGS)
+  add_subdirectory(targets/python)
+endif()
 
 #if(BUILD_TESTS)
 #  # Fetch Catch2 for testing

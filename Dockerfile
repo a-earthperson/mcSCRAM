@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.10.0
-FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04 AS base
+#FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04 AS base
+FROM nvidia/cuda:12.9.2-cudnn-devel-ubuntu24.04 AS base
 
 ENV CODENAME="noble"
 ENV DEBIAN_FRONTEND=noninteractive
@@ -25,6 +26,7 @@ ENV BUILD_PACKAGES="ca-certificates \
     lsb-release \
     nano \
     python3 \
+    python3-dev \
     rsync \
     ssh \
     sudo \
@@ -102,7 +104,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
 ## Install llvm/clang
 FROM minimal AS llvm-clang
 WORKDIR /build
-ENV CLANG_VERSION="18"
+ENV CLANG_VERSION="20"
 ENV LLVM_PACKAGES="libclang-$CLANG_VERSION-dev \
     clang-tools-$CLANG_VERSION \
     libomp-$CLANG_VERSION-dev \
@@ -191,10 +193,17 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
 
 ## Install AdaptiveCpp
 WORKDIR /build
-FROM amd-lz-oneapi-clang AS adaptivecpp-amd-lz-oneapi-clang
+FROM llvm-clang AS adaptivecpp-clang
+ARG CMAKE_BUILD_TYPE="Release"
+ENV CMAKE_C_COMPILER="/usr/bin/clang-$CLANG_VERSION"
+ENV CC="$CMAKE_C_COMPILER"
+ENV CMAKE_CXX_COMPILER="/usr/bin/clang++-$CLANG_VERSION"
+ENV CXX="$CMAKE_CXX_COMPILER"
 ENV ADAPTIVE_CPP_INSTALL_DIR="/usr/local"
 ENV CLANG_EXECUTABLE_PATH="/usr/bin/clang++-$CLANG_VERSION"
 ENV LLVM_DIR="/usr/lib/llvm-$CLANG_VERSION/cmake"
+ENV CUDA_TOOLKIT_ROOT_DIR="/usr/local/cuda"
+ENV NVCXX_COMPILER="/usr/local/cuda/bin/nvcc"
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
@@ -206,16 +215,19 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
           -DCMAKE_CXX_COMPILER=$CMAKE_CXX_COMPILER \
           -DCLANG_EXECUTABLE_PATH=$CLANG_EXECUTABLE_PATH \
           -DLLVM_DIR=$LLVM_DIR \
+          -DNVCXX_COMPILER=$NVCXX_COMPILER \
+          -DCUDA_TOOLKIT_ROOT_DIR=$CUDA_TOOLKIT_ROOT_DIR \
           -DWITH_CUDA_BACKEND=ON \
-          -DWITH_OPENCL_BACKEND=ON \
-          -DWITH_ROCM_BACKEND=ON \
-          -DWITH_LEVEL_ZERO_BACKEND=ON  \
-          -DACPP_USE_ACCELERATED_CPU=ON  \
-          -DACPP_COMPILER_FEATURE_PROFILE="full" .. && \
+          -DWITH_CUDA_NVCXX_ONLY=ON \
+          -DWITH_OPENCL_BACKEND=OFF \
+          -DWITH_ROCM_BACKEND=OFF \
+          -DWITH_LEVEL_ZERO_BACKEND=OFF  \
+          -DACPP_USE_ACCELERATED_CPU=OFF  .. && \
+        #   -DACPP_COMPILER_FEATURE_PROFILE="full"
     make -j && \
     make install
 
-FROM adaptivecpp-amd-lz-oneapi-clang AS generic_backend
+FROM adaptivecpp-clang AS generic_backend
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
@@ -281,7 +293,7 @@ EXPOSE 22
 ENTRYPOINT ["/usr/sbin/sshd", "-D"]
 
 ## Runtime image with minimal dependencies
-FROM amd-lz-oneapi-clang AS scramruntime
+FROM devimage AS scramruntime
 WORKDIR /app
 
 # Install runtime packages
@@ -302,19 +314,24 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     apt-fast -y autoclean
 
 # Copy AdaptiveCpp runtime libraries
-COPY --from=adaptivecpp-amd-lz-oneapi-clang /usr/local/bin/acpp-info /usr/local/bin/
-COPY --from=adaptivecpp-amd-lz-oneapi-clang /usr/local/lib/libacpp-rt.so /usr/local/lib/
-COPY --from=adaptivecpp-amd-lz-oneapi-clang /usr/local/lib/libacpp-common.so /usr/local/lib/
+COPY --from=adaptivecpp-clang /usr/local/bin/acpp-info /usr/local/bin/
+COPY --from=adaptivecpp-clang /usr/local/lib/libacpp-rt.so /usr/local/lib/
+COPY --from=adaptivecpp-clang /usr/local/lib/libacpp-common.so /usr/local/lib/
+COPY --from=adaptivecpp-clang /usr/local/lib/libacpp*.so /usr/local/lib/
 
 # Copy built SCRAM binaries and libraries from builder stage
 COPY --from=builder /app/build/targets/scram/scram-cli /usr/local/bin/
 COPY --from=builder /app/build/src/libscram.so /usr/local/lib/
 COPY --from=builder /app/build/src/mc/libmc.so /usr/local/lib/
 COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
+COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 
+USER root
 # Update library cache
 RUN ldconfig
 
+USER ${USER}
+WORKDIR /app
 # AdaptiveCpp Runtime Environment Variables
 # Configure default runtime behavior for GPU acceleration and debugging
 # These can be overridden at runtime using docker run -e VARIABLE=value
@@ -327,7 +344,7 @@ ENV ACPP_VISIBILITY_MASK=cuda
 # ACPP_DEBUG_LEVEL: Controls debug output verbosity  
 # Values: 0=Silent, 1=Fatal, 2=Errors, 3=Info, 4=All
 # Default: 0 (silent for production use)
-ENV ACPP_DEBUG_LEVEL=0
+ENV ACPP_DEBUG_LEVEL=2
 
 # ACPP_ADAPTIVITY_LEVEL: Controls runtime optimization level
 # Values: 0=jit off, 1=less, 2=more
@@ -340,6 +357,11 @@ ENV ACPP_ADAPTIVITY_LEVEL=2
 ENV ACPP_ALLOCATION_TRACKING=1
 
 ENV ACPP_PERSISTENT_RUNTIME=1
+
+# The default SCRAM build links tcmalloc. Start Python with the same allocator
+# already loaded so importing the native extension cannot interpose malloc/free
+# after CPython has allocated its runtime state.
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4
 
 # Set the entrypoint to the SCRAM binary
 ENTRYPOINT ["/usr/local/bin/scram-cli"]

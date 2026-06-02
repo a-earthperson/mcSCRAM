@@ -22,39 +22,6 @@ void CustomPreprocessor<mc::DirectEval>::Run() {
         const int compilation_target = this->settings_->compilation_level();
 
         TIMER(DEBUG2, "CustomPreprocessor<DirectEval>::");
-        LOG(DEBUG3) << "Compilation Target: " << std::to_string(compilation_target);
-
-        if (compilation_target <= 0) {
-            return;
-        }
-
-        // remove null gates, absorb not gates
-        core::pdag::Transform(graph_, [this](core::Pdag *) { RunPhaseOne(); });
-
-        if (compilation_target <= 1) {
-            return;
-        }
-
-        for (auto pass = 2; pass <= compilation_target; ++pass) {
-            core::pdag::Transform(
-                graph_, [this](core::Pdag *) { RunPhaseOne(); }, [this](core::Pdag *) { RunPhaseTwo(); },
-                [this](core::Pdag *) {
-                    if (!graph_->normal() && (settings_->expand_atleast_gates() || settings_->expand_xor_gates()))
-                        RunPhaseThree();
-                },
-                [this](core::Pdag *) {
-                    if (!graph_->coherent() && (settings_->expand_atleast_gates() || settings_->expand_xor_gates()))
-                        RunPhaseFour();
-                },
-                [this](core::Pdag *) { RunPhaseFive(); });
-        }
-    };
-    graph_->Log();
-    // perform the actual run
-    auto result2 = [this] {
-        const int compilation_target = this->settings_->compilation_level();
-
-        TIMER(DEBUG2, "CustomPreprocessor<DirectEval>::");
         LOG(DEBUG2) << "Compilation Target: " << std::to_string(compilation_target);
         graph_->Log();
 
@@ -62,7 +29,7 @@ void CustomPreprocessor<mc::DirectEval>::Run() {
          * Compilation Level 0
          * -------------------
          *  - do nothing
-         *  - only expand KofN, XOR, if requested
+         *  - only normalize NOT/NULL, KofN, XOR, if requested
          *------------------------------------------------------------*/
         {
             if (settings_->expand_atleast_gates()) {
@@ -141,7 +108,9 @@ void CustomPreprocessor<mc::DirectEval>::Run() {
                       [this](Pdag*) { DetectModules(); },
                       [this](Pdag*) { while (CoalesceGates(/*common=*/false)) continue; },
                       [this](Pdag*) { DetectModules(); },
-                      [this](Pdag*) { while (CoalesceGates(/*common=*/true)) continue; });
+                      [this](Pdag*) { while (CoalesceGates(/*common=*/true)) continue; },
+                      [this](Pdag*) { if (settings_->recognize_atleast_groups()) while (RecognizeAtleastGroups()) continue; },
+                      [this](Pdag*) { if (settings_->recognize_xor_groups()) while (RecognizeXorGroups()) continue; });
             if (compilation_target <= 3) {
                 return;
             }

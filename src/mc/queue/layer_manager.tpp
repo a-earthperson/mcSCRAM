@@ -18,6 +18,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <stdexcept>
 
 #include "logger.h"
@@ -197,6 +198,105 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
 std::size_t layer_manager<bitpack_t_, prob_t_, size_t_>::node_count() const {
     const auto num_nodes = pdag_nodes_.size();
     return num_nodes;
+}
+
+namespace {
+
+inline std::string kernel_dag_connective_name(const core::Connective type) {
+    switch (type) {
+        case core::kAnd:
+            return "and";
+        case core::kOr:
+            return "or";
+        case core::kAtleast:
+            return "atleast";
+        case core::kXor:
+            return "xor";
+        case core::kNot:
+            return "not";
+        case core::kNand:
+            return "nand";
+        case core::kNor:
+            return "nor";
+        case core::kNull:
+            return "null";
+    }
+    return "unknown";
+}
+
+} // namespace
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+typename layer_manager<bitpack_t_, prob_t_, size_t_>::kernel_dag_description
+layer_manager<bitpack_t_, prob_t_, size_t_>::describe_kernel_dag() const {
+    kernel_dag_description description;
+    description.batch_size = sample_shape_.batch_size;
+    description.bitpacks_per_batch = sample_shape_.bitpacks_per_batch;
+    description.total_iterations = sample_shaper_.TOTAL_ITERATIONS;
+
+    constexpr std::array<core::Connective, core::kNumConnectives> connective_order = {
+        core::kAnd,
+        core::kOr,
+        core::kAtleast,
+        core::kXor,
+        core::kNot,
+        core::kNand,
+        core::kNor,
+        core::kNull,
+    };
+
+    for (std::size_t layer_index = 0; layer_index < pdag_nodes_by_layer_.size(); ++layer_index) {
+        std::vector<std::shared_ptr<core::Variable>> variables;
+        std::unordered_map<core::Connective, std::vector<std::shared_ptr<core::Gate>>> gates_by_type;
+        gather_layer_nodes(pdag_nodes_by_layer_[layer_index], variables, gates_by_type);
+
+        if (!variables.empty()) {
+            kernel_dag_partition partition;
+            partition.id = description.partitions.size();
+            partition.layer = layer_index;
+            partition.kind = "basic_event";
+            partition.connective = "sample";
+
+            for (const auto &variable : variables) {
+                partition.node_indices.push_back(variable->index());
+                description.nodes.push_back({
+                    .index = variable->index(),
+                    .layer = layer_index,
+                    .partition = partition.id,
+                    .kind = "basic_event",
+                    .connective = "sample",
+                });
+            }
+            description.partitions.push_back(std::move(partition));
+        }
+
+        for (const core::Connective connective : connective_order) {
+            auto gates_it = gates_by_type.find(connective);
+            if (gates_it == gates_by_type.end() || gates_it->second.empty()) {
+                continue;
+            }
+
+            kernel_dag_partition partition;
+            partition.id = description.partitions.size();
+            partition.layer = layer_index;
+            partition.kind = "gate";
+            partition.connective = kernel_dag_connective_name(connective);
+
+            for (const auto &gate : gates_it->second) {
+                partition.node_indices.push_back(gate->index());
+                description.nodes.push_back({
+                    .index = gate->index(),
+                    .layer = layer_index,
+                    .partition = partition.id,
+                    .kind = "gate",
+                    .connective = partition.connective,
+                });
+            }
+            description.partitions.push_back(std::move(partition));
+        }
+    }
+
+    return description;
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>

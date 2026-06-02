@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <optional>
 
@@ -41,10 +42,10 @@
 
 namespace scram::mc::scheduler {
 
-template <typename policy_t_, typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
+template <typename policy_t_, typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::size_t>
 struct progress;
 
-template <typename policy_t_, typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
+template <typename policy_t_, typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::size_t>
 class convergence_controller {
   public:
     using index_t_ = std::int32_t;
@@ -86,8 +87,11 @@ class convergence_controller {
         // ---------------------------------------------------------------------
         //  Build unique progress-log filename: <input>_<YYYYMMDD_HHMMSS>_convergence.csv
         // ---------------------------------------------------------------------
-        const std::string progress_log = scram::log::timestamp_string( settings.input_files()[0], "convergence");
-        progress_.initialize(this, settings.watch_mode(), progress_log);
+        std::optional<std::string> progress_log;
+        if (!settings.progress_callback() && !settings.input_files().empty()) {
+            progress_log = scram::log::timestamp_string(settings.input_files()[0], "convergence");
+        }
+        progress_.initialize(this, settings.watch_mode(), progress_log, settings.progress_callback());
     }
 
     void process_tally(const event::tally<bitpack_t_> &tally) {

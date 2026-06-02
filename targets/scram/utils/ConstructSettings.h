@@ -87,6 +87,16 @@ namespace ScramCLI {
 
         settings->expand_atleast_gates(vm.contains("no-kn"));
         settings->expand_xor_gates(vm.contains("no-xor"));
+        if (vm.contains("no-recognize-atleast")) {
+            settings->recognize_atleast_groups(false);
+        } else if (vm.contains("recognize-atleast")) {
+            settings->recognize_atleast_groups(true);
+        }
+        if (vm.contains("no-recognize-xor")) {
+            settings->recognize_xor_groups(false);
+        } else if (vm.contains("recognize-xor")) {
+            settings->recognize_xor_groups(true);
+        }
 
         SET("compilation-passes", int, compilation_level);
         SET("confidence", double, ci_confidence);

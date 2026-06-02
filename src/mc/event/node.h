@@ -31,6 +31,7 @@
 
 #pragma once
 
+#include "logger.h"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>

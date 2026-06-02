@@ -54,6 +54,10 @@ inline po::options_description ConstructOptions() {
     gc.add_options()
         ("no-kn", "expand k/n to and/or [off]")
         ("no-xor", "expand xor to and/or [off]")
+        ("recognize-atleast", "recognize expanded threshold groups and reintroduce k/n gates [on]")
+        ("no-recognize-atleast", "disable k/n group recognition")
+        ("recognize-xor", "recognize expanded xor/xnor and reintroduce xor gates [on]")
+        ("no-recognize-xor", "disable xor group recognition")
         ("nnf", "compile to negation normal form [off]")
         ("preprocessor", "stop analysis after preprocessing")
         ("compilation-passes,c", OPT_VALUE(int)->default_value(2), "0=off 1=null-only 2=optimize 4-8=multipass");

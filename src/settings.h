@@ -27,10 +27,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <stdexcept>
 
 #include <string_view>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace scram::core {
@@ -62,6 +64,9 @@ inline constexpr const char* kCIPolicyToString[] = { "bayes", "wald" };
 /// @warning The order of building the settings matters.
 class Settings {
  public:
+  using ProgressPairs = std::vector<std::pair<std::string, std::string>>;
+  using ProgressCallback = std::function<void(const ProgressPairs&)>;
+
   /// @returns The Qualitative analysis algorithm.
   [[nodiscard]] Algorithm algorithm() const { return algorithm_; }
 
@@ -375,13 +380,26 @@ class Settings {
 
   Settings& watch_mode(const bool on) { watch_mode_ = on; return *this; }
 
+  [[nodiscard]] const ProgressCallback& progress_callback() const {
+    return progress_callback_;
+  }
+
+  Settings& progress_callback(ProgressCallback callback) {
+    progress_callback_ = std::move(callback);
+    return *this;
+  }
+
   [[nodiscard]] bool expand_atleast_gates() const { return expand_atleast_gates_; }
   [[nodiscard]] bool expand_xor_gates() const { return expand_xor_gates_; }
+  [[nodiscard]] bool recognize_xor_groups() const { return recognize_xor_groups_; }
+  [[nodiscard]] bool recognize_atleast_groups() const { return recognize_atleast_groups_; }
   [[nodiscard]] bool keep_null_gates() const { return keep_null_gates_; }
   [[nodiscard]] int compilation_level() const { return compilation_level_; }
 
   Settings& expand_xor_gates(const bool on) { expand_xor_gates_ = on; return *this; }
   Settings& expand_atleast_gates(const bool on) { expand_atleast_gates_ = on; return *this; }
+  Settings& recognize_xor_groups(const bool on) { recognize_xor_groups_ = on; return *this; }
+  Settings& recognize_atleast_groups(const bool on) { recognize_atleast_groups_ = on; return *this; }
   Settings& keep_null_gates(const bool on) { keep_null_gates_ = on; return *this; }
   Settings& compilation_level(const int level) { compilation_level_ = std::clamp(level, 0, 8); return *this; }
 
@@ -459,6 +477,8 @@ class Settings {
   bool keep_null_gates_ = false;
   bool expand_atleast_gates_ = false;
   bool expand_xor_gates_ = false;
+  bool recognize_xor_groups_ = true;
+  bool recognize_atleast_groups_ = true;
   int compilation_level_ = 2;
 
   double overhead_ratio_ = 0.05;
@@ -467,6 +487,8 @@ class Settings {
   std::vector<std::string> input_files_;
 
   mef::Model* model_ = nullptr;
+
+  ProgressCallback progress_callback_;
 };
 
 }  // namespace scram::core

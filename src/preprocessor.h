@@ -126,10 +126,19 @@ class Preprocessor : private boost::noncopyable {
  protected:
 
  enum NormalizationType {
-     NONE,
-     XOR,
-     ATLEAST,
-     ALL,
+     // legacy
+     NONE         = 0b00000000,
+     XOR          = 0b00100000,
+     ATLEAST      = 0b01000000,
+     ALL          = 0b01111111,
+     //
+     REMOVE_NULL  = 0b00000001,
+     NOT_TO_NULL  = 0b00000010,
+     NAND_TO_AND  = 0b00000100,
+     NOR_TO_OR    = 0b00001000,
+     XNOR_TO_XOR  = 0b00010000,
+     XOR_TO_ANDOR = 0b00100000,
+     KON_TO_ANDOR = 0b01000000,
  };
 
   class GateSet;  ///< Container of unique gates by semantics.
@@ -254,6 +263,50 @@ class Preprocessor : private boost::noncopyable {
   ///
   /// @note This is a helper function for NormalizeGate.
   void NormalizeXorGate(const GatePtr& gate) ;
+
+  /// Recognizes expanded XOR/XNOR encodings and reintroduces XOR gates.
+  ///
+  /// This DirectEval-oriented reverse-normalization pass detects local
+  /// two-term DNF/CNF encodings of XOR/XNOR, including signed parent edges
+  /// that are equivalent by De Morgan and terms/clauses with a common signed
+  /// delta:
+  ///
+  ///   OR(AND(D, L1, L2), AND(D, ~L1, ~L2)) = OR(AND(D, ~XOR(L1, L2)))
+  ///   AND(OR(D, L1, L2), OR(D, ~L1, ~L2)) = AND(OR(D, XOR(L1, L2)))
+  ///
+  /// Extra parent arguments are preserved, so the replacement can be partial
+  /// within a larger parent gate. XOR arguments are polarity-canonicalized and
+  /// shared child gates are not mutated.
+  ///
+  /// @returns true if one or more XOR/XNOR groups were replaced.
+  ///
+  /// @warning This pass intentionally introduces kXor gates and marks the graph
+  ///          non-normal when it changes the graph.
+  bool RecognizeXorGroups() ;
+
+  /// Recursive helper for RecognizeXorGroups().
+  bool RecognizeXorGroups(const GatePtr& gate) ;
+
+  /// Recognizes expanded threshold encodings and reintroduces ATLEAST gates.
+  ///
+  /// This DirectEval-oriented reverse-normalization pass detects exact two-level
+  /// DNF/CNF threshold encodings:
+  ///
+  ///   OR({AND(S) : S subset X, |S| = k}) = ATLEAST(k, X)
+  ///   AND({OR(S) : S subset X, |S| = |X| - k + 1}) = ATLEAST(k, X)
+  ///
+  /// The pass only accepts complete combination families over a signed literal
+  /// universe that does not contain both x and ~x. Shared child gates are not
+  /// mutated; the matched parent edges are replaced by a new ATLEAST gate.
+  ///
+  /// @returns true if one threshold group was replaced.
+  ///
+  /// @warning This pass intentionally introduces kAtleast gates and marks the
+  ///          graph non-normal when it changes the graph.
+  bool RecognizeAtleastGroups() ;
+
+  /// Recursive helper for RecognizeAtleastGroups().
+  bool RecognizeAtleastGroups(const GatePtr& gate) ;
 
   /// Normalizes a ATLEAST gate with a atleast number.
   /// The gate is turned into an OR gate of

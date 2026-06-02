@@ -49,10 +49,31 @@ set(SCRAM_CORE_SRC
   risk_analysis.cc
   )
 ### End SCRAM core source list ### }}}
+
+set(SCRAM_MC_SRC
+  mc/core/preprocessor.cc
+  mc/core/probability_analysis.cc
+  mc/core/importance_analysis.cc
+)
+
+if(APPLE)
+  # Darwin does not allow libscram.dylib to retain the DirectEval symbols that
+  # risk_analysis.cc now references and resolve them later from libmc.dylib.
+  # Build the DirectEval implementation into scram on Apple to keep the dynamic
+  # library self-contained and avoid a scram <-> mc shared-library cycle.
+  find_package(_adaptivecpp)
+  list(APPEND SCRAM_CORE_SRC ${SCRAM_MC_SRC})
+endif()
+
 # Build scram as shared library explicitly (dependencies are static)
 add_library(scram SHARED ${SCRAM_CORE_SRC})
-target_link_libraries(scram ${LIBS})
+target_link_libraries(scram PRIVATE ${LIBS})
 target_compile_options(scram PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
+
+if(APPLE)
+  add_sycl_to_target(TARGET scram SOURCES ${SCRAM_MC_SRC})
+  target_include_directories(scram PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/mc")
+endif()
 
 # Disable unused variable warnings for generated schema files
 set_source_files_properties(
@@ -65,10 +86,10 @@ set_source_files_properties(
 # Install the library to standard system directories respecting CMAKE_INSTALL_PREFIX
 install(
         TARGETS scram
+        COMPONENT scram
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        COMPONENT scram
 )
 
 # add mc

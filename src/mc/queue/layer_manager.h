@@ -29,11 +29,14 @@
 #include "mc/event/node.h"
 #include "mc/queue/queueable.h"
 #include "mc/queue/sample_shaper.h"
+#include "mc/stats/tally_node_map.h"
 
 #include "pdag.h"
 
 #include <sycl/sycl.hpp>
 
+#include <cstdint>
+#include <unordered_map>
 #include <vector>
 #include <string>
 
@@ -95,7 +98,7 @@ namespace scram::mc::queue {
  * 
  * @since Version 1.0
  */
-template <typename bitpack_t_, typename prob_t_ = std::double_t, typename size_t_ = std::uint64_t>
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
 class layer_manager {
 
     /// @brief Index type for node identification
@@ -170,7 +173,7 @@ class layer_manager {
      */
     static void gather_all_nodes(const std::shared_ptr<core::Gate> &gate,
                                  std::vector<std::shared_ptr<core::Node>> &nodes,
-                                 std::unordered_map<std::int32_t, std::shared_ptr<core::Node>> &nodes_by_index);
+                                 std::unordered_map<index_t_, std::shared_ptr<core::Node>> &nodes_by_index);
 
     /**
      * @brief Performs layered topological sorting of PDAG nodes
@@ -266,6 +269,30 @@ class layer_manager {
     event::tally<bitpack_t_> fetch_tally_for_event_with_index(index_t_ evt_idx);
 
   public:
+    struct kernel_dag_node {
+        index_t_ index = 0;
+        std::size_t layer = 0;
+        std::size_t partition = 0;
+        std::string kind;
+        std::string connective;
+    };
+
+    struct kernel_dag_partition {
+        std::size_t id = 0;
+        std::size_t layer = 0;
+        std::string kind;
+        std::string connective;
+        std::vector<index_t_> node_indices;
+    };
+
+    struct kernel_dag_description {
+        std::vector<kernel_dag_node> nodes;
+        std::vector<kernel_dag_partition> partitions;
+        std::size_t batch_size = 0;
+        std::size_t bitpacks_per_batch = 0;
+        std::size_t total_iterations = 0;
+    };
+
     /**
      * @brief Constructs a layer manager for the given PDAG
      * 
@@ -351,6 +378,8 @@ class layer_manager {
     stats::TallyNodeMap &collect_tallies(stats::TallyNodeMap &stats);
 
     [[nodiscard]] std::size_t node_count() const;
+
+    [[nodiscard]] kernel_dag_description describe_kernel_dag() const;
 
     /**
      * @brief Retrieves the original MEF event (BasicEvent) corresponding to a PDAG node index.
