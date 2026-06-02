@@ -1,4 +1,6 @@
 import {
+  DAG_WEBGL_COMPLEMENTED_EDGE_COLOR,
+  DAG_WEBGL_COMPLEMENTED_EDGE_WIDTH_PX,
   DAG_WEBGL_EDGE_COLOR,
   DAG_WEBGL_NODE_RADIUS,
   DAG_WEBGL_TRIANGLE_DISPLAY_OFFSET,
@@ -22,6 +24,7 @@ const SHAPE_CODES: Record<string, number> = {
   upsidedown_triangle_inscribed: 7,
   circle_with_cross_inscribed: 8,
   house: 9,
+  square: 10,
 };
 
 type NodeTypeStyle = {
@@ -41,15 +44,18 @@ const NODE_TYPE_STYLES: Record<string, NodeTypeStyle> = {
   xnor_gate: { shape: "circle_with_cross_inscribed", fill: "xnor_gate", stroke: "xnor_gate" },
   atleast_gate: { shape: "pentagon", fill: "atleast_gate", stroke: "atleast_gate" },
   not_gate: { shape: "circle_inside_circle", fill: "not_gate", stroke: "not_gate" },
+  null_gate: { shape: "square", fill: "not_gate", stroke: "not_gate" },
   constant_event: { shape: "house", fill: "constant_event", stroke: "constant_event" },
 };
 
 type DagGeometry = {
   nodeCount: number;
-  edgeVertexCount: number;
+  regularEdgeVertexCount: number;
+  complementedEdgeVertexCount: number;
   nodeCenters: Float32Array;
   typeIndices: Float32Array;
-  edgePositions: Float32Array;
+  regularEdgePositions: Float32Array;
+  complementedEdgeVertices: Float32Array;
 };
 
 type EdgeProgram = {
@@ -59,6 +65,19 @@ type EdgeProgram = {
   scale: WebGLUniformLocation;
   offset: WebGLUniformLocation;
   color: WebGLUniformLocation;
+};
+
+type ComplementedEdgeProgram = {
+  program: WebGLProgram;
+  source: number;
+  target: number;
+  side: number;
+  t: number;
+  resolution: WebGLUniformLocation;
+  scale: WebGLUniformLocation;
+  offset: WebGLUniformLocation;
+  color: WebGLUniformLocation;
+  halfWidthPx: WebGLUniformLocation;
 };
 
 type NodeProgram = {
@@ -80,10 +99,13 @@ export class DagWebGlRenderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly geometry: DagGeometry;
   private readonly edgeProgram: EdgeProgram;
+  private readonly complementedEdgeProgram: ComplementedEdgeProgram | null;
   private readonly nodeProgram: NodeProgram;
   private readonly edgeVao: WebGLVertexArrayObject;
+  private readonly complementedEdgeVao: WebGLVertexArrayObject | null;
   private readonly nodeVao: WebGLVertexArrayObject;
   private readonly edgeBuffer: WebGLBuffer;
+  private readonly complementedEdgeBuffer: WebGLBuffer | null;
   private readonly centerBuffer: WebGLBuffer;
   private readonly typeBuffer: WebGLBuffer;
   private readonly fillColors: Float32Array;
@@ -91,6 +113,7 @@ export class DagWebGlRenderer {
   private readonly fillEnabled: Float32Array;
   private readonly shapeCodes: Float32Array;
   private readonly edgeColor: Rgba;
+  private readonly complementedEdgeColor: Rgba;
   private readonly nodeRadius: number;
   private readonly maxPointSize: number;
 
@@ -115,6 +138,7 @@ export class DagWebGlRenderer {
     this.edgeProgram = createEdgeProgram(gl);
     this.nodeProgram = createNodeProgram(gl);
     this.edgeColor = DAG_WEBGL_EDGE_COLOR;
+    this.complementedEdgeColor = DAG_WEBGL_COMPLEMENTED_EDGE_COLOR;
     const styleUniforms = buildStyleUniforms(dag.nodeTypes);
     this.fillColors = styleUniforms.fillColors;
     this.strokeColors = styleUniforms.strokeColors;
@@ -124,9 +148,24 @@ export class DagWebGlRenderer {
     const pointSizeRange = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE) as Float32Array | number[];
     this.maxPointSize = Math.max(1, Number(pointSizeRange[1]) || 64);
 
-    const edge = createEdgeVao(gl, this.edgeProgram, this.geometry.edgePositions);
+    const edge = createEdgeVao(gl, this.edgeProgram, this.geometry.regularEdgePositions);
     this.edgeVao = edge.vao;
     this.edgeBuffer = edge.buffer;
+
+    if (this.geometry.complementedEdgeVertexCount) {
+      this.complementedEdgeProgram = createComplementedEdgeProgram(gl);
+      const complementedEdge = createComplementedEdgeVao(
+        gl,
+        this.complementedEdgeProgram,
+        this.geometry.complementedEdgeVertices,
+      );
+      this.complementedEdgeVao = complementedEdge.vao;
+      this.complementedEdgeBuffer = complementedEdge.buffer;
+    } else {
+      this.complementedEdgeProgram = null;
+      this.complementedEdgeVao = null;
+      this.complementedEdgeBuffer = null;
+    }
 
     const node = createNodeVao(gl, this.nodeProgram, this.geometry.nodeCenters, this.geometry.typeIndices);
     this.nodeVao = node.vao;
@@ -152,14 +191,25 @@ export class DagWebGlRenderer {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    if (this.geometry.edgeVertexCount) {
+    if (this.geometry.regularEdgeVertexCount) {
       gl.useProgram(this.edgeProgram.program);
       gl.bindVertexArray(this.edgeVao);
       gl.uniform2f(this.edgeProgram.resolution, size.width, size.height);
       gl.uniform1f(this.edgeProgram.scale, view.scale);
       gl.uniform2f(this.edgeProgram.offset, view.offsetX, view.offsetY);
       gl.uniform4fv(this.edgeProgram.color, this.edgeColor);
-      gl.drawArrays(gl.LINES, 0, this.geometry.edgeVertexCount);
+      gl.drawArrays(gl.LINES, 0, this.geometry.regularEdgeVertexCount);
+    }
+
+    if (this.geometry.complementedEdgeVertexCount && this.complementedEdgeProgram && this.complementedEdgeVao) {
+      gl.useProgram(this.complementedEdgeProgram.program);
+      gl.bindVertexArray(this.complementedEdgeVao);
+      gl.uniform2f(this.complementedEdgeProgram.resolution, size.width, size.height);
+      gl.uniform1f(this.complementedEdgeProgram.scale, view.scale);
+      gl.uniform2f(this.complementedEdgeProgram.offset, view.offsetX, view.offsetY);
+      gl.uniform4fv(this.complementedEdgeProgram.color, this.complementedEdgeColor);
+      gl.uniform1f(this.complementedEdgeProgram.halfWidthPx, DAG_WEBGL_COMPLEMENTED_EDGE_WIDTH_PX);
+      gl.drawArrays(gl.TRIANGLES, 0, this.geometry.complementedEdgeVertexCount);
     }
 
     if (this.geometry.nodeCount) {
@@ -183,11 +233,14 @@ export class DagWebGlRenderer {
   destroy(): void {
     const gl = this.gl;
     gl.deleteBuffer(this.edgeBuffer);
+    gl.deleteBuffer(this.complementedEdgeBuffer);
     gl.deleteBuffer(this.centerBuffer);
     gl.deleteBuffer(this.typeBuffer);
     gl.deleteVertexArray(this.edgeVao);
+    gl.deleteVertexArray(this.complementedEdgeVao);
     gl.deleteVertexArray(this.nodeVao);
     gl.deleteProgram(this.edgeProgram.program);
+    gl.deleteProgram(this.complementedEdgeProgram?.program ?? null);
     gl.deleteProgram(this.nodeProgram.program);
   }
 }
@@ -205,28 +258,87 @@ function prepareDagGeometry(dag: DagPayload): DagGeometry {
     nodeCenters[index * 2 + 1] = graphY + displayOffset.y;
   }
 
-  const maxEdges = Math.min(dag.edges.count, dag.edges.source.length, dag.edges.target.length);
-  const edgePositions = new Float32Array(maxEdges * 4);
-  let edgeCursor = 0;
-  for (let index = 0; index < maxEdges; index += 1) {
+  const edgeCount = Math.min(dag.edges.count, dag.edges.source.length, dag.edges.target.length);
+  const regularEdgePositions = new Float32Array(edgeCount * 4);
+  const complementedEdgeVertices = new Float32Array(edgeCount * 6 * 6);
+  let regularEdgeCursor = 0;
+  let complementedEdgeCursor = 0;
+  for (let index = 0; index < edgeCount; index += 1) {
     const source = dag.edges.source[index];
     const target = dag.edges.target[index];
     if (!Number.isInteger(source) || !Number.isInteger(target)) continue;
     if (source < 0 || source >= nodeCount || target < 0 || target >= nodeCount) continue;
-    edgePositions[edgeCursor * 4] = dag.nodes.x[source];
-    edgePositions[edgeCursor * 4 + 1] = dag.nodes.y[source];
-    edgePositions[edgeCursor * 4 + 2] = dag.nodes.x[target];
-    edgePositions[edgeCursor * 4 + 3] = dag.nodes.y[target];
-    edgeCursor += 1;
+    const sourceX = dag.nodes.x[source];
+    const sourceY = dag.nodes.y[source];
+    const targetX = dag.nodes.x[target];
+    const targetY = dag.nodes.y[target];
+    if ((dag.edges.complemented?.[index] ?? 0) === 1) {
+      writeComplementedEdgeVertices(
+        complementedEdgeVertices,
+        complementedEdgeCursor,
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+      );
+      complementedEdgeCursor += 1;
+    } else {
+      regularEdgePositions[regularEdgeCursor * 4] = sourceX;
+      regularEdgePositions[regularEdgeCursor * 4 + 1] = sourceY;
+      regularEdgePositions[regularEdgeCursor * 4 + 2] = targetX;
+      regularEdgePositions[regularEdgeCursor * 4 + 3] = targetY;
+      regularEdgeCursor += 1;
+    }
   }
 
   return {
     nodeCount,
-    edgeVertexCount: edgeCursor * 2,
+    regularEdgeVertexCount: regularEdgeCursor * 2,
+    complementedEdgeVertexCount: complementedEdgeCursor * 6,
     nodeCenters,
     typeIndices,
-    edgePositions: edgeCursor === maxEdges ? edgePositions : edgePositions.slice(0, edgeCursor * 4),
+    regularEdgePositions: regularEdgeCursor === edgeCount
+      ? regularEdgePositions
+      : regularEdgePositions.slice(0, regularEdgeCursor * 4),
+    complementedEdgeVertices: complementedEdgeCursor === edgeCount
+      ? complementedEdgeVertices
+      : complementedEdgeVertices.slice(0, complementedEdgeCursor * 6 * 6),
   };
+}
+
+function writeComplementedEdgeVertices(
+  vertices: Float32Array,
+  edgeIndex: number,
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+): void {
+  const base = edgeIndex * 36;
+  writeComplementedEdgeVertex(vertices, base, sourceX, sourceY, targetX, targetY, -1, 0);
+  writeComplementedEdgeVertex(vertices, base + 6, sourceX, sourceY, targetX, targetY, 1, 0);
+  writeComplementedEdgeVertex(vertices, base + 12, sourceX, sourceY, targetX, targetY, -1, 1);
+  writeComplementedEdgeVertex(vertices, base + 18, sourceX, sourceY, targetX, targetY, -1, 1);
+  writeComplementedEdgeVertex(vertices, base + 24, sourceX, sourceY, targetX, targetY, 1, 0);
+  writeComplementedEdgeVertex(vertices, base + 30, sourceX, sourceY, targetX, targetY, 1, 1);
+}
+
+function writeComplementedEdgeVertex(
+  vertices: Float32Array,
+  offset: number,
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+  side: number,
+  t: number,
+): void {
+  vertices[offset] = sourceX;
+  vertices[offset + 1] = sourceY;
+  vertices[offset + 2] = targetX;
+  vertices[offset + 3] = targetY;
+  vertices[offset + 4] = side;
+  vertices[offset + 5] = t;
 }
 
 function triangleDisplayOffset(typeIndex: number, nodeTypes: DagNodeType[]): { x: number; y: number } {
@@ -253,6 +365,30 @@ function createEdgeVao(gl: WebGL2RenderingContext, program: EdgeProgram, positio
   gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
   gl.enableVertexAttribArray(program.position);
   gl.vertexAttribPointer(program.position, 2, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+  return { vao, buffer };
+}
+
+function createComplementedEdgeVao(
+  gl: WebGL2RenderingContext,
+  program: ComplementedEdgeProgram,
+  vertices: Float32Array,
+) {
+  const vao = required(gl.createVertexArray(), "Unable to create complemented edge VAO.");
+  const buffer = required(gl.createBuffer(), "Unable to create complemented edge buffer.");
+  const stride = 6 * Float32Array.BYTES_PER_ELEMENT;
+
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(program.source);
+  gl.vertexAttribPointer(program.source, 2, gl.FLOAT, false, stride, 0);
+  gl.enableVertexAttribArray(program.target);
+  gl.vertexAttribPointer(program.target, 2, gl.FLOAT, false, stride, 2 * Float32Array.BYTES_PER_ELEMENT);
+  gl.enableVertexAttribArray(program.side);
+  gl.vertexAttribPointer(program.side, 1, gl.FLOAT, false, stride, 4 * Float32Array.BYTES_PER_ELEMENT);
+  gl.enableVertexAttribArray(program.t);
+  gl.vertexAttribPointer(program.t, 1, gl.FLOAT, false, stride, 5 * Float32Array.BYTES_PER_ELEMENT);
   gl.bindVertexArray(null);
   return { vao, buffer };
 }
@@ -292,6 +428,22 @@ function createEdgeProgram(gl: WebGL2RenderingContext): EdgeProgram {
     scale: required(gl.getUniformLocation(program, "u_scale"), "Missing u_scale."),
     offset: required(gl.getUniformLocation(program, "u_offset"), "Missing u_offset."),
     color: required(gl.getUniformLocation(program, "u_color"), "Missing u_color."),
+  };
+}
+
+function createComplementedEdgeProgram(gl: WebGL2RenderingContext): ComplementedEdgeProgram {
+  const program = createProgram(gl, COMPLEMENTED_EDGE_VERTEX_SHADER, EDGE_FRAGMENT_SHADER);
+  return {
+    program,
+    source: gl.getAttribLocation(program, "a_source"),
+    target: gl.getAttribLocation(program, "a_target"),
+    side: gl.getAttribLocation(program, "a_side"),
+    t: gl.getAttribLocation(program, "a_t"),
+    resolution: required(gl.getUniformLocation(program, "u_resolution"), "Missing u_resolution."),
+    scale: required(gl.getUniformLocation(program, "u_scale"), "Missing u_scale."),
+    offset: required(gl.getUniformLocation(program, "u_offset"), "Missing u_offset."),
+    color: required(gl.getUniformLocation(program, "u_color"), "Missing u_color."),
+    halfWidthPx: required(gl.getUniformLocation(program, "u_half_width_px"), "Missing u_half_width_px."),
   };
 }
 
@@ -380,6 +532,29 @@ void main() {
 }
 `;
 
+const COMPLEMENTED_EDGE_VERTEX_SHADER = `#version 300 es
+in vec2 a_source;
+in vec2 a_target;
+in float a_side;
+in float a_t;
+
+uniform vec2 u_resolution;
+uniform float u_scale;
+uniform vec2 u_offset;
+uniform float u_half_width_px;
+
+void main() {
+  vec2 source = a_source * u_scale + u_offset;
+  vec2 target = a_target * u_scale + u_offset;
+  vec2 delta = target - source;
+  float len = max(length(delta), 0.000001);
+  vec2 normal = vec2(-delta.y, delta.x) / len;
+  vec2 screen = mix(source, target, a_t) + normal * a_side * u_half_width_px;
+  vec2 clip = (screen / u_resolution) * 2.0 - 1.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+}
+`;
+
 const EDGE_FRAGMENT_SHADER = `#version 300 es
 precision mediump float;
 uniform vec4 u_color;
@@ -438,6 +613,11 @@ float sdCircle(vec2 p, float r) {
   return length(p) - r;
 }
 
+float sdBox(vec2 p, vec2 halfExtents) {
+  vec2 q = abs(p) - halfExtents;
+  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+}
+
 float sdRegularPolygon(vec2 p, float sides, float inradius, float rotation) {
   float angle = atan(p.y, p.x) - rotation;
   float sector = TAU / sides;
@@ -468,11 +648,12 @@ float sdPolygon5(vec2 p, vec2 a, vec2 b, vec2 c, vec2 d, vec2 e) {
 }
 
 float sdHouse(vec2 p) {
-  float w = SHAPE_RADIUS * 0.59;
-  float base = -SHAPE_RADIUS * 0.88;
-  float eave = SHAPE_RADIUS * 0.06;
-  float peak = SHAPE_RADIUS * 0.92;
-  return sdPolygon5(
+  // Fill the point sprite like circles: wall height ~= roof rise (45 deg peak).
+  float w = SHAPE_RADIUS * 0.95;
+  float base = -SHAPE_RADIUS;
+  float eave = base + w;
+  float peak = eave + w;
+  return -sdPolygon5(
     p,
     vec2(-w, base),
     vec2(w, base),
@@ -499,7 +680,7 @@ vec4 over(vec4 top, vec4 bottom) {
 
 void main() {
   int typeIndex = clamp(int(v_type_index + 0.5), 0, ${MAX_NODE_TYPES - 1});
-  int shape = clamp(int(u_shape_codes[typeIndex] + 0.5), 0, 9);
+  int shape = clamp(int(u_shape_codes[typeIndex] + 0.5), 0, 10);
   vec2 p = vec2(gl_PointCoord.x * 2.0 - 1.0, 1.0 - gl_PointCoord.y * 2.0);
 
   float sd = sdCircle(p, SHAPE_RADIUS);
@@ -511,10 +692,14 @@ void main() {
     sd = sdRegularPolygon(p, 5.0, polygonInradius(5.0, SHAPE_RADIUS), -PI * 0.5);
   } else if (shape == 9) {
     sd = sdHouse(p);
+  } else if (shape == 10) {
+    float boxHalf = SHAPE_RADIUS * 0.72;
+    sd = sdBox(p, vec2(boxHalf));
   }
 
   float aa = max(fwidth(sd), 2.0 / max(v_point_size, 1.0));
   float strokeWidth = max(0.045, 1.35 / max(v_point_size, 1.0));
+  if (shape == 9) strokeWidth *= 1.18;
   float inside = fillAlpha(sd, aa);
   float outline = strokeAlpha(sd, strokeWidth, aa);
 

@@ -21,10 +21,10 @@ frame or the final perceived WebGL canvas colors.
 | WebGL node shape and fill/stroke role by type name | Client-side JavaScript | `NODE_TYPE_STYLES` and `SHAPE_CODES` in `drawDagWebGl.ts`. |
 | WebGL concrete colors | Client-side JavaScript palette | `dagWebGlPalette.ts`; values are sRGB-encoded floats written directly to the framebuffer. |
 | WebGL glyph geometry, stroke, antialiasing, and point sprite sizing | Client-side WebGL shader | `NODE_VERTEX_SHADER` and `NODE_FRAGMENT_SHADER` in `drawDagWebGl.ts`. |
-| Edge geometry and edge color | Backend API server for topology/coordinates; client WebGL for draw color | Backend emits `edges.source`/`edges.target`; client draws `gl.LINES` in one color from `DAG_WEBGL_EDGE_COLOR`. |
+| Edge geometry and edge color | Backend API server for topology/coordinates; client WebGL for draw color | Backend emits `edges.source`/`edges.target` and `edges.complemented`; client draws regular edges as `gl.LINES` and complemented edges as screen-space quads. |
 | Canvas frame, toolbar, cursor, final blend with page | Hardcoded CSS | `canvas.css` owns `.fault-tree-frame`, `.fault-tree-toolbar`, `.fault-tree-canvas`, `.dag-webgl-frame`, and `.dag-webgl-canvas { mix-blend-mode: exclusion; }`. |
-| Semantic disambiguation of complemented/signed edges in the visual DAG | No one currently | `_compiled_graph_to_render_graph` takes `abs(edge["target"])`; root complement is kept as metadata but not drawn. |
-| Dedicated visual styling for `null_gate` and `constant_event` | No one currently | Backend can emit these node type names, but `NODE_TYPE_STYLES` does not define them, so the client falls back to `unknown_event`. |
+| Semantic disambiguation of complemented/signed edges in the visual DAG | Backend API server plus client WebGL | `_compiled_graph_to_render_graph` stores negative native edge targets as `edges.complemented[j] = 1`; the client renders those edges thicker and amber. Root complement is still metadata only. |
+| Dedicated visual styling for `null_gate` and `constant_event` | Client-side JavaScript plus WebGL shader | `NODE_TYPE_STYLES` maps `null_gate` to a square and `constant_event` to a house glyph. |
 
 ## Payloads and Views
 
@@ -72,8 +72,8 @@ Important fallback behavior:
 | Missing `nodeTypes[index]` for indices 12-15 | Unknown-event outline | Client-side JavaScript fallback |
 | Type index greater than 15 | Clamped to 15, then unknown-event outline | Client-side JavaScript fallback |
 | Negative type index | Clamped to 0, therefore drawn as `basic_event` | Client-side JavaScript clamp |
-| Backend emits `null_gate` at index 10 | Unknown-event outline because no `NODE_TYPE_STYLES.null_gate` | Missing client-side artifact decision |
-| Backend emits `constant_event` at index 11 | Unknown-event outline because no `NODE_TYPE_STYLES.constant_event` | Missing client-side artifact decision |
+| Backend emits `null_gate` at index 10 | Styled as an amber square using the `not_gate` palette role | Client-side JavaScript style table |
+| Backend emits `constant_event` at index 11 | Styled as a fuchsia house glyph using the `constant_event` palette role | Client-side JavaScript style table |
 | Unknown source XML connective | Type index 1, unknown-event outline | Backend source parser plus client style |
 | Unknown compiled native kind/connective | Type index 1, unknown-event outline | Backend native graph adapter plus client style |
 
@@ -95,8 +95,8 @@ visual channel.
 | 7 | `xnor_gate` | `<xnor>` | Backend can map native `connective == "xnor"` if binding emits it; native kernel partition order inspected here does not include xnor | Circle with diagonal cross | Same as `xor_gate` | Same as `xor_gate` | Visually indistinguishable from `xor_gate`. Kernel DAG may not emit it directly. | Backend mapping; client JS style; native availability uncertain |
 | 8 | `atleast_gate` | `<atleast min="...">` | Native `connective == "atleast"` | Pentagon, currently point-up after rotation fix | `[0.724892, 0.488624, 0.967278, 0.2]` / `#b97df7` | `[0.663468, 0.427058, 0.90006, 1.0]` / `#a96de6` | Unique mapped gate style. Source `min` is not rendered in WebGL. | Backend mapping; client JS style; shader polygon |
 | 9 | `not_gate` | `<not>` | Native `connective == "not"` | Circle inside circle | `[0.977485, 0.631504, 0.160365, 0.2]` / `#f9a129` | `[0.856043, 0.539825, 0.067185, 1.0]` / `#da8a11` | Unique mapped gate style. | Backend mapping; client JS style; shader circle/inner ring |
-| 10 | `null_gate` | Not mapped by source parser except via native compiled `connective == "null"` | Native `connective == "null"` from kernel connective order | Falls back to unknown-event circle outline | No visible fill | Unknown-event stroke | Ambiguous with `unknown_event`, `constant_event`, missing type styles, and indices 12-15. | Backend/native can emit; no client visual owner |
-| 11 | `constant_event` | Not emitted by source parser | Native `kind == "constant"` | Falls back to unknown-event circle outline | No visible fill | Unknown-event stroke | Ambiguous with `unknown_event`, `null_gate`, missing type styles, and indices 12-15. | Backend/native can emit; no client visual owner |
+| 10 | `null_gate` | Not mapped by source parser except via native compiled `connective == "null"` | Native `connective == "null"` from kernel connective order | Square | Same as `not_gate`: `[0.977485, 0.631504, 0.160365, 0.2]` / `#f9a129` | Same as `not_gate`: `[0.856043, 0.539825, 0.067185, 1.0]` / `#da8a11` | Color overlaps with `not_gate`; shape is distinct. | Backend/native can emit; client JS style and shader box SDF |
+| 11 | `constant_event` | Not emitted by source parser | Native `kind == "constant"` | House | `[0.895947, 0.604909, 0.853011, 0.22]` / `#e49ada` | `[0.752398, 0.448841, 0.711252, 1.0]` / `#c072b5` | Unique mapped style. | Backend/native can emit; client JS style and shader house SDF |
 
 ## Shape Implementation Details
 
@@ -111,6 +111,11 @@ and switches only for triangles, pentagon, cross, and inner circle overlays.
 | `circle_with_cross` | 3 | Circle SDF plus two diagonal stroke SDFs | Used by XOR/XNOR. |
 | `pentagon` | 4 | `sdRegularPolygon(..., 5, ..., -PI * 0.5)` | Used by ATLEAST. The sign is intentionally negative so the pentagon is not flipped by 180 degrees. |
 | `circle_inside_circle` | 5 | Circle SDF plus inner circle stroke at radius `0.42` | Used by NOT. |
+| `upright_triangle_inscribed` | 6 | Upright triangle plus smaller inner triangle stroke | Used by NAND. |
+| `upsidedown_triangle_inscribed` | 7 | Upside-down triangle plus smaller inner triangle stroke | Used by NOR. |
+| `circle_with_cross_inscribed` | 8 | Circle with diagonal cross plus inner circle stroke | Used by XNOR. |
+| `house` | 9 | Convex five-vertex house SDF | Used by constants. |
+| `square` | 10 | Axis-aligned box SDF | Used by null gates. |
 
 Global shader constants:
 
@@ -134,12 +139,12 @@ Global shader constants:
 | Draw primitive | `gl.LINES`, two vertices per edge, no arrowhead. | Client WebGL |
 | Edge geometry | Straight line from source center to target center. | Client WebGL |
 | Edge color | `DAG_WEBGL_EDGE_COLOR = [0.205578, 0.577387, 0.680913, 0.5]` / `#3493ae` at 50% alpha. | Client palette |
-| Complement/signed edge styling | None. Negative target signs are discarded; `rootComplement` is metadata only. | No current visual owner |
+| Complement/signed edge styling | Native negative target signs are exposed as `edges.complemented[j] = 1`; client renders those edges as amber screen-space quads with half-width `DAG_WEBGL_COMPLEMENTED_EDGE_WIDTH_PX = 2.75`. `rootComplement` is metadata only. | Backend adapter plus client WebGL and palette |
 | Edge layer/partition styling | None. Layers and partitions do not change line color, width, dashing, or alpha. | No current visual owner |
 
-Because edges have no arrowheads, sign markers, dashing, or labels, the visual
-canvas communicates connectivity but not signed logic, complement propagation,
-or edge direction except by spatial convention.
+Because edges have no arrowheads, dashing, or labels, the visual canvas
+communicates connectivity and complemented native arguments, but not root
+complement state or edge direction except by spatial convention.
 
 ## Layers, Levels, and Partitions
 
@@ -200,7 +205,7 @@ The Playground sends these options to `/model/dag-bundle`:
 | Merge `K/N` | `recognize_atleast_groups` | When true, native compilation may recognize AND/OR structure as `atleast`, introducing pentagons. |
 | Merge `XOR` | `recognize_xor_groups` | When true, native compilation may recognize structure as XOR, introducing circle-with-cross glyphs. |
 | CCF | `ccf` | Always sent as true by current Playground bundle fetch. It can affect native graph shape but has no direct glyph. |
-| Keep null gates | `keep_null_gates` | When true, native graph may preserve null gates. These currently render as unknown-event outlines because no `null_gate` style exists. |
+| Keep null gates | `keep_null_gates` | When true, native graph may preserve null gates. These render as amber squares. |
 
 ## CSS and Perceived Color
 
@@ -225,11 +230,10 @@ The many `--ft-*` CSS variables in `canvas.css` are consumed by the 2D
 | `and_gate` and `nand_gate` share identical triangle shape and color. | NAND is visually indistinguishable from AND. | Client-side DAG style decision, possibly shader if adding a negation marker. |
 | `or_gate` and `nor_gate` share identical triangle shape and color. | NOR is visually indistinguishable from OR. | Client-side DAG style decision, possibly shader if adding a negation marker. |
 | `xor_gate` and `xnor_gate` share identical circle-cross shape and color. | XNOR is visually indistinguishable from XOR. | Client-side DAG style decision, possibly shader if adding a negation marker. |
-| `null_gate` has a backend type but no client style. | Null gates render as unknown-event outline. | Client-side JavaScript style table and palette. |
-| `constant_event` has a backend type but no client style. | Constants render as unknown-event outline. | Client-side JavaScript style table and palette. |
-| Unknown/missing types, `null_gate`, and `constant_event` all share the unknown outline. | Multiple semantic cases collapse into one visible glyph. | Client-side style table or backend type contract. |
+| `null_gate` shares the amber palette role with `not_gate`. | Null is distinguishable by square shape but not by hue. | Client-side JavaScript style table and palette. |
+| Unknown/missing types and indices 12-15 share the unknown outline. | Multiple invalid or unsupported semantic cases collapse into one visible glyph. | Client-side style table or backend type contract. |
 | Source `atleast min` is not present in WebGL DAG payload labels. | A 2-of-3 and 3-of-5 threshold both draw as the same pentagon. | Backend payload contract plus client label/glyph decision. |
-| Edges do not encode complement/sign. | Signed native edges and complemented root state are not visible. | Backend adapter and client edge shader/style decision. |
+| Edges encode complemented native arguments but not root complement state. | Signed native child arguments are visible; a complemented top/root remains invisible except in payload metadata. | Backend adapter and client edge shader/style decision. |
 | `rootComplement` is emitted for compiled/native payloads but not drawn. | A complemented top event has no visible indicator. | Client-side visualization decision. |
 | `nodes.layer`, `nodes.partition`, and `kernel.partitions` are not rendered as labels or colors. | Kernel partitioning is inferable only from spatial grouping. | Client-side visualization decision. |
 | Type clamp maps negative type indices to `basic_event`. | Corrupt negative type data would appear as a valid basic event. | Client-side validation/fallback decision. |
@@ -243,10 +247,13 @@ Use this as the current viewer legend:
 | Visual glyph | Meaning in current mapped set | Caveats |
 |---|---|---|
 | Yellow circle | Basic event | Unique among mapped standard types. |
-| Lavender outline-only circle | Unknown event or unstyled emitted type | Also represents `null_gate`, `constant_event`, missing type styles, and unused indices. |
+| Lavender outline-only circle | Unknown event or unstyled emitted type | Also represents missing type styles and unused indices. |
 | Cyan upright triangle | AND-family gate | AND and NAND overlap. |
 | Red upside-down triangle | OR-family gate | OR and NOR overlap. |
 | Green circle with diagonal cross | XOR-family gate | XOR and XNOR overlap. |
 | Purple pentagon | K-of-N / ATLEAST gate | Threshold `min` value is not shown. |
 | Amber circle with inner ring | NOT gate | Unique among mapped standard types. |
-| Blue-green straight line | Dependency edge from source index to target index | No arrowhead, sign, complement, layer, or partition styling. |
+| Amber square | NULL gate | Shares hue with NOT; shape distinguishes it. |
+| Fuchsia house | Constant event | Native compiled/kernel DAG only. |
+| Blue-green straight line | Unsigned dependency edge from source index to target index | No arrowhead, layer, or partition styling. |
+| Amber thick straight line | Complemented dependency edge from source index to target index | Represents a negative native edge target; root complement is not shown. |

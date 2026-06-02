@@ -91,6 +91,8 @@ export type DagPayload = {
     count: number;
     source: number[];
     target: number[];
+    /** 1 when the native PDAG edge target is signed negative (complemented argument). */
+    complemented?: number[];
   };
   counts?: {
     gate?: number;
