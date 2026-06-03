@@ -118,6 +118,8 @@ export type DagPayload = {
     sample_shape?: {
       batch_size: number;
       bitpacks_per_batch: number;
+      bits_per_bitpack?: number;
+      trials_per_pass?: number;
       total_iterations: number;
     };
   };

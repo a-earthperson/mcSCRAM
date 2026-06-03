@@ -1,22 +1,22 @@
 import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 import { classNames } from "../../lib/format";
 import "../../styles/flat-controls.css";
+import "../../styles/sticky-panel-group.css";
 
 type StickyPanelSlotArea = "title" | "controls" | "controls-grid" | "controls-grid-inner" | "auxiliary" | "items" | "view" | "edit" | "chip";
 
 type StickyPanelProps = ComponentPropsWithoutRef<"aside"> & {
 };
 
+export type StickyPanelSpan = {
+  row: number;
+  col: number;
+};
+
 type StickyPanelSlotProps = ComponentPropsWithoutRef<"div"> & {
   area?: StickyPanelSlotArea;
-  hSpan?:  {
-    row: number;
-    col: number;
-  };
-  vSpan?: {
-    row: number;
-    col: number;
-  };
+  hSpan?: StickyPanelSpan;
+  vSpan?: StickyPanelSpan;
 };
 
 export function StickyPanel({ children, className, ...props }: StickyPanelProps) {
@@ -78,6 +78,33 @@ export function StickyPanelCheckboxGroup({
   return (
     <StickyPanelSlot className={classNames("sticky-panel-checkbox-group", className)} hSpan={hSpan} vSpan={vSpan}>
       {body}
+    </StickyPanelSlot>
+  );
+}
+
+/** Scoped control region (fieldset) placed on the sticky-panel grid. */
+export function StickyPanelGroup({
+  legend,
+  children,
+  className,
+  hSpan,
+  vSpan,
+  empty = false,
+}: {
+  legend: string;
+  children?: ReactNode;
+  className?: string;
+  hSpan?: StickyPanelSpan;
+  vSpan?: StickyPanelSpan;
+  /** Reserve layout space when controls are not wired yet. */
+  empty?: boolean;
+}) {
+  return (
+    <StickyPanelSlot className={classNames("sticky-panel-group", empty && "sticky-panel-group--empty", className)} hSpan={hSpan} vSpan={vSpan}>
+      <fieldset className="sticky-panel-group__fieldset">
+        <legend className="sticky-panel-group__legend">{legend}</legend>
+        <div className="sticky-panel-group__body">{empty ? null : children}</div>
+      </fieldset>
     </StickyPanelSlot>
   );
 }
