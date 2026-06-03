@@ -380,6 +380,21 @@ def build_kernel_dag_payload(input_files: list[str], options: dict[str, Any] | N
     return _build_native_dag_payload(input_files, options, graph_kind="kernel")
 
 
+def build_execution_plan_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build the native DirectEval execution-plan payload."""
+    if not input_files:
+        return {"schema": "mcscram.execution_plan.v1", "partitions": [], "dependency_edges": [], "nodes": []}
+
+    try:
+        import mcscram_native  # type: ignore[import-not-found]
+        run_compile = mcscram_native.run_compile
+    except (ImportError, AttributeError) as exc:
+        return {"schema": "mcscram.execution_plan.v1", "error": str(exc), "partitions": [], "dependency_edges": [], "nodes": []}
+
+    compiled_pdag = run_compile(input_files, options or {})
+    return dict(compiled_pdag.to_execution_plan())
+
+
 def build_sample_shape_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the DirectEval layer-manager sample-shape payload for sampler controls."""
     if not input_files:

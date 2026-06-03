@@ -10,6 +10,7 @@ from mcscram_server.event_hub import EventHub
 from mcscram_server.fault_tree_payload import (
     build_dag_bundle_payload,
     build_dag_payload,
+    build_execution_plan_payload,
     build_fault_tree_payload,
     build_kernel_dag_payload,
     build_sample_shape_payload,
@@ -21,6 +22,14 @@ from mcscram_server.supervisor import CalculationSupervisor
 
 
 class SamplingControlBody(BaseModel):
+    model_id: str | None = None
+    compilation_level: int | None = Field(default=None, ge=0, le=8)
+    expand_atleast_gates: bool | None = None
+    expand_xor_gates: bool | None = None
+    recognize_atleast_groups: bool | None = None
+    recognize_xor_groups: bool | None = None
+    ccf: bool | None = None
+    keep_null_gates: bool | None = None
     num_trials: float | None = Field(default=None, gt=0)
     overhead_ratio: float | None = Field(default=None, ge=0)
     confidence: float | None = Field(default=None, gt=0, lt=1)
@@ -33,6 +42,24 @@ def _calculation_config(body: SamplingControlBody | None = None) -> CalculationC
     config = CalculationConfig.from_env()
     if body is None:
         return config
+    input_files = config.input_files
+    if body.model_id:
+        try:
+            input_files = [str(resolve_model_xml_path(body.model_id))]
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    options = _compile_options(
+        config.options,
+        compilation_level=body.compilation_level,
+        expand_atleast_gates=body.expand_atleast_gates,
+        expand_xor_gates=body.expand_xor_gates,
+        recognize_atleast_groups=body.recognize_atleast_groups,
+        recognize_xor_groups=body.recognize_xor_groups,
+        ccf=body.ccf,
+        keep_null_gates=body.keep_null_gates,
+    )
     overrides: dict[str, Any] = {}
     if body.num_trials is not None:
         overrides["num_trials"] = body.num_trials
@@ -46,9 +73,11 @@ def _calculation_config(body: SamplingControlBody | None = None) -> CalculationC
         overrides["oracle"] = body.oracle
     if body.early_stop is not None:
         overrides["early_stop"] = body.early_stop
-    if not overrides:
+    if overrides:
+        options.update(overrides)
+    if input_files == config.input_files and options == config.options:
         return config
-    return config.with_options(**overrides)
+    return CalculationConfig(input_files=input_files, options=options)
 
 
 def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> APIRouter:
@@ -191,6 +220,44 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             return build_sample_shape_payload([str(path)], options)
         return build_sample_shape_payload(config.input_files, options)
+
+    @router.get("/model/execution-plan")
+    def execution_plan_model(
+        model_id: str | None = Query(default=None),
+        compilation_level: int | None = Query(default=None, ge=0, le=8),
+        expand_atleast_gates: bool | None = Query(default=None),
+        expand_xor_gates: bool | None = Query(default=None),
+        recognize_atleast_groups: bool | None = Query(default=None),
+        recognize_xor_groups: bool | None = Query(default=None),
+        ccf: bool | None = Query(default=None),
+        keep_null_gates: bool | None = Query(default=None),
+        num_trials: float | None = Query(default=None, gt=0),
+        overhead_ratio: float | None = Query(default=None, ge=0),
+    ) -> dict[str, Any]:
+        config = CalculationConfig.from_env()
+        options = _compile_options(
+            config.options,
+            compilation_level=compilation_level,
+            expand_atleast_gates=expand_atleast_gates,
+            expand_xor_gates=expand_xor_gates,
+            recognize_atleast_groups=recognize_atleast_groups,
+            recognize_xor_groups=recognize_xor_groups,
+            ccf=ccf,
+            keep_null_gates=keep_null_gates,
+        )
+        if num_trials is not None:
+            options["num_trials"] = num_trials
+        if overhead_ratio is not None:
+            options["overhead_ratio"] = overhead_ratio
+        if model_id:
+            try:
+                path = resolve_model_xml_path(model_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return build_execution_plan_payload([str(path)], options)
+        return build_execution_plan_payload(config.input_files, options)
 
     @router.get("/model/dag-bundle")
     def dag_bundle_model(
