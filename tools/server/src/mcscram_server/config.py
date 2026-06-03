@@ -87,3 +87,10 @@ class CalculationConfig:
     @classmethod
     def from_env(cls) -> CalculationConfig:
         return cls(input_files=input_files_from_env(), options=options_from_env())
+
+    def with_options(self, **overrides: Any) -> CalculationConfig:
+        if not overrides:
+            return self
+        options = dict(self.options)
+        options.update(overrides)
+        return CalculationConfig(input_files=self.input_files, options=options)

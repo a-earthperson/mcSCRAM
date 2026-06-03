@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import xml.etree.ElementTree as ET
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +40,36 @@ NODE_TYPE_BY_CONNECTIVE = {
 
 REFERENCE_TAGS = {"basic-event", "gate", "house-event", "event"}
 NON_OPERATIONAL_GATE_CHILDREN = {"label", "description"}
+
+
+@lru_cache(maxsize=1)
+def _model_oracle_p() -> dict[str, float]:
+    """Known oracle probabilities keyed by canonical model id.
+
+    This resource is generated from the published build-data corpus and is
+    intentionally optional: missing or malformed data should not block model
+    discovery in local/dev containers.
+    """
+    path = Path(__file__).with_name("model_oracle_p.json")
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, value in payload.items():
+        if isinstance(key, str) and isinstance(value, (int, float)) and value >= 0:
+            out[key.lower()] = float(value)
+    return out
+
+
+def _oracle_p_for_model_id(model_id: str, oracle_p_by_model: dict[str, float]) -> float | None:
+    """Return oracle probability for flat or root-relative catalog ids."""
+    if model_id in oracle_p_by_model:
+        return oracle_p_by_model[model_id]
+    basename = model_id.rsplit("/", 1)[-1]
+    return oracle_p_by_model.get(basename)
 
 
 def _tag(element: ET.Element) -> str:
@@ -220,9 +252,10 @@ def list_aralia_xml_inputs() -> dict[str, Any]:
     the ``.xml`` suffix, lowercased and POSIX-normalised.  The first root in
     search order wins when the same ``modelId`` appears in multiple roots.
     """
-    models: list[dict[str, str]] = []
+    models: list[dict[str, Any]] = []
     seen: set[str] = set()
     roots_out: list[str] = []
+    oracle_p_by_model = _model_oracle_p()
 
     for root in aralia_model_search_roots():
         if not root.is_dir():
@@ -236,13 +269,15 @@ def list_aralia_xml_inputs() -> dict[str, Any]:
             if model_id in seen:
                 continue
             seen.add(model_id)
-            models.append(
-                {
-                    "modelId": model_id,
-                    "relativePath": rel.as_posix(),
-                    "root": str(root.resolve()),
-                }
-            )
+            entry: dict[str, Any] = {
+                "modelId": model_id,
+                "relativePath": rel.as_posix(),
+                "root": str(root.resolve()),
+            }
+            oracle_p = _oracle_p_for_model_id(model_id, oracle_p_by_model)
+            if oracle_p is not None:
+                entry["oracle_p"] = oracle_p
+            models.append(entry)
 
     models.sort(key=lambda row: row["modelId"])
     return {
@@ -343,6 +378,22 @@ def build_compiled_dag_payload(input_files: list[str], options: dict[str, Any] |
 def build_kernel_dag_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the WebGL DAG payload from the DirectEval kernel execution DAG."""
     return _build_native_dag_payload(input_files, options, graph_kind="kernel")
+
+
+def build_sample_shape_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build the DirectEval layer-manager sample-shape payload for sampler controls."""
+    if not input_files:
+        return {"sample_shape": None}
+
+    try:
+        import mcscram_native  # type: ignore[import-not-found]
+        run_compile = mcscram_native.run_compile
+    except (ImportError, AttributeError) as exc:
+        return {"sample_shape": None, "error": str(exc)}
+
+    compiled_pdag = run_compile(input_files, options or {})
+    layer_manager = compiled_pdag.create_layer_manager()
+    return {"sample_shape": dict(layer_manager.sample_shape)}
 
 
 def build_dag_bundle_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
