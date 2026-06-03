@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./canvas.css";
+import { DiagramViewportControls } from "./DiagramViewportControls";
 import { formatInteger } from "../../../lib/format";
 import { EmptyState } from "../../ui";
 import { FAULT_TREE_CANVAS_VIEWPORT, useCanvasFrameSize } from "./canvasViewport";
@@ -125,16 +126,15 @@ export function FaultTreeDiagram({ tree }: FaultTreeDiagramProps) {
         <span>
           {formatInteger(gateCount)} gates · {eventSummary} · {formatInteger(tree.edges.length)} edges
         </span>
-        <div className="fault-tree-controls" aria-label="Fault tree viewport controls">
-          <button className="fault-tree-control fit" type="button" onClick={fitView}>Fit</button>
-          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(VIEWPORT.button.zoomInFactor)} aria-label="Zoom in">+</button>
-          <button className="fault-tree-control zoom" type="button" onClick={() => zoomAtCenter(VIEWPORT.button.zoomOutFactor)} aria-label="Zoom out">−</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, VIEWPORT.button.panStepPx)} aria-label="Pan up">↑</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(0, -VIEWPORT.button.panStepPx)} aria-label="Pan down">↓</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(VIEWPORT.button.panStepPx, 0)} aria-label="Pan left">←</button>
-          <button className="fault-tree-control pan" type="button" onClick={() => panView(-VIEWPORT.button.panStepPx, 0)} aria-label="Pan right">→</button>
-          <button className="fault-tree-control reset-view" type="button" onClick={resetView}>Reset</button>
-        </div>
+        <DiagramViewportControls
+          frameRef={frameRef}
+          viewport={VIEWPORT}
+          ariaLabel="Fault tree viewport controls"
+          onFit={fitView}
+          onZoom={zoomAtCenter}
+          onPan={panView}
+          onReset={resetView}
+        />
       </div>
     </div>
   );

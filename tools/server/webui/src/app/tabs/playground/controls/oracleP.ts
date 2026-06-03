@@ -63,7 +63,7 @@ export function formatOraclePInput(value: number): string {
 
 export function formatOraclePDescription(value: number): string {
   if (!isOraclePEnabled(value)) {
-    return "Oracle off — clear the field or leave empty; mcSCRAM runs without a known µ reference.";
+    return "";
   }
   const p = clampOracleP(value);
   if (p === 0) return "µ = 0.000000 · exact zero-probability oracle";

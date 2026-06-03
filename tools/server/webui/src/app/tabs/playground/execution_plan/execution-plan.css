@@ -1,0 +1,618 @@
+/* ============================================================
+ * Execution Plan plate — device-shaped kernel landscape.
+ * ------------------------------------------------------------
+ * A specimen study of how one compiled PDAG is chunked for a
+ * particular SYCL device: capability plates up top, a MathBox
+ * 3D "execution landscape" as the hero, and a ruled partition
+ * ledger paired with a launch-geometry readout below.
+ *
+ * Built entirely from design-language.css tokens so the plate
+ * inherits the day/night washes and pigment register. Flat
+ * surfaces, hairline pigment rules, tracked-caps labels,
+ * tabular mono figures — no shadows, no gradients of our own.
+ * ============================================================ */
+
+.exec-plan__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  min-width: 0;
+}
+
+.exec-plan__inner--loading {
+  opacity: 0.62;
+  transition: opacity 120ms ease-out;
+}
+
+/* ---- capability plates row ---- */
+.exec-plan__summaries {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid var(--rule-faint);
+  border-left: 1px solid var(--rule-faint);
+}
+
+.exec-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 18px 18px;
+  border-right: 1px solid var(--rule-faint);
+  border-bottom: 1px solid var(--rule-faint);
+  background: var(--surface-plate-veil);
+}
+
+.exec-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.exec-card__eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.6rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.exec-card__title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--serif-display);
+  font-weight: 500;
+  font-size: 1.18rem;
+  line-height: 1.1;
+  letter-spacing: -0.004em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exec-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exec-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--edge-plate-accent);
+  border-radius: 999px;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.exec-pill--device {
+  border-color: var(--stage-runtime-border);
+  color: color-mix(in srgb, var(--pigment-sage) 88%, var(--ink-mute));
+}
+
+.exec-pill--shape {
+  border-color: var(--stage-compile-border);
+  color: color-mix(in srgb, var(--pigment-indigo-deep) 92%, var(--ink-mute));
+}
+
+.exec-pill--quiet {
+  border-color: var(--rule-faint);
+  color: var(--ink-faint);
+}
+
+/* ---- key/value stat grids ---- */
+.exec-stat-grid {
+  --exec-stat-columns: 2;
+  display: grid;
+  grid-template-columns: repeat(var(--exec-stat-columns), minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--rule-faint);
+  border-left: 1px solid var(--rule-faint);
+}
+
+.exec-stat {
+  min-width: 0;
+  padding: 7px 10px 8px;
+  border-right: 1px solid var(--rule-faint);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.exec-stat__label {
+  margin: 0;
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.exec-stat__value {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-feature-settings: "tnum", "lnum";
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+ * MathBox execution landscape (hero)
+ * ============================================================ */
+.exec-graph {
+  position: relative;
+  width: 100%;
+  height: clamp(380px, 58vh, 760px);
+  border: 1px solid var(--edge-plate-strong);
+  background:
+    radial-gradient(120% 90% at 50% 0%, var(--wash-callout), transparent 70%),
+    var(--paper-cool);
+  overflow: hidden;
+}
+
+.exec-graph:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border: 0;
+}
+
+.exec-graph:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border: 0;
+}
+
+.exec-graph__stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.exec-graph__stage canvas {
+  display: block;
+}
+
+.exec-graph__overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.exec-graph__axis {
+  position: absolute;
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.exec-graph__axis--layer {
+  left: 16px;
+  bottom: 14px;
+}
+
+.exec-graph__axis--work {
+  top: 14px;
+  left: 16px;
+}
+
+.exec-graph__hud {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.exec-graph__hud > * {
+  pointer-events: auto;
+}
+
+.exec-graph__controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.exec-graph__legend {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+  border: 1px solid var(--edge-plate);
+  background: var(--surface-plate-veil);
+  backdrop-filter: blur(4px);
+}
+
+.exec-graph__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+}
+
+.exec-graph__legend-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.exec-graph__hint {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+}
+
+/* ---- 2D fallback (no WebGL) ---- */
+.exec-graph--fallback {
+  height: auto;
+  min-height: clamp(320px, 46vh, 620px);
+}
+
+.exec-fallback {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+.exec-fallback__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 540px;
+}
+
+.exec-fallback__node {
+  cursor: pointer;
+  outline: none;
+}
+
+.exec-fallback__node:focus-visible rect:first-of-type {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.exec-fallback__node-kind {
+  fill: var(--ink);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.exec-fallback__node-meta {
+  fill: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 9.5px;
+}
+
+.exec-fallback__empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--ink-mute);
+  font-family: var(--sans);
+}
+
+/* ============================================================
+ * Inspect dock — ledger + selected partition detail
+ * ============================================================ */
+.exec-plan__inspect {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 0;
+  border: 1px solid var(--edge-plate);
+}
+
+.exec-plan__ledger {
+  min-width: 0;
+  max-height: 460px;
+  overflow: auto;
+  border-right: 1px solid var(--edge-plate);
+}
+
+.exec-ledger__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.exec-ledger__table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 12px;
+  text-align: left;
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--paper-cool) 88%, transparent);
+  border-bottom: 1px solid var(--edge-plate-strong);
+  backdrop-filter: blur(4px);
+}
+
+.exec-ledger__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.exec-ledger__row {
+  cursor: pointer;
+  transition: background-color 90ms ease-out;
+}
+
+.exec-ledger__row td {
+  padding: 7px 12px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--rule-faint);
+  white-space: nowrap;
+}
+
+.exec-ledger__row:hover {
+  background: var(--wash-interactive-hover);
+}
+
+.exec-ledger__row--selected {
+  background: var(--wash-interactive-active);
+}
+
+.exec-ledger__row--selected td {
+  color: var(--ink);
+}
+
+.exec-ledger__kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+}
+
+.exec-ledger__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.exec-ledger__range {
+  color: var(--ink-mute);
+}
+
+/* ---- detail side plate ---- */
+.exec-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px 18px 20px;
+  background: var(--surface-plate-veil);
+}
+
+.exec-detail--empty {
+  justify-content: center;
+  min-height: 240px;
+  color: var(--ink-mute);
+  font-family: var(--serif-text);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.exec-detail__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.exec-detail__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.exec-detail__heading {
+  min-width: 0;
+}
+
+.exec-detail__title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--serif-display);
+  font-weight: 500;
+  font-size: 1.12rem;
+  letter-spacing: -0.003em;
+}
+
+.exec-detail__sub {
+  margin: 2px 0 0;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+
+.exec-detail__deps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.exec-detail__deps-label {
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.exec-detail__deps-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exec-detail__dep {
+  padding: 2px 9px;
+  border: 1px solid var(--edge-plate-accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  cursor: pointer;
+  transition: border-color 90ms ease-out, color 90ms ease-out;
+}
+
+.exec-detail__dep:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.exec-detail__deps--none {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+}
+
+/* ---- work-group tiling ---- */
+.exec-tiling {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--edge-plate);
+  background: color-mix(in srgb, var(--paper-cool) 60%, transparent);
+}
+
+.exec-tiling__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.exec-tiling__title {
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.exec-tiling__formula {
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+
+.exec-tiling__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+
+.exec-tiling__svg {
+  flex-shrink: 0;
+}
+
+.exec-tiling__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.exec-tiling__facts div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.exec-tiling__facts dt {
+  min-width: 6.5em;
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.exec-tiling__facts dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-feature-settings: "tnum", "lnum";
+}
+
+.exec-tiling__note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.03em;
+}
+
+/* ============================================================
+ * Responsive: collapse to a single column on the bottom dock.
+ * ============================================================ */
+@media (max-width: 1180px) {
+  .exec-plan__summaries {
+    grid-template-columns: 1fr;
+  }
+
+  .exec-plan__inspect {
+    grid-template-columns: 1fr;
+  }
+
+  .exec-plan__ledger {
+    border-right: 0;
+    border-bottom: 1px solid var(--edge-plate);
+    max-height: 360px;
+  }
+}

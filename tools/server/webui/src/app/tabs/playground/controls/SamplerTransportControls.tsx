@@ -47,6 +47,7 @@ export function SamplerTransportControls({
         </button>
         <button
           type="button"
+          style={{ display: "none" }}
           className="pause-play-button control-pause"
           onClick={() => setPaused(!clientPaused)}
           aria-label={clientPaused ? "Resume client updates" : "Pause client updates"}
@@ -60,7 +61,7 @@ export function SamplerTransportControls({
         </button>
       </div>
       <p className="sampler-transport-controls__hint">
-        {clientPaused ? "Client updates paused" : "Reset and start/stop reach the server; pause is local only"}
+        {clientPaused ? "Client updates paused" : "Reset & start/stop are server-side; pause is local."}
       </p>
     </div>
   );

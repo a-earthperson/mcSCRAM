@@ -57,6 +57,14 @@
   --ft-connective-offset-y: 13px;
 }
 
+.fault-tree-frame:fullscreen,
+.fault-tree-frame:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  background: var(--paper);
+}
+
 .dag-webgl-frame {
   margin-top: 0;
 }
@@ -82,8 +90,22 @@
 .fault-tree-controls {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  column-gap: 0;
+  row-gap: 8px;
+}
+
+.fault-tree-control-group {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
+}
+
+.fault-tree-control-group + .fault-tree-control-group {
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--rule-faint);
 }
 
 .fault-tree-control {
@@ -124,6 +146,11 @@
 .fault-tree-control.reset-view {
   --tree-control-pigment: var(--pigment-madder);
   --tree-control-wash: var(--wash-control-madder);
+}
+
+.fault-tree-control.zen {
+  --tree-control-pigment: var(--pigment-zen);
+  --tree-control-wash: var(--wash-control-zen);
 }
 
 .fault-tree-canvas {

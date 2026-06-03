@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatNumber } from "../../../../lib/format";
+import { formatNumber, formatNumberFixed } from "../../../../lib/format";
 
 /** User-facing two-sided confidence level (%). Source of truth for the control. */
 export const DEFAULT_CONFIDENCE_CI_PERCENT = 95;
@@ -11,11 +11,9 @@ export const CONFIDENCE_CI_PRESETS = [90, 95, 99, 99.9, 99.99, 99.999] as const;
 
 const PRESET_EPSILON = 1e-6;
 
-/** mcSCRAM `ci_confidence` default (fraction in (0, 1)). */
-export const DEFAULT_CONFIDENCE = ciPercentToConfidence(DEFAULT_CONFIDENCE_CI_PERCENT);
 
 export const CONFIDENCE_CI_FIELD_HINT =
-  "Two-sided confidence level (percent) for Wald stopping bands. Use −/+ to step through 90, 95, 99, 99.9, 99.99, and 99.999% CI, or type any value from 90 to 99.999. The engine receives confidence as a fraction in (0, 1), e.g. 95% CI → confidence = 0.95.";
+  "Two-sided confidence level (percent) for Wald stopping bands. Use −/+ to step through 90, 95, 99, 99.9, 99.99, and 99.999% CI, or type any value from 90 to 99.999.";
 
 /** Clamp manual input to the allowed range (no preset snapping). */
 export function clampConfidenceCiPercent(value: number): number {
@@ -54,6 +52,10 @@ export function ciPercentToConfidence(ciPercent: number): number {
   return clampConfidenceCiPercent(ciPercent) / 100;
 }
 
+export function ciPercentToAlpha(ciPercent: number): number {
+    return 1.0 - ciPercentToConfidence(ciPercent)
+  }
+
 export function confidenceToCiPercent(confidence: number): number {
   if (!Number.isFinite(confidence)) return DEFAULT_CONFIDENCE_CI_PERCENT;
   return clampConfidenceCiPercent(confidence * 100);
@@ -65,5 +67,5 @@ export function formatCiInput(ciPercent: number): string {
 
 export function formatCiDescription(ciPercent: number): string {
   const ci = clampConfidenceCiPercent(ciPercent);
-  return `${formatCiInput(ci)}% CI · engine confidence = ${formatNumber(ciPercentToConfidence(ci), 6)}`;
+  return `wald α = ${formatNumberFixed(ciPercentToAlpha(ci), 3)}`;
 }

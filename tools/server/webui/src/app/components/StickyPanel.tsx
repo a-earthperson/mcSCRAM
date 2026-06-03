@@ -48,40 +48,6 @@ export function StickyPanelCheckbox({
   );
 }
 
-export function StickyPanelCheckboxGroup({
-  legend,
-  children,
-  className,
-  hSpan,
-  vSpan,
-  inline = false,
-}: {
-  legend: string;
-  children: ReactNode;
-  className?: string;
-  hSpan?: StickyPanelSlotProps["hSpan"];
-  vSpan?: StickyPanelSlotProps["vSpan"];
-  /** When true, omit the grid slot wrapper (for use inside a shared row). */
-  inline?: boolean;
-}) {
-  const body = (
-    <>
-      <p className="sticky-panel-checkbox-group__legend">{legend}</p>
-      <div className="sticky-panel-checkbox-group-container">{children}</div>
-    </>
-  );
-
-  if (inline) {
-    return <div className={classNames("sticky-panel-checkbox-group", className)}>{body}</div>;
-  }
-
-  return (
-    <StickyPanelSlot className={classNames("sticky-panel-checkbox-group", className)} hSpan={hSpan} vSpan={vSpan}>
-      {body}
-    </StickyPanelSlot>
-  );
-}
-
 /** Scoped control region (fieldset) placed on the sticky-panel grid. */
 export function StickyPanelGroup({
   legend,
