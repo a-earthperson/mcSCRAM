@@ -7,6 +7,7 @@ import {
   BITPACK_SIZE,
   buildBitpackPointField,
   bitpackPointFieldFromBasicEventBitpackBufferShape,
+  bitpackPointFieldWorldExtent,
 } from "./mathbox/bitpackField";
 import type { BasicEventBitpackBufferShape } from "./mathbox/types";
 import { buildGlobalAxes } from "./mathbox/globalAxes";
@@ -85,12 +86,26 @@ export function createExecutionGraph(
     /* renderer flavour without setClearColor — ignore */
   }
 
+  const basicEventBitpackBufferShape: BasicEventBitpackBufferShape = {
+    batch_size: 1,
+    bitpacks_per_batch: 64,
+    bits_per_bitpack: BITPACK_SIZE,
+    num_events: 64,
+  };
+  const bitpackPointFieldConfig = bitpackPointFieldFromBasicEventBitpackBufferShape(basicEventBitpackBufferShape);
+  const bitpackPointFieldExtent = bitpackPointFieldWorldExtent(bitpackPointFieldConfig);
+  const bitpackSceneRadius = Math.max(1, Math.hypot(bitpackPointFieldExtent.width, bitpackPointFieldExtent.height) * 0.5);
+
   try {
     three.camera.position.set(1.9, 1.35, 2.0);
+    if ("far" in three.camera) {
+      three.camera.far = Math.max(three.camera.far, bitpackSceneRadius * 16);
+      three.camera.updateProjectionMatrix?.();
+    }
     if (three.controls) {
       three.controls.target?.set?.(0.5, 0.32, 0);
       three.controls.minDistance = 0.2;
-      three.controls.maxDistance = 6;
+      three.controls.maxDistance = Math.max(6, bitpackSceneRadius * 8);
       three.controls.enablePan = true;
       three.controls.rotateSpeed = 1;
       three.controls.zoomSpeed = 0.8;
@@ -101,14 +116,6 @@ export function createExecutionGraph(
   } catch {
     /* control flavour differences — non-fatal */
   }
-
-  const basicEventBitpackBufferShape: BasicEventBitpackBufferShape = {
-    batch_size: 1,
-    bitpacks_per_batch: 16,
-    bits_per_bitpack: BITPACK_SIZE,
-    num_events: 16,
-  };
-  const bitpackPointFieldConfig = bitpackPointFieldFromBasicEventBitpackBufferShape(basicEventBitpackBufferShape);
 
   let selection: ReturnType<typeof buildSelectionLayer> | null = null;
   try {
