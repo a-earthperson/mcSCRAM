@@ -109,24 +109,55 @@ vec4 getFramesSample(vec3 xyz) {
 }
 `;
 
-/** Cheap low-magnitude coordinate hash; emits one deterministic 0/1 bit per repeated grid point. */
+/** WebGL2-style tile hash; emits one deterministic 64-bit bitpack across each repeated 8x8 tile. */
 const BIT_RANDOM_BITS_SHADER = `
 vec4 getSample(vec3 xyz);
 
-float randomBit(vec2 globalCell, vec2 localCell) {
-  float state = globalCell.x * 17.0 + globalCell.y * 131.0;
-  state += localCell.x * 29.0 + localCell.y * 43.0 + 23.0;
-  state = mod(state, 251.0);
-  state = mod(state * 73.0 + 41.0, 251.0);
-  state = mod(state * state + state * 37.0 + 17.0, 251.0);
-  return step(125.0, state);
+uint avalanche32(uint x) {
+  x ^= x >> 16u;
+  x *= 0x7feb352du;
+  x ^= x >> 15u;
+  x *= 0x846ca68bu;
+  x ^= x >> 16u;
+  return x;
+}
+
+uint xorshift32Forward(uint x) {
+  x ^= x << 13u;
+  x ^= x >> 17u;
+  x ^= x << 5u;
+  return x;
+}
+
+uint xorshift32Reverse(uint x) {
+  x ^= x >> 15u;
+  x ^= x << 11u;
+  x ^= x >> 7u;
+  return x;
+}
+
+uvec2 tileBitpack(vec2 tile) {
+  uvec2 t = uvec2(tile);
+  uint seed = avalanche32(t.x * 0x9e3779b9u ^ t.y * 0x85ebca6bu ^ 0xc2b2ae35u);
+  return uvec2(
+    xorshift32Forward(seed ^ 0x243f6a88u),
+    xorshift32Reverse(seed ^ 0xb7e15162u)
+  );
+}
+
+float bitpackBit(uvec2 words, vec2 localCell) {
+  uint bitIndex = uint(localCell.y) * 8u + uint(localCell.x);
+  uint word = bitIndex < 32u ? words.x : words.y;
+  uint lane = bitIndex & 31u;
+  return float((word >> lane) & 1u);
 }
 
 vec4 getFramesSample(vec3 xyz) {
   vec4 c = getSample(xyz);
   vec2 globalCell = floor(xyz.xy + vec2(0.5));
   vec2 localCell = floor(c.xy + vec2(0.5));
-  float bit = randomBit(globalCell, localCell);
+  vec2 tile = floor(globalCell / 8.0);
+  float bit = bitpackBit(tileBitpack(tile), localCell);
   return vec4(c.xy, bit, c.a);
 }
 `;
