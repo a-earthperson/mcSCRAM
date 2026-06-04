@@ -9,15 +9,18 @@ import {
   type ExecutionGraphController,
 } from "./mathboxExecutionGraph";
 import type { ExecutionScene } from "./mathbox/executionScene";
+import type { ExecutionModel } from "./sycl";
 
 type GraphStatus = "webgl" | "fallback";
 
 export function ExecutionGraph({
   scene,
+  model,
   selectedId,
   onSelect,
 }: {
   scene: ExecutionScene;
+  model: ExecutionModel;
   selectedId: number | null;
   onSelect: (partitionId: number | null) => void;
 }) {
@@ -41,7 +44,7 @@ export function ExecutionGraph({
     let cancelled = false;
     let controller: ExecutionGraphController | null = null;
     try {
-      controller = createExecutionGraph({ container, scene, palette });
+      controller = createExecutionGraph({ container, model, palette });
     } catch (error) {
       if (import.meta.env.DEV) {
         console.error("[ExecutionGraph] WebGL init failed:", error);
@@ -66,8 +69,8 @@ export function ExecutionGraph({
       controllerRef.current = null;
       controller?.dispose();
     };
-    // scheme is included so a light/dark switch re-themes the GL scene.
-  }, [scene, palette, scheme]);
+    // Rebuilt when the hydrated model changes; scheme drives light/dark re-theme.
+  }, [model, palette, scheme]);
 
   useEffect(() => {
     if (status !== "webgl") return;

@@ -1,68 +1,184 @@
-import type { BasicEventBitpackBufferShape, MathBoxView } from "./types";
+/**
+ * Bitpack point field — the base data layer for the execution scene.
+ *
+ * One `bitpack_t` is drawn as a `bitsPerSide x bitsPerSide` grid of points (64
+ * bits -> 8x8); one such tile is one work-item output. The field renders a small
+ * `columns x rows` *window* of that lattice. The heavy lifting stays on the GPU:
+ * a single seed point is resampled into a `bitsPerSide^2` block, `repeat`-ed
+ * across the window, and a pluggable {@link BitSource} assigns each point its
+ * trial bit. Bits are lifted to a signed Z displacement and drawn as points plus
+ * displacement vectors.
+ *
+ * This module owns *all* MathBox/GLSL semantics for the data layer. Callers pass
+ * a plain {@link BitpackFieldConfig} (counts + pitches + colours + bit source)
+ * and receive {@link BitpackFieldHandles} — ids to reference and a
+ * {@link FieldFrame} describing the field's world geometry, which is the single
+ * source of truth the overlays reuse so everything lines up exactly.
+ */
 import * as THREE from "three";
+import type { MathBoxView } from "./types";
+import { type BitColors } from "./fieldStyle";
+import { type BitSource, proceduralBitSource } from "./bitSource";
 
-export type BitpackPointFieldConfig = {
-  bitpackPadding?: `${number} ${number} ${number} ${number}`; /* top | right | bottom | left */
-  /** Number of bitpack tiles along X. For basic events this is bitpacks_per_batch. */
-  bitpackColumns: number;
-  /** Number of bitpack tiles along Y. For basic events this is num_events. */
-  bitpackRows: number;
-  /** bitpack_t is rendered as bitsPerSide x bitsPerSide points. 64-bit bitpacks are 8 x 8. */
-  bitsPerSide: number;
-  /** Point-to-point spacing within one bitpack, in field units. */
-  bitPitch: number;
-  /** Distance between adjacent bitpack tile origins, in the same field units. */
-  tilePitch: number;
-  /** Screen-space bit point diameter, in CSS pixels. Defaults scale from bitPitch. */
-  pointSize?: number;
-  /** Screen-space displacement-vector stroke width, in CSS pixels. Defaults scale from bitPitch. */
-  vectorWidth?: number;
-  /** Z coordinate for set bits. */
-  setBitZDisplacement: number;
-  /** Z coordinate for unset bits. */
-  unsetBitZDisplacement: number;
+export const BITPACK_SIZE = 64;
+
+const DEFAULT_BIT_POINT_SIZE = 10;
+const DEFAULT_BIT_VECTOR_WIDTH = 2;
+const DEFAULT_BIT_PITCH = 0.02;
+const DEFAULT_TILE_PITCH = 0.18;
+
+const DEFAULT_BIT_COLORS: BitColors = {
+  base: "#000",
+  set: "#ff4633",
+  unset: "#fff14f",
 };
 
-export type BitpackPointFieldWorldExtent = {
+export type BitpackFieldConfig = {
+  /** Tiles along X (samples / bitpack columns). */
+  columns: number;
+  /** Tiles along Y (events / node rows). */
+  rows: number;
+  /** sqrt(bitsPerBitpack); 64-bit packs are 8. */
+  bitsPerSide: number;
+  /** Point-to-point spacing within one tile, in field units. */
+  bitPitch: number;
+  /** Distance between adjacent tile origins, in field units. */
+  tilePitch: number;
+  /** Screen-space bit point diameter in CSS pixels. */
+  pointSize?: number;
+  /** Screen-space displacement-vector stroke width in CSS pixels. */
+  vectorWidth?: number;
+  setBitZDisplacement: number;
+  unsetBitZDisplacement: number;
+  colors?: BitColors;
+  /** Bit assignment strategy; defaults to the procedural hash (seed 0). */
+  bitSource?: BitSource;
+  /** Namespace for node ids so multiple fields can coexist in one view. */
+  idPrefix?: string;
+};
+
+export type FieldExtent = {
   width: number;
   height: number;
   maxSpan: number;
 };
 
-export const BITPACK_SIZE = 64;
-
-const DEFAULT_BIT_POINT_SIZE_PER_PITCH = 20;
-const DEFAULT_BIT_VECTOR_WIDTH_PER_PITCH = 3;
-
-export const DEFAULT_BITPACK_FIELD_CONFIG: BitpackPointFieldConfig = {
-  bitpackPadding: "2 3 2 3", // /* top | right | bottom | left */
-  bitpackColumns: 7,
-  bitpackRows: 5,
-  bitsPerSide: Math.sqrt(BITPACK_SIZE),
-  bitPitch: 0.02,
-  tilePitch: 0.180,
-  pointSize: DEFAULT_BIT_POINT_SIZE_PER_PITCH,
-  vectorWidth: DEFAULT_BIT_VECTOR_WIDTH_PER_PITCH,
-  setBitZDisplacement: 0.0001,
-  unsetBitZDisplacement: -0.0001,
+export type BitpackFieldHandles = {
+  frame: FieldFrame;
+  extent: FieldExtent;
+  /** Id of the laid-out surface (points geometry source). */
+  surfaceId: string;
+  /** Id of the per-point colour source. */
+  colorsId: string;
 };
 
-const BIT_COLORS = () => {
-  return {
-    base: "#000",
-    set: "#ff4633",
-    unset: "#fff14f",
-  };
-};
+// ---------------------------------------------------------------------------
+//  FieldFrame — world geometry, mirroring BITPACK_TILE_SHADER exactly.
+// ---------------------------------------------------------------------------
 
-type BitColors = ReturnType<typeof BIT_COLORS>;
+function axisSpan(tiles: number, bitsPerSide: number, bitPitch: number, tilePitch: number): number {
+  return Math.max(bitPitch, (tiles - 1) * tilePitch + (bitsPerSide - 1) * bitPitch);
+}
+
+/** Half-open world interval. */
+export type WorldRect = { x0: number; x1: number; y0: number; y1: number };
+
+/**
+ * World-space geometry of a bitpack field. All tile indices are *field-local*
+ * (`0..columns-1`, `0..rows-1`); callers translate absolute data-layer windows
+ * into field-local space before asking for rectangles.
+ *
+ * The field is centred on the origin (matching the tile shader's `point - span/2`),
+ * tiles are spaced by `tilePitch`, and a tile's lattice cell is `tilePitch` wide
+ * so adjacent cells tile seamlessly into a work-item lattice.
+ */
+export class FieldFrame {
+  readonly columns: number;
+  readonly rows: number;
+  readonly bitsPerSide: number;
+  readonly bitPitch: number;
+  readonly tilePitch: number;
+  readonly spanX: number;
+  readonly spanY: number;
+
+  constructor(columns: number, rows: number, bitsPerSide: number, bitPitch: number, tilePitch: number) {
+    this.columns = columns;
+    this.rows = rows;
+    this.bitsPerSide = bitsPerSide;
+    this.bitPitch = bitPitch;
+    this.tilePitch = tilePitch;
+    this.spanX = axisSpan(columns, bitsPerSide, bitPitch, tilePitch);
+    this.spanY = axisSpan(rows, bitsPerSide, bitPitch, tilePitch);
+  }
+
+  /** World X of the centre of tile column `col`. */
+  tileCenterX(col: number): number {
+    return col * this.tilePitch + ((this.bitsPerSide - 1) * this.bitPitch) / 2 - this.spanX / 2;
+  }
+
+  /** World Y of the centre of tile row `row`. */
+  tileCenterY(row: number): number {
+    return row * this.tilePitch + ((this.bitsPerSide - 1) * this.bitPitch) / 2 - this.spanY / 2;
+  }
+
+  private get cellHalf(): number {
+    return this.tilePitch / 2;
+  }
+
+  /** World rectangle enclosing a contiguous block of tiles (field-local indices). */
+  regionRect(colStart: number, colCount: number, rowStart: number, rowCount: number): WorldRect {
+    const cEnd = colStart + Math.max(1, colCount) - 1;
+    const rEnd = rowStart + Math.max(1, rowCount) - 1;
+    return {
+      x0: this.tileCenterX(colStart) - this.cellHalf,
+      x1: this.tileCenterX(cEnd) + this.cellHalf,
+      y0: this.tileCenterY(rowStart) - this.cellHalf,
+      y1: this.tileCenterY(rEnd) + this.cellHalf,
+    };
+  }
+
+  /** World rectangle of the whole field. */
+  fullRect(): WorldRect {
+    return this.regionRect(0, this.columns, 0, this.rows);
+  }
+
+  /** Cell-boundary range for a `divideX = columns` lattice grid. */
+  gridRangeX(): [number, number] {
+    return [this.tileCenterX(0) - this.cellHalf, this.tileCenterX(this.columns - 1) + this.cellHalf];
+  }
+
+  gridRangeY(): [number, number] {
+    return [this.tileCenterY(0) - this.cellHalf, this.tileCenterY(this.rows - 1) + this.cellHalf];
+  }
+
+  extent(): FieldExtent {
+    return { width: this.spanX, height: this.spanY, maxSpan: Math.max(this.spanX, this.spanY) };
+  }
+}
+
+export function bitpackFieldFrame(config: Pick<BitpackFieldConfig, "columns" | "rows" | "bitsPerSide" | "bitPitch" | "tilePitch">): FieldFrame {
+  return new FieldFrame(
+    positiveInteger(config.columns),
+    positiveInteger(config.rows),
+    positiveInteger(config.bitsPerSide),
+    positiveFinite(config.bitPitch, DEFAULT_BIT_PITCH),
+    positiveFinite(config.tilePitch, DEFAULT_TILE_PITCH),
+  );
+}
+
+export function bitpackFieldWorldExtent(config: BitpackFieldConfig): FieldExtent {
+  return bitpackFieldFrame(config).extent();
+}
+
+// ---------------------------------------------------------------------------
+//  Shader chain (unchanged semantics; the bit-assignment slot is pluggable).
+// ---------------------------------------------------------------------------
 
 function colorLiteral(color: string): string {
   const c = new THREE.Color(color);
   return `vec4(${c.r.toFixed(8)}, ${c.g.toFixed(8)}, ${c.b.toFixed(8)}, 1.0)`;
 }
 
-/** Per-texel color from signed z displacement. Palette constants are compiled once per graph. */
 function bitZColorShader(colors: BitColors): string {
   return `
 uniform float setBitZDisplacement;
@@ -83,7 +199,6 @@ vec4 getFramesSample(vec2 xy) {
 `;
 }
 
-/** Two endpoints per bit: base z=0 then displaced z. */
 const BIT_DISPLACEMENT_VECTOR_SHADER = `
 vec4 getSample(vec4 xyzw);
 
@@ -94,7 +209,6 @@ vec4 getFramesSample(vec4 xyzw) {
 }
 `;
 
-/** Color gradient for displacement vectors: base color at z=0, bit-state color at displaced z. */
 function bitDisplacementVectorColorShader(colors: BitColors): string {
   return `
 vec4 getSample(vec4 xyzw);
@@ -109,13 +223,6 @@ vec4 getFramesSample(vec4 xyzw) {
 `;
 }
 
-const BITPACK_BITS_ID = "bitpack-bits";
-const BITPACK_DISPLACED_BITS_ID = "bitpack-displaced-bits";
-const BITPACK_SURFACE_ID = "bitpack-surface";
-const BITPACK_COLORS_ID = "bitpack-colors";
-const BITPACK_DISPLACEMENT_VECTORS_ID = "bitpack-displacement-vectors";
-const BITPACK_DISPLACEMENT_VECTOR_COLORS_ID = "bitpack-displacement-vector-colors";
-
 const BITPACK_8X8_SHADER = `
 vec4 getSample(vec3 xyz);
 
@@ -124,29 +231,6 @@ vec4 getFramesSample(vec3 xyz) {
 }
 `;
 
-/** Cheap low-magnitude coordinate hash; emits one deterministic 0/1 bit per repeated grid point. */
-const BIT_RANDOM_BITS_SHADER = `
-vec4 getSample(vec3 xyz);
-
-float randomBit(vec2 globalCell, vec2 localCell) {
-  float state = globalCell.x * 17.0 + globalCell.y * 131.0;
-  state += localCell.x * 29.0 + localCell.y * 43.0 + 23.0;
-  state = mod(state, 251.0);
-  state = mod(state * 73.0 + 41.0, 251.0);
-  state = mod(state * state + state * 37.0 + 17.0, 251.0);
-  return step(125.0, state);
-}
-
-vec4 getFramesSample(vec3 xyz) {
-  vec4 c = getSample(xyz);
-  vec2 globalCell = floor(xyz.xy + vec2(0.5));
-  vec2 localCell = floor(c.xy + vec2(0.5));
-  float bit = randomBit(globalCell, localCell);
-  return vec4(c.xy, bit, c.a);
-}
-`;
-
-/** Map bit state in z (0/1) to signed z displacement before tiling. */
 const BIT_Z_DISPLACEMENT_SHADER = `
 uniform float setBitZDisplacement;
 uniform float unsetBitZDisplacement;
@@ -191,13 +275,103 @@ vec4 getFramesSample(vec3 xyz) {
 }
 `;
 
-function requireSquareBitpack(bitsPerBitpack: number): number {
-  const bitsPerSide = Math.sqrt(bitsPerBitpack);
-  if (!Number.isInteger(bitsPerSide) || bitsPerSide <= 0) {
-    throw new Error(`bitpack point field requires a square bitpack, got ${bitsPerBitpack} bits`);
+// ---------------------------------------------------------------------------
+//  Builder
+// ---------------------------------------------------------------------------
+
+export function buildBitpackField(view: MathBoxView, config: BitpackFieldConfig): BitpackFieldHandles {
+  const columns = positiveInteger(config.columns);
+  const rows = positiveInteger(config.rows);
+  const bitsPerSide = positiveInteger(config.bitsPerSide);
+  const bitPitch = positiveFinite(config.bitPitch, DEFAULT_BIT_PITCH);
+  const tilePitch = positiveFinite(config.tilePitch, DEFAULT_TILE_PITCH);
+  const setBitZDisplacement = finiteNumber(config.setBitZDisplacement, 0.0001);
+  const unsetBitZDisplacement = finiteNumber(config.unsetBitZDisplacement, -0.0001);
+  const pointSize = positiveFinite(config.pointSize ?? NaN, DEFAULT_BIT_POINT_SIZE);
+  const vectorWidth = positiveFinite(config.vectorWidth ?? NaN, DEFAULT_BIT_VECTOR_WIDTH);
+  const colors = config.colors ?? DEFAULT_BIT_COLORS;
+  const bitSource = config.bitSource ?? proceduralBitSource(0);
+
+  const prefix = config.idPrefix ? `${config.idPrefix}-` : "";
+  const id = (name: string) => `${prefix}${name}`;
+  const bitsId = id("bitpack-bits");
+  const displacedId = id("bitpack-displaced-bits");
+  const surfaceId = id("bitpack-surface");
+  const colorsId = id("bitpack-colors");
+  const vectorsId = id("bitpack-displacement-vectors");
+  const vectorColorsId = id("bitpack-displacement-vector-colors");
+
+  // Optional hydrated per-bit buffer, bound as an extra shader source.
+  const bitShaderProps: Record<string, unknown> = {
+    code: bitSource.glsl,
+    ...(bitSource.uniforms ?? {}),
+  };
+  if (bitSource.kind === "sampled") {
+    const buffer = bitSource.buffer;
+    view.matrix({
+      id: buffer.id,
+      width: buffer.width,
+      height: buffer.height,
+      channels: 1,
+      data: buffer.data,
+      live: false,
+    });
+    bitShaderProps.sources = [`#${buffer.id}`];
   }
-  return bitsPerSide;
+
+  view
+    .array({ width: 1, channels: 4, items: 1, data: [[0, 0, 0, 0]], live: true })
+    .shader({ code: BITPACK_8X8_SHADER })
+    .resample({ width: bitsPerSide, height: bitsPerSide, indices: 3, channels: 4, sample: "absolute" })
+    .repeat({ width: columns, height: rows })
+    .shader(bitShaderProps)
+    .resample({ id: bitsId, indices: 3, channels: 4, sample: "absolute" })
+    .shader({ code: BIT_Z_DISPLACEMENT_SHADER, setBitZDisplacement, unsetBitZDisplacement })
+    .resample({ source: `#${bitsId}`, id: displacedId, indices: 3, channels: 4, sample: "absolute" })
+    .shader({
+      code: BITPACK_TILE_SHADER,
+      fieldShape: [columns, rows, bitsPerSide, 0],
+      fieldSpacing: [bitPitch, tilePitch],
+    })
+    .resample({ source: `#${displacedId}`, id: surfaceId, indices: 3, channels: 4, sample: "absolute" })
+    .shader({ code: bitZColorShader(colors), setBitZDisplacement, unsetBitZDisplacement })
+    .resample({ source: `#${surfaceId}`, id: colorsId, indices: 2, channels: 4 })
+    .shader({ code: BIT_DISPLACEMENT_VECTOR_SHADER })
+    .resample({ source: `#${surfaceId}`, id: vectorsId, items: 2, indices: 4, channels: 4, sample: "absolute" })
+    .shader({ code: bitDisplacementVectorColorShader(colors) })
+    .resample({ source: `#${surfaceId}`, id: vectorColorsId, items: 2, indices: 4, channels: 4, sample: "absolute" })
+    .vector({
+      id: id("bit-displacement-vectors"),
+      points: `#${vectorsId}`,
+      colors: `#${vectorColorsId}`,
+      color: "#111",
+      width: vectorWidth,
+      opacity: 1.0,
+      blending: THREE.AdditiveBlending,
+      start: false,
+      end: false,
+      zBias: -1,
+      zWrite: false,
+    })
+    .point({
+      id: id("bitpack-points"),
+      points: `#${surfaceId}`,
+      colors: `#${colorsId}`,
+      color: "#fff",
+      size: pointSize,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      zBias: 0,
+      zWrite: false,
+    });
+
+  const frame = new FieldFrame(columns, rows, bitsPerSide, bitPitch, tilePitch);
+  return { frame, extent: frame.extent(), surfaceId, colorsId };
 }
+
+// ---------------------------------------------------------------------------
+//  numeric helpers
+// ---------------------------------------------------------------------------
 
 function positiveInteger(value: number): number {
   return Math.max(1, Math.floor(value));
@@ -209,203 +383,4 @@ function positiveFinite(value: number, fallback: number): number {
 
 function finiteNumber(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function pointSizeForBitPitch(bitPitch: number): number {
-  return clamp(bitPitch * DEFAULT_BIT_POINT_SIZE_PER_PITCH, 6, 18);
-}
-
-function vectorWidthForBitPitch(bitPitch: number): number {
-  return clamp(bitPitch * DEFAULT_BIT_VECTOR_WIDTH_PER_PITCH, 1.5, 8);
-}
-
-function bitpackFieldAxisSpan(
-  bitpackTiles: number,
-  bitsPerSide: number,
-  bitPitch: number,
-  tilePitch: number,
-): number {
-  return Math.max(
-    bitPitch,
-    (bitpackTiles - 1) * tilePitch + (bitsPerSide - 1) * bitPitch,
-  );
-}
-
-export function bitpackPointFieldWorldExtent(
-  config: BitpackPointFieldConfig,
-): BitpackPointFieldWorldExtent {
-  const bitpackColumns = positiveInteger(config.bitpackColumns);
-  const bitpackRows = positiveInteger(config.bitpackRows);
-  const bitsPerSide = positiveInteger(config.bitsPerSide);
-  const bitPitch = positiveFinite(config.bitPitch, DEFAULT_BITPACK_FIELD_CONFIG.bitPitch);
-  const tilePitch = positiveFinite(config.tilePitch, DEFAULT_BITPACK_FIELD_CONFIG.tilePitch);
-  const width = bitpackFieldAxisSpan(bitpackColumns, bitsPerSide, bitPitch, tilePitch);
-  const height = bitpackFieldAxisSpan(bitpackRows, bitsPerSide, bitPitch, tilePitch);
-
-  return {
-    width,
-    height,
-    maxSpan: Math.max(width, height),
-  };
-}
-
-export function buildBitpackPointField(
-  view: MathBoxView,
-  config: BitpackPointFieldConfig,
-): void {
-  const bitpackColumns = positiveInteger(config.bitpackColumns);
-  const bitpackRows = positiveInteger(config.bitpackRows);
-  const bitsPerSide = positiveInteger(config.bitsPerSide);
-  const bitPitch = positiveFinite(config.bitPitch, DEFAULT_BITPACK_FIELD_CONFIG.bitPitch);
-  const tilePitch = positiveFinite(config.tilePitch, DEFAULT_BITPACK_FIELD_CONFIG.tilePitch);
-  const setBitZDisplacement = finiteNumber(
-    config.setBitZDisplacement,
-    DEFAULT_BITPACK_FIELD_CONFIG.setBitZDisplacement,
-  );
-  const unsetBitZDisplacement = finiteNumber(
-    config.unsetBitZDisplacement,
-    DEFAULT_BITPACK_FIELD_CONFIG.unsetBitZDisplacement,
-  );
-  const pointSize = positiveFinite(config.pointSize ?? NaN, pointSizeForBitPitch(bitPitch));
-  const vectorWidth = positiveFinite(config.vectorWidth ?? NaN, vectorWidthForBitPitch(bitPitch));
-  const bitColors = BIT_COLORS();
-
-  view
-    .array({
-      width: 1,
-      channels: 4,
-      items: 1,
-      data: [[0, 0, 0, 0]],
-      live: true,
-    })
-    .shader({
-      code: BITPACK_8X8_SHADER,
-    })
-    .resample({
-      width: bitsPerSide,
-      height: bitsPerSide,
-      indices: 3,
-      channels: 4,
-      sample: "absolute",
-    })
-    .repeat({
-      width: bitpackColumns,
-      height: bitpackRows,
-    })
-    .shader({
-      code: BIT_RANDOM_BITS_SHADER,
-    })
-    .resample({
-      id: BITPACK_BITS_ID,
-      indices: 3,
-      channels: 4,
-      sample: "absolute",
-    })
-    .shader({
-      code: BIT_Z_DISPLACEMENT_SHADER,
-      setBitZDisplacement,
-      unsetBitZDisplacement,
-    })
-    .resample({
-      source: `#${BITPACK_BITS_ID}`,
-      id: BITPACK_DISPLACED_BITS_ID,
-      indices: 3,
-      channels: 4,
-      sample: "absolute",
-    })
-    .shader({
-      code: BITPACK_TILE_SHADER,
-      fieldShape: [bitpackColumns, bitpackRows, bitsPerSide, 0],
-      fieldSpacing: [bitPitch, tilePitch],
-    })
-    .resample({
-      source: `#${BITPACK_DISPLACED_BITS_ID}`,
-      id: BITPACK_SURFACE_ID,
-      indices: 3,
-      channels: 4,
-      sample: "absolute",
-    })
-    .shader({
-      code: bitZColorShader(bitColors),
-      setBitZDisplacement,
-      unsetBitZDisplacement,
-    })
-    .resample({
-      source: `#${BITPACK_SURFACE_ID}`,
-      id: BITPACK_COLORS_ID,
-      indices: 2,
-      channels: 4,
-    })
-    .shader({
-      code: BIT_DISPLACEMENT_VECTOR_SHADER,
-    })
-    .resample({
-      source: `#${BITPACK_SURFACE_ID}`,
-      id: BITPACK_DISPLACEMENT_VECTORS_ID,
-      items: 2,
-      indices: 4,
-      channels: 4,
-      sample: "absolute",
-    })
-    .shader({
-      code: bitDisplacementVectorColorShader(bitColors),
-    })
-    .resample({
-      source: `#${BITPACK_SURFACE_ID}`,
-      id: BITPACK_DISPLACEMENT_VECTOR_COLORS_ID,
-      items: 2,
-      indices: 4,
-      channels: 4,
-      sample: "absolute",
-    })
-    .vector({
-      id: "bit-displacement-vectors",
-      points: `#${BITPACK_DISPLACEMENT_VECTORS_ID}`,
-      colors: `#${BITPACK_DISPLACEMENT_VECTOR_COLORS_ID}`,
-      color: "#111",
-      width: vectorWidth,
-      opacity: 1.0,
-      blending: THREE.AdditiveBlending,
-      start: false,
-      end: false,
-      zBias: -1,
-      zWrite: false,
-    })
-    .point({
-      id: "points",
-      points: `#${BITPACK_SURFACE_ID}`,
-      colors: `#${BITPACK_COLORS_ID}`,
-      color: "#fff",
-      size: pointSize,
-      opacity: 1,
-      blending: THREE.AdditiveBlending,
-      zBias: 0,
-      zWrite: false,
-    });
-}
-
-export function bitpackPointFieldFromBasicEventBitpackBufferShape(
-  bufferShape: BasicEventBitpackBufferShape,
-  config: Partial<Pick<BitpackPointFieldConfig, "bitPitch" | "tilePitch" | "pointSize" | "vectorWidth">> = {},
-): BitpackPointFieldConfig {
-  const bitsPerSide = requireSquareBitpack(
-    bufferShape.bits_per_bitpack ?? BITPACK_SIZE,
-  );
-  const bitPitch = positiveFinite(config.bitPitch ?? NaN, DEFAULT_BITPACK_FIELD_CONFIG.bitPitch);
-  const tilePitch = positiveFinite(config.tilePitch ?? NaN, DEFAULT_BITPACK_FIELD_CONFIG.tilePitch);
-
-  return {
-    ...DEFAULT_BITPACK_FIELD_CONFIG,
-    bitPitch,
-    tilePitch,
-    pointSize: config.pointSize,
-    vectorWidth: config.vectorWidth,
-    bitpackRows: bufferShape.num_events,
-    bitpackColumns: bufferShape.bitpacks_per_batch,
-    bitsPerSide,
-  };
 }

@@ -12,6 +12,7 @@ import { PartitionDetail } from "./PartitionDetail";
 import { PartitionLedger } from "./PartitionLedger";
 import { SampleShaperSummary } from "./SampleShaperSummary";
 import { buildExecutionScene, compactCount } from "./mathbox/executionScene";
+import { executionModelFromPlan } from "./sycl";
 import { useExecutionPlan } from "./mathbox/useExecutionPlan";
 import "./execution-plan.css";
 
@@ -43,6 +44,7 @@ export function ExecutionPlanPanel({
   });
 
   const scene = useMemo(() => (plan ? buildExecutionScene(plan) : null), [plan]);
+  const model = useMemo(() => (plan ? executionModelFromPlan(plan) : null), [plan]);
   const [selectedPartitionId, setSelectedPartitionId] = useState<number | null>(null);
 
   // Reset the selection whenever a new plan arrives.
@@ -80,6 +82,7 @@ export function ExecutionPlanPanel({
         loading={loading}
         plan={plan}
         scene={scene}
+        model={model}
         palette={palette}
         totals={totals}
         selectedPartitionId={selectedPartitionId}
@@ -97,6 +100,7 @@ function ExecutionPlanBody({
   loading,
   plan,
   scene,
+  model,
   palette,
   totals,
   selectedPartitionId,
@@ -109,6 +113,7 @@ function ExecutionPlanBody({
   loading: boolean;
   plan: ReturnType<typeof useExecutionPlan>["plan"];
   scene: ReturnType<typeof buildExecutionScene> | null;
+  model: ReturnType<typeof executionModelFromPlan> | null;
   palette: ReturnType<typeof usePlotTheme>["palette"];
   totals: { totalWorkItems: number; peakResident: number } | null;
   selectedPartitionId: number | null;
@@ -122,7 +127,7 @@ function ExecutionPlanBody({
   if (hasError && !plan) {
     return <EmptyState text="The native execution plan is unavailable for this model." />;
   }
-  if (!plan || !scene) {
+  if (!plan || !scene || !model) {
     return <EmptyState text={loading ? "Computing execution plan…" : "Select a model to compile its execution plan."} />;
   }
   if (!scene.towers.length) {
@@ -155,7 +160,7 @@ function ExecutionPlanBody({
         </section>
       </div>
 
-      <ExecutionGraph scene={scene} selectedId={selectedPartitionId} onSelect={onSelect} />
+      <ExecutionGraph scene={scene} model={model} selectedId={selectedPartitionId} onSelect={onSelect} />
 
       <div className="exec-plan__inspect">
         <div className="exec-plan__ledger">
