@@ -11,9 +11,9 @@ export type MathBoxRange3 = [x: MathBoxSpan, y: MathBoxSpan, z: MathBoxSpan];
 export type MathBoxView = any;
 
 export type BitpackBufferShape = {
-  bits_per_bitpack: number; // 64.
   batch_size: number;
   bitpacks_per_batch: number;
+  bits_per_bitpack: number;
 };
 
 export type BasicEventBitpackBufferShape = BitpackBufferShape & {

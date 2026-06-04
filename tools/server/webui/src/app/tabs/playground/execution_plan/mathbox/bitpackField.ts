@@ -2,6 +2,7 @@ import type { InkPalette } from "../../../../../components/plotTokens";
 import type { BasicEventBitpackBufferShape, MathBoxView } from "./types";
 
 export type BitpackPointFieldConfig = {
+  bitpackPadding?: `${number} ${number} ${number} ${number}`; /* top | right | bottom | left */
   /** Number of bitpack tiles along X. For basic events this is bitpacks_per_batch. */
   bitpackColumns: number;
   /** Number of bitpack tiles along Y. For basic events this is num_events. */
@@ -14,10 +15,13 @@ export type BitpackPointFieldConfig = {
   tilePitch: number;
 };
 
+export const BITPACK_SIZE = 64;
+
 export const DEFAULT_BITPACK_FIELD_CONFIG: BitpackPointFieldConfig = {
-  bitpackColumns: 1,
-  bitpackRows: 1,
-  bitsPerSide: 8,
+  bitpackPadding: "2 3 2 3", // /* top | right | bottom | left */
+  bitpackColumns: 7,
+  bitpackRows: 5,
+  bitsPerSide: Math.sqrt(BITPACK_SIZE),
   bitPitch: 1,
   tilePitch: 8 + 1,
 };
@@ -121,7 +125,7 @@ export function buildBitpackPointField(
     })
     .point({
       color: palette.ink,
-      size: 2.5,
+      size: 1.5,
       opacity: 0.75,
       blending: "add",
       zBias: 5,
@@ -133,7 +137,9 @@ export function bitpackPointFieldFromBasicEventBitpackBufferShape(
   bufferShape: BasicEventBitpackBufferShape,
   config: Pick<BitpackPointFieldConfig, "bitPitch" | "tilePitch"> = DEFAULT_BITPACK_FIELD_CONFIG,
 ): BitpackPointFieldConfig {
-  const bitsPerSide = requireSquareBitpack(bufferShape.bits_per_bitpack);
+  const bitsPerSide = requireSquareBitpack(
+    bufferShape.bits_per_bitpack ?? BITPACK_SIZE,
+  );
   return {
     bitPitch: config.bitPitch,
     tilePitch: config.tilePitch,

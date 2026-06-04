@@ -4,13 +4,14 @@ import { mathBox } from "mathbox";
 import type { InkPalette } from "../../../../components/plotTokens";
 import { kindColor, type ExecutionScene } from "./mathbox/executionScene";
 import {
+  BITPACK_SIZE,
   buildBitpackPointField,
   bitpackPointFieldFromBasicEventBitpackBufferShape,
 } from "./mathbox/bitpackField";
 import type { BasicEventBitpackBufferShape } from "./mathbox/types";
 import { buildGlobalAxes } from "./mathbox/globalAxes";
 import { buildSelectionLayer, towerBase, towerTop } from "./mathbox/selectionLayer";
-import { cleanupContainer } from "./mathbox/utils";
+import { cleanupContainer, releaseWebGlContexts } from "./mathbox/utils";
 import { VIEW_RANGE, VIEW_SCALE } from "./mathbox/viewConfig";
 
 /**
@@ -63,6 +64,11 @@ export function createExecutionGraph(
   // and never installs the mathbox meta-API (no `.cartesian`).
   if (!mathbox || mathbox.fallback || typeof mathbox.cartesian !== "function") {
     try {
+      mathbox?.three?.renderer?.dispose?.();
+    } catch {
+      /* ignore */
+    }
+    try {
       mathbox?.three?.destroy?.();
     } catch {
       /* ignore */
@@ -97,13 +103,12 @@ export function createExecutionGraph(
   }
 
   const basicEventBitpackBufferShape: BasicEventBitpackBufferShape = {
-    bits_per_bitpack: 64,
     batch_size: 1,
-    bitpacks_per_batch: 7,
-    num_events: 5,
+    bitpacks_per_batch: 64,
+    bits_per_bitpack: BITPACK_SIZE,
+    num_events: 16,
   };
-  const bitpackPointFieldConfig =
-    bitpackPointFieldFromBasicEventBitpackBufferShape(basicEventBitpackBufferShape);
+  const bitpackPointFieldConfig = bitpackPointFieldFromBasicEventBitpackBufferShape(basicEventBitpackBufferShape);
 
   let selection: ReturnType<typeof buildSelectionLayer> | null = null;
   try {
@@ -120,10 +125,16 @@ export function createExecutionGraph(
     //selection = buildSelectionLayer(view, palette);
   } catch (error) {
     try {
+      three.renderer?.dispose?.();
+    } catch {
+      /* ignore */
+    }
+    try {
       three.destroy?.();
     } catch {
       /* ignore */
     }
+    releaseWebGlContexts(container);
     cleanupContainer(container);
     throw error instanceof Error ? error : new Error(String(error));
   }
@@ -176,10 +187,16 @@ export function createExecutionGraph(
       /* ignore */
     }
     try {
+      three.renderer?.dispose?.();
+    } catch {
+      /* ignore */
+    }
+    try {
       three.destroy?.();
     } catch {
       /* ignore */
     }
+    releaseWebGlContexts(container);
     cleanupContainer(container);
   };
 

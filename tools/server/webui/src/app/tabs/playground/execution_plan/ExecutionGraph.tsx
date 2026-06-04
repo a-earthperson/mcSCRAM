@@ -42,7 +42,10 @@ export function ExecutionGraph({
     let controller: ExecutionGraphController | null = null;
     try {
       controller = createExecutionGraph({ container, scene, palette });
-    } catch {
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error("[ExecutionGraph] WebGL init failed:", error);
+      }
       controller = null;
     }
 
