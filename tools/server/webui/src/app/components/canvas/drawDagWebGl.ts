@@ -242,7 +242,6 @@ export class DagWebGlRenderer {
     gl.deleteProgram(this.edgeProgram.program);
     gl.deleteProgram(this.complementedEdgeProgram?.program ?? null);
     gl.deleteProgram(this.nodeProgram.program);
-    gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 }
 

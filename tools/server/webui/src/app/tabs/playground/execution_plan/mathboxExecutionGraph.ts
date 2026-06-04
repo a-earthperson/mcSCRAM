@@ -104,7 +104,7 @@ export function createExecutionGraph(
 
   const basicEventBitpackBufferShape: BasicEventBitpackBufferShape = {
     batch_size: 1,
-    bitpacks_per_batch: 64,
+    bitpacks_per_batch: 16,
     bits_per_bitpack: BITPACK_SIZE,
     num_events: 16,
   };
@@ -118,7 +118,7 @@ export function createExecutionGraph(
       scale: VIEW_SCALE,
     });
     buildGlobalAxes(view, palette);
-    buildBitpackPointField(view, bitpackPointFieldConfig, palette);
+    buildBitpackPointField(view, bitpackPointFieldConfig);
     // buildGround(view, scene, palette);
     // buildTowers(view, scene, palette);
     // buildEdges(view, scene, palette);
