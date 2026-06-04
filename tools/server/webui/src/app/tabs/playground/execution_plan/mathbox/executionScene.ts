@@ -1,9 +1,9 @@
-import type { InkPalette } from "../../../../components/plotTokens";
-import { withAlpha } from "../../../../components/plotTokens";
+import type { InkPalette } from "../../../../../components/plotTokens";
+import { withAlpha } from "../../../../../components/plotTokens";
 import type {
   ExecutionPartitionDescription,
   ExecutionPlanPayload,
-} from "../../../faultTreeApi";
+} from "../../../../faultTreeApi";
 
 /**
  * Pure layout + colour model for the DirectEval execution plan.

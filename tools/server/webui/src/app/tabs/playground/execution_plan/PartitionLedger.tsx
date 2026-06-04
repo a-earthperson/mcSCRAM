@@ -8,7 +8,7 @@ import {
   kindLabel,
   overprovisionRatio,
   partitionKind,
-} from "./executionScene";
+} from "./mathbox/executionScene";
 
 export function PartitionLedger({
   partitions,

@@ -11,8 +11,8 @@ import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";
 import { PartitionDetail } from "./PartitionDetail";
 import { PartitionLedger } from "./PartitionLedger";
 import { SampleShaperSummary } from "./SampleShaperSummary";
-import { buildExecutionScene, compactCount } from "./executionScene";
-import { useExecutionPlan } from "./useExecutionPlan";
+import { buildExecutionScene, compactCount } from "./mathbox/executionScene";
+import { useExecutionPlan } from "./mathbox/useExecutionPlan";
 import "./execution-plan.css";
 
 const DEFAULT_SAMPLE_OPTIONS: SampleShapeOptions = {

@@ -12,7 +12,7 @@ type DiagramViewportControlsProps = {
   onReset: () => void;
 };
 
-/** Grouped diagram toolbar: zen · fit · zoom · pan · reset, with chromatic clusters. */
+/** Grouped diagram toolbar: reset · fit · zoom · pan · zen, with chromatic clusters. */
 export function DiagramViewportControls({
   frameRef,
   viewport,
@@ -27,7 +27,9 @@ export function DiagramViewportControls({
   return (
     <div className="fault-tree-controls" aria-label={ariaLabel}>
       <div className="fault-tree-control-group">
-        <DiagramFullscreenButton targetRef={frameRef} />
+        <button className="fault-tree-control reset-view" type="button" onClick={onReset}>
+          Reset
+        </button>
       </div>
       <div className="fault-tree-control-group">
         <button className="fault-tree-control fit" type="button" onClick={onFit}>
@@ -87,9 +89,7 @@ export function DiagramViewportControls({
         </button>
       </div>
       <div className="fault-tree-control-group">
-        <button className="fault-tree-control reset-view" type="button" onClick={onReset}>
-          Reset
-        </button>
+        <DiagramFullscreenButton targetRef={frameRef} />
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import type { InkPalette } from "../../../../components/plotTokens";
-import { kindColor, kindLabel, type ExecKindKey } from "./executionScene";
+import { kindColor, kindLabel, type ExecKindKey } from "./mathbox/executionScene";
 
 export function ExecutionGraphLegend({
   kinds,

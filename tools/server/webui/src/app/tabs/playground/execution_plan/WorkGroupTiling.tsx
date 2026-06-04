@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { InkPalette } from "../../../../components/plotTokens";
 import { withAlpha } from "../../../../components/plotTokens";
-import { compactCount, formatRange3, type ExecKindKey, kindColor } from "./executionScene";
+import { compactCount, formatRange3, type ExecKindKey, kindColor } from "./mathbox/executionScene";
 import type { ExecutionPartitionDescription } from "../../../faultTreeApi";
 
 /**

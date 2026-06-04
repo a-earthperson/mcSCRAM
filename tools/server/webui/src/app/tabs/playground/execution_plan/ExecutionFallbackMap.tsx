@@ -7,7 +7,7 @@ import {
   kindLabel,
   type ExecutionScene,
   type SceneTower,
-} from "./executionScene";
+} from "./mathbox/executionScene";
 
 /**
  * 2D layered fallback for the execution landscape. Rendered when WebGL /

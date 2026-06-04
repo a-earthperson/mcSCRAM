@@ -8,7 +8,7 @@ import {
   createExecutionGraph,
   type ExecutionGraphController,
 } from "./mathboxExecutionGraph";
-import type { ExecutionScene } from "./executionScene";
+import type { ExecutionScene } from "./mathbox/executionScene";
 
 type GraphStatus = "webgl" | "fallback";
 

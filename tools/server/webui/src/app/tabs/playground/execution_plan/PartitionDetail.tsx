@@ -8,7 +8,7 @@ import {
   kindLabel,
   overprovisionRatio,
   partitionKind,
-} from "./executionScene";
+} from "./mathbox/executionScene";
 import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";
 import { WorkGroupTiling } from "./WorkGroupTiling";
 
