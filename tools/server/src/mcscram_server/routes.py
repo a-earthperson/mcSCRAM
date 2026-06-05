@@ -81,7 +81,7 @@ def _calculation_config(body: SamplingControlBody | None = None) -> CalculationC
 
 
 def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> APIRouter:
-    router = APIRouter()
+    router = APIRouter(prefix="/api/v1")
 
     @router.get("/healthz")
     def healthz() -> dict[str, str]:
