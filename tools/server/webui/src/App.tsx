@@ -1,12 +1,12 @@
 import { Suspense, useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes } from "react-router";
 import { Hero } from "./app/shell/Hero";
-import { loadJson } from "./app/lib/loadJson";
+import { loadSiteData } from "./app/lib/loadSiteData";
+import { ClientOnly } from "./app/components/ui/ClientOnly";
 import {
   ArtifactsTab,
   CompilerTab,
   ConvergenceTab,
-  defaultSection,
   HardwareTab,
   LiveDemoTab,
   PlaygroundTab,
@@ -16,25 +16,8 @@ import {
   sectionHref,
   sections,
 } from "./app/tabs/lazyTabs";
-import { AssetPreviewModal } from "./app/ui";
-import {
-  Artifacts,
-  CompilerData,
-  ConvergenceView,
-  DeviceSummary,
-  ExactResult,
-  HardwareData,
-  ModelCard,
-  NarrativeCard,
-  PerformanceRun,
-  PlotAsset,
-  SetIndexEntry,
-  SiteData,
-  SpeedupData,
-  Summary,
-  Tallies,
-  TraceIndexData,
-} from "./app/types";
+import { AssetPreviewModal } from "./app/components";
+import type { PlotAsset, SiteData } from "./app/types";
 import { classNames } from "./app/lib/format";
 
 import "./app/styles/toc.css";
@@ -47,33 +30,21 @@ function TabFallback() {
   );
 }
 
-function App() {
-  const [data, setData] = useState<SiteData | null>(null);
+type AppProps = {
+  initialData?: SiteData | null;
+};
+
+function App({ initialData = null }: AppProps) {
+  const [data, setData] = useState<SiteData | null>(initialData);
   const [error, setError] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<PlotAsset | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      loadJson<Summary>("summary.json"),
-      loadJson<NarrativeCard[]>("narrative.json"),
-      loadJson<ModelCard[]>("models.json"),
-      loadJson<PerformanceRun[]>("performance.json"),
-      loadJson<DeviceSummary[]>("device-summaries.json"),
-      loadJson<SpeedupData>("speedups.json"),
-      loadJson<CompilerData>("compiler.json"),
-      loadJson<ConvergenceView>("convergence.json"),
-      loadJson<TraceIndexData>("traces-index.json"),
-      loadJson<Record<string, SetIndexEntry>>("set-index.json"),
-      loadJson<Artifacts>("artifacts.json"),
-      loadJson<Tallies>("tallies.json"),
-      loadJson<ExactResult[]>("exact-results.json"),
-      loadJson<HardwareData>("hardware.json"),
-    ])
-      .then(([summary, narrative, models, performance, devices, speedups, compiler, convergence, traces, setIndex, artifacts, tallies, exactResults, hardware]) => {
-        setData({ summary, narrative, models, performance, devices, speedups, compiler, convergence, traces, setIndex, artifacts, tallies, exactResults, hardware });
-      })
+    if (initialData) return;
+    loadSiteData()
+      .then(setData)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  }, []);
+  }, [initialData]);
 
   if (error) {
     return <main className="shell error-state">Could not load generated benchmark data: {error}</main>;
@@ -107,9 +78,16 @@ function App() {
       <main className="shell">
         <Suspense fallback={<TabFallback />}>
           <Routes>
-            <Route path="/" element={<Navigate to={sectionHref(defaultSection)} replace />} />
+            <Route path="/" element={<LiveDemoTab />} />
             <Route path="/live-demo" element={<LiveDemoTab />} />
-            <Route path="/playground" element={<PlaygroundTab />} />
+            <Route
+              path="/playground"
+              element={(
+                <ClientOnly fallback={<TabFallback />}>
+                  <PlaygroundTab />
+                </ClientOnly>
+              )}
+            />
             <Route path="/overview" element={<OverviewTab data={data} onPreviewAsset={setPreviewAsset} />} />
             <Route path="/hardware" element={<HardwareTab data={data} />} />
             <Route path="/performance" element={<PerformanceTab data={data} />} />
@@ -117,7 +95,7 @@ function App() {
             <Route path="/convergence" element={<ConvergenceTab data={data} />} />
             <Route path="/models" element={<ModelsTab data={data} onPreviewAsset={setPreviewAsset} />} />
             <Route path="/artifacts" element={<ArtifactsTab artifacts={data.artifacts} onPreviewAsset={setPreviewAsset} />} />
-            <Route path="*" element={<Navigate to={sectionHref(defaultSection)} replace />} />
+            <Route path="*" element={<LiveDemoTab />} />
           </Routes>
         </Suspense>
         {previewAsset && <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}

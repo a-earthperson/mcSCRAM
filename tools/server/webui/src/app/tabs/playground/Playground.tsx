@@ -9,7 +9,7 @@ import {
   type XmlInputDescriptor,
 } from "../../api/faultTreeApi";
 import { classNames } from "../../lib/format";
-import { EmptyState, SectionTitle } from "../../ui";
+import { EmptyState, SectionTitle } from "../../components";
 import { ControlPanel } from "./ControlPanel";
 import { ExecutionPlanPanel } from "./execution_plan";
 import { SamplingTrajectoryPanel } from "./SamplingTrajectoryPanel";

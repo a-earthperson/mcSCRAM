@@ -8,7 +8,7 @@ import {
   type ConvergenceStatsPayload,
 } from "../../lib/liveConvergenceStats";
 import { formatInteger, formatNumber } from "../../lib/format";
-import { EmptyState, SectionTitle } from "../../ui";
+import { EmptyState, SectionTitle } from "../../components";
 import { mcscramWebSocketUrl } from "../../api/mcscramClient";
 import type { SamplingStatus } from "./controls/samplingStatus";
 import type { SamplingControls } from "./controls/useSamplingControls";
@@ -140,6 +140,7 @@ export function SamplingTrajectoryPanel({
     const wsUrl = mcscramWebSocketUrl({ replay: true });
     let socket: WebSocket | null = null;
     let reconnectTimer: number | undefined;
+    let connectTimer: number | undefined;
     let stopped = false;
     let retryDelayMs = 500;
 
@@ -206,10 +207,11 @@ export function SamplingTrajectoryPanel({
       });
     };
 
-    connect();
+    connectTimer = window.setTimeout(connect, 0);
 
     return () => {
       stopped = true;
+      if (connectTimer !== undefined) window.clearTimeout(connectTimer);
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
       socket?.close();

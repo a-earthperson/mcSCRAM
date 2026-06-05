@@ -19,7 +19,7 @@ async function fetchDagFromServer(path: string, searchParams?: Record<string, st
 
 /** Active model configured on the mcSCRAM server (`MCSCRAM_INPUT_FILES`). */
 export function fetchActiveFaultTreeModel(): Promise<FaultTreePayload> {
-  return fetchFaultTreeFromServer("/model/fault-tree");
+  return fetchFaultTreeFromServer("/api/v1/model/fault-tree");
 }
 
 export type XmlInputDescriptor = {
@@ -210,17 +210,17 @@ async function fetchJsonFromServer<T>(path: string, searchParams?: Record<string
 
 /** Recursive ``*.xml`` catalog from the server's Aralia search roots. */
 export function fetchXmlInputCatalog(): Promise<XmlInputCatalog> {
-  return fetchJsonFromServer<XmlInputCatalog>("/model/xml-inputs");
+  return fetchJsonFromServer<XmlInputCatalog>("/api/v1/model/xml-inputs");
 }
 
-/** Any XML input exposed by `GET /model/fault-tree?model_id=…` on the server. */
+/** Any XML input exposed by `GET /api/v1/model/fault-tree?model_id=…` on the server. */
 export function fetchFaultTreeForModel(modelId: string): Promise<FaultTreePayload> {
-  return fetchFaultTreeFromServer("/model/fault-tree", { model_id: modelId });
+  return fetchFaultTreeFromServer("/api/v1/model/fault-tree", { model_id: modelId });
 }
 
 /** Render-ready DAG payload with server-provided coordinates for the WebGL2 viewer. */
 export function fetchDagForModel(modelId: string, options?: CompileDagOptions): Promise<DagPayload> {
-  return fetchDagFromServer("/model/dag", {
+  return fetchDagFromServer("/api/v1/model/dag", {
     model_id: modelId,
     ...(options
       ? {
@@ -238,12 +238,12 @@ export function fetchDagForModel(modelId: string, options?: CompileDagOptions): 
 
 /** Render-ready DAG payload for the source MEF structure before native compilation. */
 export function fetchSourceDagForModel(modelId: string): Promise<DagPayload> {
-  return fetchDagFromServer("/model/source-dag", { model_id: modelId });
+  return fetchDagFromServer("/api/v1/model/source-dag", { model_id: modelId });
 }
 
 /** Render-ready DAG payload for the DirectEval kernel execution DAG. */
 export function fetchKernelDagForModel(modelId: string, options?: CompileDagOptions): Promise<DagPayload> {
-  return fetchDagFromServer("/model/kernel-dag", {
+  return fetchDagFromServer("/api/v1/model/kernel-dag", {
     model_id: modelId,
     ...(options
       ? {
@@ -265,7 +265,7 @@ export function fetchSampleShapeForModel(
   compileOptions: CompileDagOptions,
   sampleOptions: SampleShapeOptions,
 ): Promise<SampleShapePayload> {
-  return fetchJsonFromServer<SampleShapePayload>("/model/sample-shape", {
+  return fetchJsonFromServer<SampleShapePayload>("/api/v1/model/sample-shape", {
     model_id: modelId,
     compilation_level: String(compileOptions.compilationLevel),
     expand_atleast_gates: String(compileOptions.expandAtleastGates),
@@ -285,7 +285,7 @@ export function fetchExecutionPlanForModel(
   compileOptions: CompileDagOptions,
   sampleOptions: SampleShapeOptions,
 ): Promise<ExecutionPlanPayload> {
-  return fetchJsonFromServer<ExecutionPlanPayload>("/model/execution-plan", {
+  return fetchJsonFromServer<ExecutionPlanPayload>("/api/v1/model/execution-plan", {
     model_id: modelId,
     compilation_level: String(compileOptions.compilationLevel),
     expand_atleast_gates: String(compileOptions.expandAtleastGates),
@@ -301,7 +301,7 @@ export function fetchExecutionPlanForModel(
 
 /** Source MEF, compiled PDAG, and kernel DAG in one server round-trip. */
 export function fetchDagBundleForModel(modelId: string, options?: CompileDagOptions): Promise<DagBundlePayload> {
-  return fetchJsonFromServer<DagBundlePayload>("/model/dag-bundle", {
+  return fetchJsonFromServer<DagBundlePayload>("/api/v1/model/dag-bundle", {
     model_id: modelId,
     ...(options
       ? {

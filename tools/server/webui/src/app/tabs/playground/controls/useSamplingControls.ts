@@ -10,18 +10,19 @@ export type UseSamplingControlsOptions = {
   onReset?: () => void;
   /** Called when sampling is started (before the HTTP call). */
   onBeforeStart?: () => void;
-  /** Sampler options applied on /reset and /start. */
+  /** Sampler options applied on /api/v1/reset and /api/v1/start. */
   getRunOptions?: () => SamplerRunOptions;
 };
 
-async function postSamplingControl(path: "/reset" | "/start" | "/stop", runOptions?: SamplerRunOptions) {
+async function postSamplingControl(path: "/api/v1/reset" | "/api/v1/start" | "/api/v1/stop", runOptions?: SamplerRunOptions) {
   const init: RequestInit = { method: "POST" };
-  if (path !== "/stop" && runOptions) {
+  if (path !== "/api/v1/stop" && runOptions) {
     init.headers = { "Content-Type": "application/json" };
     init.body = JSON.stringify(runOptions);
   }
   const response = await fetch(mcscramHttpUrl(path), init);
-  if (!response.ok) throw new Error(`${path.slice(1)} failed: HTTP ${response.status}`);
+  const action = path.slice(path.lastIndexOf("/") + 1);
+  if (!response.ok) throw new Error(`${action} failed: HTTP ${response.status}`);
   return response.json() as Promise<SamplingControlResponse>;
 }
 
@@ -49,7 +50,7 @@ export function useSamplingControls(options?: UseSamplingControlsOptions) {
     setResetPending(true);
     optionsRef.current?.onReset?.();
     try {
-      const payload = await postSamplingControl("/reset", optionsRef.current?.getRunOptions?.());
+      const payload = await postSamplingControl("/api/v1/reset", optionsRef.current?.getRunOptions?.());
       if (payload.status) setStatus(payload.status);
       if (!payload.accepted) setError(payload.reason ?? "Reset request was ignored.");
       else setError(null);
@@ -68,8 +69,8 @@ export function useSamplingControls(options?: UseSamplingControlsOptions) {
     if (!shouldStop) optionsRef.current?.onBeforeStart?.();
     try {
       const payload = action === "stop"
-        ? await postSamplingControl("/stop")
-        : await postSamplingControl("/start", optionsRef.current?.getRunOptions?.());
+        ? await postSamplingControl("/api/v1/stop")
+        : await postSamplingControl("/api/v1/start", optionsRef.current?.getRunOptions?.());
       if (payload.status) setStatus(payload.status);
       if (!payload.accepted) setError(payload.reason ?? `${action} request was ignored.`);
       else setError(null);

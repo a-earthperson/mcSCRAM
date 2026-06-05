@@ -1,5 +1,5 @@
-import { FieldHintTrigger } from "../../../components/HintTooltip";
-import { StickyPanelCheckbox } from "../../../components/StickyPanel";
+import { FieldHintTrigger } from "../../../components/ui/HintTooltip";
+import { StickyPanelCheckbox } from "../../../components/ui/StickyPanel";
 
 export const STOP_ON_CONVERGENCE_FIELD_HINT =
   "When enabled, sampling stops once the Wald CI policy converges, using Confidence (CI) and Delta (δ) for the stopping band (ε = δ·p̂). MAX TRIALS (N) is an upper bound (upto N). When disabled, the run draws exactly N trials; CI and δ are ignored.";

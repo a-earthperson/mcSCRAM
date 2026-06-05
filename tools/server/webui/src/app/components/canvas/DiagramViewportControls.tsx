@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { DiagramFullscreenButton } from "../DiagramFullscreenButton";
+import { DiagramFullscreenButton } from "../ui/DiagramFullscreenButton";
 import type { CanvasViewportConfig } from "./canvasViewport";
 
 type DiagramViewportControlsProps = {

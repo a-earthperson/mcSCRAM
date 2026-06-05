@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { PerformanceRun, SiteData } from "../types";
 import { formatInteger, formatNumber } from "../lib/format";
-import { Metric } from "../ui";
+import { Metric } from "../components/ui";
 
 export function Hero({ data }: { data: SiteData }) {
   const { summary } = data;

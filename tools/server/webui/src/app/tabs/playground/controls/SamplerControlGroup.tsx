@@ -1,4 +1,4 @@
-import { StickyPanelGroup, type StickyPanelSpan } from "../../../components/StickyPanel";
+import { StickyPanelGroup, type StickyPanelSpan } from "../../../components/ui/StickyPanel";
 import { ConfidenceCiField } from "./ConfidenceCiField";
 import { DeltaField } from "./DeltaField";
 import { OverheadRatioField } from "./OverheadRatioField";

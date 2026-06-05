@@ -1,15 +1,18 @@
 /** HTTP/WebSocket base URLs for the optional live mcSCRAM server. */
 
+const API_BASE_PATH = "/api/v1";
+
+function apiPath(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  if (normalized === API_BASE_PATH || normalized.startsWith(`${API_BASE_PATH}/`)) {
+    return normalized;
+  }
+  return `${API_BASE_PATH}${normalized}`;
+}
+
 export function mcscramWebSocketUrl({ replay = false }: { replay?: boolean } = {}): string {
-  const configured = import.meta.env.VITE_MCSCRAM_WS_URL as string | undefined;
-  const base = configured || (() => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.hostname || "127.0.0.1";
-    const port = import.meta.env.VITE_MCSCRAM_WS_PORT as string | undefined;
-    const path = (import.meta.env.VITE_MCSCRAM_WS_PATH as string | undefined) || "/ws";
-    const authority = port ? `${host}:${port}` : window.location.host;
-    return `${protocol}//${authority}${path}`;
-  })();
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const base = `${protocol}//${window.location.host}${apiPath("/api/v1/ws")}`;
 
   if (!replay) return base;
   const url = new URL(base);
@@ -20,7 +23,7 @@ export function mcscramWebSocketUrl({ replay = false }: { replay?: boolean } = {
 export function mcscramHttpUrl(path: string, searchParams?: Record<string, string>): string {
   const url = new URL(mcscramWebSocketUrl());
   url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-  url.pathname = path;
+  url.pathname = apiPath(path);
   url.search = "";
   if (searchParams) {
     for (const [key, value] of Object.entries(searchParams)) {

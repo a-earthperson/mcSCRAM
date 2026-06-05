@@ -1,6 +1,6 @@
-import type { StickyPanelSpan } from "../../../components/StickyPanel";
-import { StickyPanelGroup } from "../../../components/StickyPanel";
-import { Select } from "../../../ui";
+import type { StickyPanelSpan } from "../../../components/ui/StickyPanel";
+import { StickyPanelGroup } from "../../../components/ui/StickyPanel";
+import { Select } from "../../../components";
 import { OraclePField } from "./OraclePField";
 import type { InputSettings } from "./useInputSettings";
 

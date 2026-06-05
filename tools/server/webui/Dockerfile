@@ -16,17 +16,11 @@ COPY input ./input
 COPY plots ./plots
 COPY site ./site
 
-ARG VITE_MCSCRAM_WS_PORT=
-ARG VITE_MCSCRAM_WS_PATH=/ws
-ARG VITE_MCSCRAM_WS_URL=
 ARG VITE_BASE_PATH=/
-ENV VITE_MCSCRAM_WS_URL=${VITE_MCSCRAM_WS_URL} \
-    VITE_MCSCRAM_WS_PORT=${VITE_MCSCRAM_WS_PORT} \
-    VITE_MCSCRAM_WS_PATH=${VITE_MCSCRAM_WS_PATH} \
-    VITE_BASE_PATH=${VITE_BASE_PATH}
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
-RUN npm run build:app && npm run build:data
+RUN npm run build:ssr
 
 EXPOSE 5173
 
-CMD ["npm", "exec", "vite", "--", "preview", "--host", "0.0.0.0", "--port", "5173"]
+CMD ["npm", "run", "start:ssr"]

@@ -1,13 +1,13 @@
 import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { DagPayload, FaultTreePayload } from "../../components/canvas";
-import { StickyPanel, StickyPanelSlot } from "../../components/StickyPanel";
+import { StickyPanel, StickyPanelSlot } from "../../components/ui/StickyPanel";
 import {
   fetchSampleShapeForModel,
   type CompileDagOptions,
   type SampleShape,
 } from "../../api/faultTreeApi";
 import { classNames } from "../../lib/format";
-import { SectionTitle } from "../../ui";
+import { SectionTitle } from "../../components";
 import { CompilerControlGroup } from "./controls/CompilerControlGroup";
 import { InputControlFields } from "./controls/InputControlGroup";
 import { SamplerControlGroup } from "./controls/SamplerControlGroup";

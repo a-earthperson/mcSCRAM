@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
-import { classNames } from "../lib/format";
+import { classNames } from "../../lib/format";
 import { useElementFullscreen } from "./useElementFullscreen";
-import "./canvas/canvas.css";
+import "../canvas/canvas.css";
 
 type DiagramFullscreenButtonProps = {
   targetRef: RefObject<HTMLElement | null>;

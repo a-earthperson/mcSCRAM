@@ -81,6 +81,7 @@ function readCssVar(name: `--${string}`, fallback = ""): string {
 }
 
 function subscribeToColorScheme(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   mq.addEventListener("change", onStoreChange);
   return () => mq.removeEventListener("change", onStoreChange);

@@ -1,4 +1,4 @@
-/** mcSCRAM live-server run state returned by /reset, /start, /stop. */
+/** mcSCRAM live-server run state returned by /api/v1/reset, /api/v1/start, /api/v1/stop. */
 
 export type SamplingStatus = {
   status: string;

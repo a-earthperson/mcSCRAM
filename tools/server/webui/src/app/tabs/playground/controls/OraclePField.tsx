@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { FieldHintTrigger } from "../../../components/HintTooltip";
+import { FieldHintTrigger } from "../../../components/ui/HintTooltip";
 import { parseZodField } from "../../../lib/parseZodField";
 import {
   formatOraclePDescription,

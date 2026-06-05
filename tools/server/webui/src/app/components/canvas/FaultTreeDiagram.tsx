@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./canvas.css";
 import { DiagramViewportControls } from "./DiagramViewportControls";
 import { formatInteger } from "../../lib/format";
-import { EmptyState } from "../../ui";
+import { EmptyState } from "../../components/ui";
 import { FAULT_TREE_CANVAS_VIEWPORT, useCanvasFrameSize } from "./canvasViewport";
 import {
   fitLayoutView,

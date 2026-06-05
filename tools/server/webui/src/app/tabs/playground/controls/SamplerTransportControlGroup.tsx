@@ -1,7 +1,7 @@
-import { StickyPanelGroup, type StickyPanelSpan } from "../../../components/StickyPanel";
+import { StickyPanelGroup, type StickyPanelSpan } from "../../../components/ui/StickyPanel";
 import type { SampleShape } from "../../../api/faultTreeApi";
 import { formatInteger, formatNumber } from "../../../lib/format";
-import { Metric } from "../../../ui";
+import { Metric } from "../../../components";
 import type { SamplingRunMetrics } from "../samplingRunMetrics";
 import { SamplerTransportControls } from "./SamplerTransportControls";
 import { StopOnConvergenceField } from "./StopOnConvergenceField";

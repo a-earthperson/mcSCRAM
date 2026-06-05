@@ -1,6 +1,6 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from "react";
-import { FieldHintTrigger } from "../../../components/HintTooltip";
-import { StickyPanelGroup, type StickyPanelSpan } from "../../../components/StickyPanel";
+import { FieldHintTrigger } from "../../../components/ui/HintTooltip";
+import { StickyPanelGroup, type StickyPanelSpan } from "../../../components/ui/StickyPanel";
 import type { CompileDagOptions } from "../../../api/faultTreeApi";
 import {
   clampCompilationLevel,

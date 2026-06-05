@@ -1,6 +1,6 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
 import type { ReactNode } from "react";
-import "../styles/hint-tooltip.css";
+import "../../styles/hint-tooltip.css";
 
 export function TooltipProvider({ children }: { children: ReactNode }) {
   return (

@@ -2,9 +2,6 @@
 
 interface ImportMetaEnv {
   readonly VITE_BASE_PATH?: string;
-  readonly VITE_MCSCRAM_WS_URL?: string;
-  readonly VITE_MCSCRAM_WS_PORT?: string;
-  readonly VITE_MCSCRAM_WS_PATH?: string;
 }
 
 interface ImportMeta {
