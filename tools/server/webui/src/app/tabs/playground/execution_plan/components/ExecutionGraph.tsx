@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DiagramFullscreenButton } from "../../../components/DiagramFullscreenButton";
-import { usePlotTheme } from "../../../../components/plotTokens";
-import { classNames } from "../../../../lib/format";
+import { DiagramFullscreenButton } from "../../../../components/DiagramFullscreenButton";
+import { usePlotTheme } from "../../../../../components/plotTokens";
+import { classNames } from "../../../../../lib/format";
 import { ExecutionFallbackMap } from "./ExecutionFallbackMap";
 import { ExecutionGraphCameraOverlay } from "./ExecutionGraphCameraOverlay";
 import { ExecutionGraphLegend } from "./ExecutionGraphLegend";
 import {
   createExecutionGraph,
   type ExecutionGraphController,
-} from "./mathboxExecutionGraph";
-import type { ExecutionScene } from "./mathbox/executionScene";
-import type { ExecutionModel } from "./sycl";
+} from "../render/executionGraph";
+import type { ExecutionScene } from "../scene/executionScene";
+import type { ExecutionModel } from "../sycl";
 
 type GraphStatus = "webgl" | "fallback";
 

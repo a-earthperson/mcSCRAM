@@ -1,13 +1,13 @@
 import { useMemo } from "react";
-import { usePlotTheme } from "../../../../components/plotTokens";
-import { withAlpha } from "../../../../components/plotTokens";
+import { usePlotTheme } from "../../../../../components/plotTokens";
+import { withAlpha } from "../../../../../components/plotTokens";
 import {
   compactCount,
   kindColor,
   kindLabel,
   type ExecutionScene,
   type SceneTower,
-} from "./mathbox/executionScene";
+} from "../scene/executionScene";
 
 /**
  * 2D layered fallback for the execution landscape. Rendered when WebGL /

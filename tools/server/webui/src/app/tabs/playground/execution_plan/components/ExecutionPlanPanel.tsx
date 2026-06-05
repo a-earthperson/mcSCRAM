@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { usePlotTheme } from "../../../../components/plotTokens";
-import { formatBytes, formatInteger } from "../../../../lib/format";
-import { EmptyState, SectionTitle } from "../../../ui";
-import type { CompileDagOptions, SampleShapeOptions } from "../../../faultTreeApi";
-import { DEFAULT_OVERHEAD_RATIO } from "../controls/samplerOverheadRatio";
-import { DEFAULT_TRIALS_COUNT } from "../controls/samplerTrials";
+import { usePlotTheme } from "../../../../../components/plotTokens";
+import { formatBytes, formatInteger } from "../../../../../lib/format";
+import { EmptyState, SectionTitle } from "../../../../ui";
+import type { CompileDagOptions, SampleShapeOptions } from "../../../../faultTreeApi";
+import { DEFAULT_OVERHEAD_RATIO } from "../../controls/samplerOverheadRatio";
+import { DEFAULT_TRIALS_COUNT } from "../../controls/samplerTrials";
 import { DeviceSummary } from "./DeviceSummary";
 import { ExecutionGraph } from "./ExecutionGraph";
 import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";
 import { PartitionDetail } from "./PartitionDetail";
 import { PartitionLedger } from "./PartitionLedger";
 import { SampleShaperSummary } from "./SampleShaperSummary";
-import { buildExecutionScene, compactCount } from "./mathbox/executionScene";
-import { executionModelFromPlan } from "./sycl";
-import { useExecutionPlan } from "./mathbox/useExecutionPlan";
-import "./execution-plan.css";
+import { buildExecutionScene, compactCount } from "../scene/executionScene";
+import { executionModelFromPlan } from "../sycl";
+import { useExecutionPlan } from "../data/useExecutionPlan";
+import "../execution-plan.css";
 
 const DEFAULT_SAMPLE_OPTIONS: SampleShapeOptions = {
   numTrials: DEFAULT_TRIALS_COUNT,

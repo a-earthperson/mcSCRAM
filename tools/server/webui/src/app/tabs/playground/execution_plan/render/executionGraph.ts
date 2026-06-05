@@ -1,17 +1,17 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mathBox } from "mathbox";
-import type { InkPalette } from "../../../../components/plotTokens";
-import { type ExecutionModel, defaultExecutionModel } from "./sycl";
-import { buildGlobalAxes } from "./mathbox/globalAxes";
-import type { FieldExtent } from "./mathbox/bitpackField";
+import type { InkPalette } from "../../../../../components/plotTokens";
+import { type ExecutionModel, defaultExecutionModel } from "../sycl";
+import { buildGlobalAxes } from "./globalAxes";
+import type { FieldExtent } from "./bitpackField";
 import {
   type ExecutionSceneController,
   type ExecutionSceneOptions,
   createExecutionSceneController,
-} from "./mathbox/executionSceneController";
-import { cleanupContainer, releaseWebGlContexts } from "./mathbox/utils";
-import { VIEW_RANGE, VIEW_SCALE } from "./mathbox/viewConfig";
+} from "./executionSceneController";
+import { cleanupContainer, releaseWebGlContexts } from "./utils";
+import { VIEW_RANGE, VIEW_SCALE } from "./viewConfig";
 
 /**
  * Imperative MathBox controller for the execution scene.

@@ -1,6 +1,6 @@
-import { formatBytes, formatInteger } from "../../../../lib/format";
-import type { ExecutionSampleShaperDescription } from "../../../faultTreeApi";
-import { compactCount } from "./mathbox/executionScene";
+import { formatBytes, formatInteger } from "../../../../../lib/format";
+import type { ExecutionSampleShaperDescription } from "../../../../faultTreeApi";
+import { compactCount } from "../scene/executionScene";
 import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";
 
 const STRATEGY_LABELS: Record<string, string> = {

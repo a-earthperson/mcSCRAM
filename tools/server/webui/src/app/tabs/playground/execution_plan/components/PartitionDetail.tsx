@@ -1,6 +1,6 @@
-import type { InkPalette } from "../../../../components/plotTokens";
-import { formatBytes, formatInteger } from "../../../../lib/format";
-import type { ExecutionPartitionDescription } from "../../../faultTreeApi";
+import type { InkPalette } from "../../../../../components/plotTokens";
+import { formatBytes, formatInteger } from "../../../../../lib/format";
+import type { ExecutionPartitionDescription } from "../../../../faultTreeApi";
 import {
   compactCount,
   formatRange3,
@@ -8,7 +8,7 @@ import {
   kindLabel,
   overprovisionRatio,
   partitionKind,
-} from "./mathbox/executionScene";
+} from "../scene/executionScene";
 import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";
 import { WorkGroupTiling } from "./WorkGroupTiling";
 

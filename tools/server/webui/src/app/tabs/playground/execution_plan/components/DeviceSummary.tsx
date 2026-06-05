@@ -1,5 +1,5 @@
-import { formatBytes, formatInteger } from "../../../../lib/format";
-import type { ExecutionDeviceDescription } from "../../../faultTreeApi";
+import { formatBytes, formatInteger } from "../../../../../lib/format";
+import type { ExecutionDeviceDescription } from "../../../../faultTreeApi";
 import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";
 
 export function DeviceSummary({

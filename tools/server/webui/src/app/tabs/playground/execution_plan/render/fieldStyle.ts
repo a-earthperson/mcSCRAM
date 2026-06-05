@@ -10,7 +10,7 @@
  */
 import type { InkPalette } from "../../../../../components/plotTokens";
 import { withAlpha } from "../../../../../components/plotTokens";
-import { type ExecKindKey, kindColor } from "./executionScene";
+import { type ExecKindKey, kindColor } from "../scene/executionScene";
 
 export type BitColors = {
   base: string;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CameraFrameState } from "./mathboxExecutionGraph";
+import type { CameraFrameState } from "../render/executionGraph";
 
 function fmt3([x, y, z]: [number, number, number], digits = 4): string {
   return `[${x.toFixed(digits)}, ${y.toFixed(digits)}, ${z.toFixed(digits)}]`;
@@ -10,7 +10,7 @@ function fmtDir([x, y, z]: [number, number, number]): string {
 }
 
 /**
- * Live camera framing HUD for tuning `mathboxExecutionGraph` constants.
+ * Live camera framing HUD for tuning `render/executionGraph` constants.
  * Sits beside {@link ExecutionGraphLegend} in the graph HUD stack.
  */
 export function ExecutionGraphCameraOverlay({

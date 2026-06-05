@@ -17,7 +17,7 @@
  */
 import type { InkPalette } from "../../../../../components/plotTokens";
 import { type KernelModel, span, subGroupWindows } from "../sycl";
-import { partitionKind } from "./executionScene";
+import { partitionKind } from "../scene/executionScene";
 import type { FieldFrame } from "./bitpackField";
 import { type FieldStyle, fieldStyle } from "./fieldStyle";
 import { buildRegionOverlay, buildWorkItemGrid } from "./overlays";
