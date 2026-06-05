@@ -5,8 +5,8 @@ import {
   fetchSampleShapeForModel,
   type CompileDagOptions,
   type SampleShape,
-} from "../../faultTreeApi";
-import { classNames } from "../../../lib/format";
+} from "../../api/faultTreeApi";
+import { classNames } from "../../lib/format";
 import { SectionTitle } from "../../ui";
 import { CompilerControlGroup } from "./controls/CompilerControlGroup";
 import { InputControlFields } from "./controls/InputControlGroup";

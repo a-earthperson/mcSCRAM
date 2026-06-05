@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { usePlotTheme } from "../../../../../components/plotTokens";
-import { formatBytes, formatInteger } from "../../../../../lib/format";
+import { usePlotTheme } from "../../../../components/plot/plotTokens";
+import { formatBytes, formatInteger } from "../../../../lib/format";
 import { EmptyState, SectionTitle } from "../../../../ui";
-import type { CompileDagOptions, SampleShapeOptions } from "../../../../faultTreeApi";
+import type { CompileDagOptions, SampleShapeOptions } from "../../../../api/faultTreeApi";
 import { DEFAULT_OVERHEAD_RATIO } from "../../controls/samplerOverheadRatio";
 import { DEFAULT_TRIALS_COUNT } from "../../controls/samplerTrials";
 import { DeviceSummary } from "./DeviceSummary";

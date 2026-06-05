@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatInteger } from "../../../lib/format";
+import { formatInteger } from "../../lib/format";
 import { DiagramViewportControls } from "./DiagramViewportControls";
 import { EmptyState } from "../../ui";
 import { DAG_CANVAS_VIEWPORT, useCanvasFrameSize } from "./canvasViewport";

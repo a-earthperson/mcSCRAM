@@ -1,0 +1,121 @@
+/* Semantic chip layout for sticky-panel controls. */
+
+.sticky-panel__controls-grid, .sticky-panel__controls-grid-inner {
+  display: grid;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  gap: 12px;
+  grid-template-columns: repeat(var(--sticky-panel-columns), minmax(0, 1fr));
+}
+
+.sticky-panel__chip--row-span-1 {
+  --sticky-panel-chip-row-span: 1;
+}
+
+.sticky-panel__chip--row-span-2 {
+  --sticky-panel-chip-row-span: 2;
+}
+
+.sticky-panel__chip--row-span-3 {
+  --sticky-panel-chip-row-span: 3;
+}
+
+.sticky-panel__chip--col-span-1 {
+  --sticky-panel-chip-col-span: 1;
+}
+
+.sticky-panel__chip--col-span-2 {
+  --sticky-panel-chip-col-span: 2;
+}
+
+.sticky-panel__chip--col-span-3 {
+  --sticky-panel-chip-col-span: 3;
+}
+
+.sticky-panel__chip--col-span-4 {
+  --sticky-panel-chip-col-span: 4;
+}
+
+.sticky-panel__chip--col-span-5 {
+  --sticky-panel-chip-col-span: 5;
+}
+
+.sticky-panel__chip--col-span-6 {
+  --sticky-panel-chip-col-span: 6;
+}
+
+.sticky-panel__chip--col-span-7 {
+  --sticky-panel-chip-col-span: 7;
+}
+
+.sticky-panel__chip--col-span-8 {
+  --sticky-panel-chip-col-span: 8;
+}
+
+.sticky-panel__chip--col-span-9 {
+  --sticky-panel-chip-col-span: 9;
+}
+
+.sticky-panel__chip--col-span-10 {
+  --sticky-panel-chip-col-span: 10;
+}
+
+.sticky-panel__chip--col-span-11 {
+  --sticky-panel-chip-col-span: 11;
+}
+
+.sticky-panel__chip--col-span-12 {
+  --sticky-panel-chip-col-span: 12;
+}
+
+/* Direct children of the controls grid participate in placement. */
+.sticky-panel__controls-grid > .sticky-panel__slot {
+  min-width: 0;
+}
+
+/* Right gutter (>=1900): title top, view middle, edit bottom. */
+@media (min-width: 1900px) {
+  .sticky-panel__controls-grid, .sticky-panel__controls-grid-inner {
+    --sticky-panel-columns: 5;
+    --sticky-panel-rows: 3;
+  }
+
+  .sticky-panel__controls-grid {
+    grid-template-rows: auto minmax(0, 1fr) auto;  
+  }
+
+  .sticky-panel__controls-grid-inner {
+    grid-template-rows: repeat(var(--sticky-panel-inner-rows), min-content);
+  }
+  
+  .sticky-panel__controls-grid > .sticky-panel__slot {
+    grid-column: span var(--sticky-panel-v-col, var(--sticky-panel-chip-col-span, 1));
+    grid-row: span var(--sticky-panel-v-row, var(--sticky-panel-chip-row-span, 1));
+  }
+
+  .sticky-panel__controls-grid-inner > .sticky-panel__slot {
+    grid-column: span var(--sticky-panel-v-col, var(--sticky-panel-chip-col-span, 1));
+    grid-row: span var(--sticky-panel-v-row, var(--sticky-panel-chip-row-span, 1));
+  }
+}
+
+/* Bottom dock (<1900): horizontal split. */
+@media (max-width: 1899px) {
+  .sticky-panel__controls-grid, .sticky-panel__controls-grid-inner {
+    align-content: start;
+    --sticky-panel-columns: 12;
+    --sticky-panel-rows: 1;
+    grid-template-rows: auto;
+  }
+
+  .sticky-panel__controls-grid > .sticky-panel__slot {
+    grid-column: span var(--sticky-panel-h-col, var(--sticky-panel-chip-col-span, 1));
+    grid-row: span var(--sticky-panel-h-row, var(--sticky-panel-chip-row-span, 1));
+  }
+
+  .sticky-panel__controls-grid-inner > .sticky-panel__slot {
+    grid-column: span var(--sticky-panel-h-col, var(--sticky-panel-chip-col-span, 1));
+    grid-row: span var(--sticky-panel-h-row, var(--sticky-panel-chip-row-span, 1));
+  }
+}

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatNumber } from "../../../../lib/format";
+import { formatNumber } from "../../../lib/format";
 
 /** Per-node allocator slack for GPU sample shaping (`sample_shaper`, default 0.05). */
 export const DEFAULT_OVERHEAD_RATIO = 1;

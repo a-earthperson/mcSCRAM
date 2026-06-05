@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatNumber, formatNumberFixed } from "../../../../lib/format";
+import { formatNumber, formatNumberFixed } from "../../../lib/format";
 
 /** User-facing two-sided confidence level (%). Source of truth for the control. */
 export const DEFAULT_CONFIDENCE_CI_PERCENT = 95;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { parseZodField } from "../../../../lib/parseZodField";
+import { parseZodField } from "../../../lib/parseZodField";
 import { isOraclePEnabled, ORACLE_P_OFF, oraclePValueSchema } from "./oracleP";
 
 export type InputSettings = {

@@ -1,15 +1,15 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Plot, usePlotTheme } from "../../../components/Plot";
-import { PLOT_TRANSPARENT, type PlotTrace, withAlpha } from "../../../components/plotDesign";
+import { Plot, usePlotTheme } from "../../components/plot/Plot";
+import { PLOT_TRANSPARENT, type PlotTrace, withAlpha } from "../../components/plot/plotDesign";
 import {
   DEFAULT_WALD_ALPHA,
   confidenceFromAlpha,
   normalQuantileTwoSided,
   type ConvergenceStatsPayload,
-} from "../../../lib/liveConvergenceStats";
-import { formatInteger, formatNumber } from "../../../lib/format";
+} from "../../lib/liveConvergenceStats";
+import { formatInteger, formatNumber } from "../../lib/format";
 import { EmptyState, SectionTitle } from "../../ui";
-import { mcscramWebSocketUrl } from "../../mcscramClient";
+import { mcscramWebSocketUrl } from "../../api/mcscramClient";
 import type { SamplingStatus } from "./controls/samplingStatus";
 import type { SamplingControls } from "./controls/useSamplingControls";
 import type { SamplingRunMetricsStore } from "./samplingRunMetrics";

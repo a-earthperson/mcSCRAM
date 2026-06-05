@@ -1,0 +1,99 @@
+/* ---------- sticky panels --------------------------------- */
+
+/* Reusable fixed control surface. It docks to the viewport bottom by
+   default, then moves into the right-side gutter only when that gutter
+   can contain the panel without covering the centered 1180px shell. */
+.sticky-panel {
+  position: fixed;
+  z-index: 20;
+  padding: 20px;
+  overflow: auto;
+  border: 1px solid var(--edge-plate-accent);
+  border-bottom: 0;
+  color: var(--ink);
+  backdrop-filter: var(--parchment-backdrop);
+  box-shadow: 0 -18px 46px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.sticky-panel > .metric span {
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+}
+
+.sticky-panel > .metric strong {
+  margin-top: 2px;
+  font-size: 1rem;
+}
+
+.sticky-panel__title .section-title {
+  align-self: center;
+  margin-bottom: unset;;
+  padding-bottom: unset;
+}
+
+.sticky-panel__title .section-title .eyebrow {
+  margin-bottom: 4px;
+  font-size: 0.62rem;
+}
+
+
+/** if viewport is narrower than 720px, hide the sticky panel entirely **/
+@media (max-width: 720px) {
+  .sticky-panel {
+    display: none !important;
+  }
+}
+
+/** if viewport is narrower than 1900px, it can fit the sticky panel at the bottom **/
+@media (max-width: 1899px) {
+  .sticky-panel {
+    left: 50%;
+    bottom: 0;
+    width: min(1600px, 100vw);
+    max-height: 240px;
+    transform: translateX(-50%);
+  }
+
+  /** we need to pad the bottom of the page to avoid the sticky panel from covering the content below it **/
+  .sticky-panel-host {
+    padding-bottom: 200px;
+  }
+
+  .sticky-panel__title .section-title {
+    border-bottom: unset;
+    border-right: 1px solid var(--edge-plate-strong);
+  }
+}
+
+/** if viewport is wider than 1900px, it can fit the 360px wide sticky panel on the right. **/
+@media (min-width: 1900px) {
+  .sticky-panel {
+    right: 0;
+    top: 0;
+    width: 330px;
+    height: 100vh;
+    transform: none;  
+  }
+
+  .sticky-panel-host {
+    padding-bottom: unset;
+  }
+
+  .sticky-panel__title .section-title {
+    border-right: unset;
+    border-bottom: 1px solid var(--edge-plate-strong);
+  }
+}
+
+.sticky-panel .sticky-panel__item strong {
+  font-size: 1rem;
+}
+
+.sticky-panel .sticky-panel__item span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Playground checkbox styling lives in sticky-panel-group.css (the only
+   consumer is the playground control plate). */

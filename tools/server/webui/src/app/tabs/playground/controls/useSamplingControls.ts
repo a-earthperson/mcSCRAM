@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { mcscramHttpUrl } from "../../../mcscramClient";
+import { mcscramHttpUrl } from "../../../api/mcscramClient";
 import type { SamplerRunOptions } from "./samplerRunOptions";
 import type { SamplingControlResponse, SamplingStatus } from "./samplingStatus";
 

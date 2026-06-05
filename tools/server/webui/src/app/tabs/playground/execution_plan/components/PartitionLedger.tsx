@@ -1,6 +1,6 @@
-import type { InkPalette } from "../../../../../components/plotTokens";
-import { formatBytes, formatInteger } from "../../../../../lib/format";
-import type { ExecutionPartitionDescription } from "../../../../faultTreeApi";
+import type { InkPalette } from "../../../../components/plot/plotTokens";
+import { formatBytes, formatInteger } from "../../../../lib/format";
+import type { ExecutionPartitionDescription } from "../../../../api/faultTreeApi";
 import {
   compactCount,
   formatRange3,

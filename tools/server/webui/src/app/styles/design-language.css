@@ -1,0 +1,327 @@
+/* ============================================================
+ * mcSCRAM Benchmark — visual design language
+ * ------------------------------------------------------------
+ * A monograph for an archive.
+ *
+ * Motif:    natural-history plate, taxonomic study, field guide.
+ * Surface:  warm-neutral cold-pressed paper, hairline rules,
+ *           large low-chroma watercolor washes pooled around
+ *           the page like pigment soaked into damp stock.
+ * Type:     transitional serif for editorial copy (h1/h2/lede
+ *           and specimen titles); humanist sans for the UI
+ *           chrome (tabs, labels, table headers, form fields,
+ *           buttons); tabular monospace for figures, IDs and
+ *           provenance. Roman throughout — hierarchy comes
+ *           from face, weight, size, color, and tracking.
+ * Color:    warm-charcoal ink on warm-neutral pearl, lifted by
+ *           muted botanical pigments — indigo, sage, ochre,
+ *           madder, paynes, rose. Pigments drive page-level
+ *           washes and chart traces, not just incidental UI.
+ * ============================================================ */
+
+:root {
+    color-scheme: light;
+
+    --global-lighting: unset;
+  
+    /* Paper: warm-neutral cold-pressed watercolor stock. R leads G≈B
+       by a hair for a faint blush warmth — readable as paper-not-screen
+       without sliding into yellow ivory or sepia. */
+    --paper:       #fffdfb;   /* warm pearl */
+    --paper-2:     #dcd6d0;   /* shaded plate */
+    --paper-tint:  #f4efe9;   /* gentle wash for hover / active */
+    --paper-cool:  #faf7f3;   /* the plate interior (specimen frame) */
+  
+    /* Ink: warm-leaning charcoal so it sits with the paper instead of
+       fighting it as a cool slab. Cool charcoal on warm paper reads
+       wrong; this stack is just enough warmer to harmonize. */
+    --ink:         #22201e;   /* primary */
+    --ink-2:       #35322f;   /* body ink */
+    --ink-mute:    #58524d;   /* annotation — meets AA on warm pearl */
+    --ink-faint:   #94897e;   /* decorative tertiary */
+  
+    --rule:        rgba(34, 32, 30, 0.92);   /* hairline at strength */
+    --rule-mute:   rgba(34, 32, 30, 0.32);   /* dotted divider */
+    --rule-faint:  rgba(34, 32, 30, 0.12);   /* panel ruling */
+  
+    /* Watercolor pigments — muted, low-chroma botanical washes.
+       The cool ones (indigo, paynes, sage) still read cool against
+       the warmer paper; the warm ones (madder, ochre, rose) get more
+       page-level airtime so the palette doesn't collapse back into a
+       cool monograph. */
+    --pigment-indigo:      #6b7f96;   /* prussian wash */
+    --pigment-indigo-deep: #4a5e76;   /* text strength */
+    --pigment-sage:        #8ba189;   /* terre verte */
+    --pigment-ochre:       #b39866;   /* yellow ochre, restrained */
+    --pigment-madder:      #a8807a;   /* madder lake / dusty rose */
+    --pigment-paynes:      #555a64;   /* paynes grey */
+  
+    /* Paled siblings — washes only, never type. */
+    --pigment-sky:         #b9c6d2;
+    --pigment-celadon:     #c3d0c2;
+    --pigment-rose:        #d5b9b1;
+  
+    /* UI accent: deep indigo for hover, focus, active state, and
+       the tracked labels that punctuate the scholarly layout. */
+    --accent:      var(--pigment-indigo-deep);
+    --accent-soft: color-mix(in srgb, var(--pigment-indigo-deep) 16%, transparent);
+
+    /* ---- Semantic washes & edges (pigment-tinted UI chrome) ----
+       Built from botanical pigments via color-mix so light and dark
+       plates inherit the same roles without re-tuning each component. */
+
+    /* Plate edges: indigo hairlines on panels, cards, specimen frames. */
+    --edge-plate:              color-mix(in srgb, var(--pigment-indigo-deep) 14%, transparent);
+    --edge-plate-strong:       color-mix(in srgb, var(--pigment-indigo-deep) 18%, transparent);
+    --edge-plate-emphasis:     color-mix(in srgb, var(--pigment-indigo-deep) 22%, transparent);
+    --edge-plate-accent:       color-mix(in srgb, var(--pigment-indigo-deep) 28%, transparent);
+    --edge-plate-rail:         color-mix(in srgb, var(--pigment-indigo-deep) 16%, transparent);
+
+    /* Interactive washes: hover, active, focus on lists/tables/tabs. */
+    --wash-interactive-hover:  color-mix(in srgb, var(--pigment-indigo-deep) 6%, transparent);
+    --wash-interactive-active: color-mix(in srgb, var(--pigment-indigo-deep) 12%, transparent);
+    --wash-interactive-meter:  color-mix(in srgb, var(--pigment-indigo-deep) 12%, transparent);
+    --wash-tab-hover:          color-mix(in srgb, var(--pigment-indigo-deep) 5%, transparent);
+    --wash-tab-active-top:     color-mix(in srgb, var(--pigment-indigo-deep) 12%, transparent);
+    --wash-tab-active-bottom:  color-mix(in srgb, var(--pigment-indigo-deep) 4%, transparent);
+    --wash-focus-ring:         color-mix(in srgb, var(--pigment-indigo-deep) 22%, transparent);
+
+    /* Translucent plate interiors & modal scrim. */
+    --surface-plate-veil:      color-mix(in srgb, var(--paper-cool) 42%, transparent);
+    --scrim-ink:               color-mix(in srgb, var(--ink) 55%, transparent);
+    --wash-callout:            color-mix(in srgb, var(--pigment-indigo-deep) 6%, transparent);
+
+    /* Pipeline stage surfaces (compiler dashboard). */
+    --stage-source-border:     color-mix(in srgb, var(--pigment-paynes) 22%, transparent);
+    --stage-compile-wash:      color-mix(in srgb, var(--pigment-indigo) 10%, transparent);
+    --stage-compile-border:    color-mix(in srgb, var(--pigment-indigo-deep) 35%, transparent);
+    --stage-optional-wash:     color-mix(in srgb, var(--pigment-madder) 6%, transparent);
+    --stage-optional-border:   color-mix(in srgb, var(--pigment-madder) 32%, transparent);
+    --stage-runtime-wash:      color-mix(in srgb, var(--pigment-sage) 10%, transparent);
+    --stage-runtime-border:    color-mix(in srgb, var(--pigment-sage) 40%, transparent);
+
+    /* Stage tags (taxonomy labels). */
+    --tag-cleanup-border:      color-mix(in srgb, var(--pigment-paynes) 40%, transparent);
+    --tag-structural-border:   color-mix(in srgb, var(--pigment-indigo-deep) 40%, transparent);
+    --tag-structural-wash:     color-mix(in srgb, var(--pigment-indigo-deep) 8%, transparent);
+    --tag-normalization-border: color-mix(in srgb, var(--pigment-madder) 50%, transparent);
+    --tag-normalization-wash:  color-mix(in srgb, var(--pigment-madder) 8%, transparent);
+
+    /* Control button washes (live demo, fault-tree toolbar). */
+    --wash-control-indigo:     color-mix(in srgb, var(--pigment-indigo-deep) 15%, transparent);
+    --wash-control-madder:     color-mix(in srgb, var(--pigment-madder) 16%, transparent);
+    --wash-control-sage:       color-mix(in srgb, var(--pigment-sage) 18%, transparent);
+    --wash-control-ochre:      color-mix(in srgb, var(--pigment-ochre) 18%, transparent);
+
+    /* Zen mode: warm dust (rose + ochre), kept off the indigo/sky cool axis used by fit. */
+    --pigment-zen:             color-mix(in srgb, var(--pigment-rose) 52%, var(--pigment-ochre) 48%);
+    --wash-control-zen:        color-mix(in srgb, var(--pigment-zen) 18%, transparent);
+
+    /* Connection / status pills. */
+    --status-positive-border:  color-mix(in srgb, var(--pigment-sage) 34%, transparent);
+    --status-negative-border:  color-mix(in srgb, var(--pigment-madder) 34%, transparent);
+
+    /* Plotly / chart chrome (read by plotTokens.ts). */
+    --plot-annotation-bg:      color-mix(in srgb, var(--paper-cool) 72%, transparent);
+    --plot-oracle-band-99:     color-mix(in srgb, var(--ink) 48%, transparent);
+    --plot-oracle-band-95:     color-mix(in srgb, var(--ink) 58%, transparent);
+    --plot-grid:               color-mix(in srgb, var(--ink) 8%, transparent);
+    --plot-marker-rim:         color-mix(in srgb, var(--paper-cool) 45%, var(--paper));
+    --plot-band-sage:          color-mix(in srgb, var(--pigment-sage) 12%, transparent);
+    --plot-band-madder:        color-mix(in srgb, var(--pigment-madder) 10%, transparent);
+
+    /* Continuous scalar wash: pale stock → sky → indigo → deep prussian → ink. */
+    --plot-colorscale-0:       color-mix(in srgb, var(--paper) 72%, var(--paper-tint));
+    --plot-colorscale-25:      var(--pigment-sky);
+    --plot-colorscale-50:      var(--pigment-indigo);
+    --plot-colorscale-75:      color-mix(in srgb, var(--pigment-indigo-deep) 62%, var(--ink));
+    --plot-colorscale-100:     var(--ink);
+  
+    /* Type stacks:
+         serif-display — editorial titles, display numerals
+         serif-text    — long-form prose (lede, captions)
+         sans          — UI chrome, labels, controls, tables, buttons
+         mono          — figures, IDs, paths, tabular numerics
+       The hero/title face (Cormorant Garamond) is preserved; the
+       sans (Inter Tight) is reserved for the chrome so the page
+       stops looking like an unbroken page of serif. */
+    --serif-display: "Cormorant Garamond", "EB Garamond", "Source Serif Pro", Georgia, "Times New Roman", serif;
+    --serif-text:    "EB Garamond", "Source Serif Pro", Georgia, "Times New Roman", serif;
+    --sans:          "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --mono:          "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* ---- Baseline type system (single source of truth) ----
+       All rem-based sizes derive from --font-size-root on this element.
+       Component rules should prefer these tokens over literal values. */
+
+    /* Document root: establishes 1rem for the entire app. */
+    --font-size-root:        18px;
+
+    /* Weight scale — roman hierarchy only (no bold/black). */
+    --font-weight-regular:   400;
+    --font-weight-medium:    500;
+    --font-weight-semibold:  600;
+
+    /* OpenType / kerning defaults. */
+    --font-feature-settings-ui:       "kern", "liga", "calt", "ss01";
+    --font-feature-settings-tabular:  "tnum", "lnum";
+    --font-feature-settings-lining:   "lnum";
+
+    /* Letter-spacing (tracking). Negative = display serif tightening;
+       wide positive = tracked uppercase UI labels. */
+    --letter-spacing-normal:       0;
+    --letter-spacing-tight:        -0.003em;   /* specimen titles, h3 */
+    --letter-spacing-tighter:      -0.005em;   /* h1, large display */
+    --letter-spacing-ui:           0.01em;     /* links, secondary sans */
+    --letter-spacing-relaxed:      0.02em;     /* loading / status copy */
+    --letter-spacing-caps:         0.18em;     /* default tracked label */
+    --letter-spacing-caps-narrow:  0.16em;     /* tabs, compact rails */
+    --letter-spacing-caps-roomy:   0.2em;      /* section markers */
+    --letter-spacing-caps-wide:    0.22em;     /* hero eyebrows */
+
+    /* Rem size scale (1rem = --font-size-root). */
+    --font-size-2xs:    0.62rem;
+    --font-size-xs:     0.68rem;
+    --font-size-sm:     0.72rem;    /* caps labels, tabs, mono meta */
+    --font-size-sm-md:  0.74rem;    /* eyebrows, mono secondary */
+    --font-size-md:     0.78rem;    /* chips, table meta */
+    --font-size-md-lg:  0.82rem;
+    --font-size-ui:     0.92rem;
+    --font-size-ui-md:  0.95rem;    /* controls, compact sans body */
+    --font-size-base:   1rem;       /* default UI size */
+    --font-size-body:   0.98rem;    /* prose blocks */
+    --font-size-lg:     1.05rem;    /* specimen / panel titles */
+    --font-size-mono:   1.02rem;    /* hero numerals */
+    --font-size-mono-lg: 1.05rem;
+
+    /* Line-height (leading) rhythm. */
+    --line-height-tight:    1.04;   /* h1 */
+    --line-height-snug:     1.05;   /* panel display numerals */
+    --line-height-heading:  1.18;   /* h2 */
+    --line-height-ui:       1.35;   /* compact control stacks */
+    --line-height-body:     1.55;   /* default UI / prose */
+    --line-height-relaxed:  1.6;    /* lede */
+
+    /* Editorial display roles (fluid, viewport-aware). */
+    --font-size-h1:   clamp(2.6rem, 4.6vw, 4.1rem);
+    --font-size-h2:   clamp(1.3rem, 1.95vw, 1.7rem);
+    --font-size-lede: clamp(1.05rem, 1.3vw, 1.2rem);
+    --font-size-panel-title: clamp(1.55rem, 2vw, 2rem);
+
+    /* Link / rule decoration. */
+    --text-decoration-thickness: 1px;
+    --text-underline-offset:     3px;
+
+    font-family: var(--sans);
+    font-size: var(--font-size-root);
+    line-height: var(--line-height-body);
+    font-feature-settings: var(--font-feature-settings-ui);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+
+    /* One dial: 0 = flat stock, 1 = original plate, >1 = more pigment / less bare paper. */
+    --paper-wash-intensity: 1.75;
+
+    --paper-wash-base: color-mix(
+      in srgb,
+      var(--paper) calc(100% - 35% * max(0, var(--paper-wash-intensity) - 1)),
+      var(--paper-tint)
+    );
+
+    --paper-wash:
+      radial-gradient(60% 45% at 6% 4%,   rgba(107, 127, 150, min(0.42, calc(0.18 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(55% 40% at 96% 18%, rgba(168, 128, 122, min(0.38, calc(0.16 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(65% 50% at 80% 96%, rgba(139, 161, 137, min(0.34, calc(0.14 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(50% 40% at 14% 86%, rgba(179, 152, 102, min(0.28, calc(0.10 * var(--paper-wash-intensity)))), transparent 65%),
+      var(--paper-wash-base);
+
+    /* Parchment: translucent, buttery paper variant. */
+    --parchment-backdrop: blur(12px) contrast(1.05) brightness(1.05) saturate(1.5) hue-rotate(20deg);
+    --double-parchment-backdrop: blur(16px) contrast(1.5) saturate(1) hue-rotate(-20deg) brightness(1);
+    --parchment-background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--pigment-indigo) 8%, transparent) 0%,
+      transparent 35%,
+      transparent 65%,
+      color-mix(in srgb, var(--pigment-madder) 8%, transparent) 100%
+    ), transparent;
+  }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --global-lighting: saturate(1.2) contrast(1.05)  brightness(1.1) saturate(3.2);
+
+    /* Paper: lampblack rag stock pushed to a near-black night void with a
+       whisper of cool blue (B leads R≈G) instead of the warm brown of day.
+       The deep base is what lets the pigment washes read as far-off neon
+       leaking across the page rather than mineral stains on warm stock. */
+    --paper:       #000000;   /* the night void */
+    --paper-2:     #1a1e2a;   /* lifted plate (raised cards) */
+    --paper-tint:  #11131c;   /* gentle wash for hover / active */
+    --paper-cool:  #0c0e15;   /* the plate interior (specimen frame) */
+
+    /* Ink: warm vellum kept deliberately warm against the cool-black stock —
+       a lit room behind a cold neon night. The muted tier stays high
+       contrast because it carries labels, captions, and table metadata. */
+    --ink:         #f1ebe2;   /* primary */
+    --ink-2:       #ded4c8;   /* body ink */
+    --ink-mute:    #b7a99a;   /* annotation */
+    --ink-faint:   #7c7167;   /* decorative tertiary */
+
+    --rule:        rgba(241, 235, 226, 0.78);   /* hairline at strength */
+    --rule-mute:   rgba(241, 235, 226, 0.29);   /* dotted divider */
+    --rule-faint:  rgba(241, 235, 226, 0.12);   /* panel ruling */
+
+    /* Neon pigments: the same botanical family lifted into a fluorescent
+       register — electric azure, jade, amber, hot rose — luminous enough to
+       glow as washes and chart traces over the void, yet held just off the
+       pure primaries so the palette reads as elegant neon, not arcade. The
+       -deep sibling is the brighter one in the dark (text strength + accent
+       must out-glow, not recede). Paynes stays the cool "grey" of the set. */
+    --pigment-indigo:      #4cb9ee;   /* electric prussian / azure */
+    --pigment-indigo-deep: #76d6ff;   /* neon cyan — text strength, accent */
+    --pigment-sage:        #57e0a6;   /* fluorescent terre verte / jade */
+    --pigment-ochre:       #ffc24a;   /* electric amber */
+    --pigment-madder:      #ff7fa6;   /* hot madder / neon rose */
+    --pigment-paynes:      #8fb6cf;   /* steel cyan glow */
+
+    /* Paled siblings: mid-ramp neon for the continuous colorscale / washes. */
+    --pigment-sky:         #3aa0d8;
+    --pigment-celadon:     #3f9f74;
+    --pigment-rose:        #c76b86;
+
+    --accent:      var(--pigment-indigo-deep);
+    --accent-soft: color-mix(in srgb, var(--pigment-indigo-deep) 24%, transparent);
+
+    /* Darkening blackout behind the lightbox so the lit plate pops out of
+       the deepened night (the warm-ink default would milk the page white). */
+    --scrim-ink:   rgba(3, 4, 8, 0.78);
+
+    /* Higher than day: against the near-black void the neon blooms can run
+       hotter and softer — distant signage bleeding in from beyond the page. */
+    --paper-wash-intensity: 0.2;
+
+    /* Four corner blooms (azure, hot rose, jade, amber) anchored off-canvas
+       with a long soft falloff so only the blurred tail leaks onto the page,
+       plus a cool cyan haze from above and a warm rose haze from below. */
+    --paper-wash:
+      radial-gradient(72% 56% at 4% 2%,   rgba(76, 185, 238, min(0.34, calc(0.20 * var(--paper-wash-intensity)))), transparent 70%),
+      radial-gradient(66% 50% at 98% 14%, rgba(255, 127, 166, min(0.28, calc(0.16 * var(--paper-wash-intensity)))), transparent 70%),
+      radial-gradient(74% 58% at 84% 100%, rgba(87, 224, 166, min(0.26, calc(0.15 * var(--paper-wash-intensity)))), transparent 70%),
+      radial-gradient(60% 48% at 10% 92%, rgba(255, 194, 74, min(0.22, calc(0.12 * var(--paper-wash-intensity)))), transparent 70%),
+      radial-gradient(80% 60% at 50% -16%, rgba(118, 214, 255, 0.07), transparent 72%),
+      radial-gradient(80% 55% at 50% 116%, rgba(255, 127, 166, 0.05), transparent 72%),
+      var(--paper-wash-base);
+
+    /* Translucent control parchment: dark frosted glass with neon edge-tints
+       (cyan left, rose right) and a touch more saturation so the washes seen
+       through it keep their glow. */
+    --parchment-backdrop: blur(32px) contrast(1.12) brightness(1.95) saturate(2.0);
+    --double-parchment-backdrop: blur(20px) contrast(1.4) saturate(1.25) hue-rotate(-10deg) brightness(0.82);
+    --parchment-background: rgba(3, 4, 8, 0.1);
+  }
+}

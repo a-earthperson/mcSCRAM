@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
-import { Hero } from "./app/Hero";
-import { loadJson } from "./app/loadJson";
+import { Hero } from "./app/shell/Hero";
+import { loadJson } from "./app/lib/loadJson";
 import {
   ArtifactsTab,
   CompilerTab,
@@ -15,7 +15,7 @@ import {
   PerformanceTab,
   sectionHref,
   sections,
-} from "./app/lazyTabs";
+} from "./app/tabs/lazyTabs";
 import { AssetPreviewModal } from "./app/ui";
 import {
   Artifacts,
@@ -34,10 +34,10 @@ import {
   Summary,
   Tallies,
   TraceIndexData,
-} from "./types";
-import { classNames } from "./lib/format";
+} from "./app/types";
+import { classNames } from "./app/lib/format";
 
-import "./styles/toc.css";
+import "./app/styles/toc.css";
 
 function TabFallback() {
   return (

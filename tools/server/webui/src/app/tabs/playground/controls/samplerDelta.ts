@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatNumber } from "../../../../lib/format";
+import { formatNumber } from "../../../lib/format";
 
 /**
  * Relative margin δ for Wald stopping: target half-width ε = δ·p̂

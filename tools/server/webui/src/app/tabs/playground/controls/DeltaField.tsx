@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { FieldHintTrigger } from "../../../components/HintTooltip";
-import { parseZodField } from "../../../../lib/parseZodField";
+import { parseZodField } from "../../../lib/parseZodField";
 import {
   DELTA_FIELD_HINT,
   deltaSchema,

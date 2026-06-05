@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { parseZodField } from "../../../../lib/parseZodField";
+import { parseZodField } from "../../../lib/parseZodField";
 import {
   ciPercentToConfidence,
   confidenceCiPercentSchema,

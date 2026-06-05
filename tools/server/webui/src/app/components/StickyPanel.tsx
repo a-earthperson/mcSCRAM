@@ -1,7 +1,7 @@
 import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
-import { classNames } from "../../lib/format";
-import "../../styles/flat-controls.css";
-import "../../styles/sticky-panel-group.css";
+import { classNames } from "../lib/format";
+import "../styles/flat-controls.css";
+import "../styles/sticky-panel-group.css";
 
 type StickyPanelSlotArea = "title" | "controls" | "controls-grid" | "controls-grid-inner" | "auxiliary" | "items" | "view" | "edit" | "chip";
 

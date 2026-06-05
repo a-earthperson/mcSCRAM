@@ -11,7 +11,7 @@
 import type {
   ExecutionPartitionDescription,
   ExecutionPlanPayload,
-} from "../../../../faultTreeApi";
+} from "../../../../api/faultTreeApi";
 import { DEFAULT_DEVICE, type DeviceModel, deviceFromDescription } from "./device";
 import { type KernelModel, type TileShape, buildKernelModel } from "./kernel";
 

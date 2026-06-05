@@ -1,0 +1,148 @@
+/* Convergence model picker */
+
+.sticky-panel.convergence-model-list {
+  overflow: hidden;
+}
+
+.sticky-panel.convergence-model-list .convergence-model-buttons {
+  display: grid;
+  gap: 0;
+  margin-top: 14px;
+  overflow: auto;
+  padding-right: 4px;
+  border-top: 1px solid var(--edge-plate-rail);
+}
+
+.sticky-panel.convergence-model-list .model-button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 4px;
+  border: 0;
+  border-bottom: 1px dotted var(--rule-mute);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0;
+  font-family: var(--sans);
+}
+
+.sticky-panel.convergence-model-list .model-button strong {
+  font-family: var(--serif-display);
+  font-weight: 500;
+  font-style: normal;
+  font-size: 0.95rem;
+  /* letter-spacing: -0.003em; */
+  color: var(--ink);
+}
+
+.sticky-panel.convergence-model-list .model-button span {
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  letter-spacing: 0;
+}
+
+.sticky-panel.convergence-model-list .model-button-topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sticky-panel.convergence-model-list .model-button-topline em {
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+.sticky-panel.convergence-model-list .model-button-meter {
+  display: block;
+  height: 3px;
+  margin-top: 5px;
+  background: var(--wash-interactive-meter);
+}
+
+.sticky-panel.convergence-model-list .model-button-meter i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.sticky-panel.convergence-model-list .model-button:hover {
+  background: var(--wash-interactive-hover);
+}
+
+.sticky-panel.convergence-model-list .model-button.active {
+  background: var(--wash-interactive-active);
+  border-bottom-color: var(--accent);
+}
+
+.sticky-panel.convergence-model-list .model-button.active strong {
+  color: var(--accent);
+}
+
+/* Bottom dock: horizontal model rail */
+@media (max-width: 1899px) {
+  .sticky-panel.convergence-model-list > .sticky-panel__title,
+  .sticky-panel.convergence-model-list > .sticky-panel__controls-grid-inner {
+    grid-row: 1 / -1;
+    align-self: stretch;
+  }
+
+  .sticky-panel.convergence-model-list {
+    max-height: 240px;
+  }
+  
+  .sticky-panel.convergence-model-list > .sticky-panel__controls-grid-inner {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: stretch;
+  }
+
+  .sticky-panel.convergence-model-list .convergence-model-buttons {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-height: none;
+    margin-top: 0;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sticky-panel.convergence-model-list .convergence-model-buttons > .model-button,
+  .sticky-panel.convergence-model-list .convergence-model-buttons > .sticky-panel__item {
+    flex: 0 0 230px;
+    width: 230px;
+    min-width: 230px;
+    max-width: 230px;
+    border-bottom: 0;
+    border-right: 1px dotted var(--rule-mute);
+  }
+
+  .sticky-panel.convergence-model-list .convergence-model-buttons > .model-button:last-child {
+    border-right: 0;
+  }
+}
+
+/* Right gutter: vertical model list */
+@media (min-width: 1900px) {
+  .sticky-panel.convergence-model-list .convergence-model-buttons {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+}

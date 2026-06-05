@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { usePlotTheme } from "../../../../../components/plotTokens";
-import { withAlpha } from "../../../../../components/plotTokens";
+import { usePlotTheme } from "../../../../components/plot/plotTokens";
+import { withAlpha } from "../../../../components/plot/plotTokens";
 import {
   compactCount,
   kindColor,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatNumber } from "../../../../lib/format";
+import { formatNumber } from "../../../lib/format";
 
 /** mcSCRAM sentinel: negative means oracle diagnostics off (`settings.oracle_p`). */
 export const ORACLE_P_OFF = -1;

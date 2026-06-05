@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mathBox } from "mathbox";
-import type { InkPalette } from "../../../../../components/plotTokens";
+import type { InkPalette } from "../../../../components/plot/plotTokens";
 import { type ExecutionModel, defaultExecutionModel } from "../sycl";
 import { buildGlobalAxes } from "./globalAxes";
 import type { FieldExtent } from "./bitpackField";

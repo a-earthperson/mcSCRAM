@@ -10,7 +10,7 @@
  * so the discrete cursor still reads as smooth motion. The field and its camera
  * framing stay put; the controller (above) handles Y scrolling by panning.
  */
-import type { InkPalette } from "../../../../../components/plotTokens";
+import type { InkPalette } from "../../../../components/plot/plotTokens";
 import {
   type ExecutionModel,
   bitpackGeometry,

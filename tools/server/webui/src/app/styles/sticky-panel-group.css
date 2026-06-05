@@ -1,0 +1,462 @@
+/* ============================================================
+ * Playground control plate — flat, ruled control groups.
+ * ------------------------------------------------------------
+ * Each pipeline stage (Input · Compiler · Sampler · Run) is a
+ * fieldset that sits directly on the parchment: a tracked-caps
+ * legend tipped with a stage pigment, controls flowing beneath,
+ * hairline rules instead of boxed cards. Motif: field-guide
+ * ledger, not stacked panels.
+ * ============================================================ */
+
+/* ---- stage pigments (Input → Compiler → Sampler → Run) ---- */
+.sticky-panel-group--input    { --pg-stage: var(--pigment-paynes); }
+.sticky-panel-group--compiler { --pg-stage: var(--pigment-indigo-deep); }
+.sticky-panel-group--sampler  { --pg-stage: var(--pigment-sage); }
+.sticky-panel-group--run      { --pg-stage: var(--pigment-ochre); }
+
+.sticky-panel-group {
+  min-width: 0;
+}
+
+.sticky-panel-group__fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Stage legend: tracked-caps marker tipped with the stage pigment. */
+.sticky-panel-group__legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 2px;
+  padding: 0;
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.sticky-panel-group__legend::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 15px;
+  height: 2px;
+  background: var(--pg-stage, var(--accent));
+}
+
+/* Body sits flat on the plate — no card, no wash. */
+.sticky-panel-group__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* ---- field labels (selects + number steppers, harmonized) ---- */
+.sticky-panel-group__number-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sticky-panel-group__number-field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sticky-panel-group__number-field-label {
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ---- segmented stepper: [−][value][+][unit] in one hairline frame ---- */
+.sticky-panel-group__number-field-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sticky-panel-group__number-field-input-row--stepped {
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--edge-plate-accent);
+  background: color-mix(in srgb, var(--paper) 58%, transparent);
+}
+
+.sticky-panel-group__number-field-input-row--stepped:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--wash-focus-ring);
+}
+
+.sticky-panel-group__number-field-input-row--stepped input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  border-left: 1px solid var(--edge-plate);
+  border-right: 1px solid var(--edge-plate);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--font-size-sm);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.sticky-panel-group__number-field-input-row--stepped input:focus {
+  outline: none;
+}
+
+.sticky-panel-group__number-field-input-row--stepped input::-webkit-outer-spin-button,
+.sticky-panel-group__number-field-input-row--stepped input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.sticky-panel-group__number-field input[aria-invalid="true"] {
+  color: var(--pigment-madder);
+}
+
+.sticky-panel-group__number-field input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sticky-panel-group__number-step {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.sticky-panel-group__number-step:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sticky-panel-group__number-step:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Unit cell: trailing segment tinted with the stage pigment. */
+.sticky-panel-group__number-field-scale {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.9rem;
+  padding: 0 9px;
+  border-left: 1px solid var(--edge-plate);
+  background: color-mix(in srgb, var(--pg-stage, var(--accent)) 9%, transparent);
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sticky-panel-group__number-field-detail {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  line-height: 1.4;
+}
+
+.sticky-panel-group__number-field-error {
+  margin: 0;
+  color: var(--pigment-madder);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  line-height: 1.35;
+}
+
+/* Compilation level select (long option labels). */
+.pg-compile-level__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pg-compile-level__row select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-md);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pg-compile-level__row .field-hint-trigger {
+  flex: 0 0 auto;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- sampler numeric field cluster ---- */
+.pg-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px 16px;
+  min-width: 0;
+}
+
+/* ---- stop-on-convergence toggle ---- */
+.sticky-panel-group__toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sticky-panel-group__toggle-row .sticky-panel-checkbox {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ---- checkboxes (accent-tinted native control) ---- */
+.sticky-panel-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sticky-panel-checkbox input {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.sticky-panel-checkbox > label {
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+  text-transform: none;
+  cursor: pointer;
+}
+
+/* ---- connective normalization matrix (taxonomic table) ----
+ *            K/N   XOR
+ *  Expand     □     □
+ *  Merge      ▣     ▣
+ */
+.pg-matrix {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(4, 1.9rem);
+  align-items: center;
+  gap: 5px 14px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.pg-matrix__caption {
+  grid-column: 1;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.pg-matrix__col {
+  justify-self: center;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+}
+
+.pg-matrix__caption,
+.pg-matrix__col {
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.pg-matrix__row {
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.pg-matrix__cell {
+  justify-self: center;
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.pg-matrix__cell input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--pg-stage, var(--accent));
+  cursor: pointer;
+}
+
+.pg-matrix__cell input:disabled,
+.pg-matrix__cell input:read-only {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ---- run transport (buttons + ledger metrics) ---- */
+.sampler-transport-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sampler-transport-controls__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  filter: var(--global-lighting);
+}
+
+.sampler-transport-controls__hint {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+}
+
+.sampler-transport-controls__metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  min-width: 0;
+  margin-top: 4px;
+  border-top: 1px solid var(--edge-plate);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.sampler-transport-controls__metrics .metric {
+  min-width: 0;
+  padding: 8px 10px 9px 0;
+  border: 0;
+  background: transparent;
+}
+
+.sampler-transport-controls__metrics .metric:nth-child(even) {
+  padding-right: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--rule-faint);
+}
+
+.sampler-transport-controls__metrics .metric:nth-child(n + 3) {
+  border-top: 1px solid var(--rule-faint);
+}
+
+.sampler-transport-controls__metrics .metric span {
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sampler-transport-controls__metrics .metric strong {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: clamp(0.84rem, 0.9vw, 0.98rem);
+  letter-spacing: 0;
+  line-height: 1.1;
+  font-feature-settings: "tnum", "lnum";
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.sampler-transport-controls__metrics .metric small {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  line-height: 1.3;
+  color: var(--ink-faint);
+}
+
+.sampler-transport-controls__error {
+  margin: 0;
+  color: var(--pigment-madder);
+  font-family: var(--mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+}
+
+/* In the bottom dock the live readouts clamp to a single line so the
+   stage columns stay aligned; the right-gutter layout shows them in full. */
+@media (max-width: 1899px) {
+  .pg-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+  }
+
+  .sticky-panel-group__number-field-detail {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}

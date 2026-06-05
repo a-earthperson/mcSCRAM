@@ -8,8 +8,8 @@
  * register is drawn from the archive pigment palette and the kernel's colour
  * bucket so it harmonises with the rest of the execution-plan UI.
  */
-import type { InkPalette } from "../../../../../components/plotTokens";
-import { withAlpha } from "../../../../../components/plotTokens";
+import type { InkPalette } from "../../../../components/plot/plotTokens";
+import { withAlpha } from "../../../../components/plot/plotTokens";
 import { type ExecKindKey, kindColor } from "../scene/executionScene";
 
 export type BitColors = {

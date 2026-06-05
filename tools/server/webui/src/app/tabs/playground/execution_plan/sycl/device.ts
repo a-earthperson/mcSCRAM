@@ -8,7 +8,7 @@
  * gives a single place to encode the backend-specific naming correction noted
  * in `sycl_range_mapping.md` (NVIDIA sub-group == warp, work-group == CTA, etc.).
  */
-import type { ExecutionDeviceDescription } from "../../../../faultTreeApi";
+import type { ExecutionDeviceDescription } from "../../../../api/faultTreeApi";
 import { type Dim3, fromRange3, positiveInt } from "./geometry";
 
 /** Human-facing names for SYCL units under a particular backend. */
