@@ -9,6 +9,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from mcscram_server.native import CompileProduct, native_import_error, run_compile_isolated
+
 
 DAG_NODE_TYPES: tuple[str, ...] = (
     "basic_event",
@@ -385,14 +387,25 @@ def build_execution_plan_payload(input_files: list[str], options: dict[str, Any]
     if not input_files:
         return {"schema": "mcscram.execution_plan.v1", "partitions": [], "dependency_edges": [], "nodes": []}
 
-    try:
-        import mcscram_native  # type: ignore[import-not-found]
-        run_compile = mcscram_native.run_compile
-    except (ImportError, AttributeError) as exc:
-        return {"schema": "mcscram.execution_plan.v1", "error": str(exc), "partitions": [], "dependency_edges": [], "nodes": []}
+    if import_error := native_import_error():
+        return {
+            "schema": "mcscram.execution_plan.v1",
+            "error": import_error,
+            "partitions": [],
+            "dependency_edges": [],
+            "nodes": [],
+        }
 
-    compiled_pdag = run_compile(input_files, options or {})
-    return dict(compiled_pdag.to_execution_plan())
+    result = run_compile_isolated(input_files, options, CompileProduct.EXECUTION_PLAN)
+    if not result.ok:
+        return {
+            "schema": "mcscram.execution_plan.v1",
+            "error": result.error,
+            "partitions": [],
+            "dependency_edges": [],
+            "nodes": [],
+        }
+    return result.payload
 
 
 def build_sample_shape_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -400,15 +413,13 @@ def build_sample_shape_payload(input_files: list[str], options: dict[str, Any] |
     if not input_files:
         return {"sample_shape": None}
 
-    try:
-        import mcscram_native  # type: ignore[import-not-found]
-        run_compile = mcscram_native.run_compile
-    except (ImportError, AttributeError) as exc:
-        return {"sample_shape": None, "error": str(exc)}
+    if import_error := native_import_error():
+        return {"sample_shape": None, "error": import_error}
 
-    compiled_pdag = run_compile(input_files, options or {})
-    layer_manager = compiled_pdag.create_layer_manager()
-    return {"sample_shape": dict(layer_manager.sample_shape)}
+    result = run_compile_isolated(input_files, options, CompileProduct.SAMPLE_SHAPE)
+    if not result.ok:
+        return {"sample_shape": None, "error": result.error}
+    return result.payload
 
 
 def build_dag_bundle_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -418,22 +429,27 @@ def build_dag_bundle_payload(input_files: list[str], options: dict[str, Any] | N
         empty = _empty_dag_payload(None)
         return {"source": source_payload, "compiled": empty, "kernel": empty}
 
-    try:
-        import mcscram_native  # type: ignore[import-not-found]
-        run_compile = mcscram_native.run_compile
-    except (ImportError, AttributeError) as exc:
+    if import_error := native_import_error():
         compiled_payload = dict(source_payload)
         compiled_payload["compiled"] = False
-        compiled_payload["compileError"] = str(exc)
+        compiled_payload["compileError"] = import_error
         kernel_payload = dict(compiled_payload)
         kernel_payload["graphKind"] = "kernel_dag"
         return {"source": source_payload, "compiled": compiled_payload, "kernel": kernel_payload}
 
-    compiled_pdag = run_compile(input_files, options or {})
+    result = run_compile_isolated(input_files, options, CompileProduct.BUNDLE)
+    if not result.ok:
+        compiled_payload = dict(source_payload)
+        compiled_payload["compiled"] = False
+        compiled_payload["compileError"] = result.error
+        kernel_payload = dict(compiled_payload)
+        kernel_payload["graphKind"] = "kernel_dag"
+        return {"source": source_payload, "compiled": compiled_payload, "kernel": kernel_payload}
+
     return {
         "source": source_payload,
-        "compiled": _native_graph_to_payload(compiled_pdag.to_graph()),
-        "kernel": _native_graph_to_payload(compiled_pdag.to_kernel_graph()),
+        "compiled": _native_graph_to_payload(result.payload["compiled"]),
+        "kernel": _native_graph_to_payload(result.payload["kernel"]),
     }
 
 
@@ -446,18 +462,20 @@ def _build_native_dag_payload(
     if not input_files:
         return _empty_dag_payload(None)
 
-    try:
-        import mcscram_native  # type: ignore[import-not-found]
-        run_compile = mcscram_native.run_compile
-    except (ImportError, AttributeError) as exc:
+    if import_error := native_import_error():
         payload = _build_source_dag_payload(input_files)
         payload["compiled"] = False
-        payload["compileError"] = str(exc)
+        payload["compileError"] = import_error
         return payload
 
-    compiled_pdag = run_compile(input_files, options or {})
-    compiled_graph = compiled_pdag.to_kernel_graph() if graph_kind == "kernel" else compiled_pdag.to_graph()
-    return _native_graph_to_payload(compiled_graph)
+    product = CompileProduct.KERNEL_GRAPH if graph_kind == "kernel" else CompileProduct.GRAPH
+    result = run_compile_isolated(input_files, options, product)
+    if not result.ok:
+        payload = _build_source_dag_payload(input_files)
+        payload["compiled"] = False
+        payload["compileError"] = result.error
+        return payload
+    return _native_graph_to_payload(result.payload)
 
 
 def _native_graph_to_payload(compiled_graph: dict[str, Any]) -> dict[str, Any]:

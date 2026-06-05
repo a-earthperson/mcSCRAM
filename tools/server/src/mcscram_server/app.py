@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mcscram_server.config import CalculationConfig, env_bool
 from mcscram_server.event_hub import EventHub
 from mcscram_server.routes import create_router
+from mcscram_server.native import shutdown_native_workers
 from mcscram_server.supervisor import CalculationSupervisor
 
 
@@ -44,6 +45,7 @@ def create_app(
     @app.on_event("shutdown")
     def on_shutdown() -> None:
         calc_supervisor.stop()
+        shutdown_native_workers()
 
     return app
 
