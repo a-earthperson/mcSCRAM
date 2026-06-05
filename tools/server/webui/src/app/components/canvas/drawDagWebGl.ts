@@ -2,8 +2,9 @@ import {
   DAG_WEBGL_COMPLEMENTED_EDGE_COLOR,
   DAG_WEBGL_COMPLEMENTED_EDGE_WIDTH_PX,
   DAG_WEBGL_EDGE_COLOR,
+  DAG_WEBGL_NODE_DISPLAY_OFFSET,
   DAG_WEBGL_NODE_RADIUS,
-  DAG_WEBGL_TRIANGLE_DISPLAY_OFFSET,
+  DagWebGlShape,
   dagWebGlFill,
   dagWebGlStroke,
   type DagWebGlFillKey,
@@ -28,24 +29,24 @@ const SHAPE_CODES: Record<string, number> = {
 };
 
 type NodeTypeStyle = {
-  shape: string;
+  shape: DagWebGlShape;
   fill: DagWebGlFillKey;
   stroke: DagWebGlStrokeKey;
 };
 
 const NODE_TYPE_STYLES: Record<string, NodeTypeStyle> = {
-  basic_event: { shape: "circle", fill: "basic_event", stroke: "basic_event" },
-  unknown_event: { shape: "circle", fill: "none", stroke: "none" },
-  and_gate: { shape: "upright_triangle", fill: "and_gate", stroke: "and_gate" },
-  nand_gate: { shape: "upright_triangle_inscribed", fill: "nand_gate", stroke: "nand_gate" },
-  or_gate: { shape: "upsidedown_triangle", fill: "or_gate", stroke: "or_gate" },
-  nor_gate: { shape: "upsidedown_triangle_inscribed", fill: "nor_gate", stroke: "nor_gate" },
-  xor_gate: { shape: "circle_with_cross", fill: "xor_gate", stroke: "xor_gate" },
-  xnor_gate: { shape: "circle_with_cross_inscribed", fill: "xnor_gate", stroke: "xnor_gate" },
-  atleast_gate: { shape: "pentagon", fill: "atleast_gate", stroke: "atleast_gate" },
-  not_gate: { shape: "circle_inside_circle", fill: "not_gate", stroke: "not_gate" },
-  null_gate: { shape: "square", fill: "not_gate", stroke: "not_gate" },
-  constant_event: { shape: "house", fill: "constant_event", stroke: "constant_event" },
+  basic_event: { shape: DagWebGlShape.circle, fill: "basic_event", stroke: "basic_event" },
+  unknown_event: { shape: DagWebGlShape.square, fill: "none", stroke: "none" },
+  and_gate: { shape: DagWebGlShape.upright_triangle, fill: "and_gate", stroke: "and_gate" },
+  nand_gate: { shape: DagWebGlShape.upright_triangle_inscribed, fill: "nand_gate", stroke: "nand_gate" },
+  or_gate: { shape: DagWebGlShape.upsidedown_triangle, fill: "or_gate", stroke: "or_gate" },
+  nor_gate: { shape: DagWebGlShape.upsidedown_triangle_inscribed, fill: "nor_gate", stroke: "nor_gate" },
+  xor_gate: { shape: DagWebGlShape.circle_with_cross, fill: "xor_gate", stroke: "xor_gate" },
+  xnor_gate: { shape: DagWebGlShape.circle_with_cross_inscribed, fill: "xnor_gate", stroke: "xnor_gate" },
+  atleast_gate: { shape: DagWebGlShape.pentagon, fill: "atleast_gate", stroke: "atleast_gate" },
+  not_gate: { shape: DagWebGlShape.circle_inside_circle, fill: "not_gate", stroke: "not_gate" },
+  null_gate: { shape: DagWebGlShape.square, fill: "not_gate", stroke: "not_gate" },
+  constant_event: { shape: DagWebGlShape.house, fill: "constant_event", stroke: "constant_event" },
 };
 
 type DagGeometry = {
@@ -342,14 +343,8 @@ function writeComplementedEdgeVertex(
 }
 
 function triangleDisplayOffset(typeIndex: number, nodeTypes: DagNodeType[]): { x: number; y: number } {
-  const shape = shapeCodeForTypeIndex(typeIndex, nodeTypes);
-  const magnitude = DAG_WEBGL_NODE_RADIUS * DAG_WEBGL_TRIANGLE_DISPLAY_OFFSET;
-  // Shift the glyph toward the flat base so graph (x, y) sits on the vertex side of the outline.
-  if (shape === 1 || shape === 6) return { x: 0, y: -magnitude };
-  if (shape === 2 || shape === 7) return { x: 0, y: magnitude };
-  // House: flat base at bottom — anchor graph (x, y) on the base like OR gates.
-  if (shape === 9) return { x: 0, y: magnitude };
-  return { x: 0, y: 0 };
+  const shapeName: DagWebGlShape = nodeTypeStyle(nodeTypes[typeIndex]).shape;
+  return DAG_WEBGL_NODE_DISPLAY_OFFSET[shapeName];
 }
 
 function shapeCodeForTypeIndex(typeIndex: number, nodeTypes: DagNodeType[]): number {
@@ -651,8 +646,8 @@ float sdHouse(vec2 p) {
   // Fill the point sprite like circles: wall height ~= roof rise (45 deg peak).
   float w = SHAPE_RADIUS * 0.95;
   float base = -SHAPE_RADIUS;
-  float eave = base + w;
-  float peak = eave + w;
+  float eave = base + (w * 2.0);
+  float peak = eave +(w * 2.0);
   return -sdPolygon5(
     p,
     vec2(-w, base),

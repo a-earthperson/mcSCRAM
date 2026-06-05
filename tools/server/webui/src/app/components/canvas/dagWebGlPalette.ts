@@ -1,5 +1,19 @@
 export type Rgba = [number, number, number, number];
 
+export enum DagWebGlShape {
+  circle = "circle",
+  upright_triangle = "upright_triangle",
+  upsidedown_triangle = "upsidedown_triangle",
+  circle_with_cross = "circle_with_cross",
+  pentagon = "pentagon",
+  circle_inside_circle = "circle_inside_circle",
+  upright_triangle_inscribed = "upright_triangle_inscribed",
+  upsidedown_triangle_inscribed = "upsidedown_triangle_inscribed",
+  circle_with_cross_inscribed = "circle_with_cross_inscribed",
+  house = "house",
+  square = "square",
+}
+
 /*
  * Palette for the WebGL DAG plate - authored in OKLCH, baked to sRGB.
  * ------------------------------------------------------------------
@@ -25,13 +39,22 @@ export type Rgba = [number, number, number, number];
  *   edge_compl     0.700 0.150 68  / #da8a11  -                         amber complement (signed arg)
  */
 
-export const DAG_WEBGL_NODE_RADIUS = 0.666;
+export const DAG_WEBGL_NODE_RADIUS = 0.333 * (window?.devicePixelRatio ?? 1);
 
-/** World-space glyph shift toward the flat triangle base (× node radius). Graph (x, y) and edges stay put. */
-export const DAG_WEBGL_TRIANGLE_DISPLAY_OFFSET = 0.12;
-
-/** World-space shift so graph (x, y) sits on the flag staff foot (× node radius). */
-export const DAG_WEBGL_FLAG_DISPLAY_OFFSET = 0.42;
+/** World-space glyph shift (× node radius). Graph (x, y) and edges stay put. */
+export const DAG_WEBGL_NODE_DISPLAY_OFFSET: Record<DagWebGlShape, { x: number; y: number }> = {
+  [DagWebGlShape.upright_triangle] : {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.12},
+  [DagWebGlShape.upright_triangle_inscribed]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.12},
+  [DagWebGlShape.upsidedown_triangle]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *-0.12},
+  [DagWebGlShape.upsidedown_triangle_inscribed]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *-0.12},
+  [DagWebGlShape.circle]  : {x: 0, y: DAG_WEBGL_NODE_RADIUS *0},
+  [DagWebGlShape.circle_inside_circle]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0},
+  [DagWebGlShape.circle_with_cross]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0},
+  [DagWebGlShape.circle_with_cross_inscribed]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0},
+  [DagWebGlShape.pentagon]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.0},
+  [DagWebGlShape.house]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.0},
+  [DagWebGlShape.square]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.0},
+}
 
 export const DAG_WEBGL_EDGE_COLOR: Rgba = [0.303, 0.3235, 0.321568, 0.85];
 

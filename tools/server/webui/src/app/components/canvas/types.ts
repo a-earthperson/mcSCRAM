@@ -67,6 +67,21 @@ export type DagNodeType =
   | "not_gate"
   | string;
 
+export enum DagNode {
+  basic_event = "basic_event",
+  unknown_event = "unknown_event",
+  and_gate = "and_gate",
+  nand_gate = "nand_gate",
+  or_gate = "or_gate",
+  nor_gate = "nor_gate",
+  xor_gate = "xor_gate",
+  xnor_gate = "xnor_gate",
+  atleast_gate = "atleast_gate",
+  not_gate = "not_gate",
+  null_gate = "null_gate",
+  constant_event = "constant_event",
+}
+
 export type DagBounds = {
   minX: number;
   minY: number;
