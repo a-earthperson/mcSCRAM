@@ -22,7 +22,7 @@
  *    only when a caller explicitly constructs it.
  */
 
-export type BitSourceKind = "procedural" | "sampled";
+export type BitSourceKind = "uninitialized" | "procedural" | "sampled";
 
 /** A small per-bit data buffer to upload alongside a sampled bit source. */
 export type BitDataBuffer = {
@@ -47,6 +47,10 @@ type BitSourceBase = {
   uniforms?: Record<string, number>;
 };
 
+export type UninitializedBitSource = BitSourceBase & {
+  kind: "uninitialized";
+};
+
 export type ProceduralBitSource = BitSourceBase & {
   kind: "procedural";
 };
@@ -57,7 +61,26 @@ export type SampledBitSource = BitSourceBase & {
   buffer: BitDataBuffer;
 };
 
-export type BitSource = ProceduralBitSource | SampledBitSource;
+export type BitSource = UninitializedBitSource | ProceduralBitSource | SampledBitSource;
+
+/**
+ * An empty field: every trial bit reads 0 and no coordinate hash runs. The
+ * field renders as a neutral lattice (paired with zero Z displacement) — the
+ * blank canvas onto which SYCL kernel data is registered in later steps.
+ */
+export function uninitializedBitSource(): UninitializedBitSource {
+  return {
+    kind: "uninitialized",
+    glsl: `
+vec4 getSample(vec3 xyz);
+
+vec4 getFramesSample(vec3 xyz) {
+  vec4 c = getSample(xyz);
+  return vec4(c.xy, 0.0, c.a);
+}
+`,
+  };
+}
 
 /**
  * Deterministic coordinate hash. With `seed == 0` the emitted GLSL + uniform

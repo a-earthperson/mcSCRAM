@@ -53,25 +53,30 @@ function quadCorners(rects: WorldRect[], z: number): Point3[] {
   return data;
 }
 
+/** A rectangular block of bitpack tiles in field-local indices. */
+export type GridRegion = { colStart: number; colCount: number; rowStart: number; rowCount: number };
+
 /**
- * Work-item lattice: one cell per bitpack tile across the whole field. Drawn as
- * a single `<grid>` whose divisions land exactly on tile-cell boundaries.
+ * Work-item lattice: one cell per bitpack tile over a tile sub-region of the
+ * field. Drawn as a single `<grid>` whose divisions land exactly on tile-cell
+ * boundaries. A kernel's work-group occupies a sub-region of the (larger,
+ * shared) field, so the lattice is scoped to that region rather than the field.
  */
 export function buildWorkItemGrid(
   view: MathBoxView,
   frame: FieldFrame,
+  region: GridRegion,
   style: OverlayStyle,
   idPrefix = "",
 ): MathBoxView {
-  const [x0, x1] = frame.gridRangeX();
-  const [y0, y1] = frame.gridRangeY();
+  const rect = frame.regionRect(region.colStart, region.colCount, region.rowStart, region.rowCount);
   return view.grid({
     id: `${idPrefix}wi-grid`,
     axes: [1, 2],
-    rangeX: [x0, x1],
-    rangeY: [y0, y1],
-    divideX: frame.columns,
-    divideY: frame.rows,
+    rangeX: [rect.x0, rect.x1],
+    rangeY: [rect.y0, rect.y1],
+    divideX: Math.max(1, region.colCount),
+    divideY: Math.max(1, region.rowCount),
     niceX: false,
     niceY: false,
     zeroX: false,

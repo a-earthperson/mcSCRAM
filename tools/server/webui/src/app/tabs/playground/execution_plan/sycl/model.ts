@@ -13,7 +13,7 @@ import type {
   ExecutionPlanPayload,
 } from "../../../../faultTreeApi";
 import { DEFAULT_DEVICE, type DeviceModel, deviceFromDescription } from "./device";
-import { type KernelModel, buildKernelModel } from "./kernel";
+import { type KernelModel, type TileShape, buildKernelModel } from "./kernel";
 
 /** One stage of the execution schedule: a layer and the kernels it launches. */
 export type ExecutionStep = {
@@ -34,6 +34,35 @@ export type ExecutionModel = {
   /** Kernel the scene opens on: the first basic-event kernel, else the first. */
   defaultKernelId: number;
 };
+
+/**
+ * The maximum single work-group footprint (in bitpack tiles) across all
+ * kernels. The world-fixed bitpack field is sized to this so any layer's
+ * work-group overlay fits within it; smaller work-groups occupy a sub-region.
+ */
+export function maxWorkGroupShape(model: ExecutionModel): TileShape {
+  let rows = 1;
+  let cols = 1;
+  for (const kernel of model.kernels) {
+    rows = Math.max(rows, kernel.workGroupShape.rows);
+    cols = Math.max(cols, kernel.workGroupShape.cols);
+  }
+  return { rows, cols };
+}
+
+/** Representative kernel for a step: first basic-event, else first kernel. */
+export function representativeKernelId(model: ExecutionModel, step: ExecutionStep): number {
+  const basic = step.kernelIds.find((id) => model.byId.get(id)?.kind === "basic_event");
+  return basic ?? step.kernelIds[0] ?? model.defaultKernelId;
+}
+
+/** Step index that launches a given kernel (by its layer). */
+export function stepIndexOfKernel(model: ExecutionModel, kernelId: number): number {
+  const kernel = model.byId.get(kernelId);
+  if (!kernel) return 0;
+  const index = model.steps.findIndex((step) => step.layer === kernel.layer);
+  return index >= 0 ? index : 0;
+}
 
 function squareBits(bits: number): number {
   const side = Math.sqrt(bits);

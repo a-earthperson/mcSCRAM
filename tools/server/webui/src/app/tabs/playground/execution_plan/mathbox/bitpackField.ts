@@ -53,6 +53,14 @@ export type BitpackFieldConfig = {
   colors?: BitColors;
   /** Bit assignment strategy; defaults to the procedural hash (seed 0). */
   bitSource?: BitSource;
+  /** Draw the per-bit displacement vectors. Disable for a flat/empty field. */
+  showDisplacementVectors?: boolean;
+  /** Padding tile columns per side; these fade to transparent toward the edge. */
+  paddingCols?: number;
+  /** Padding tile rows per side; these fade to transparent toward the edge. */
+  paddingRows?: number;
+  /** Exponent of the padding alpha falloff (1 = linear, >1 = ease toward edge). */
+  paddingFalloff?: number;
   /** Namespace for node ids so multiple fields can coexist in one view. */
   idPrefix?: string;
 };
@@ -192,9 +200,14 @@ vec4 getFramesSample(vec2 xy) {
   float unsetWeight = clamp(max(-c.z, 0.0) / max(abs(unsetBitZDisplacement), 0.000001), 0.0, 1.0);
   float baseWeight = 1.0 - max(setWeight, unsetWeight);
 
-  return ${colorLiteral(colors.base)} * baseWeight
+  // c.w carries the per-tile padding fade (1 in the core, ->0 at the edges).
+  float fade = clamp(c.w, 0.0, 1.0);
+
+  vec4 color = ${colorLiteral(colors.base)} * baseWeight
     + ${colorLiteral(colors.unset)} * unsetWeight
     + ${colorLiteral(colors.set)} * setWeight;
+
+  return vec4(color.rgb, color.a * fade);
 }
 `;
 }
@@ -248,8 +261,16 @@ vec4 getFramesSample(vec3 xyz) {
 const BITPACK_TILE_SHADER = `
 uniform vec4 fieldShape;
 uniform vec2 fieldSpacing;
+uniform vec4 fieldPadding; // [padCols, padRows, falloff, 0]
 
 vec4 getSample(vec3 xyz);
+
+float edgeFade(float tile, float total, float pad) {
+  if (pad < 0.5) return 1.0;
+  float lo = (tile + 0.5) / pad;          // ramp across the low-side padding
+  float hi = (total - tile - 0.5) / pad;  // ramp across the high-side padding
+  return clamp(min(lo, hi), 0.0, 1.0);
+}
 
 vec4 getFramesSample(vec3 xyz) {
   float bitsPerSide = fieldShape.z;
@@ -270,8 +291,12 @@ vec4 getFramesSample(vec3 xyz) {
   );
   vec2 centered = point - span * 0.5;
 
+  float fx = edgeFade(tile.x, fieldShape.x, fieldPadding.x);
+  float fy = edgeFade(tile.y, fieldShape.y, fieldPadding.y);
+  float fade = pow(clamp(min(fx, fy), 0.0, 1.0), max(fieldPadding.z, 0.0001));
+
   float z = getSample(xyz).z;
-  return vec4(centered.x, centered.y, z, 0.0);
+  return vec4(centered.x, centered.y, z, fade);
 }
 `;
 
@@ -291,6 +316,10 @@ export function buildBitpackField(view: MathBoxView, config: BitpackFieldConfig)
   const vectorWidth = positiveFinite(config.vectorWidth ?? NaN, DEFAULT_BIT_VECTOR_WIDTH);
   const colors = config.colors ?? DEFAULT_BIT_COLORS;
   const bitSource = config.bitSource ?? proceduralBitSource(0);
+  const showDisplacementVectors = config.showDisplacementVectors ?? true;
+  const paddingCols = Math.max(0, Math.floor(config.paddingCols ?? 0));
+  const paddingRows = Math.max(0, Math.floor(config.paddingRows ?? 0));
+  const paddingFalloff = positiveFinite(config.paddingFalloff ?? NaN, 1);
 
   const prefix = config.idPrefix ? `${config.idPrefix}-` : "";
   const id = (name: string) => `${prefix}${name}`;
@@ -319,6 +348,9 @@ export function buildBitpackField(view: MathBoxView, config: BitpackFieldConfig)
     bitShaderProps.sources = [`#${buffer.id}`];
   }
 
+  // Data pipeline: seed -> 8x8 tile -> repeat -> bit assignment -> Z displacement
+  // -> world layout (surface) -> per-point colour. Draw nodes reference the
+  // surface/colour buffers by id, so they need not sit inline in the chain.
   view
     .array({ width: 1, channels: 4, items: 1, data: [[0, 0, 0, 0]], live: true })
     .shader({ code: BITPACK_8X8_SHADER })
@@ -332,15 +364,19 @@ export function buildBitpackField(view: MathBoxView, config: BitpackFieldConfig)
       code: BITPACK_TILE_SHADER,
       fieldShape: [columns, rows, bitsPerSide, 0],
       fieldSpacing: [bitPitch, tilePitch],
+      fieldPadding: [paddingCols, paddingRows, paddingFalloff, 0],
     })
     .resample({ source: `#${displacedId}`, id: surfaceId, indices: 3, channels: 4, sample: "absolute" })
     .shader({ code: bitZColorShader(colors), setBitZDisplacement, unsetBitZDisplacement })
-    .resample({ source: `#${surfaceId}`, id: colorsId, indices: 2, channels: 4 })
-    .shader({ code: BIT_DISPLACEMENT_VECTOR_SHADER })
-    .resample({ source: `#${surfaceId}`, id: vectorsId, items: 2, indices: 4, channels: 4, sample: "absolute" })
-    .shader({ code: bitDisplacementVectorColorShader(colors) })
-    .resample({ source: `#${surfaceId}`, id: vectorColorsId, items: 2, indices: 4, channels: 4, sample: "absolute" })
-    .vector({
+    .resample({ source: `#${surfaceId}`, id: colorsId, indices: 2, channels: 4 });
+
+  if (showDisplacementVectors) {
+    view
+      .shader({ code: BIT_DISPLACEMENT_VECTOR_SHADER })
+      .resample({ source: `#${surfaceId}`, id: vectorsId, items: 2, indices: 4, channels: 4, sample: "absolute" })
+      .shader({ code: bitDisplacementVectorColorShader(colors) })
+      .resample({ source: `#${surfaceId}`, id: vectorColorsId, items: 2, indices: 4, channels: 4, sample: "absolute" });
+    view.vector({
       id: id("bit-displacement-vectors"),
       points: `#${vectorsId}`,
       colors: `#${vectorColorsId}`,
@@ -352,18 +388,20 @@ export function buildBitpackField(view: MathBoxView, config: BitpackFieldConfig)
       end: false,
       zBias: -1,
       zWrite: false,
-    })
-    .point({
-      id: id("bitpack-points"),
-      points: `#${surfaceId}`,
-      colors: `#${colorsId}`,
-      color: "#fff",
-      size: pointSize,
-      opacity: 1,
-      blending: THREE.AdditiveBlending,
-      zBias: 0,
-      zWrite: false,
     });
+  }
+
+  view.point({
+    id: id("bitpack-points"),
+    points: `#${surfaceId}`,
+    colors: `#${colorsId}`,
+    color: "#fff",
+    size: pointSize,
+    opacity: 1,
+    blending: THREE.AdditiveBlending,
+    zBias: 0,
+    zWrite: false,
+  });
 
   const frame = new FieldFrame(columns, rows, bitsPerSide, bitPitch, tilePitch);
   return { frame, extent: frame.extent(), surfaceId, colorsId };

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DiagramFullscreenButton } from "../../../components/DiagramFullscreenButton";
 import { usePlotTheme } from "../../../../components/plotTokens";
 import { classNames } from "../../../../lib/format";
 import { ExecutionFallbackMap } from "./ExecutionFallbackMap";
+import { ExecutionGraphCameraOverlay } from "./ExecutionGraphCameraOverlay";
 import { ExecutionGraphLegend } from "./ExecutionGraphLegend";
 import {
   createExecutionGraph,
@@ -30,7 +31,8 @@ export function ExecutionGraph({
   const controllerRef = useRef<ExecutionGraphController | null>(null);
   const selectedIdRef = useRef<number | null>(selectedId);
   const [status, setStatus] = useState<GraphStatus>("webgl");
-
+  const sceneOptions = useMemo(() => ({ palette }), [palette]);
+  
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
@@ -44,7 +46,7 @@ export function ExecutionGraph({
     let cancelled = false;
     let controller: ExecutionGraphController | null = null;
     try {
-      controller = createExecutionGraph({ container, model, palette });
+      controller = createExecutionGraph({ container, model, sceneOptions });
     } catch (error) {
       if (import.meta.env.DEV) {
         console.error("[ExecutionGraph] WebGL init failed:", error);
@@ -107,6 +109,10 @@ export function ExecutionGraph({
         <div className="exec-graph__controls" aria-label="Execution graph view controls">
           <DiagramFullscreenButton targetRef={rootRef} />
         </div>
+        <ExecutionGraphCameraOverlay
+          active={status === "webgl"}
+          readFrame={() => controllerRef.current?.getCameraFrame() ?? null}
+        />
         <ExecutionGraphLegend kinds={scene.kinds} palette={palette} />
       </div>
 

@@ -233,6 +233,71 @@
   justify-content: flex-end;
 }
 
+.exec-graph__camera-hud {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--edge-plate);
+  background: var(--surface-plate-veil);
+  backdrop-filter: blur(4px);
+  color: var(--ink-mute);
+  font-family: var(--mono, var(--sans));
+  font-size: 0.58rem;
+  line-height: 1.35;
+  max-width: min(22rem, 92vw);
+}
+
+.exec-graph__camera-hud-head {
+  margin: 0 0 6px;
+  color: var(--ink-soft);
+  font-family: var(--sans);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.exec-graph__camera-hud-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0 0 8px;
+}
+
+.exec-graph__camera-hud-grid dt {
+  margin: 0;
+  color: var(--ink-faint);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.exec-graph__camera-hud-grid dd {
+  margin: 0;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+.exec-graph__camera-hud-hint {
+  margin: 0 0 6px;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+}
+
+.exec-graph__camera-hud-snippet {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--edge-plate);
+  background: color-mix(in srgb, var(--paper-cool) 72%, transparent);
+  color: var(--ink-soft);
+  font-size: 0.55rem;
+  line-height: 1.4;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 .exec-graph__legend {
   position: static;
   display: flex;
