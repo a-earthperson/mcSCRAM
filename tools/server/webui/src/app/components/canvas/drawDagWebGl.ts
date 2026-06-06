@@ -254,7 +254,7 @@ function prepareDagGeometry(dag: DagPayload): DagGeometry {
     const graphX = dag.nodes.x[index];
     const graphY = dag.nodes.y[index];
     typeIndices[index] = Math.max(0, Math.min(MAX_NODE_TYPES - 1, dag.nodes.type[index] ?? 0));
-    const displayOffset = triangleDisplayOffset(typeIndices[index], dag.nodeTypes);
+    const displayOffset = nodeDisplayOffset(typeIndices[index], dag.nodeTypes);
     nodeCenters[index * 2] = graphX + displayOffset.x;
     nodeCenters[index * 2 + 1] = graphY + displayOffset.y;
   }
@@ -342,7 +342,7 @@ function writeComplementedEdgeVertex(
   vertices[offset + 5] = t;
 }
 
-function triangleDisplayOffset(typeIndex: number, nodeTypes: DagNodeType[]): { x: number; y: number } {
+function nodeDisplayOffset(typeIndex: number, nodeTypes: DagNodeType[]): { x: number; y: number } {
   const shapeName: DagWebGlShape = nodeTypeStyle(nodeTypes[typeIndex]).shape;
   return DAG_WEBGL_NODE_DISPLAY_OFFSET[shapeName];
 }
@@ -644,10 +644,10 @@ float sdPolygon5(vec2 p, vec2 a, vec2 b, vec2 c, vec2 d, vec2 e) {
 
 float sdHouse(vec2 p) {
   // Fill the point sprite like circles: wall height ~= roof rise (45 deg peak).
-  float w = SHAPE_RADIUS * 0.95;
+  float w = 0.95 * SHAPE_RADIUS;
   float base = -SHAPE_RADIUS;
-  float eave = base + (w * 2.0);
-  float peak = eave +(w * 2.0);
+  float eave = base / 1.25 + w;
+  float peak = eave + (w * 0.75);
   return -sdPolygon5(
     p,
     vec2(-w, base),

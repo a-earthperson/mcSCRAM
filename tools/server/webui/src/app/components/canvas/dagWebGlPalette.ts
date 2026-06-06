@@ -43,16 +43,16 @@ export const DAG_WEBGL_NODE_RADIUS = 0.333 * (window?.devicePixelRatio ?? 1);
 
 /** World-space glyph shift (× node radius). Graph (x, y) and edges stay put. */
 export const DAG_WEBGL_NODE_DISPLAY_OFFSET: Record<DagWebGlShape, { x: number; y: number }> = {
-  [DagWebGlShape.upright_triangle] : {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.12},
-  [DagWebGlShape.upright_triangle_inscribed]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.12},
-  [DagWebGlShape.upsidedown_triangle]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *-0.12},
-  [DagWebGlShape.upsidedown_triangle_inscribed]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *-0.12},
+  [DagWebGlShape.upright_triangle] : {x: 0, y: DAG_WEBGL_NODE_RADIUS * -0.25},
+  [DagWebGlShape.upright_triangle_inscribed]: {x: 0, y: DAG_WEBGL_NODE_RADIUS * -0.25},
+  [DagWebGlShape.upsidedown_triangle]: {x: 0, y: DAG_WEBGL_NODE_RADIUS * 0.333},
+  [DagWebGlShape.upsidedown_triangle_inscribed]: {x: 0, y: DAG_WEBGL_NODE_RADIUS * 0.333},
   [DagWebGlShape.circle]  : {x: 0, y: DAG_WEBGL_NODE_RADIUS *0},
   [DagWebGlShape.circle_inside_circle]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0},
   [DagWebGlShape.circle_with_cross]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0},
   [DagWebGlShape.circle_with_cross_inscribed]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0},
   [DagWebGlShape.pentagon]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.0},
-  [DagWebGlShape.house]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.0},
+  [DagWebGlShape.house]: {x: 0, y: DAG_WEBGL_NODE_RADIUS * -0.125},
   [DagWebGlShape.square]: {x: 0, y: DAG_WEBGL_NODE_RADIUS *0.0},
 }
 
@@ -69,7 +69,7 @@ export const DAG_WEBGL_STROKE_NONE: Rgba = [0.599156, 0.595092, 0.810668, 0.9];
 export const DAG_WEBGL_FILL_NONE: Rgba = [1.0, 0, 0, 1.0];
 
 export const DAG_WEBGL_FILLS = {
-  basic_event: [0.808844, 0.795639, 0.249941, 0.22] as Rgba,
+  basic_event: [0.808844, 0.795639, 0.249941, 0.20] as Rgba,
   and_gate: [0.096146, 0.691099, 0.977711, 0.2] as Rgba,
   nand_gate: [0.096146, 0.691099, 0.977711, 0.2] as Rgba,
   or_gate: [0.979533, 0.402418, 0.450999, 0.2] as Rgba,
@@ -78,7 +78,7 @@ export const DAG_WEBGL_FILLS = {
   xnor_gate: [0.340127, 0.806187, 0.438209, 0.2] as Rgba,
   atleast_gate: [0.724892, 0.488624, 0.967278, 0.2] as Rgba,
   not_gate: [0.977485, 0.631504, 0.160365, 0.2] as Rgba,
-  constant_event: [0.895947, 0.604909, 0.853011, 0.22] as Rgba,
+  constant_event: [0.895947, 0.604909, 0.353011, 0.20] as Rgba,
 } as const;
 
 export const DAG_WEBGL_STROKES = {
@@ -91,7 +91,7 @@ export const DAG_WEBGL_STROKES = {
   xnor_gate: [0.222174, 0.704073, 0.341718, 1.0] as Rgba,
   atleast_gate: [0.663468, 0.427058, 0.90006, 1.0] as Rgba,
   not_gate: [0.856043, 0.539825, 0.067185, 1.0] as Rgba,
-  constant_event: [0.752398, 0.448841, 0.711252, 1.0] as Rgba,
+  constant_event: [0.752398, 0.448841, 0.311252, 1.0] as Rgba,
 } as const;
 
 export type DagWebGlFillKey = keyof typeof DAG_WEBGL_FILLS | "none";

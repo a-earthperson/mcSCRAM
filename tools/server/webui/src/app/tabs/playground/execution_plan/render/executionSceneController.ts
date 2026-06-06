@@ -42,8 +42,10 @@ export type ExecutionSceneOptions = {
   /** Faded padding tiles per side; tune to taste. */
   paddingRows?: number;
   paddingCols?: number;
-  /** Edge-fade exponent: 1 = linear, >1 eases harder toward the transparent edge. */
-  paddingFalloff?: number;
+  /** Exponential decay constant (per padding tile) along +X/-X. */
+  paddingFalloffX?: number;
+  /** Exponential decay constant (per padding tile) along +Y/-Y. */
+  paddingFalloffY?: number;
   /** Layer-transition animation. */
   transitionMs?: number;
   transitionTravel?: number;
@@ -78,7 +80,8 @@ export type ExecutionSceneController = {
 const DEFAULT_FIELD_CAP = 64;
 const DEFAULT_PADDING_ROWS = 8;
 const DEFAULT_PADDING_COLS = 8;
-const DEFAULT_PADDING_FALLOFF = 2;
+const DEFAULT_PADDING_FALLOFF_X = 2;
+const DEFAULT_PADDING_FALLOFF_Y = 2;
 const DEFAULT_TRANSITION_MS = 320;
 const DEFAULT_TRANSITION_TRAVEL = 1.5;
 
@@ -108,7 +111,8 @@ export function createExecutionSceneController(
   const capCols = options.maxFieldCols ?? DEFAULT_FIELD_CAP;
   const padRows = Math.max(0, options.paddingRows ?? DEFAULT_PADDING_ROWS);
   const padCols = Math.max(0, options.paddingCols ?? DEFAULT_PADDING_COLS);
-  const paddingFalloff = options.paddingFalloff ?? DEFAULT_PADDING_FALLOFF;
+  const paddingFalloffX = options.paddingFalloffX ?? DEFAULT_PADDING_FALLOFF_X;
+  const paddingFalloffY = options.paddingFalloffY ?? DEFAULT_PADDING_FALLOFF_Y;
   const transitionMs = Math.max(1, options.transitionMs ?? DEFAULT_TRANSITION_MS);
   const transitionTravel = options.transitionTravel ?? DEFAULT_TRANSITION_TRAVEL;
 
@@ -144,7 +148,8 @@ export function createExecutionSceneController(
     showDisplacementVectors: false,
     paddingCols: padCols,
     paddingRows: padRows,
-    paddingFalloff,
+    paddingFalloffX,
+    paddingFalloffY,
     idPrefix: "field",
   });
   const frame = field.frame;

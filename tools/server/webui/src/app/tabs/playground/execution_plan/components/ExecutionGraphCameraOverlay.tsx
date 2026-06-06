@@ -5,10 +5,6 @@ function fmt3([x, y, z]: [number, number, number], digits = 4): string {
   return `[${x.toFixed(digits)}, ${y.toFixed(digits)}, ${z.toFixed(digits)}]`;
 }
 
-function fmtDir([x, y, z]: [number, number, number]): string {
-  return `new THREE.Vector3(${x.toFixed(4)}, ${y.toFixed(4)}, ${z.toFixed(4)}).normalize()`;
-}
-
 /**
  * Live camera framing HUD for tuning `render/executionGraph` constants.
  * Sits beside {@link ExecutionGraphLegend} in the graph HUD stack.
@@ -20,12 +16,33 @@ export function ExecutionGraphCameraOverlay({
   readFrame: () => CameraFrameState | null;
   active: boolean;
 }) {
+  const [visible, setVisible] = useState(false);
   const [frame, setFrame] = useState<CameraFrameState | null>(null);
   const readFrameRef = useRef(readFrame);
   readFrameRef.current = readFrame;
 
   useEffect(() => {
-    if (!active) {
+    if (!active) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.key.toLowerCase() !== "c" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select, [contenteditable='true']"))
+      ) {
+        return;
+      }
+      setVisible((show) => !show);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || !visible) {
       setFrame(null);
       return undefined;
     }
@@ -36,9 +53,9 @@ export function ExecutionGraphCameraOverlay({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [active]);
+  }, [active, visible]);
 
-  if (!active || !frame) return null;
+  if (!active || !visible || !frame) return null;
 
   return (
     <section className="exec-graph__camera-hud" aria-label="Camera framing readout">
@@ -69,9 +86,11 @@ export function ExecutionGraphCameraOverlay({
           <dd>{fmt3(frame.position)}</dd>
         </div>
       </dl>
-      <p className="exec-graph__camera-hud-hint">FOV: [ / ] or Alt+wheel (zoom still dollies distance)</p>
+      <p className="exec-graph__camera-hud-hint">
+        FOV: [ / ] or Alt+wheel (zoom still dollies distance) &middot; c toggles this panel
+      </p>
       <pre className="exec-graph__camera-hud-snippet" aria-label="Suggested constants">
-        {`const CAMERA_DIRECTION = ${fmtDir(frame.direction)};\nconst CAMERA_FOV = ${frame.fov.toFixed(2)};\n// after frameField, distance ≈ ${frame.distance.toFixed(4)}\n// controls.target = ${fmt3(frame.target)};`}
+        {`export const CAMERA_PERSPECTIVE: CameraPerspectiveConfig = {\n  direction: ${fmt3(frame.direction)},\n  target: ${fmt3(frame.target)},\n  fov: ${frame.fov.toFixed(2)},\n  distance: ${frame.distance.toFixed(4)},\n};`}
       </pre>
     </section>
   );

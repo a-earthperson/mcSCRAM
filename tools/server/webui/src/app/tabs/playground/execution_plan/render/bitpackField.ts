@@ -59,7 +59,14 @@ export type BitpackFieldConfig = {
   paddingCols?: number;
   /** Padding tile rows per side; these fade to transparent toward the edge. */
   paddingRows?: number;
-  /** Exponent of the padding alpha falloff (1 = linear, >1 = ease toward edge). */
+  /** Exponential decay constant (per padding tile) along +X/-X. */
+  paddingFalloffX?: number;
+  /** Exponential decay constant (per padding tile) along +Y/-Y. */
+  paddingFalloffY?: number;
+  /**
+   * @deprecated Use `paddingFalloffX`/`paddingFalloffY`.
+   * Shared exponential decay constant applied to both axes.
+   */
   paddingFalloff?: number;
   /** Namespace for node ids so multiple fields can coexist in one view. */
   idPrefix?: string;
@@ -200,7 +207,7 @@ vec4 getFramesSample(vec2 xy) {
   float unsetWeight = clamp(max(-c.z, 0.0) / max(abs(unsetBitZDisplacement), 0.000001), 0.0, 1.0);
   float baseWeight = 1.0 - max(setWeight, unsetWeight);
 
-  // c.w carries the per-tile padding fade (1 in the core, ->0 at the edges).
+  // c.w carries the per-point padding fade (1 in the core, ->0 at the edges).
   float fade = clamp(c.w, 0.0, 1.0);
 
   vec4 color = ${colorLiteral(colors.base)} * baseWeight
@@ -261,15 +268,15 @@ vec4 getFramesSample(vec3 xyz) {
 const BITPACK_TILE_SHADER = `
 uniform vec4 fieldShape;
 uniform vec2 fieldSpacing;
-uniform vec4 fieldPadding; // [padCols, padRows, falloff, 0]
+uniform vec4 fieldPadding; // [padCols, padRows, falloffX, falloffY]
 
 vec4 getSample(vec3 xyz);
 
-float edgeFade(float tile, float total, float pad) {
-  if (pad < 0.5) return 1.0;
-  float lo = (tile + 0.5) / pad;          // ramp across the low-side padding
-  float hi = (total - tile - 0.5) / pad;  // ramp across the high-side padding
-  return clamp(min(lo, hi), 0.0, 1.0);
+float paddingAttenuation(vec2 centered, vec2 coreHalfSpan, vec2 falloffPerTile, float tilePitch) {
+  // Distance outside the core perimeter (0 inside), measured in tile units.
+  vec2 outsideTiles = max(abs(centered) - coreHalfSpan, vec2(0.0)) / max(tilePitch, 0.000001);
+  // Anisotropic exponential decay using hypot-like combination at corners.
+  return length(outsideTiles * max(falloffPerTile, vec2(0.0)));
 }
 
 vec4 getFramesSample(vec3 xyz) {
@@ -279,7 +286,8 @@ vec4 getFramesSample(vec3 xyz) {
 
   vec2 repeatedIndex = floor(xyz.xy + vec2(0.5));
   vec2 tile = floor(repeatedIndex / bitsPerSide);
-  vec2 local = getSample(xyz).xy;
+  vec4 sample = getSample(xyz);
+  vec2 local = sample.xy;
 
   vec2 point = vec2(
     tile.x * tilePitch + local.x * bitPitch,
@@ -291,11 +299,11 @@ vec4 getFramesSample(vec3 xyz) {
   );
   vec2 centered = point - span * 0.5;
 
-  float fx = edgeFade(tile.x, fieldShape.x, fieldPadding.x);
-  float fy = edgeFade(tile.y, fieldShape.y, fieldPadding.y);
-  float fade = pow(clamp(min(fx, fy), 0.0, 1.0), max(fieldPadding.z, 0.0001));
+  vec2 coreHalfSpan = max((fieldShape.xy - 2.0 * fieldPadding.xy) * (0.5 * tilePitch), vec2(0.0));
+  float attenuation = paddingAttenuation(centered, coreHalfSpan, fieldPadding.zw, tilePitch);
+  float fade = exp(-attenuation);
 
-  float z = getSample(xyz).z;
+  float z = sample.z;
   return vec4(centered.x, centered.y, z, fade);
 }
 `;
@@ -319,7 +327,9 @@ export function buildBitpackField(view: MathBoxView, config: BitpackFieldConfig)
   const showDisplacementVectors = config.showDisplacementVectors ?? true;
   const paddingCols = Math.max(0, Math.floor(config.paddingCols ?? 0));
   const paddingRows = Math.max(0, Math.floor(config.paddingRows ?? 0));
-  const paddingFalloff = positiveFinite(config.paddingFalloff ?? NaN, 1);
+  const legacyPaddingFalloff = positiveFinite(config.paddingFalloff ?? NaN, 1);
+  const paddingFalloffX = positiveFinite(config.paddingFalloffX ?? NaN, legacyPaddingFalloff);
+  const paddingFalloffY = positiveFinite(config.paddingFalloffY ?? NaN, legacyPaddingFalloff);
 
   const prefix = config.idPrefix ? `${config.idPrefix}-` : "";
   const id = (name: string) => `${prefix}${name}`;
@@ -364,7 +374,7 @@ export function buildBitpackField(view: MathBoxView, config: BitpackFieldConfig)
       code: BITPACK_TILE_SHADER,
       fieldShape: [columns, rows, bitsPerSide, 0],
       fieldSpacing: [bitPitch, tilePitch],
-      fieldPadding: [paddingCols, paddingRows, paddingFalloff, 0],
+      fieldPadding: [paddingCols, paddingRows, paddingFalloffX, paddingFalloffY],
     })
     .resample({ source: `#${displacedId}`, id: surfaceId, indices: 3, channels: 4, sample: "absolute" })
     .shader({ code: bitZColorShader(colors), setBitZDisplacement, unsetBitZDisplacement })

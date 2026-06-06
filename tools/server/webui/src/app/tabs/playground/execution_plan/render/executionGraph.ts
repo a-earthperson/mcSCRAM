@@ -35,13 +35,42 @@ export type CameraFrameState = {
   position: [number, number, number];
   /** Orbit pivot / pan position. */
   target: [number, number, number];
-  /** Unit vector from target toward the eye (matches `CAMERA_DIRECTION`). */
+  /** Unit vector from target toward the eye. */
   direction: [number, number, number];
   /** Eye-to-target distance; primary zoom readout. */
   distance: number;
   /** `distance /` distance right after initial `frameField`. */
   zoomRatio: number;
   fov: number;
+};
+
+/**
+ * Authoring surface for the locked camera perspective. Paste values from the
+ * camera HUD (`c` in the graph) or compose explicitly; pass to
+ * {@link composeCameraFrame} to produce a full {@link CameraFrameState}.
+ *
+ * Set `distance` for a fixed dolly. Omit it (or set `fitMargin`) to fit the
+ * core field extent on startup.
+ */
+export type CameraPerspectiveConfig = {
+  direction: CameraFrameState["direction"];
+  target?: CameraFrameState["target"];
+  fov?: number;
+  /** Eye-to-target distance. Omit to auto-fit against the field extent. */
+  distance?: number;
+  /** Margin multiplier when auto-fitting `distance` to the field extent. */
+  fitMargin?: number;
+};
+
+/**
+ * Default locked perspective for the execution graph. Edit this instance (or
+ * paste from the camera HUD snippet) to tune framing without touching init code.
+ */
+export const CAMERA_PERSPECTIVE: CameraPerspectiveConfig = {
+  direction: [-0.6372, 0.0250, 0.7703],
+  target: [-0.7257, 0.0329, -0.5905],
+  fov: 50.00,
+  distance: 4.1805,
 };
 
 export type ExecutionGraphController = {
@@ -65,12 +94,6 @@ export type ExecutionGraphOptions = {
   sceneOptions: ExecutionSceneOptions;
 };
 
-// Fixed viewing angle (rotation is locked). +X points left-of-screen so the
-// field reads with execution depth receding along +Z.
-const CAMERA_DIRECTION = new THREE.Vector3(-0.5, 0.25, 1).normalize();
-/** Vertical field of view (degrees) on the perspective camera. Orbit zoom changes distance, not FOV. */
-const CAMERA_FOV = 50;
-const FIT_MARGIN = 1.2;
 const FOV_MIN = 12;
 const FOV_MAX = 90;
 const FOV_KEY_STEP = 2;
@@ -96,16 +119,18 @@ const SCENE_CONFIG: Omit<ExecutionSceneOptions, "palette"> = {
   // Set fieldRows/fieldCols explicitly to render exactly this many tiles,
   // decoupled from the per-graph max work-group shape. Set to `undefined` to
   // auto-size to the largest work-group across the model (clamped by maxField*).
-  fieldRows: 8,
-  fieldCols: 16,
-  maxFieldRows: 64,
-  maxFieldCols: 64,
+  fieldRows: 64,
+  fieldCols: 64,
+  maxFieldRows: 16,
+  maxFieldCols: 128,
 
   // --- faded padding ring ---------------------------------------------------
-  paddingRows: 3,
-  paddingCols: 3,
-  /** Fade function exponent: 1 = linear, >1 eases harder toward the edge. */
-  paddingFalloff: 1.5,
+  paddingRows: 5,
+  paddingCols: 5,
+  /** Exponential decay constant (per padding tile) along +X/-X. */
+  paddingFalloffX: 0.6,
+  /** Exponential decay constant (per padding tile) along +Y/-Y. */
+  paddingFalloffY: 1,
 
   // --- lattice spacing / point size ----------------------------------------
   /** Point-to-point spacing within one tile (world units). */
@@ -120,14 +145,79 @@ const SCENE_CONFIG: Omit<ExecutionSceneOptions, "palette"> = {
   transitionTravel: 1.5,
 
   // --- overlay tiers --------------------------------------------------------
-  showWorkItems: false,
+  showWorkItems: true,
   showSubGroups: true,
-  showWorkGroup: false,
+  showWorkGroup: true,
 };
 
 const _target = new THREE.Vector3();
 const _eye = new THREE.Vector3();
 const _viewDir = new THREE.Vector3();
+
+function fitCameraDistance(extent: FieldExtent, fovDeg: number, fitMargin: number): number {
+  const radius = Math.max(0.05, 0.5 * Math.max(extent.width, extent.height));
+  const fov = (fovDeg * Math.PI) / 180;
+  return (radius / Math.tan(fov / 2)) * fitMargin;
+}
+
+function normalizeDirection(direction: [number, number, number]): [number, number, number] {
+  _viewDir.set(direction[0], direction[1], direction[2]);
+  if (_viewDir.lengthSq() > 1e-12) {
+    _viewDir.normalize();
+  } else {
+    _viewDir.set(...CAMERA_PERSPECTIVE.direction);
+    _viewDir.normalize();
+  }
+  return [_viewDir.x, _viewDir.y, _viewDir.z];
+}
+
+/** Compose a baseline {@link CameraFrameState} from a perspective config. */
+export function composeCameraFrame(
+  config: CameraPerspectiveConfig = CAMERA_PERSPECTIVE,
+  extent?: FieldExtent,
+): CameraFrameState {
+  const target: CameraFrameState["target"] = config.target ?? [0, 0, 0];
+  const direction = normalizeDirection(config.direction);
+  const fov = config.fov ?? CAMERA_PERSPECTIVE.fov ?? 50;
+  const fitMargin = config.fitMargin ?? CAMERA_PERSPECTIVE.fitMargin ?? 0.75;
+  const distance =
+    config.distance ??
+    (extent ? fitCameraDistance(extent, fov, fitMargin) : 1);
+  const position: CameraFrameState["position"] = [
+    target[0] + direction[0] * distance,
+    target[1] + direction[1] * distance,
+    target[2] + direction[2] * distance,
+  ];
+
+  return {
+    target,
+    direction,
+    distance,
+    position,
+    fov,
+    zoomRatio: 1,
+  };
+}
+
+function applyCameraFrame(three: any, frame: CameraFrameState): void {
+  try {
+    const camera = three.camera;
+    camera.position?.set?.(frame.position[0], frame.position[1], frame.position[2]);
+    if (camera && "fov" in camera) {
+      camera.fov = frame.fov;
+    }
+    if (camera && "near" in camera) camera.near = Math.max(0.01, frame.distance * 0.01);
+    if (camera && "far" in camera) camera.far = frame.distance * 24;
+    camera.updateProjectionMatrix?.();
+
+    if (three.controls) {
+      three.controls.target?.set?.(frame.target[0], frame.target[1], frame.target[2]);
+      three.controls.update?.();
+    }
+  } catch {
+    /* camera/control flavour differences — non-fatal */
+  }
+}
 
 function readCameraFrame(three: any, baselineDistance: number): CameraFrameState | null {
   try {
@@ -147,7 +237,7 @@ function readCameraFrame(three: any, baselineDistance: number): CameraFrameState
     if (_viewDir.lengthSq() > 1e-12) {
       _viewDir.normalize();
     } else {
-      _viewDir.copy(CAMERA_DIRECTION);
+      _viewDir.set(...normalizeDirection(CAMERA_PERSPECTIVE.direction));
     }
 
     return {
@@ -156,35 +246,10 @@ function readCameraFrame(three: any, baselineDistance: number): CameraFrameState
       direction: [_viewDir.x, _viewDir.y, _viewDir.z],
       distance,
       zoomRatio: baselineDistance > 1e-9 ? distance / baselineDistance : 1,
-      fov: typeof camera.fov === "number" ? camera.fov : CAMERA_FOV,
+      fov: typeof camera.fov === "number" ? camera.fov : CAMERA_PERSPECTIVE.fov ?? 50,
     };
   } catch {
     return null;
-  }
-}
-
-/** Frame the camera once to fit the world-fixed field at the locked angle. */
-function frameField(three: any, extent: FieldExtent): void {
-  const radius = Math.max(0.05, 0.5 * Math.max(extent.width, extent.height));
-  try {
-    const camera = three.camera;
-    const fovDeg = typeof camera?.fov === "number" ? camera.fov : CAMERA_FOV;
-    const fov = (fovDeg * Math.PI) / 180;
-    const distance = (radius / Math.tan(fov / 2)) * FIT_MARGIN;
-
-    _target.set(0, 0, 0);
-    _eye.copy(CAMERA_DIRECTION).multiplyScalar(distance).add(_target);
-    camera.position?.set?.(_eye.x, _eye.y, _eye.z);
-    if ("near" in camera) camera.near = Math.max(0.01, distance * 0.01);
-    if ("far" in camera) camera.far = distance * 24;
-    camera.updateProjectionMatrix?.();
-
-    if (three.controls) {
-      three.controls.target?.set?.(0, 0, 0);
-      three.controls.update?.();
-    }
-  } catch {
-    /* camera/control flavour differences — non-fatal */
   }
 }
 
@@ -264,16 +329,9 @@ export function createExecutionGraph(
     // tuning; the caller's sceneOptions supplies the palette (and may override).
     controller = createExecutionSceneController(view, model, { ...sceneOptions, ...SCENE_CONFIG });
     controller.focusKernel(model.defaultKernelId);
-    try {
-      if (three.camera && "fov" in three.camera) {
-        three.camera.fov = CAMERA_FOV;
-        three.camera.updateProjectionMatrix?.();
-      }
-    } catch {
-      /* non-fatal */
-    }
-    frameField(three, controller.fieldExtent());
-    baselineCameraDistance = readCameraFrame(three, 1)?.distance ?? 1;
+    const initialFrame = composeCameraFrame(CAMERA_PERSPECTIVE, controller.fieldExtent());
+    applyCameraFrame(three, initialFrame);
+    baselineCameraDistance = initialFrame.distance;
   } catch (error) {
     try {
       three.renderer?.dispose?.();

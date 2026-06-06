@@ -36,7 +36,6 @@ export type FieldStyle = {
   workItem: OverlayStyle;
   subGroup: OverlayStyle;
   workGroup: OverlayStyle;
-  padding: OverlayStyle;
 };
 
 /** Original raw-memory bit palette (kept stable across themes). */
@@ -72,28 +71,22 @@ export function fieldStyle(
     setBitZDisplacement: options.setBitZDisplacement ?? 0.0001,
     unsetBitZDisplacement: options.unsetBitZDisplacement ?? -0.0001,
     workItem: {
-      color: palette.inkFaint,
-      width: 1,
-      fillOpacity: 0,
-      lineOpacity: 0.35,
+      color: "#0f0", // green
+      width: 15,
+      fillOpacity: 0.25,
+      lineOpacity: 0.50,
     },
     subGroup: {
-      color: palette.indigo,
-      width: 1.5,
-      fillOpacity: 0.06,
-      lineOpacity: 0.6,
+      color: "#f00", // red
+      width: 15,
+      fillOpacity: 0.25,
+      lineOpacity: 0.50,
     },
     workGroup: {
-      color: accent,
-      width: 2.5,
-      fillOpacity: 0.05,
-      lineOpacity: 0.95,
-    },
-    padding: {
-      color: palette.madder,
-      width: 1.5,
-      fillOpacity: 0.12,
-      lineOpacity: 0.5,
+      color: "#00f", // blue
+      width: 15,
+      fillOpacity: 0.25,
+      lineOpacity: 0.50,
     },
   };
 }
