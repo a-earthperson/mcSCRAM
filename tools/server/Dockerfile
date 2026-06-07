@@ -374,7 +374,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src/server/src ./src
 RUN uv sync --frozen --no-dev
-COPY input/* /app/input/
+COPY input/Aralia/* /app/input/
 
 ENV PATH="/app/server/.venv/bin:${PATH}" \
     PYTHONPATH="/usr/local/lib/python3.12/dist-packages" \
