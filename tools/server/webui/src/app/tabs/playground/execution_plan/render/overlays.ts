@@ -21,8 +21,19 @@ import { type OverlayStyle, overlayFill, overlayLine } from "./fieldStyle";
 
 /** Z planes for overlay tiers; small offsets keep them above the bit points. */
 const Z_GRID = 0.0;
-const Z_FILL = 0.001;
-const Z_OUTLINE = 0.0025;
+const Z_FILL = 0.0;
+const Z_OUTLINE = 0.0;
+
+/** Expand a world rectangle by `padding` on all sides. */
+function padWorldRect(rect: WorldRect, padding: number): WorldRect {
+  if (padding === 0) return rect;
+  return {
+    x0: rect.x0 - padding,
+    y0: rect.y0 - padding,
+    x1: rect.x1 + padding,
+    y1: rect.y1 + padding,
+  };
+}
 
 function rectCorners(rect: WorldRect, z: number): [Point3, Point3, Point3, Point3] {
   return [
@@ -69,7 +80,10 @@ export function buildWorkItemGrid(
   style: OverlayStyle,
   idPrefix = "",
 ): MathBoxView {
-  const rect = frame.regionRect(region.colStart, region.colCount, region.rowStart, region.rowCount);
+  const rect = padWorldRect(
+    frame.regionRect(region.colStart, region.colCount, region.rowStart, region.rowCount),
+    style.padding,
+  );
   return view.grid({
     id: `${idPrefix}wi-grid`,
     axes: [1, 2],
@@ -79,8 +93,10 @@ export function buildWorkItemGrid(
     divideY: Math.max(1, region.rowCount),
     niceX: false,
     niceY: false,
-    zeroX: false,
-    zeroY: false,
+    // Keep true: MathBox drops any tick exactly at 0 when false, and the field
+    // is centred on the origin so a lattice line often lands on x=0 or y=0.
+    zeroX: true,
+    zeroY: true,
     width: style.width,
     color: overlayLine(style),
     opacity: style.lineOpacity,
@@ -107,17 +123,19 @@ export function buildRegionOverlay(
 ): RegionOverlayHandles {
   if (rects.length === 0) return {};
   const handles: RegionOverlayHandles = {};
+  const padded = style.padding === 0 ? rects : rects.map((rect) => padWorldRect(rect, style.padding));
 
   if (style.fillOpacity > 0) {
     handles.fill = view
-      .array({ width: rects.length, items: 4, channels: 3, data: quadCorners(rects, Z_FILL), live: false })
+      .array({ width: padded.length, items: 4, channels: 3, data: quadCorners(padded, Z_FILL), live: false })
       .face({
         id: `${id}-fill`,
         color: overlayFill(style),
         opacity: style.fillOpacity,
         fill: true,
-        line: false,
-        blending: THREE.NormalBlending,
+        line: true,
+        lineBias: 3,
+        blending: THREE.AdditiveBlending,
         zBias: 2,
         zWrite: false,
       });
@@ -125,7 +143,7 @@ export function buildRegionOverlay(
 
   if (style.lineOpacity > 0) {
     handles.outline = view
-      .array({ width: rects.length * 4, items: 2, channels: 3, data: outlineSegments(rects, Z_OUTLINE), live: false })
+      .array({ width: padded.length * 4, items: 2, channels: 3, data: outlineSegments(padded, Z_OUTLINE), live: false })
       .vector({
         id: `${id}-outline`,
         color: overlayLine(style),
@@ -133,8 +151,8 @@ export function buildRegionOverlay(
         opacity: style.lineOpacity,
         start: false,
         end: false,
-        blending: THREE.NormalBlending,
-        zBias: 3,
+        blending: THREE.AdditiveBlending,
+        zBias: 2,
         zWrite: false,
       });
   }

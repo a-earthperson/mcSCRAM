@@ -119,7 +119,7 @@ const SCENE_CONFIG: Omit<ExecutionSceneOptions, "palette"> = {
   // Set fieldRows/fieldCols explicitly to render exactly this many tiles,
   // decoupled from the per-graph max work-group shape. Set to `undefined` to
   // auto-size to the largest work-group across the model (clamped by maxField*).
-  fieldRows: 64,
+  fieldRows: 16,
   fieldCols: 64,
   maxFieldRows: 16,
   maxFieldCols: 128,
@@ -130,13 +130,13 @@ const SCENE_CONFIG: Omit<ExecutionSceneOptions, "palette"> = {
   /** Exponential decay constant (per padding tile) along +X/-X. */
   paddingFalloffX: 0.6,
   /** Exponential decay constant (per padding tile) along +Y/-Y. */
-  paddingFalloffY: 1,
+  paddingFalloffY: 0.6,
 
   // --- lattice spacing / point size ----------------------------------------
   /** Point-to-point spacing within one tile (world units). */
   bitPitch: 0.02,
   /** Tile-to-tile spacing (world units). */
-  tilePitch: 0.18,
+  tilePitch: 0.18 + 0.06,
   /** Bit-point screen size (px). */
   pointSize: 7,
 
@@ -145,7 +145,7 @@ const SCENE_CONFIG: Omit<ExecutionSceneOptions, "palette"> = {
   transitionTravel: 1.5,
 
   // --- overlay tiers --------------------------------------------------------
-  showWorkItems: true,
+  showWorkItems: false,
   showSubGroups: true,
   showWorkGroup: true,
 };

@@ -2,55 +2,75 @@ import { useId, useState } from "react";
 import { FieldHintTrigger } from "../../../components/ui/HintTooltip";
 import { parseZodField } from "../../../lib/parseZodField";
 import {
+  createTrialsMantissaSchema,
   formatTrialsDescription,
-  formatTrialsScalar,
-  MAX_TRIALS_SCALAR,
-  MIN_TRIALS_SCALAR,
+  formatTrialsMantissa,
+  isTrialsScaleExponent,
+  stepTrialsMantissa,
+  TRIALS_MANTISSA_STEP,
   TRIALS_N_FIELD_HINT,
-  stepTrialsScalar,
-  trialsScalarSchema,
+  TRIALS_SCALE_EXPONENTS,
+  TRIALS_SCALE_LABELS,
+  type TrialsScaleExponent,
 } from "./samplerTrials";
 import { SteppedNumberInputRow } from "./SteppedNumberInputRow";
 
 export function TrialsNField({
-  value,
-  onChange,
+  mantissa,
+  scaleExponent,
+  onMantissaChange,
+  onScaleExponentChange,
   stopOnConvergence = false,
   disabled = false,
 }: {
-  value: number;
-  onChange: (scalar: number) => void;
+  mantissa: number;
+  scaleExponent: TrialsScaleExponent;
+  onMantissaChange: (mantissa: number) => void;
+  onScaleExponentChange: (scaleExponent: TrialsScaleExponent) => void;
   stopOnConvergence?: boolean;
   disabled?: boolean;
 }) {
   const fieldId = useId();
+  const scaleId = useId();
   const hintId = `${fieldId}-hint`;
   const errorId = `${fieldId}-error`;
   const [focused, setFocused] = useState(false);
-  const [draft, setDraft] = useState(() => formatTrialsScalar(value));
+  const [draft, setDraft] = useState(() => formatTrialsMantissa(mantissa));
   const [error, setError] = useState<string | null>(null);
 
-  const displayValue = focused ? draft : formatTrialsScalar(value);
-  const describedBy = [error ? errorId : null, hintId].filter(Boolean).join(" ") || undefined;
-  const fieldLabel = stopOnConvergence ? "MAX TRIALS (N)" : "Trials (N)";
+  const displayValue = focused ? draft : formatTrialsMantissa(mantissa);
+  const describedBy = [error ? errorId : null, hintId, scaleId].filter(Boolean).join(" ") || undefined;
+  const fieldLabel = stopOnConvergence ? "Max Trials" : "Trials";
 
-  const commit = (raw: unknown) => {
-    const parsed = parseZodField(trialsScalarSchema, raw);
+  const validate = (raw: unknown, exponent: TrialsScaleExponent) => {
+    const parsed = parseZodField(createTrialsMantissaSchema(exponent), raw);
     if (!parsed.ok) {
       setError(parsed.message);
-      return false;
+      return null;
     }
     setError(null);
-    onChange(parsed.value);
-    setDraft(formatTrialsScalar(parsed.value));
+    return parsed.value;
+  };
+
+  const commit = (raw: unknown, exponent = scaleExponent) => {
+    const next = validate(raw, exponent);
+    if (next === null) return false;
+    onMantissaChange(next);
+    setDraft(formatTrialsMantissa(next));
     return true;
   };
 
   const applyStep = (direction: 1 | -1) => {
-    const next = stepTrialsScalar(value, direction);
-    setError(null);
-    onChange(next);
-    setDraft(formatTrialsScalar(next));
+    const candidate = stepTrialsMantissa(mantissa, direction);
+    if (!commit(candidate)) return;
+    setFocused(false);
+  };
+
+  const handleScaleChange = (raw: string) => {
+    const nextScale = Number(raw);
+    if (!isTrialsScaleExponent(nextScale) || nextScale === scaleExponent) return;
+    onScaleExponentChange(nextScale);
+    validate(mantissa, nextScale);
     setFocused(false);
   };
 
@@ -63,24 +83,38 @@ export function TrialsNField({
         <FieldHintTrigger label={`${fieldLabel} help`} content={TRIALS_N_FIELD_HINT} />
       </div>
       <SteppedNumberInputRow
-        decrementLabel="Decrease trials multiplier"
-        incrementLabel="Increase trials multiplier"
+        decrementLabel="Decrease trials mantissa"
+        incrementLabel="Increase trials mantissa"
         onStep={applyStep}
-        disableDecrement={stepTrialsScalar(value, -1) === value}
-        disableIncrement={stepTrialsScalar(value, 1) === value}
+        disableDecrement={stepTrialsMantissa(mantissa, -1) === mantissa}
+        disableIncrement={stepTrialsMantissa(mantissa, 1) === mantissa}
         disabled={disabled}
-        suffix={<span className="sticky-panel-group__number-field-scale" aria-hidden="true">×10⁹</span>}
+        suffix={(
+          <select
+            id={scaleId}
+            className="sticky-panel-group__number-field-scale sticky-panel-group__number-field-scale-select"
+            value={scaleExponent}
+            disabled={disabled}
+            aria-label="Trials magnitude unit"
+            onChange={(event) => handleScaleChange(event.currentTarget.value)}
+          >
+            {TRIALS_SCALE_EXPONENTS.map((exponent) => (
+              <option key={exponent} value={exponent}>
+                {TRIALS_SCALE_LABELS[exponent]}
+              </option>
+            ))}
+          </select>
+        )}
         inputProps={{
           id: fieldId,
           type: "number",
-          min: MIN_TRIALS_SCALAR,
-          max: MAX_TRIALS_SCALAR,
-          step: "any",
+          min: TRIALS_MANTISSA_STEP,
+          step: TRIALS_MANTISSA_STEP,
           value: displayValue,
           "aria-invalid": error ? true : undefined,
           "aria-describedby": describedBy,
           onFocus: () => {
-            setDraft(formatTrialsScalar(value));
+            setDraft(formatTrialsMantissa(mantissa));
             setFocused(true);
           },
           onChange: (event) => {
@@ -91,13 +125,13 @@ export function TrialsNField({
           },
           onBlur: (event) => {
             const ok = commit(event.currentTarget.value);
-            if (!ok) setDraft(formatTrialsScalar(value));
+            if (!ok) setDraft(formatTrialsMantissa(mantissa));
             setFocused(false);
           },
         }}
       />
       <p id={hintId} className="sticky-panel-group__number-field-detail" aria-live="polite">
-        {formatTrialsDescription(value, stopOnConvergence)}
+        {formatTrialsDescription(mantissa, scaleExponent, stopOnConvergence)}
       </p>
       {error ? (
         <p id={errorId} className="sticky-panel-group__number-field-error" role="alert">

@@ -403,7 +403,7 @@
 
 .exec-plan__ledger {
   min-width: 0;
-  max-height: 460px;
+  max-height: 640px;
   overflow: auto;
   border-right: 1px solid var(--edge-plate);
 }

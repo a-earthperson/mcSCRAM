@@ -8,15 +8,19 @@ import {
 import { DEFAULT_DELTA, deltaSchema } from "./samplerDelta";
 import { DEFAULT_OVERHEAD_RATIO, overheadRatioSchema } from "./samplerOverheadRatio";
 import {
-  DEFAULT_TRIALS_SCALAR,
-  trialsScalarSchema,
-  trialsScalarToCount,
+  createTrialsMantissaSchema,
+  DEFAULT_TRIALS_MANTISSA,
+  DEFAULT_TRIALS_SCALE_EXPONENT,
+  effectiveTrialsCount,
+  type TrialsScaleExponent,
 } from "./samplerTrials";
 
 export type SamplerSettings = {
-  trialsScalar: number;
+  trialsMantissa: number;
+  trialsScaleExponent: TrialsScaleExponent;
   trialsCount: number;
-  setTrialsScalar: (scalar: number) => void;
+  setTrialsMantissa: (mantissa: number) => void;
+  setTrialsScaleExponent: (scaleExponent: TrialsScaleExponent) => void;
   overheadRatio: number;
   setOverheadRatio: (ratio: number) => void;
   stopOnConvergence: boolean;
@@ -30,15 +34,20 @@ export type SamplerSettings = {
 };
 
 export function useSamplerSettings(): SamplerSettings {
-  const [trialsScalar, setTrialsScalarState] = useState(DEFAULT_TRIALS_SCALAR);
+  const [trialsMantissa, setTrialsMantissaState] = useState(DEFAULT_TRIALS_MANTISSA);
+  const [trialsScaleExponent, setTrialsScaleExponentState] = useState(DEFAULT_TRIALS_SCALE_EXPONENT);
   const [overheadRatio, setOverheadRatioState] = useState(DEFAULT_OVERHEAD_RATIO);
   const [stopOnConvergence, setStopOnConvergence] = useState(true);
   const [confidenceCiPercent, setConfidenceCiPercentState] = useState(DEFAULT_CONFIDENCE_CI_PERCENT);
   const [delta, setDeltaState] = useState(DEFAULT_DELTA);
 
-  const setTrialsScalar = useCallback((scalar: number) => {
-    const parsed = parseZodField(trialsScalarSchema, scalar);
-    if (parsed.ok) setTrialsScalarState(parsed.value);
+  const setTrialsMantissa = useCallback((mantissa: number) => {
+    const parsed = parseZodField(createTrialsMantissaSchema(trialsScaleExponent), mantissa);
+    if (parsed.ok) setTrialsMantissaState(parsed.value);
+  }, [trialsScaleExponent]);
+
+  const setTrialsScaleExponent = useCallback((scaleExponent: TrialsScaleExponent) => {
+    setTrialsScaleExponentState(scaleExponent);
   }, []);
 
   const setOverheadRatio = useCallback((ratio: number) => {
@@ -56,13 +65,18 @@ export function useSamplerSettings(): SamplerSettings {
     if (parsed.ok) setDeltaState(parsed.value);
   }, []);
 
-  const trialsCount = useMemo(() => trialsScalarToCount(trialsScalar), [trialsScalar]);
+  const trialsCount = useMemo(
+    () => effectiveTrialsCount(trialsMantissa, trialsScaleExponent),
+    [trialsMantissa, trialsScaleExponent],
+  );
   const confidence = useMemo(() => ciPercentToConfidence(confidenceCiPercent), [confidenceCiPercent]);
 
   return {
-    trialsScalar,
+    trialsMantissa,
+    trialsScaleExponent,
     trialsCount,
-    setTrialsScalar,
+    setTrialsMantissa,
+    setTrialsScaleExponent,
     overheadRatio,
     setOverheadRatio,
     stopOnConvergence,

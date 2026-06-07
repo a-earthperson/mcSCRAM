@@ -1,8 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Plot, usePlotTheme } from "../../components/plot/Plot";
-import { PLOT_TRANSPARENT, type PlotTrace, withAlpha } from "../../components/plot/plotDesign";
 import {
-  DEFAULT_WALD_ALPHA,
+  logAxisRange,
+  PLOT_TRANSPARENT,
+  type PlotTrace,
+  withAlpha,
+} from "../../components/plot/plotDesign";
+import {
   confidenceFromAlpha,
   normalQuantileTwoSided,
   type ConvergenceStatsPayload,
@@ -13,6 +17,7 @@ import { mcscramWebSocketUrl } from "../../api/mcscramClient";
 import type { SamplingStatus } from "./controls/samplingStatus";
 import type { SamplingControls } from "./controls/useSamplingControls";
 import type { SamplingRunMetricsStore } from "./samplingRunMetrics";
+import { createSampleRateTracker } from "./sampleRateTracker";
 
 type LiveProgressUpdate = ConvergenceStatsPayload;
 
@@ -51,18 +56,27 @@ type LiveProbabilityPoint = {
   p95?: number;
   p99?: number;
   epsilon?: number;
+  targetEpsilon?: number;
+  epsilonConverged?: boolean;
   oracleP?: number;
 };
 
 const MAX_REPLAY_PATH_POINTS = 10_000;
-const SAMPLE_RATE_WINDOW = 12;
+const MAX_RENDER_PATH_POINTS = 3_000;
+const MARKER_RENDER_THRESHOLD = 1_400;
+const EPSILON_TRACE_OPACITY = 0.48;
+const EPSILON_LINE_ALPHA = 0.62;
+const EPSILON_MARKER_ALPHA = 0.42;
+const EPSILON_MARKER_SIZE = 2;
 
 export function SamplingTrajectoryPanel({
   samplingControls,
   runMetricsStore,
+  clientAlpha,
 }: {
   samplingControls: SamplingControls | null;
   runMetricsStore: SamplingRunMetricsStore;
+  clientAlpha: number;
 }) {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [replayPathPoints, setReplayPathPoints] = useState<LiveProbabilityPoint[]>([]);
@@ -71,7 +85,7 @@ export function SamplingTrajectoryPanel({
   const runMetricsStoreRef = useRef(runMetricsStore);
   const pointsRef = useRef<LiveProbabilityPoint[]>([]);
   const pendingUpdatesRef = useRef<LiveProgressUpdate[]>([]);
-  const sampleWindowRef = useRef<Array<{ trials: number; timeMs: number }>>([]);
+  const sampleRateTrackerRef = useRef(createSampleRateTracker());
   const latestSampleRateRef = useRef<number | null>(null);
   const frameRef = useRef<number | null>(null);
 
@@ -99,41 +113,34 @@ export function SamplingTrajectoryPanel({
     }
   };
 
-  const scheduleUpdateFlush = (update: LiveProgressUpdate) => {
+  const scheduleUpdateFlush = (update: LiveProgressUpdate, timestampSeconds: number) => {
     pendingUpdatesRef.current.push(update);
-    updateSampleRate(update);
+    const observation = sampleRateTrackerRef.current.observe(update.trials ?? Number.NaN, timestampSeconds);
+    latestSampleRateRef.current = observation?.trialsPerSecond ?? null;
     if (frameRef.current === null) {
       frameRef.current = window.requestAnimationFrame(flushPendingUpdates);
     }
   };
 
-  const clearReplayPath = () => {
-    pendingUpdatesRef.current = [];
-    sampleWindowRef.current = [];
+  const resetRunMetrics = () => {
     latestSampleRateRef.current = null;
+    runMetricsStoreRef.current.setMetrics({ trialsPerSecond: null, completedPasses: null });
+  };
+
+  const resetReplayPath = () => {
+    pendingUpdatesRef.current = [];
     pointsRef.current = [];
     setReplayPathPoints([]);
-    runMetricsStoreRef.current.setMetrics({ trialsPerSecond: null, completedPasses: null });
     if (frameRef.current !== null) {
       window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
     }
   };
 
-  const updateSampleRate = (update: LiveProgressUpdate) => {
-    if (!isPositiveNumber(update.trials)) return;
-    sampleWindowRef.current = [
-      ...sampleWindowRef.current,
-      { trials: update.trials, timeMs: performance.now() },
-    ].slice(-SAMPLE_RATE_WINDOW);
-    const first = sampleWindowRef.current[0];
-    const last = sampleWindowRef.current[sampleWindowRef.current.length - 1];
-    if (!first || !last || last.trials < first.trials || last.timeMs <= first.timeMs) {
-      latestSampleRateRef.current = null;
-      return;
-    }
-    const deltaSeconds = (last.timeMs - first.timeMs) / 1000;
-    latestSampleRateRef.current = deltaSeconds > 0 ? (last.trials - first.trials) / deltaSeconds : null;
+  const clearReplayPath = () => {
+    sampleRateTrackerRef.current.clear();
+    resetReplayPath();
+    resetRunMetrics();
   };
 
   useEffect(() => {
@@ -169,8 +176,15 @@ export function SamplingTrajectoryPanel({
           clearReplayPath();
           return;
         }
-        if (event.event === "calculation_reset" || event.event === "server_started_calculation") {
+        if (event.event === "calculation_reset") {
           clearReplayPath();
+          setControlError(null);
+          return;
+        }
+        if (event.event === "server_started_calculation") {
+          sampleRateTrackerRef.current.start();
+          resetReplayPath();
+          resetRunMetrics();
           setControlError(null);
           return;
         }
@@ -189,7 +203,7 @@ export function SamplingTrajectoryPanel({
         }
         if (event.event === "progress") {
           if (controls?.clientPausedRef.current) return;
-          scheduleUpdateFlush(event.update);
+          scheduleUpdateFlush(event.update, event.timestamp);
           setControlError(null);
         }
       });
@@ -218,19 +232,25 @@ export function SamplingTrajectoryPanel({
     };
   }, []);
 
+  const waitingText = connection === "open"
+    ? "Waiting for replayed stream points."
+    : "Connecting to the sampling stream...";
+
   return (
-    <div className="panel span-3">
-      <SectionTitle
-        eyebrow="Output: Cumulative Trials since Start"
-        title="Full sampled probability trajectory with cumulative trials"
-        text="This plot reconstructs the sampled probabilities since the start of the run."
-      />
-      {streamError ? <p className="live-demo-error playground-sampling-error">{streamError}</p> : null}
-      {replayPathPoints.length ? (
-        <LiveProbabilityPathPlot points={replayPathPoints} xMode="absolute" clientAlpha={DEFAULT_WALD_ALPHA} />
-      ) : (
-        <EmptyState text={connection === "open" ? "Waiting for replayed probability points." : "Connecting to the sampling stream..."} />
-      )}
+    <div className="panel span-3 playground-sampling-outputs">
+      <div className="playground-sampling-outputs__section">
+        <SectionTitle
+          eyebrow="Output: Cumulative Trials since Start"
+          title="Sampled probability and epsilon trajectory with cumulative trials"
+          text="The primary axis tracks sampled probability intervals; the right axis overlays server epsilon in log-scale with the configured target half-width."
+        />
+        {streamError ? <p className="live-demo-error playground-sampling-error">{streamError}</p> : null}
+        {replayPathPoints.length ? (
+          <LiveProbabilityPathPlot points={replayPathPoints} xMode="absolute" clientAlpha={clientAlpha} />
+        ) : (
+          <EmptyState text={waitingText} />
+        )}
+      </div>
     </div>
   );
 }
@@ -259,16 +279,22 @@ const LiveProbabilityPathPlot = memo(function LiveProbabilityPathPlot({
         marker: inkPalette.indigoDeep,
         legendgroup: "live",
       };
-    const firstTrials = points[0]?.trials ?? 0;
-    const x = xMode === "window"
-      ? points.map((point) => Math.max(0, point.trials - firstTrials))
-      : points.map((point) => point.trials);
-    const oracleP = points.find((point) => isPositiveNumber(point.oracleP))?.oracleP;
+    const epsilonPalette = {
+      line: inkPalette.paynes,
+      marker: inkPalette.paynes,
+      legendgroup: xMode === "absolute" ? "replay-epsilon" : "live-epsilon",
+    };
+    const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
+    const x = trialsXAxis(renderPoints, xMode);
+    const renderWithMarkers = renderPoints.length <= MARKER_RENDER_THRESHOLD;
+    const traceType = renderWithMarkers ? "scatter" : "scattergl";
+    const traceMode = renderWithMarkers ? "lines+markers" : "lines";
+    const oracleP = renderPoints.find((point) => isPositiveNumber(point.oracleP))?.oracleP;
     const band99 = liveConfidenceBandTrace({
       name: "sampled p01-p99",
       x,
-      lower: points.map((point) => point.p01),
-      upper: points.map((point) => point.p99),
+      lower: renderPoints.map((point) => point.p01),
+      upper: renderPoints.map((point) => point.p99),
       color: palette.band,
       opacity: 0.08,
       legendgroup: palette.legendgroup,
@@ -276,8 +302,8 @@ const LiveProbabilityPathPlot = memo(function LiveProbabilityPathPlot({
     const band90 = liveConfidenceBandTrace({
       name: "sampled p05-p95",
       x,
-      lower: points.map((point) => point.p05),
-      upper: points.map((point) => point.p95),
+      lower: renderPoints.map((point) => point.p05),
+      upper: renderPoints.map((point) => point.p95),
       color: palette.band,
       opacity: 0.16,
       legendgroup: palette.legendgroup,
@@ -285,11 +311,11 @@ const LiveProbabilityPathPlot = memo(function LiveProbabilityPathPlot({
     const clientConfidence = confidenceFromAlpha(clientAlpha);
     const clientConfidenceLabel = formatNumber(clientConfidence * 100, 4);
     const clientAlphaZ = normalQuantileTwoSided(clientConfidence);
-    const clientAlphaLower = points.map((point) => {
+    const clientAlphaLower = renderPoints.map((point) => {
       const stdErr = Math.sqrt((point.mean * (1 - point.mean)) / point.trials);
       return Math.max(0, point.mean - clientAlphaZ * stdErr);
     });
-    const clientAlphaUpper = points.map((point) => {
+    const clientAlphaUpper = renderPoints.map((point) => {
       const stdErr = Math.sqrt((point.mean * (1 - point.mean)) / point.trials);
       return Math.min(1, point.mean + clientAlphaZ * stdErr);
     });
@@ -302,19 +328,24 @@ const LiveProbabilityPathPlot = memo(function LiveProbabilityPathPlot({
       opacity: 0.14,
       legendgroup: palette.legendgroup,
     });
-    const oracleLines = oracleReferenceTraces(points, x, oracleP, xMode, clientAlpha, inkPalette.ink);
+    const oracleLines = oracleReferenceTraces(renderPoints, x, oracleP, xMode, clientAlpha, inkPalette.ink);
     const yValues = [
-      ...points.flatMap((point) => [point.mean, point.p01, point.p05, point.p95, point.p99]),
+      ...renderPoints.flatMap((point) => [point.mean, point.p01, point.p05, point.p95, point.p99]),
       ...(Array.isArray(clientAlphaBand?.y) ? clientAlphaBand.y as Array<number | null | undefined> : []),
       ...oracleLines.flatMap((trace) => Array.isArray(trace.y) ? trace.y as Array<number | null | undefined> : []),
     ];
+    const epsilonValues = renderPoints.map((point) => point.epsilon);
+    const targetEpsilon = renderPoints.find((point) => isPositiveNumber(point.targetEpsilon))?.targetEpsilon;
+    const hasEpsilonAxis = epsilonValues.some(isPositiveNumber) || isPositiveNumber(targetEpsilon);
+    const epsilonRange = hasEpsilonAxis ? logAxisRange(epsilonValues, { include: [targetEpsilon], pad: 0.12 }) : undefined;
+    const epsilonAxisTicks = epsilonLogAxisTicks(epsilonRange, targetEpsilon);
     const meanLine: PlotTrace = {
-      type: "scatter",
-      mode: "lines+markers",
+      type: traceType,
+      mode: traceMode,
       name: "live mean",
       x,
-      y: points.map((point) => point.mean),
-      customdata: points.map((point) => [
+      y: renderPoints.map((point) => point.mean),
+      customdata: renderPoints.map((point) => [
         point.iterations ?? null,
         formatInteger(point.trials),
         formatNumber(point.p05, 4),
@@ -322,13 +353,48 @@ const LiveProbabilityPathPlot = memo(function LiveProbabilityPathPlot({
         formatNumber(point.epsilon, 4),
       ]),
       line: { color: palette.line, width: 1.8 },
-      marker: { color: palette.marker, size: 4 },
+      marker: { color: palette.marker, size: renderWithMarkers ? 4 : 0 },
       legendgroup: palette.legendgroup,
       hovertemplate: `${xMode === "window" ? "additional" : "total"} trials=%{x:.3s}<br>total trials=%{customdata[1]}<br>mean=%{y:.4e}<br>iterations=%{customdata[0]}<br>p05=%{customdata[2]}<br>p95=%{customdata[3]}<br>epsilon=%{customdata[4]}<extra>live run</extra>`,
     };
+    const epsilonLine: PlotTrace | null = hasEpsilonAxis
+      ? {
+        type: traceType,
+        mode: traceMode,
+        name: "server epsilon",
+        x,
+        y: epsilonValues,
+        yaxis: "y2",
+        customdata: renderPoints.map((point) => [
+          point.iterations ?? null,
+          formatInteger(point.trials),
+          formatNumber(point.targetEpsilon, 4),
+          point.epsilonConverged ? "yes" : "no",
+        ]),
+        opacity: EPSILON_TRACE_OPACITY,
+        line: { color: withAlpha(epsilonPalette.line, EPSILON_LINE_ALPHA), width: 1.5 },
+        marker: { color: withAlpha(epsilonPalette.marker, EPSILON_MARKER_ALPHA), size: renderWithMarkers ? EPSILON_MARKER_SIZE : 0 },
+        legendgroup: epsilonPalette.legendgroup,
+        hovertemplate: `${xMode === "window" ? "additional" : "total"} trials=%{x:.3s}<br>total trials=%{customdata[1]}<br>epsilon=%{y:.4e}<br>target=%{customdata[2]}<br>converged=%{customdata[3]}<br>iterations=%{customdata[0]}<extra>live run</extra>`,
+      }
+      : null;
+    const targetEpsilonLine: PlotTrace | null = isPositiveNumber(targetEpsilon) && x.length > 1
+      ? {
+        type: "scatter",
+        mode: "lines",
+        name: `target ε=${formatNumber(targetEpsilon, 3)}`,
+        x: [x[0], x[x.length - 1]],
+        y: [targetEpsilon, targetEpsilon],
+        yaxis: "y2",
+        line: { color: withAlpha(epsilonPalette.line, 0.82), dash: "dash", width: 1.3 },
+        legendgroup: epsilonPalette.legendgroup,
+        hovertemplate: "target epsilon=%{y:.4e}<extra>target</extra>",
+      }
+      : null;
 
     return {
-      data: [band99, band90, clientAlphaBand, ...oracleLines, meanLine].filter(Boolean) as PlotTrace[],
+      data: [band99, band90, clientAlphaBand, ...oracleLines, meanLine, targetEpsilonLine, epsilonLine]
+        .filter(Boolean) as PlotTrace[],
       layout: {
         xaxis: {
           title: {
@@ -347,8 +413,33 @@ const LiveProbabilityPathPlot = memo(function LiveProbabilityPathPlot({
           showexponent: "all",
           range: linearAxisRange(yValues, { floor: 0, ceiling: 1, pad: 0.1 }),
         },
+        yaxis2: {
+          title: {
+            text: "Epsilon (half-width, log scale)",
+            standoff: 12,
+            font: { color: withAlpha(epsilonPalette.line, 0.88) },
+          },
+          type: "log",
+          tickmode: "array",
+          tickvals: epsilonAxisTicks?.tickvals,
+          ticktext: epsilonAxisTicks?.ticktext,
+          range: epsilonRange,
+          overlaying: "y",
+          side: "right",
+          showgrid: false,
+          showline: true,
+          linecolor: withAlpha(epsilonPalette.line, 0.75),
+          tickcolor: withAlpha(epsilonPalette.line, 0.75),
+          ticks: "outside",
+          ticklen: 4,
+          tickwidth: 1,
+          tickfont: { color: withAlpha(epsilonPalette.line, 0.82), size: 11 },
+          minor: { ticks: "off", showgrid: false },
+          automargin: true,
+          visible: hasEpsilonAxis,
+        },
         legend: { y: -0.28, orientation: "h", font: { size: 10 } },
-        margin: { l: 86, r: 18, t: 20, b: 112 },
+        margin: { l: 86, r: hasEpsilonAxis ? 98 : 22, t: 20, b: 112 },
       },
     };
   }, [clientAlpha, inkPalette, points, xMode]);
@@ -403,8 +494,58 @@ function probabilityPoint(update: LiveProgressUpdate | null | undefined): LivePr
     p95: update.p95,
     p99: update.p99,
     epsilon: update.epsilon,
+    targetEpsilon: update.target_epsilon,
+    epsilonConverged: update.epsilon_converged,
     oracleP: update.oracle_p,
   };
+}
+
+function trialsXAxis(points: LiveProbabilityPoint[], xMode: "window" | "absolute"): number[] {
+  const firstTrials = points[0]?.trials ?? 0;
+  return xMode === "window"
+    ? points.map((point) => Math.max(0, point.trials - firstTrials))
+    : points.map((point) => point.trials);
+}
+
+function epsilonLogAxisTicks(
+  log10Range: [number, number] | undefined,
+  targetEpsilon: number | undefined,
+): { tickvals: number[]; ticktext: string[] } | undefined {
+  if (!log10Range) return undefined;
+  const [lo, hi] = log10Range;
+  const tickvals: number[] = [];
+  for (let exp = Math.floor(lo); exp <= Math.ceil(hi); exp += 1) {
+    tickvals.push(10 ** exp);
+  }
+  if (isPositiveNumber(targetEpsilon)) {
+    const logTarget = Math.log10(targetEpsilon);
+    const onDecade = tickvals.some((tick) => Math.abs(Math.log10(tick) - logTarget) < 1e-9);
+    if (!onDecade && logTarget >= lo && logTarget <= hi) {
+      tickvals.push(targetEpsilon);
+      tickvals.sort((a, b) => a - b);
+    }
+  }
+  if (!tickvals.length) return undefined;
+  return {
+    tickvals,
+    ticktext: tickvals.map((value) => value.toExponential(3)),
+  };
+}
+
+function thinProbabilityPoints(points: LiveProbabilityPoint[], maxPoints: number): LiveProbabilityPoint[] {
+  if (!points.length || points.length <= maxPoints) return points;
+  if (maxPoints <= 1) return [points[points.length - 1]];
+  const step = (points.length - 1) / (maxPoints - 1);
+  const sampled: LiveProbabilityPoint[] = [];
+  let lastIndex = -1;
+  for (let bucket = 0; bucket < maxPoints; bucket += 1) {
+    const index = Math.min(points.length - 1, Math.round(bucket * step));
+    if (index === lastIndex) continue;
+    sampled.push(points[index]);
+    lastIndex = index;
+  }
+  if (lastIndex !== points.length - 1) sampled.push(points[points.length - 1]);
+  return sampled;
 }
 
 function appendProbabilityUpdates(

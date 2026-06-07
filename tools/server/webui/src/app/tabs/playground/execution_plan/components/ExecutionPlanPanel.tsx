@@ -160,7 +160,7 @@ function ExecutionPlanBody({
         </section>
       </div>
 
-      <ExecutionGraph scene={scene} model={model} selectedId={selectedPartitionId} onSelect={onSelect} />
+      <ExecutionGraph visible={false} scene={scene} model={model} selectedId={selectedPartitionId} onSelect={onSelect} />
 
       <div className="exec-plan__inspect">
         <div className="exec-plan__ledger">

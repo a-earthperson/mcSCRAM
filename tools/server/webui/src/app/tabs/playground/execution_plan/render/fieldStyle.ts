@@ -23,6 +23,8 @@ export type OverlayStyle = {
   color: string;
   /** Screen-space line width in CSS pixels. */
   width: number;
+  /** World-unit margin added to all sides of overlay rects and grid bounds. */
+  padding: number;
   fillOpacity: number;
   lineOpacity: number;
 };
@@ -67,26 +69,29 @@ export function fieldStyle(
   return {
     bits: { ...DEFAULT_BITS, ...options.bits },
     pointSize: options.pointSize ?? 10,
-    vectorWidth: options.vectorWidth ?? 2,
+    vectorWidth: 5,
     setBitZDisplacement: options.setBitZDisplacement ?? 0.0001,
     unsetBitZDisplacement: options.unsetBitZDisplacement ?? -0.0001,
     workItem: {
       color: "#0f0", // green
-      width: 15,
-      fillOpacity: 0.25,
-      lineOpacity: 0.50,
+      width: 10,
+      padding: 0,
+      fillOpacity: 0,
+      lineOpacity: 1,
     },
     subGroup: {
       color: "#f00", // red
-      width: 15,
-      fillOpacity: 0.25,
-      lineOpacity: 0.50,
+      width: 30,
+      padding: 0,
+      fillOpacity: 0,
+      lineOpacity: 1.0,
     },
     workGroup: {
       color: "#00f", // blue
-      width: 15,
-      fillOpacity: 0.25,
-      lineOpacity: 0.50,
+      width: 40,
+      padding: 0.06,
+      fillOpacity: 0.0,
+      lineOpacity: 1.0,
     },
   };
 }

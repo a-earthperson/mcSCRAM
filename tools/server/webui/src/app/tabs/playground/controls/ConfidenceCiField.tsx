@@ -55,7 +55,7 @@ export function ConfidenceCiField({
     <div className="sticky-panel-group__number-field sticky-panel-group__number-field--confidence-ci">
       <div className="sticky-panel-group__number-field-label-row">
         <label className="sticky-panel-group__number-field-label" htmlFor={fieldId}>
-          Confidence (CI)
+          Confidence
         </label>
         <FieldHintTrigger label="Confidence (CI) help" content={CONFIDENCE_CI_FIELD_HINT} />
       </div>

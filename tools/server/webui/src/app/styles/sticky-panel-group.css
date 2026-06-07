@@ -29,6 +29,12 @@
   border: 0;
 }
 
+@media (min-width: 1900px) {
+  .sticky-panel-group__legend {
+    margin: 0 0 6px !important;
+  }
+}
+
 /* Stage legend: tracked-caps marker tipped with the stage pigment. */
 .sticky-panel-group__legend {
   display: flex;
@@ -188,6 +194,34 @@
   white-space: nowrap;
 }
 
+.sticky-panel-group__number-field-scale-select {
+  appearance: none;
+  width: auto;
+  padding: 0 1rem 0 0.5rem !important;
+  border: 0;
+  border-left: 1px solid var(--edge-plate);
+  border-radius: 0;
+  background:
+    color-mix(in srgb, var(--pg-stage, var(--accent)) 9%, transparent)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%2358524d' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E")
+    no-repeat right 9px center / 8px 5px;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sticky-panel-group__number-field-scale-select:focus {
+  outline: none;
+  color: var(--accent);
+}
+
+.sticky-panel-group__number-field-scale-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .sticky-panel-group__number-field-detail {
   margin: 0;
   color: var(--ink-faint);
@@ -293,7 +327,7 @@
  */
 .pg-matrix {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(4, 1.9rem);
+  grid-template-columns: minmax(0, 1fr) repeat(4, 1rem);
   align-items: center;
   gap: 5px 14px;
   min-width: 0;
@@ -362,16 +396,37 @@
 .sampler-transport-controls {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
+}
+
+.sampler-transport-controls__primary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 18px;
+  min-width: 0;
+  filter: var(--global-lighting);
 }
 
 .sampler-transport-controls__row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex: 0 0 auto;
   align-items: center;
-  filter: var(--global-lighting);
+  gap: 8px;
+  min-width: 0;
+}
+
+.sampler-transport-controls__primary-row .sticky-panel-group__toggle-row {
+  flex: 1 1 12rem;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.sampler-transport-controls__start {
+  min-height: 2rem;
+  padding-block: 7px;
+  line-height: 1;
 }
 
 .sampler-transport-controls__hint {

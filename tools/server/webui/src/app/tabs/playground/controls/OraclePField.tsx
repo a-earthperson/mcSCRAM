@@ -97,9 +97,6 @@ export function OraclePField({
           },
         }}
       />
-      <p id={hintId} className="sticky-panel-group__number-field-detail" aria-live="polite">
-        {formatOraclePDescription(value)}
-      </p>
       {error ? (
         <p id={errorId} className="sticky-panel-group__number-field-error" role="alert">
           {error}

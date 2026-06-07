@@ -55,7 +55,7 @@ export function OverheadRatioField({
     <div className="sticky-panel-group__number-field sticky-panel-group__number-field--overhead-ratio">
       <div className="sticky-panel-group__number-field-label-row">
         <label className="sticky-panel-group__number-field-label" htmlFor={fieldId}>
-          Overhead ratio (r)
+          Overhead
         </label>
         <FieldHintTrigger label="Overhead ratio help" content={OVERHEAD_RATIO_FIELD_HINT} />
       </div>

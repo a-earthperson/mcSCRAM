@@ -51,6 +51,7 @@ export function StickyPanelCheckbox({
 /** Scoped control region (fieldset) placed on the sticky-panel grid. */
 export function StickyPanelGroup({
   legend,
+  legendHint,
   children,
   className,
   hSpan,
@@ -58,6 +59,7 @@ export function StickyPanelGroup({
   empty = false,
 }: {
   legend: string;
+  legendHint?: ReactNode;
   children?: ReactNode;
   className?: string;
   hSpan?: StickyPanelSpan;
@@ -68,7 +70,10 @@ export function StickyPanelGroup({
   return (
     <StickyPanelSlot className={classNames("sticky-panel-group", empty && "sticky-panel-group--empty", className)} hSpan={hSpan} vSpan={vSpan}>
       <fieldset className="sticky-panel-group__fieldset">
-        <legend className="sticky-panel-group__legend">{legend}</legend>
+        <legend className="sticky-panel-group__legend">
+          <span className="sticky-panel-group__legend-text">{legend}</span>
+          {legendHint}
+        </legend>
         <div className="sticky-panel-group__body">{empty ? null : children}</div>
       </fieldset>
     </StickyPanelSlot>

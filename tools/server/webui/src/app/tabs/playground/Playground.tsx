@@ -13,6 +13,7 @@ import { EmptyState, SectionTitle } from "../../components";
 import { ControlPanel } from "./ControlPanel";
 import { ExecutionPlanPanel } from "./execution_plan";
 import { SamplingTrajectoryPanel } from "./SamplingTrajectoryPanel";
+import { ciPercentToConfidence, DEFAULT_CONFIDENCE_CI_PERCENT } from "./controls/samplerCI";
 import type { SamplingControls } from "./controls/useSamplingControls";
 import { formatCounts, formatFaultTreeCounts } from "./format";
 import { createSamplingRunMetricsStore } from "./samplingRunMetrics";
@@ -47,6 +48,7 @@ export function Playground() {
   const [kernelDagLoading, setKernelDagLoading] = useState(false);
   const [compileOptions, setCompileOptions] = useState<CompileDagOptions>(DEFAULT_COMPILE_OPTIONS);
   const [samplingControls, setSamplingControls] = useState<SamplingControls | null>(null);
+  const [samplerConfidence, setSamplerConfidence] = useState(() => ciPercentToConfidence(DEFAULT_CONFIDENCE_CI_PERCENT));
   const samplingRunMetricsStore = useMemo(() => createSamplingRunMetricsStore(), []);
 
   useEffect(() => {
@@ -156,6 +158,10 @@ export function Playground() {
   const handleSamplingControlsChange = useCallback((controls: SamplingControls | null) => {
     setSamplingControls(controls);
   }, []);
+  const handleSamplerConfidenceChange = useCallback((confidence: number) => {
+    setSamplerConfidence(confidence);
+  }, []);
+  const samplerAlpha = 1 - samplerConfidence;
 
   const titleModel = faultTreeLoading || sourceDagLoading || compiledDagLoading || kernelDagLoading
     ? selectedId
@@ -253,6 +259,7 @@ export function Playground() {
       <SamplingTrajectoryPanel
         samplingControls={samplingControls}
         runMetricsStore={samplingRunMetricsStore}
+        clientAlpha={samplerAlpha}
       />
 
       <ControlPanel
@@ -272,6 +279,7 @@ export function Playground() {
         kernelDag={kernelDag}
         samplingRunMetricsStore={samplingRunMetricsStore}
         onSamplingControlsChange={handleSamplingControlsChange}
+        onSamplerConfidenceChange={handleSamplerConfidenceChange}
       />
     </section>
   );

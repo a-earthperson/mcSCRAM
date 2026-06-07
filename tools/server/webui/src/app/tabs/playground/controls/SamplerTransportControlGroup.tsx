@@ -32,21 +32,25 @@ export function SamplerTransportControlGroup({
 }) {
   return (
     <StickyPanelGroup legend="Run" className="sticky-panel-group--run" hSpan={hSpan} vSpan={vSpan}>
-      <SamplerTransportControls
-        resetPending={controls.resetPending}
-        samplingControlPending={controls.samplingControlPending}
-        samplingActive={controls.samplingActive}
-        controlsLocked={controls.controlsLocked}
-        clientPaused={controls.clientPaused}
-        resetCalculation={controls.resetCalculation}
-        toggleSampling={controls.toggleSampling}
-        setPaused={controls.setPaused}
-      />
-      <StopOnConvergenceField
-        checked={stopOnConvergence}
-        onChange={onStopOnConvergenceChange}
-        disabled={controlsDisabled}
-      />
+      <div className="sampler-transport-controls">
+        <div className="sampler-transport-controls__primary-row">
+          <StopOnConvergenceField
+            checked={stopOnConvergence}
+            onChange={onStopOnConvergenceChange}
+            disabled={controlsDisabled}
+          />
+                    <SamplerTransportControls
+            resetPending={controls.resetPending}
+            samplingControlPending={controls.samplingControlPending}
+            samplingActive={controls.samplingActive}
+            controlsLocked={controls.controlsLocked}
+            clientPaused={controls.clientPaused}
+            resetCalculation={controls.resetCalculation}
+            toggleSampling={controls.toggleSampling}
+            setPaused={controls.setPaused}
+          />
+        </div>
+      </div>
       <SampleShapeMetrics
         sampleShape={sampleShape}
         loading={sampleShapeLoading}
@@ -73,6 +77,10 @@ function SampleShapeMetrics({
   const trialsPerPass = metricValue(sampleShape?.trials_per_pass, loading);
   const totalIterations = metricValue(sampleShape?.total_iterations, loading);
   const trialsPerSecond = formatSampleRate(samplingRunMetrics.trialsPerSecond);
+  const trialsPerSecondDetail = passesPerSecondDetail(
+    samplingRunMetrics.trialsPerSecond,
+    sampleShape?.trials_per_pass,
+  );
   const completedPasses = metricValue(samplingRunMetrics.completedPasses, false);
   const completedPassDetail = completedPassPercentage(samplingRunMetrics.completedPasses, sampleShape?.total_iterations);
 
@@ -80,8 +88,8 @@ function SampleShapeMetrics({
     <div className="sampler-transport-controls__metrics" aria-busy={loading}>
       <Metric label="TRIALS PER PASS" value={trialsPerPass} detail={detail} />
       <Metric label="TOTAL PASSES" value={totalIterations} />
-      <Metric label="TRIALS PER SECOND" value={trialsPerSecond} />
-      <Metric label="COMPLETED PASSES" value={completedPasses} detail={completedPassDetail} />
+      <Metric label="TRIALS PER SECOND" value={trialsPerSecond} detail={trialsPerSecondDetail} />
+      <Metric label="COMPLETED" value={completedPasses} detail={completedPassDetail} />
     </div>
   );
 }
@@ -96,8 +104,34 @@ function formatSampleRate(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return `${new Intl.NumberFormat("en-US", {
     notation: "compact",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)}/s`;
+}
+
+function passesPerSecondDetail(
+  trialsPerSecond: number | null | undefined,
+  trialsPerPass: number | null | undefined,
+): string | undefined {
+  if (
+    trialsPerSecond === null ||
+    trialsPerSecond === undefined ||
+    !Number.isFinite(trialsPerSecond) ||
+    trialsPerPass === null ||
+    trialsPerPass === undefined ||
+    !Number.isFinite(trialsPerPass) ||
+    trialsPerPass <= 0
+  ) {
+    return undefined;
+  }
+  const passesPerSecond = trialsPerSecond / trialsPerPass;
+  if (!Number.isFinite(passesPerSecond) || passesPerSecond < 0) {
+    return undefined;
+  }
+  return `${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(passesPerSecond)} pass/sec`;
 }
 
 function completedPassPercentage(completed: number | null | undefined, total: number | null | undefined): string | undefined {

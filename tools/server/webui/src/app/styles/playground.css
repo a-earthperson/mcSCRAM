@@ -104,6 +104,79 @@
     padding-bottom: 264px;
   }
 
+  .sticky-panel.playground-controls {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  /* Bottom-dock compact layout tokens — linear scale from full width (1) down
+     to onset width (90%), then continues toward the floor below onset. */
+  .sticky-panel.playground-controls {
+    /* UI scale at the dock's widest inline size (no compaction). */
+    --pg-compact-scale-full: 1;
+    /* Lowest UI scale allowed below the onset width. */
+    --pg-compact-scale-min: 0.8;
+    /* UI scale reached once the panel narrows to the onset width. */
+    --pg-compact-scale-onset: 0.8;
+    /* Panel inline size where compaction reaches --pg-compact-scale-onset. */
+    --pg-compact-scale-onset-width: 1260px;
+    /* Panel inline size where the control grid stays at --pg-compact-scale-full. */
+    --pg-compact-scale-full-width: 1261px;
+    /* Default horizontal gutter between stage columns. */
+    --pg-compact-slot-padding-inline: 16px;
+    /* Reduced column gutter once the panel is moderately narrow. */
+    --pg-compact-slot-padding-inline-compact: 10px;
+    /* Tightest column gutter at the narrow end of the dock. */
+    --pg-compact-slot-padding-inline-tight: 6px;
+    /* Panel width that switches column padding to the compact gutter. */
+    --pg-compact-slot-padding-compact-width: 1260px;
+    /* Panel width that switches column padding to the tight gutter. */
+    --pg-compact-slot-padding-tight-width: 1260px;
+    /* Outer panel padding applied together with the tight column gutter. */
+    --pg-compact-panel-padding-tight: 14px 12px;
+
+    container-type: inline-size;
+    container-name: playground-controls;
+  }
+
+  @container playground-controls (min-width: 1px) {
+    .playground-controls > .sticky-panel__controls-grid-inner {
+      --pg-compact-scale: clamp(
+        var(--pg-compact-scale-min),
+        calc(
+          var(--pg-compact-scale-full)
+          + (var(--pg-compact-scale-onset) - var(--pg-compact-scale-full))
+            * (100cqw - var(--pg-compact-scale-full-width))
+            / (var(--pg-compact-scale-onset-width) - var(--pg-compact-scale-full-width))
+        ),
+        var(--pg-compact-scale-full)
+      );
+      zoom: var(--pg-compact-scale);
+    }
+
+    @supports not (zoom: 1) {
+      .playground-controls > .sticky-panel__controls-grid-inner {
+        zoom: unset;
+        transform: scale(var(--pg-compact-scale));
+        transform-origin: top center;
+        width: calc(100% / var(--pg-compact-scale));
+      }
+    }
+  }
+
+  /* Threshold literal must match --pg-compact-slot-padding-compact-width and
+     --pg-compact-slot-padding-tight-width; @container rejects custom properties
+     under lightningcss minify. */
+  @container playground-controls (max-width: 1120px) {
+    .playground-controls .sticky-panel__controls-grid-inner > .sticky-panel__slot {
+      padding-inline: var(--pg-compact-slot-padding-inline-tight);
+    }
+
+    .sticky-panel.playground-controls {
+      padding: var(--pg-compact-panel-padding-tight);
+    }
+  }
+
   /* Flush stage columns (row 1) + provenance footer (row 2). Column heights
      equalize via the grid's default item stretch, so the hairline rules run
      the full height of the tallest column. */
@@ -114,12 +187,9 @@
 
   /* Flush columns; the channel padding centers each hairline rule. */
   .playground-controls .sticky-panel__controls-grid-inner > .sticky-panel__slot {
-    padding: 0 16px;
+    padding: 0 var(--pg-compact-slot-padding-inline);
   }
 
-  .playground-controls .sticky-panel__controls-grid-inner > .pg-title {
-    padding-left: 0;
-  }
 
   .playground-controls .pg-title {
     gap: 13px;
@@ -163,6 +233,19 @@
   .playground-controls .sticky-panel__controls-grid-inner > .sticky-panel__slot.pg-meta {
     border-top-color: var(--edge-plate);
   }
+
+  .sticky-panel-group__body.two-col {
+    display: grid-lanes;
+    grid-template-columns: minmax(0, 8rem) repeat(1, 1fr);
+    gap: 16px;
+  }
+
+  .pg-fields {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pg-fields > .sticky-panel-group__number-field {
+    display: grid-lanes;
+  }
 }
 
 /* ---- DAG canvases (unchanged behaviour) ---- */
@@ -177,4 +260,11 @@
 
 .playground-dag-view--kernel .fault-tree-frame {
   height: calc(100vh - 48px);
+}
+
+/* ---- stacked sampling output plots ---- */
+.playground-sampling-outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }

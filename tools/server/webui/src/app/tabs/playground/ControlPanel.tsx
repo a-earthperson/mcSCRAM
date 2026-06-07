@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { DagPayload, FaultTreePayload } from "../../components/canvas";
-import { StickyPanel, StickyPanelSlot } from "../../components/ui/StickyPanel";
+import { StickyPanel, StickyPanelSlot, StickyPanelSpan } from "../../components/ui/StickyPanel";
 import {
   fetchSampleShapeForModel,
   type CompileDagOptions,
@@ -34,6 +34,7 @@ export type ControlPanelProps = {
   kernelDag: DagPayload | null;
   samplingRunMetricsStore: SamplingRunMetricsStore;
   onSamplingControlsChange?: (controls: SamplingControls | null) => void;
+  onSamplerConfidenceChange?: (confidence: number) => void;
 };
 
 /**
@@ -44,6 +45,8 @@ export type ControlPanelProps = {
  *   stacks into a single ledger column.
  */
 const CONTROL_GROUP_SPANS = {
+  container: { hSpan: { row: 1, col: 12 }, vSpan: { row: 6, col: 5 } },
+  input: { hSpan: { row: 1, col: 2 }, vSpan: { row: 1, col: 5 } },
   compiler: { hSpan: { row: 1, col: 3 }, vSpan: { row: 1, col: 5 } },
   sampler: { hSpan: { row: 1, col: 4 }, vSpan: { row: 1, col: 5 } },
   transport: { hSpan: { row: 1, col: 3 }, vSpan: { row: 1, col: 5 } },
@@ -72,6 +75,7 @@ export function ControlPanel({
   kernelDag,
   samplingRunMetricsStore,
   onSamplingControlsChange,
+  onSamplerConfidenceChange,
 }: ControlPanelProps) {
   const inputSettings = useInputSettings({ selectedId, oraclePDefault: oracleP });
   const samplerSettings = useSamplerSettings();
@@ -152,16 +156,22 @@ export function ControlPanel({
     samplingControls.setPaused,
   ]);
   useEffect(() => () => onSamplingControlsChange?.(null), [onSamplingControlsChange]);
+  useEffect(() => {
+    onSamplerConfidenceChange?.(samplerSettings.confidence);
+  }, [onSamplerConfidenceChange, samplerSettings.confidence]);
 
   return (
     <StickyPanel className="playground-controls" aria-label="DAG playground controls">
-      <StickyPanelSlot area="controls-grid-inner" hSpan={{ row: 2, col: 12 }} vSpan={{ row: 6, col: 5 }}>
-        <StickyPanelSlot area="title" className="pg-title" vSpan={{ row: 1, col: 5 }} hSpan={{ row: 1, col: 2 }}>
-          <SectionTitle eyebrow="Playground" title="End-to-End Pipeline" />
+      <StickyPanelSlot area="controls-grid-inner" hSpan={CONTROL_GROUP_SPANS.container.hSpan} vSpan={CONTROL_GROUP_SPANS.container.vSpan}>
+        
+        <StickyPanelSlot area="title" className="pg-title" vSpan={CONTROL_GROUP_SPANS.input.vSpan} hSpan={CONTROL_GROUP_SPANS.input.hSpan}>
+          <div className="md-hidden">
+            <SectionTitle eyebrow="Playground" title="End-to-End Pipeline" />
+          </div>
           <div className="sticky-panel-group sticky-panel-group--input pg-title-input">
             <fieldset className="sticky-panel-group__fieldset">
               <legend className="sticky-panel-group__legend">Input</legend>
-              <div className="sticky-panel-group__body">
+              <div className="sticky-panel-group__body two-col">
                 <InputControlFields
                   selectedId={selectedId}
                   onSelectedIdChange={onSelectedIdChange}

@@ -26,7 +26,13 @@ export function CompilerControlGroup({
     onCompileOptionsChange((current) => ({ ...current, [key]: event.target.checked }));
 
   return (
-    <StickyPanelGroup legend="Compiler" className="sticky-panel-group--compiler" hSpan={hSpan} vSpan={vSpan}>
+    <StickyPanelGroup
+      legend="Compiler"
+      legendHint={<FieldHintTrigger label="Compilation level help" content={COMPILATION_LEVEL_FIELD_HINT} />}
+      className="sticky-panel-group--compiler"
+      hSpan={hSpan}
+      vSpan={vSpan}
+    >
       <CompileLevelSelect
         value={compileOptions.compilationLevel}
         onChange={(compilationLevel) => onCompileOptionsChange((current) => ({ ...current, compilationLevel }))}
@@ -137,16 +143,11 @@ function CompileLevelSelect({
 
   return (
     <div className="sticky-panel-group__number-field pg-compile-level">
-      <div className="sticky-panel-group__number-field-label-row">
-        <label className="sticky-panel-group__number-field-label" htmlFor="playground-compilation-level">
-          Level
-        </label>
-        <FieldHintTrigger label="Compilation level help" content={COMPILATION_LEVEL_FIELD_HINT} />
-      </div>
       <div className="pg-compile-level__row">
         <select
           id="playground-compilation-level"
           value={String(level)}
+          aria-label="Compilation level"
           aria-describedby="playground-compilation-level-summary"
           disabled={disabled}
           onChange={(event) => onChange(clampCompilationLevel(Number(event.target.value)))}

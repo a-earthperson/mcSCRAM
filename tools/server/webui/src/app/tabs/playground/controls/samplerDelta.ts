@@ -5,7 +5,7 @@ import { formatNumber } from "../../../lib/format";
  * Relative margin δ for Wald stopping: target half-width ε = δ·p̂
  * (see convergence_controller.h).
  */
-export const DEFAULT_DELTA = 0.01;
+export const DEFAULT_DELTA = 0.001;
 export const MIN_DELTA = 0.0001;
 export const MAX_DELTA = 0.5;
 

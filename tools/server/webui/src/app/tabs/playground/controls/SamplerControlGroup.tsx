@@ -1,4 +1,4 @@
-import { StickyPanelGroup, type StickyPanelSpan } from "../../../components/ui/StickyPanel";
+import { StickyPanelGroup, StickyPanelSlot, type StickyPanelSpan } from "../../../components/ui/StickyPanel";
 import { ConfidenceCiField } from "./ConfidenceCiField";
 import { DeltaField } from "./DeltaField";
 import { OverheadRatioField } from "./OverheadRatioField";
@@ -20,8 +20,10 @@ export function SamplerControlGroup({
     <StickyPanelGroup legend="Sampler" className="sticky-panel-group--sampler" hSpan={hSpan} vSpan={vSpan}>
       <div className="pg-fields">
         <TrialsNField
-          value={settings.trialsScalar}
-          onChange={settings.setTrialsScalar}
+          mantissa={settings.trialsMantissa}
+          scaleExponent={settings.trialsScaleExponent}
+          onMantissaChange={settings.setTrialsMantissa}
+          onScaleExponentChange={settings.setTrialsScaleExponent}
           stopOnConvergence={settings.stopOnConvergence}
           disabled={disabled}
         />

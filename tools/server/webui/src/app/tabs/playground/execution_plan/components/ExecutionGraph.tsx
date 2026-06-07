@@ -19,11 +19,13 @@ export function ExecutionGraph({
   model,
   selectedId,
   onSelect,
+  visible = true,
 }: {
   scene: ExecutionScene;
   model: ExecutionModel;
   selectedId: number | null;
   onSelect: (partitionId: number | null) => void;
+  visible?: boolean;
 }) {
   const { palette, scheme } = usePlotTheme();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -89,6 +91,10 @@ export function ExecutionGraph({
     observer.observe(stage);
     return () => observer.disconnect();
   }, [status]);
+
+  if (!visible) {
+    return null;
+  }
 
   return (
     <div

@@ -1,65 +1,126 @@
 import { z } from "zod";
 
-/** One unit on the Trials (N) control equals one billion Bernoulli trials. */
-
+export const TRIALS_PER_MILLION = 1_000_000;
 export const TRIALS_PER_BILLION = 1_000_000_000;
+export const TRIALS_PER_TRILLION = 1_000_000_000_000;
 
-export const DEFAULT_TRIALS_SCALAR = 10.0;
-export const MIN_TRIALS_SCALAR = 0.1;
-export const MAX_TRIALS_SCALAR = 100.0;
-export const TRIALS_SCALAR_STEP = 0.1;
+export const TRIALS_SCALE_EXPONENTS = [6, 9, 12] as const;
+export type TrialsScaleExponent = (typeof TRIALS_SCALE_EXPONENTS)[number];
 
-export const MIN_TRIALS_COUNT = trialsScalarToCount(MIN_TRIALS_SCALAR);
-export const MAX_TRIALS_COUNT = trialsScalarToCount(MAX_TRIALS_SCALAR);
-export const DEFAULT_TRIALS_COUNT = trialsScalarToCount(DEFAULT_TRIALS_SCALAR);
+export const DEFAULT_TRIALS_SCALE_EXPONENT: TrialsScaleExponent = 9;
+export const DEFAULT_TRIALS_MANTISSA = 10;
+export const TRIALS_MANTISSA_STEP = 1;
+export const MIN_TRIALS_COUNT = TRIALS_PER_MILLION;
+export const MAX_TRIALS_COUNT = 10 * TRIALS_PER_TRILLION;
+export const DEFAULT_TRIALS_COUNT = deriveTrialsCount(DEFAULT_TRIALS_MANTISSA, DEFAULT_TRIALS_SCALE_EXPONENT);
+
+export const TRIALS_SCALE_LABELS: Record<TrialsScaleExponent, string> = {
+  6: "M",
+  9: "B",
+  12: "T",
+};
 
 export const TRIALS_N_FIELD_HINT =
-  "Scalar multiplier for total Bernoulli trials. Actual N = value × 10⁹ (0.1 → 100 million, 1.0 → 1 billion, 10.0 → 10 billion). Adjust in steps of 0.1.";
+  "Enter a mantissa and choose the unit (M = ×10⁶, B = ×10⁹, T = ×10¹²). Actual N is derived as mantissa × unit (1 million to 10 trillion). Examples at B: 1 → 1 billion, 10 → 10 billion, 1000 → 1 trillion. −/+ adjusts the mantissa in steps of 1.";
 
-export function trialsScalarToCount(scalar: number): number {
-  return Math.round(scalar * TRIALS_PER_BILLION);
+/** @deprecated Use {@link DEFAULT_TRIALS_MANTISSA} at {@link DEFAULT_TRIALS_SCALE_EXPONENT}. */
+export const DEFAULT_TRIALS_SCALAR = DEFAULT_TRIALS_MANTISSA;
+
+export function isTrialsScaleExponent(value: number): value is TrialsScaleExponent {
+  return (TRIALS_SCALE_EXPONENTS as readonly number[]).includes(value);
 }
 
-export function trialsCountToScalar(count: number): number {
-  return count / TRIALS_PER_BILLION;
+export function trialsScaleFactor(exponent: TrialsScaleExponent): number {
+  return 10 ** exponent;
 }
 
-/** Snap to 0.1 steps and clamp to the allowed scalar range. */
-export function normalizeTrialsScalar(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_TRIALS_SCALAR;
-  const stepped = Math.round(value / TRIALS_SCALAR_STEP) * TRIALS_SCALAR_STEP;
-  const clamped = Math.min(MAX_TRIALS_SCALAR, Math.max(MIN_TRIALS_SCALAR, stepped));
-  return Number(clamped.toFixed(1));
+/** Derived trial count from mantissa and exponent (not a stored input). */
+export function deriveTrialsCount(mantissa: number, scaleExponent: TrialsScaleExponent): number {
+  if (!Number.isFinite(mantissa) || mantissa <= 0) return 0;
+  return Math.round(mantissa * trialsScaleFactor(scaleExponent));
 }
 
-/** Step by {@link TRIALS_SCALAR_STEP} for increment/decrement controls. */
-export function stepTrialsScalar(value: number, direction: 1 | -1): number {
-  return normalizeTrialsScalar(value + direction * TRIALS_SCALAR_STEP);
+export function clampTrialsCount(count: number): number {
+  if (!Number.isFinite(count)) return DEFAULT_TRIALS_COUNT;
+  return Math.min(MAX_TRIALS_COUNT, Math.max(MIN_TRIALS_COUNT, Math.round(count)));
 }
 
-export const trialsScalarSchema = z.coerce
-  .number({ error: "Enter a number" })
-  .refine(Number.isFinite, { message: "Enter a number" })
-  .min(MIN_TRIALS_SCALAR, { message: `Minimum is ${MIN_TRIALS_SCALAR} (100 million trials)` })
-  .max(MAX_TRIALS_SCALAR, { message: `Maximum is ${MAX_TRIALS_SCALAR} (100 billion trials)` })
-  .transform(normalizeTrialsScalar);
-
-export type TrialsScalar = z.infer<typeof trialsScalarSchema>;
-
-export function formatTrialsScalar(scalar: number): string {
-  return normalizeTrialsScalar(scalar).toFixed(1);
+/** Effective N sent to the sampler after clamping the derived count. */
+export function effectiveTrialsCount(mantissa: number, scaleExponent: TrialsScaleExponent): number {
+  return clampTrialsCount(deriveTrialsCount(mantissa, scaleExponent));
 }
 
-function formatTrialsAmount(scalar: number): string {
-  const normalized = normalizeTrialsScalar(scalar);
-  const count = trialsScalarToCount(normalized);
-  if (count >= TRIALS_PER_BILLION) {
+export function normalizeTrialsMantissa(mantissa: number): number {
+  if (!Number.isFinite(mantissa)) return DEFAULT_TRIALS_MANTISSA;
+  const stepped = Math.round(mantissa / TRIALS_MANTISSA_STEP) * TRIALS_MANTISSA_STEP;
+  return Math.max(TRIALS_MANTISSA_STEP, stepped);
+}
+
+export function stepTrialsMantissa(mantissa: number, direction: 1 | -1): number {
+  return normalizeTrialsMantissa(mantissa + direction * TRIALS_MANTISSA_STEP);
+}
+
+export function createTrialsMantissaSchema(scaleExponent: TrialsScaleExponent) {
+  return z.coerce
+    .number({ error: "Enter a number" })
+    .refine(Number.isFinite, { message: "Enter a number" })
+    .refine((value) => value > 0, { message: "Mantissa must be greater than 0" })
+    .transform(normalizeTrialsMantissa)
+    .refine(
+      (value) => {
+        const count = deriveTrialsCount(value, scaleExponent);
+        return count >= MIN_TRIALS_COUNT && count <= MAX_TRIALS_COUNT;
+      },
+      {
+        message: `Derived N must be between ${formatTrialsCount(MIN_TRIALS_COUNT)} and ${formatTrialsCount(MAX_TRIALS_COUNT)} trials`,
+      },
+    );
+}
+
+export type TrialsMantissa = z.infer<ReturnType<typeof createTrialsMantissaSchema>>;
+
+export function formatTrialsMantissa(mantissa: number): string {
+  const normalized = normalizeTrialsMantissa(mantissa);
+  return normalized.toFixed(mantissaDisplayDecimals(normalized));
+}
+
+export function formatTrialsCount(count: number): string {
+  const abs = Math.abs(count);
+  if (abs >= TRIALS_PER_TRILLION) {
+    return `${(count / TRIALS_PER_TRILLION).toFixed(1)} trillion`;
+  }
+  if (abs >= TRIALS_PER_BILLION) {
     return `${(count / TRIALS_PER_BILLION).toFixed(1)} billion`;
   }
-  return `${(count / 1_000_000).toFixed(1)} million`;
+  return `${(count / TRIALS_PER_MILLION).toFixed(1)} million`;
 }
 
-export function formatTrialsDescription(scalar: number, stopOnConvergence = false): string {
-  const amount = formatTrialsAmount(scalar);
-  return stopOnConvergence ? `upto ${amount}` : amount;
+export function formatTrialsDescription(
+  mantissa: number,
+  scaleExponent: TrialsScaleExponent,
+  stopOnConvergence = false,
+): string {
+  const derived = deriveTrialsCount(mantissa, scaleExponent);
+  const prefix = stopOnConvergence ? "upto " : "";
+  if (derived > MAX_TRIALS_COUNT) {
+    return `${prefix}${formatTrialsCount(MAX_TRIALS_COUNT)}`;
+  }
+  if (derived < MIN_TRIALS_COUNT) {
+    return `${prefix}${formatTrialsCount(MIN_TRIALS_COUNT)}`;
+  }
+  return `${prefix}${formatTrialsCount(derived)}`;
+}
+
+/** @deprecated Use {@link deriveTrialsCount} with an explicit scale exponent. */
+export function trialsMantissaToCount(mantissa: number, scaleExponent: TrialsScaleExponent): number {
+  return deriveTrialsCount(mantissa, scaleExponent);
+}
+
+/** @deprecated Use {@link deriveTrialsCount} with an explicit scale exponent. */
+export function trialsScalarToCount(scalar: number): number {
+  return deriveTrialsCount(scalar, DEFAULT_TRIALS_SCALE_EXPONENT);
+}
+
+function mantissaDisplayDecimals(mantissa: number): number {
+  return Number.isInteger(mantissa) ? 0 : 1;
 }
