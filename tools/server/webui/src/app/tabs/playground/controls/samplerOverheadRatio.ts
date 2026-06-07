@@ -2,8 +2,8 @@ import { z } from "zod";
 import { formatNumber } from "../../../lib/format";
 
 /** Per-node allocator slack for GPU sample shaping (`sample_shaper`, default 0.05). */
-export const DEFAULT_OVERHEAD_RATIO = 1;
-export const MIN_OVERHEAD_RATIO = 0.1;
+export const DEFAULT_OVERHEAD_RATIO = 0.0;
+export const MIN_OVERHEAD_RATIO = 0.0;
 export const MAX_OVERHEAD_RATIO = 100;
 
 /** Preset ladder for increment/decrement (ascending — required by {@link stepOverheadRatio}). */

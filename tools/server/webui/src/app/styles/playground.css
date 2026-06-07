@@ -240,12 +240,12 @@
     gap: 16px;
   }
 
-  .pg-fields {
+  /* .pg-fields {
     grid-template-columns: repeat(2, 1fr);
   }
   .pg-fields > .sticky-panel-group__number-field {
     display: grid-lanes;
-  }
+  } */
 }
 
 /* ---- DAG canvases (unchanged behaviour) ---- */
@@ -259,7 +259,6 @@
 }
 
 .playground-dag-view--kernel .fault-tree-frame {
-  height: calc(100vh - 48px);
 }
 
 /* ---- stacked sampling output plots ---- */

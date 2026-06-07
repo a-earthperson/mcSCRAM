@@ -4,6 +4,7 @@ import {
   faultTreeDetailLabel,
   isFaultTreeNullGate,
 } from "./faultTreeGlyphs";
+import { syncCanvasSurface } from "./canvasSurface";
 import { readFaultTreeCanvasTheme, type FaultTreeCanvasTheme } from "./readFaultTreeCanvasTheme";
 import type { CanvasSize, FaultTreeLayout, RenderNode, ViewTransform } from "./types";
 
@@ -15,23 +16,22 @@ export function drawFaultTreeCanvas(
   themeRoot: HTMLElement,
 ): void {
   const theme = readFaultTreeCanvasTheme(themeRoot);
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(size.width * dpr);
-  canvas.height = Math.round(size.height * dpr);
-  canvas.style.width = `${size.width}px`;
-  canvas.style.height = `${size.height}px`;
+  const { attrs, changed } = syncCanvasSurface(canvas, size);
+  const drawSize = attrs.size;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, size.width, size.height);
+  if (changed) {
+    ctx.setTransform(attrs.dpr, 0, 0, attrs.dpr, 0, 0);
+  }
+  ctx.clearRect(0, 0, drawSize.width, drawSize.height);
 
   const { scale, offsetX, offsetY } = view;
   const pad = theme.cullPad;
   const wx0 = (-offsetX / scale) - pad;
   const wy0 = (-offsetY / scale) - pad;
-  const wx1 = ((size.width - offsetX) / scale) + pad;
-  const wy1 = ((size.height - offsetY) / scale) + pad;
+  const wx1 = ((drawSize.width - offsetX) / scale) + pad;
+  const wy1 = ((drawSize.height - offsetY) / scale) + pad;
   const toScreenX = (x: number) => x * scale + offsetX;
   const toScreenY = (y: number) => y * scale + offsetY;
   const visible = (node: RenderNode) => node.x >= wx0 && node.x <= wx1 && node.y >= wy0 && node.y <= wy1;

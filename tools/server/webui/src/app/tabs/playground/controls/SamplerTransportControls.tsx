@@ -5,6 +5,7 @@ type SamplerTransportControlsProps = Pick<
   | "resetPending"
   | "samplingControlPending"
   | "samplingActive"
+  | "streamPhase"
   | "controlsLocked"
   | "clientPaused"
   | "resetCalculation"
@@ -16,25 +17,39 @@ export function SamplerTransportControls({
   resetPending,
   samplingControlPending,
   samplingActive,
+  streamPhase,
   controlsLocked,
   clientPaused,
   resetCalculation,
   toggleSampling,
   setPaused,
 }: SamplerTransportControlsProps) {
+  const showStarting = samplingControlPending === "start" || streamPhase === "arming";
+  const showStopping = samplingControlPending === "stop" || streamPhase === "draining";
+  const showStop = !showStarting && !showStopping && samplingActive;
+  const showTransitional = showStarting || showStopping;
+  const pigmentClass = showTransitional
+    ? "control-transition"
+    : showStop
+      ? "control-stop"
+      : "control-sampling";
+  const label = showStarting
+    ? "Starting"
+    : showStopping
+      ? "Stopping"
+      : showStop
+        ? "Stop"
+        : "Start";
+
   return (
     <div className="sampler-transport-controls__row" role="toolbar" aria-label="Sampling transport">
       <button
         type="button"
-        className="control-button control-sampling sampler-transport-controls__start"
+        className={`control-button sampler-transport-controls__start ${pigmentClass}`}
         onClick={toggleSampling}
         disabled={controlsLocked}
       >
-        {samplingControlPending
-          ? (samplingControlPending === "start" ? "Starting" : "Stopping")
-          : samplingActive
-            ? "Stop"
-            : "Start"}
+        {label}
       </button>
       <button
         type="button"

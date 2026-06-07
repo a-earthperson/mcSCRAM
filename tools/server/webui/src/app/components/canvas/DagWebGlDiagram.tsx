@@ -2,17 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatInteger } from "../../lib/format";
 import { DiagramViewportControls } from "./DiagramViewportControls";
 import { EmptyState } from "../../components/ui";
-import { DAG_CANVAS_VIEWPORT, useCanvasFrameSize } from "./canvasViewport";
+import { DAG_CANVAS_VIEWPORT } from "./canvasViewport";
+import { resolveCanvasFitSize, useCanvasSurfaceSize } from "./canvasSurface";
 import {
   fitBoundsView,
-  panViewTransform,
   resetViewTransform,
-  wheelZoomAtCanvasPoint,
   zoomAtPoint,
 } from "./canvasViewportTransform";
 import { DagWebGlRenderer } from "./drawDagWebGl";
-import type { DagPayload, ViewTransform } from "./types";
-import { useNonPassiveWheel } from "./useNonPassiveWheel";
+import type { DagPayload, ViewTransform, CanvasSize } from "./types";
+import { useCanvasViewportGestures } from "./useCanvasViewportGestures";
 
 const VIEWPORT = DAG_CANVAS_VIEWPORT;
 
@@ -25,12 +24,11 @@ export function DagWebGlDiagram({ dag }: DagWebGlDiagramProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<DagWebGlRenderer | null>(null);
   const rafRef = useRef<number | null>(null);
-  const sizeRef = useRef(VIEWPORT.layout.defaultSize);
   const viewRef = useRef<ViewTransform>(resetViewTransform(VIEWPORT.layout.defaultSize, VIEWPORT));
-  const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 });
   const didInitialFitRef = useRef(false);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const { size, hasMeasured } = useCanvasFrameSize(frameRef, VIEWPORT.layout);
+  const { size, hasMeasured } = useCanvasSurfaceSize(canvasRef, VIEWPORT.layout);
 
   const counts = useMemo(() => {
     const gates = dag.counts?.gate ?? dag.nodes.type.filter((typeIndex) => typeIndex > 1).length;
@@ -51,8 +49,20 @@ export function DagWebGlDiagram({ dag }: DagWebGlDiagramProps) {
     scheduleDraw();
   }, [scheduleDraw]);
 
+  const setView = useCallback((update: (prev: ViewTransform) => ViewTransform) => {
+    applyView(update(viewRef.current));
+  }, [applyView]);
+
+  const viewportGestures = useCanvasViewportGestures({
+    canvasRef,
+    viewport: VIEWPORT,
+    getView: () => viewRef.current,
+    setView,
+    enabled: dag.nodes.count > 0 && renderError === null,
+  });
+
   const fitView = useCallback(() => {
-    applyView(fitBoundsView(dag.bounds, sizeRef.current, VIEWPORT));
+    applyView(fitBoundsView(dag.bounds, resolveCanvasFitSize(canvasRef.current, sizeRef.current), VIEWPORT));
   }, [applyView, dag.bounds]);
 
   const resetView = useCallback(() => {
@@ -60,7 +70,8 @@ export function DagWebGlDiagram({ dag }: DagWebGlDiagramProps) {
   }, [applyView]);
 
   const panView = useCallback((dx: number, dy: number) => {
-    applyView(panViewTransform(viewRef.current, dx, dy));
+    const view = viewRef.current;
+    applyView({ ...view, offsetX: view.offsetX + dx, offsetY: view.offsetY + dy });
   }, [applyView]);
 
   const zoomAt = useCallback((px: number, py: number, factor: number) => {
@@ -72,19 +83,14 @@ export function DagWebGlDiagram({ dag }: DagWebGlDiagramProps) {
     zoomAt(currentSize.width / 2, currentSize.height / 2, factor);
   }, [zoomAt]);
 
-  const handleWheel = useCallback((event: WheelEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    applyView(wheelZoomAtCanvasPoint(viewRef.current, canvas, event, VIEWPORT));
-  }, [applyView]);
-
-  useNonPassiveWheel(canvasRef, handleWheel, dag.nodes.count > 0 && renderError === null);
-
   useEffect(() => {
+    if (!hasMeasured || size.width <= 0 || size.height <= 0) {
+      return;
+    }
     sizeRef.current = size;
     rendererRef.current?.resize(size);
     scheduleDraw();
-  }, [scheduleDraw, size]);
+  }, [hasMeasured, scheduleDraw, size]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -114,7 +120,14 @@ export function DagWebGlDiagram({ dag }: DagWebGlDiagramProps) {
   }, [dag]);
 
   useEffect(() => {
-    if (didInitialFitRef.current || renderError || !rendererRef.current || !hasMeasured) {
+    if (
+      didInitialFitRef.current ||
+      renderError ||
+      !rendererRef.current ||
+      !hasMeasured ||
+      size.width <= 0 ||
+      size.height <= 0
+    ) {
       return;
     }
     fitView();
@@ -139,29 +152,7 @@ export function DagWebGlDiagram({ dag }: DagWebGlDiagramProps) {
         ref={canvasRef}
         className="fault-tree-canvas dag-webgl-canvas"
         hidden={renderError !== null}
-        width={size.width}
-        height={size.height}
-        onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          const view = viewRef.current;
-          dragRef.current = { x: event.clientX, y: event.clientY, offsetX: view.offsetX, offsetY: view.offsetY };
-        }}
-        onPointerMove={(event) => {
-          const drag = dragRef.current;
-          if (!drag) return;
-          applyView({
-            ...viewRef.current,
-            offsetX: drag.offsetX + event.clientX - drag.x,
-            offsetY: drag.offsetY + event.clientY - drag.y,
-          });
-        }}
-        onPointerUp={(event) => {
-          dragRef.current = null;
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
-        onPointerCancel={() => {
-          dragRef.current = null;
-        }}
+        {...viewportGestures}
       />
       <div className="fault-tree-toolbar">
         <span>

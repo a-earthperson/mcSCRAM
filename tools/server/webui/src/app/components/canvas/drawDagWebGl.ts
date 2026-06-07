@@ -11,6 +11,7 @@ import {
   type DagWebGlStrokeKey,
   type Rgba,
 } from "./dagWebGlPalette";
+import { syncCanvasSurface } from "./canvasSurface";
 import type { CanvasSize, DagNodeType, DagPayload, ViewTransform } from "./types";
 
 const MAX_NODE_TYPES = 16;
@@ -179,14 +180,12 @@ export class DagWebGlRenderer {
   }
 
   resize(size: CanvasSize): void {
-    const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = Math.max(1, Math.round(size.width * dpr));
-    this.canvas.height = Math.max(1, Math.round(size.height * dpr));
-    this.canvas.style.width = `${size.width}px`;
-    this.canvas.style.height = `${size.height}px`;
+    syncCanvasSurface(this.canvas, size);
   }
 
   draw(size: CanvasSize, view: ViewTransform): void {
+    const { attrs } = syncCanvasSurface(this.canvas, size);
+    const drawSize = attrs.size;
     const gl = this.gl;
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(0, 0, 0, 0);
@@ -195,7 +194,7 @@ export class DagWebGlRenderer {
     if (this.geometry.regularEdgeVertexCount) {
       gl.useProgram(this.edgeProgram.program);
       gl.bindVertexArray(this.edgeVao);
-      gl.uniform2f(this.edgeProgram.resolution, size.width, size.height);
+      gl.uniform2f(this.edgeProgram.resolution, drawSize.width, drawSize.height);
       gl.uniform1f(this.edgeProgram.scale, view.scale);
       gl.uniform2f(this.edgeProgram.offset, view.offsetX, view.offsetY);
       gl.uniform4fv(this.edgeProgram.color, this.edgeColor);
@@ -205,7 +204,7 @@ export class DagWebGlRenderer {
     if (this.geometry.complementedEdgeVertexCount && this.complementedEdgeProgram && this.complementedEdgeVao) {
       gl.useProgram(this.complementedEdgeProgram.program);
       gl.bindVertexArray(this.complementedEdgeVao);
-      gl.uniform2f(this.complementedEdgeProgram.resolution, size.width, size.height);
+      gl.uniform2f(this.complementedEdgeProgram.resolution, drawSize.width, drawSize.height);
       gl.uniform1f(this.complementedEdgeProgram.scale, view.scale);
       gl.uniform2f(this.complementedEdgeProgram.offset, view.offsetX, view.offsetY);
       gl.uniform4fv(this.complementedEdgeProgram.color, this.complementedEdgeColor);
@@ -216,7 +215,7 @@ export class DagWebGlRenderer {
     if (this.geometry.nodeCount) {
       gl.useProgram(this.nodeProgram.program);
       gl.bindVertexArray(this.nodeVao);
-      gl.uniform2f(this.nodeProgram.resolution, size.width, size.height);
+      gl.uniform2f(this.nodeProgram.resolution, drawSize.width, drawSize.height);
       gl.uniform1f(this.nodeProgram.scale, view.scale);
       gl.uniform2f(this.nodeProgram.offset, view.offsetX, view.offsetY);
       gl.uniform1f(this.nodeProgram.nodeRadius, this.nodeRadius);

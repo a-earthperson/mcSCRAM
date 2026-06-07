@@ -10,7 +10,7 @@ export const MIN_DELTA = 0.0001;
 export const MAX_DELTA = 0.5;
 
 /** Preset ladder for increment/decrement (ascending — required by {@link stepDelta}). */
-export const DELTA_PRESETS = [0.0001, 0.001, 0.005, 0.01, 0.05, 0.1] as const;
+export const DELTA_PRESETS = [0.0001, 0.0005,0.001, 0.005, 0.01, 0.05, 0.1] as const;
 
 const PRESET_EPSILON = 1e-12;
 

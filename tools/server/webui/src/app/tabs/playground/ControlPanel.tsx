@@ -95,13 +95,12 @@ export function ControlPanel({
       num_trials: samplerSettings.trialsCount,
       early_stop: samplerSettings.stopOnConvergence,
       overhead_ratio: samplerSettings.overheadRatio,
-      ...(samplerSettings.stopOnConvergence
-        ? { confidence: samplerSettings.confidence, delta: samplerSettings.delta }
-        : {}),
+      confidence: samplerSettings.confidence,
+      delta: samplerSettings.delta,
       ...(inputSettings.oracleEnabled ? { oracle: inputSettings.oracleP } : {}),
     }),
   });
-  const inputsLocked = samplingControls.samplingActive || samplingControls.controlsLocked;
+  const inputsLocked = samplingControls.samplingSessionActive || samplingControls.controlsLocked;
   const samplingRunMetrics = useSamplingRunMetrics(samplingRunMetricsStore);
 
   useEffect(() => {
@@ -148,9 +147,13 @@ export function ControlPanel({
     samplingControls.error,
     samplingControls.resetPending,
     samplingControls.samplingControlPending,
+    samplingControls.streamPhase,
     samplingControls.clientPaused,
     samplingControls.samplingActive,
+    samplingControls.samplingSessionActive,
     samplingControls.controlsLocked,
+    samplingControls.notifyStreamProgress,
+    samplingControls.notifyStreamStopped,
     samplingControls.resetCalculation,
     samplingControls.toggleSampling,
     samplingControls.setPaused,
@@ -171,7 +174,7 @@ export function ControlPanel({
           <div className="sticky-panel-group sticky-panel-group--input pg-title-input">
             <fieldset className="sticky-panel-group__fieldset">
               <legend className="sticky-panel-group__legend">Input</legend>
-              <div className="sticky-panel-group__body two-col">
+              <div className="sticky-panel-group__body">
                 <InputControlFields
                   selectedId={selectedId}
                   onSelectedIdChange={onSelectedIdChange}

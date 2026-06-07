@@ -23,6 +23,7 @@
     color-scheme: light;
 
     --global-lighting: unset;
+    --paper-acid-wash: saturate(0.7);
   
     /* Paper: warm-neutral cold-pressed watercolor stock. R leads G≈B
        by a hair for a faint blush warmth — readable as paper-not-screen
@@ -253,7 +254,8 @@
   :root {
     color-scheme: dark;
 
-    --global-lighting: saturate(1.2) contrast(1.05)  brightness(1.1) saturate(3.2);
+    --global-lighting: unset;
+    --paper-acid-wash: hue-rotate(282deg);
 
     /* Paper: lampblack rag stock pushed to a near-black night void with a
        whisper of cool blue (B leads R≈G) instead of the warm brown of day.

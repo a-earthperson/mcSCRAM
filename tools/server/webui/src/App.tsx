@@ -8,7 +8,6 @@ import {
   CompilerTab,
   ConvergenceTab,
   HardwareTab,
-  LiveDemoTab,
   PlaygroundTab,
   ModelsTab,
   OverviewTab,
@@ -78,8 +77,7 @@ function App({ initialData = null }: AppProps) {
       <main className="shell">
         <Suspense fallback={<TabFallback />}>
           <Routes>
-            <Route path="/" element={<LiveDemoTab />} />
-            <Route path="/live-demo" element={<LiveDemoTab />} />
+            <Route path="/" element={<PlaygroundTab />} />
             <Route
               path="/playground"
               element={(
@@ -95,7 +93,7 @@ function App({ initialData = null }: AppProps) {
             <Route path="/convergence" element={<ConvergenceTab data={data} />} />
             <Route path="/models" element={<ModelsTab data={data} onPreviewAsset={setPreviewAsset} />} />
             <Route path="/artifacts" element={<ArtifactsTab artifacts={data.artifacts} onPreviewAsset={setPreviewAsset} />} />
-            <Route path="*" element={<LiveDemoTab />} />
+            <Route path="*" element={<PlaygroundTab />} />
           </Routes>
         </Suspense>
         {previewAsset && <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}

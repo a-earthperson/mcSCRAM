@@ -55,7 +55,7 @@ export function InputControlFields({
   return (
     <>
       <Select
-        label="Model"
+        label=""
         value={selectedId}
         onChange={onSelectedIdChange}
         options={modelIds}

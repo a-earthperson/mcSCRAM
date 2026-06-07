@@ -1644,7 +1644,6 @@ tbody tr:hover td {
   padding: 12px 14px 16px;
   border: 1px solid var(--edge-plate);
   background: var(--paper-cool);
-  filter: var(--global-lighting);
 }
 
 .roofline-figure figcaption {
@@ -1677,7 +1676,6 @@ tbody tr:hover td {
 }
 
 .connection-pill {
-  filter: var(--global-lighting);
   display: inline-flex;
   align-items: center;
   padding: 5px 10px;
@@ -1741,7 +1739,6 @@ tbody tr:hover td {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  filter: var(--global-lighting);
   align-items: center;
 }
 
@@ -1780,6 +1777,16 @@ tbody tr:hover td {
 .control-sampling {
   --control-pigment: var(--pigment-sage);
   --control-wash: var(--wash-control-sage);
+}
+
+.control-stop {
+  --control-pigment: var(--pigment-madder);
+  --control-wash: var(--wash-control-madder);
+}
+
+.control-transition {
+  --control-pigment: var(--pigment-ochre);
+  --control-wash: var(--wash-control-ochre);
 }
 
 .pause-play-button {

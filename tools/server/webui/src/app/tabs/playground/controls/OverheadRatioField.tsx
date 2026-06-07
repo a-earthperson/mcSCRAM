@@ -15,12 +15,15 @@ import { SteppedNumberInputRow } from "./SteppedNumberInputRow";
 export function OverheadRatioField({
   value,
   onChange,
+  visible = true,
   disabled = false,
 }: {
   value: number;
   onChange: (ratio: number) => void;
+  visible?: boolean;
   disabled?: boolean;
 }) {
+  if (!visible) return null;
   const fieldId = useId();
   const hintId = `${fieldId}-hint`;
   const errorId = `${fieldId}-error`;

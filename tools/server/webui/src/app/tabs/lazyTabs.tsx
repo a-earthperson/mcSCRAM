@@ -1,9 +1,9 @@
 import { lazy } from "react";
 
 /** Code-split tab views — each chunk loads only when its route is visited. */
-export const LiveDemoTab = lazy(() =>
-  import("./live-demo/LiveDemoTab").then((m) => ({ default: m.LiveDemo })),
-);
+// export const LiveDemoTab = lazy(() =>
+//   import("./live-demo/LiveDemoTab").then((m) => ({ default: m.LiveDemo })),
+// );
 export const PlaygroundTab = lazy(() =>
   import("./playground/Playground").then((m) => ({ default: m.Playground })),
 );
@@ -30,7 +30,6 @@ export const ArtifactsTab = lazy(() =>
 );
 
 export const sections = [
-  { path: "live-demo", label: "Live Demo" },
   { path: "playground", label: "Playground" },
   { path: "overview", label: "Overview" },
   { path: "hardware", label: "Hardware" },
@@ -43,7 +42,7 @@ export const sections = [
 
 export type SectionPath = (typeof sections)[number]["path"];
 
-export const defaultSection: SectionPath = "live-demo";
+export const defaultSection: SectionPath = "playground";
 
 export function sectionHref(path: SectionPath): string {
   return `/${path}`;

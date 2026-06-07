@@ -28,6 +28,7 @@ export function SamplerControlGroup({
           disabled={disabled}
         />
         <OverheadRatioField
+          visible={false}
           value={settings.overheadRatio}
           onChange={settings.setOverheadRatio}
           disabled={disabled}
@@ -35,12 +36,12 @@ export function SamplerControlGroup({
         <ConfidenceCiField
           value={settings.confidenceCiPercent}
           onChange={settings.setConfidenceCiPercent}
-          disabled={disabled || !settings.stopOnConvergence}
+          disabled={disabled}
         />
         <DeltaField
           value={settings.delta}
           onChange={settings.setDelta}
-          disabled={disabled || !settings.stopOnConvergence}
+          disabled={disabled}
         />
       </div>
     </StickyPanelGroup>

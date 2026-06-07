@@ -1,6 +1,6 @@
 import { StickyPanelGroup, type StickyPanelSpan } from "../../../components/ui/StickyPanel";
 import type { SampleShape } from "../../../api/faultTreeApi";
-import { formatInteger, formatNumber } from "../../../lib/format";
+import { formatInteger, formatNumber, formatStreamDurationSeconds } from "../../../lib/format";
 import { Metric } from "../../../components";
 import type { SamplingRunMetrics } from "../samplingRunMetrics";
 import { SamplerTransportControls } from "./SamplerTransportControls";
@@ -39,10 +39,11 @@ export function SamplerTransportControlGroup({
             onChange={onStopOnConvergenceChange}
             disabled={controlsDisabled}
           />
-                    <SamplerTransportControls
+          <SamplerTransportControls
             resetPending={controls.resetPending}
             samplingControlPending={controls.samplingControlPending}
             samplingActive={controls.samplingActive}
+            streamPhase={controls.streamPhase}
             controlsLocked={controls.controlsLocked}
             clientPaused={controls.clientPaused}
             resetCalculation={controls.resetCalculation}
@@ -83,14 +84,22 @@ function SampleShapeMetrics({
   );
   const completedPasses = metricValue(samplingRunMetrics.completedPasses, false);
   const completedPassDetail = completedPassPercentage(samplingRunMetrics.completedPasses, sampleShape?.total_iterations);
+  const elapsedTime = formatStreamDurationSeconds(samplingRunMetrics.elapsedSeconds);
+  const timeToConvergence = formatStreamDurationSeconds(samplingRunMetrics.timeToConvergenceSeconds);
 
   return (
-    <div className="sampler-transport-controls__metrics" aria-busy={loading}>
-      <Metric label="TRIALS PER PASS" value={trialsPerPass} detail={detail} />
-      <Metric label="TOTAL PASSES" value={totalIterations} />
-      <Metric label="TRIALS PER SECOND" value={trialsPerSecond} detail={trialsPerSecondDetail} />
-      <Metric label="COMPLETED" value={completedPasses} detail={completedPassDetail} />
-    </div>
+    <>
+      <div className="sampler-transport-controls__timing-metrics" aria-busy={loading}>
+        <Metric label="Elapsed Time" value={elapsedTime} />
+        <Metric label="Convergence Time" value={timeToConvergence} />
+      </div>
+      <div className="sampler-transport-controls__metrics" aria-busy={loading}>
+        <Metric label="TRIALS PER PASS" value={trialsPerPass} detail={detail} />
+        <Metric label="TOTAL PASSES" value={totalIterations} />
+        <Metric label="TRIALS PER SECOND" value={trialsPerSecond} detail={trialsPerSecondDetail} />
+        <Metric label="COMPLETED" value={completedPasses} detail={completedPassDetail} />
+      </div>
+    </>
   );
 }
 

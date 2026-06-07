@@ -20,6 +20,17 @@ export function formatInteger(value: number | null | undefined): string {
   return new Intl.NumberFormat("en-US").format(Math.round(value));
 }
 
+/** Stream-relative elapsed seconds with one decimal place (server sample timestamps). */
+export function formatStreamDurationSeconds(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return "—";
+  const seconds = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+    useGrouping: false,
+  }).format(value);
+  return `${seconds} s`;
+}
+
 export function formatDurationMs(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "n/a";
   if (value < 1_000) return `${formatNumber(value, 3)} ms`;

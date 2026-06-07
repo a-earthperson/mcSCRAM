@@ -18,6 +18,7 @@ import type { SamplingStatus } from "./controls/samplingStatus";
 import type { SamplingControls } from "./controls/useSamplingControls";
 import type { SamplingRunMetricsStore } from "./samplingRunMetrics";
 import { createSampleRateTracker } from "./sampleRateTracker";
+import { createSampleTimingTracker, type SampleTimingObservation } from "./sampleTimingTracker";
 
 type LiveProgressUpdate = ConvergenceStatsPayload;
 
@@ -86,7 +87,9 @@ export function SamplingTrajectoryPanel({
   const pointsRef = useRef<LiveProbabilityPoint[]>([]);
   const pendingUpdatesRef = useRef<LiveProgressUpdate[]>([]);
   const sampleRateTrackerRef = useRef(createSampleRateTracker());
+  const sampleTimingTrackerRef = useRef(createSampleTimingTracker());
   const latestSampleRateRef = useRef<number | null>(null);
+  const latestTimingRef = useRef<SampleTimingObservation | null>(null);
   const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -106,6 +109,9 @@ export function SamplingTrajectoryPanel({
     runMetricsStoreRef.current.setMetrics({
       trialsPerSecond: latestSampleRateRef.current,
       completedPasses: isFiniteNumber(latestUpdate.iterations) ? latestUpdate.iterations : null,
+      elapsedSeconds: latestTimingRef.current?.elapsedSeconds ?? null,
+      timeToConvergenceSeconds: latestTimingRef.current?.timeToConvergenceSeconds ?? null,
+      epsilonConverged: latestTimingRef.current?.epsilonConverged ?? false,
     });
     if (next !== pointsRef.current) {
       pointsRef.current = next;
@@ -117,6 +123,10 @@ export function SamplingTrajectoryPanel({
     pendingUpdatesRef.current.push(update);
     const observation = sampleRateTrackerRef.current.observe(update.trials ?? Number.NaN, timestampSeconds);
     latestSampleRateRef.current = observation?.trialsPerSecond ?? null;
+    latestTimingRef.current = sampleTimingTrackerRef.current.observe(
+      timestampSeconds,
+      update.epsilon_converged === true,
+    );
     if (frameRef.current === null) {
       frameRef.current = window.requestAnimationFrame(flushPendingUpdates);
     }
@@ -124,7 +134,8 @@ export function SamplingTrajectoryPanel({
 
   const resetRunMetrics = () => {
     latestSampleRateRef.current = null;
-    runMetricsStoreRef.current.setMetrics({ trialsPerSecond: null, completedPasses: null });
+    latestTimingRef.current = null;
+    runMetricsStoreRef.current.resetMetrics();
   };
 
   const resetReplayPath = () => {
@@ -139,6 +150,7 @@ export function SamplingTrajectoryPanel({
 
   const clearReplayPath = () => {
     sampleRateTrackerRef.current.clear();
+    sampleTimingTrackerRef.current.clear();
     resetReplayPath();
     resetRunMetrics();
   };
@@ -183,26 +195,31 @@ export function SamplingTrajectoryPanel({
         }
         if (event.event === "server_started_calculation") {
           sampleRateTrackerRef.current.start();
+          sampleTimingTrackerRef.current.start();
           resetReplayPath();
           resetRunMetrics();
           setControlError(null);
           return;
         }
         if (event.event === "calculation_stopped") {
+          controls?.notifyStreamStopped();
           controls?.setStatus(event.status);
           return;
         }
         if (event.event === "calculation_completed") {
+          controls?.notifyStreamStopped();
           controls?.setStatus((previous) => completedStatus(previous, event.result));
           return;
         }
         if (event.event === "calculation_failed") {
+          controls?.notifyStreamStopped();
           controls?.setStatus((previous) => failedStatus(previous, event.error));
           setControlError(event.error);
           return;
         }
         if (event.event === "progress") {
           if (controls?.clientPausedRef.current) return;
+          controls?.notifyStreamProgress();
           scheduleUpdateFlush(event.update, event.timestamp);
           setControlError(null);
         }

@@ -406,7 +406,6 @@
   justify-content: space-between;
   gap: 10px 18px;
   min-width: 0;
-  filter: var(--global-lighting);
 }
 
 .sampler-transport-controls__row {
@@ -442,8 +441,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
   min-width: 0;
-  margin-top: 4px;
-  border-top: 1px solid var(--edge-plate);
+  border-top: 1px solid var(--rule-faint);
   border-bottom: 1px solid var(--rule-faint);
 }
 
@@ -464,7 +462,29 @@
   border-top: 1px solid var(--rule-faint);
 }
 
-.sampler-transport-controls__metrics .metric span {
+.sampler-transport-controls__timing-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  min-width: 0;
+  margin-top: 4px;
+  border-top: 1px solid var(--edge-plate);
+}
+
+.sampler-transport-controls__timing-metrics .metric {
+  min-width: 0;
+  padding: 8px 10px 9px 0;
+  border: 0;
+  background: transparent;
+}
+
+.sampler-transport-controls__timing-metrics .metric:nth-child(even) {
+  padding-right: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--rule-faint);
+}
+
+.sampler-transport-controls__metrics .metric span,
+.sampler-transport-controls__timing-metrics .metric span {
   color: var(--ink-mute);
   font-family: var(--sans);
   font-size: 0.56rem;
@@ -473,7 +493,8 @@
   text-transform: uppercase;
 }
 
-.sampler-transport-controls__metrics .metric strong {
+.sampler-transport-controls__metrics .metric strong,
+.sampler-transport-controls__timing-metrics .metric strong {
   margin-top: 4px;
   font-family: var(--mono);
   font-weight: 400;
@@ -485,7 +506,8 @@
   overflow-wrap: anywhere;
 }
 
-.sampler-transport-controls__metrics .metric small {
+.sampler-transport-controls__metrics .metric small,
+.sampler-transport-controls__timing-metrics .metric small {
   margin-top: 3px;
   font-family: var(--mono);
   font-size: 0.56rem;

@@ -1,9 +1,26 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { mcscramHttpUrl } from "../../../api/mcscramClient";
 import type { SamplerRunOptions } from "./samplerRunOptions";
 import type { SamplingControlResponse, SamplingStatus } from "./samplingStatus";
 
+/** Client stream lifecycle layered on HTTP control responses. */
+export type SamplingStreamPhase = "idle" | "arming" | "live" | "draining";
+
 export type SamplingControls = ReturnType<typeof useSamplingControls>;
+
+function isSamplingStatusRunning(status: SamplingStatus | null | undefined): boolean {
+  return status?.alive === true || status?.status === "running";
+}
+
+function reconcileStreamPhaseFromStatus(
+  status: SamplingStatus,
+  phase: SamplingStreamPhase,
+): SamplingStreamPhase {
+  if (phase === "draining") return "draining";
+  if (!isSamplingStatusRunning(status)) return "idle";
+  if (status.update_count > 0) return "live";
+  return phase === "live" ? "live" : "arming";
+}
 
 export type UseSamplingControlsOptions = {
   /** Called when reset is requested (before the HTTP call). */
@@ -31,14 +48,26 @@ export function useSamplingControls(options?: UseSamplingControlsOptions) {
   optionsRef.current = options;
 
   const [status, setStatus] = useState<SamplingStatus | null>(null);
+  const [streamPhase, setStreamPhase] = useState<SamplingStreamPhase>("idle");
   const [resetPending, setResetPending] = useState(false);
   const [samplingControlPending, setSamplingControlPending] = useState<"start" | "stop" | null>(null);
   const [clientPaused, setClientPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clientPausedRef = useRef(false);
+  const streamProgressAcknowledgedRef = useRef(false);
+  const streamStopAcknowledgedRef = useRef(false);
 
-  const samplingActive = status?.alive === true || status?.status === "running";
-  const controlsLocked = resetPending || samplingControlPending !== null;
+  const samplingActive = isSamplingStatusRunning(status);
+  const samplingSessionActive = samplingActive || streamPhase === "arming" || streamPhase === "draining";
+  const controlsLocked = resetPending || samplingControlPending !== null || streamPhase === "draining";
+
+  useEffect(() => {
+    if (!status) {
+      setStreamPhase((phase) => (phase === "draining" ? phase : "idle"));
+      return;
+    }
+    setStreamPhase((phase) => reconcileStreamPhaseFromStatus(status, phase));
+  }, [status]);
 
   const setPaused = useCallback((paused: boolean) => {
     clientPausedRef.current = paused;
@@ -53,7 +82,10 @@ export function useSamplingControls(options?: UseSamplingControlsOptions) {
       const payload = await postSamplingControl("/api/v1/reset", optionsRef.current?.getRunOptions?.());
       if (payload.status) setStatus(payload.status);
       if (!payload.accepted) setError(payload.reason ?? "Reset request was ignored.");
-      else setError(null);
+      else {
+        setError(null);
+        setStreamPhase("idle");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -66,6 +98,8 @@ export function useSamplingControls(options?: UseSamplingControlsOptions) {
     const action = shouldStop ? "stop" : "start";
     if (samplingControlPending) return;
     setSamplingControlPending(action);
+    if (action === "start") streamProgressAcknowledgedRef.current = false;
+    if (action === "stop") streamStopAcknowledgedRef.current = false;
     if (!shouldStop) optionsRef.current?.onBeforeStart?.();
     try {
       const payload = action === "stop"
@@ -73,13 +107,30 @@ export function useSamplingControls(options?: UseSamplingControlsOptions) {
         : await postSamplingControl("/api/v1/start", optionsRef.current?.getRunOptions?.());
       if (payload.status) setStatus(payload.status);
       if (!payload.accepted) setError(payload.reason ?? `${action} request was ignored.`);
-      else setError(null);
+      else {
+        setError(null);
+        if (action === "start" && !streamProgressAcknowledgedRef.current) {
+          setStreamPhase("arming");
+        } else if (action === "stop" && !streamStopAcknowledgedRef.current) {
+          setStreamPhase("draining");
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSamplingControlPending(null);
     }
   }, [samplingControlPending, status?.alive, status?.status]);
+
+  const notifyStreamProgress = useCallback(() => {
+    streamProgressAcknowledgedRef.current = true;
+    setStreamPhase((phase) => (phase === "draining" ? phase : "live"));
+  }, []);
+
+  const notifyStreamStopped = useCallback(() => {
+    streamStopAcknowledgedRef.current = true;
+    setStreamPhase("idle");
+  }, []);
 
   return {
     status,
@@ -88,12 +139,16 @@ export function useSamplingControls(options?: UseSamplingControlsOptions) {
     setError,
     resetPending,
     samplingControlPending,
+    streamPhase,
     clientPaused,
     clientPausedRef,
     samplingActive,
+    samplingSessionActive,
     controlsLocked,
     resetCalculation,
     toggleSampling,
     setPaused,
+    notifyStreamProgress,
+    notifyStreamStopped,
   };
 }

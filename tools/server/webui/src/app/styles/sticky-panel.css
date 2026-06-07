@@ -50,7 +50,7 @@
     left: 50%;
     bottom: 0;
     width: min(1600px, 100vw);
-    max-height: 240px;
+    max-height: 296px;
     transform: translateX(-50%);
   }
 
@@ -70,7 +70,7 @@
   .sticky-panel {
     right: 0;
     top: 0;
-    width: 390px;
+    width: 320px;
     height: 100vh;
     transform: none;  
   }

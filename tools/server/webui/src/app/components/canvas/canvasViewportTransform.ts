@@ -39,6 +39,22 @@ export function wheelZoomAtCanvasPoint(
   );
 }
 
+export function pinchZoomAtCanvasMidpoint(
+  view: ViewTransform,
+  canvas: HTMLCanvasElement,
+  clientX0: number,
+  clientY0: number,
+  clientX1: number,
+  clientY1: number,
+  distanceRatio: number,
+  config: CanvasViewportConfig,
+): ViewTransform {
+  const rect = canvas.getBoundingClientRect();
+  const px = (clientX0 + clientX1) / 2 - rect.left;
+  const py = (clientY0 + clientY1) / 2 - rect.top;
+  return zoomAtPoint(view, px, py, distanceRatio, config);
+}
+
 export function zoomAtPoint(
   view: ViewTransform,
   px: number,
@@ -68,6 +84,17 @@ export function resetViewTransform(
   };
 }
 
+function fitContentScale(
+  size: CanvasSize,
+  contentWidth: number,
+  contentHeight: number,
+  config: CanvasViewportConfig,
+): number {
+  const scaleX = size.width / Math.max(contentWidth, 1);
+  const scaleY = size.height / Math.max(contentHeight, 1);
+  return clampViewScale(Math.min(scaleX, scaleY) * config.fit.scaleMargin, config);
+}
+
 export function fitBoundsView(
   bounds: DagBounds,
   size: CanvasSize,
@@ -76,10 +103,7 @@ export function fitBoundsView(
   const paddingWorld = config.fit.boundsPaddingWorld ?? 0;
   const paddedWidth = Math.max(bounds.width + paddingWorld * 2, 1);
   const paddedHeight = Math.max(bounds.height + paddingWorld * 2, 1);
-  const scale = clampViewScale(
-    Math.min(size.width / paddedWidth, size.height / paddedHeight) * config.fit.scaleMargin,
-    config,
-  );
+  const scale = fitContentScale(size, paddedWidth, paddedHeight, config);
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerY = (bounds.minY + bounds.maxY) / 2;
   return {
@@ -96,9 +120,7 @@ export function fitLayoutView(
   config: CanvasViewportConfig,
 ): ViewTransform {
   const edgePaddingPx = config.fit.edgePaddingPx ?? 0;
-  const rawScale =
-    Math.min(size.width / layoutWidth, size.height / layoutHeight) * config.fit.scaleMargin;
-  let scale = clampViewScale(rawScale, config);
+  let scale = fitContentScale(size, layoutWidth, layoutHeight, config);
   if (config.fit.maxFitScale !== undefined) {
     scale = Math.min(scale, config.fit.maxFitScale);
   }

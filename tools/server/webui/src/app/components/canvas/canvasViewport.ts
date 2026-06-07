@@ -1,4 +1,3 @@
-import { useEffect, useState, type RefObject } from "react";
 import type { CanvasSize } from "./types";
 
 export type CanvasViewportConfig = {
@@ -62,27 +61,3 @@ export const FAULT_TREE_CANVAS_VIEWPORT: CanvasViewportConfig = {
   fit: { ...SHARED_CANVAS_VIEWPORT.fit, edgePaddingPx: 24, maxFitScale: 1.4 },
   reset: { scale: 1, offsetX: 72, offsetY: 72 },
 };
-
-export function useCanvasFrameSize(
-  frameRef: RefObject<HTMLDivElement | null>,
-  layout: CanvasViewportConfig["layout"],
-): { size: CanvasSize; hasMeasured: boolean } {
-  const [size, setSize] = useState<CanvasSize>(layout.defaultSize);
-  const [hasMeasured, setHasMeasured] = useState(false);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return undefined;
-    const observer = new ResizeObserver(([entry]) => {
-      setHasMeasured(true);
-      setSize({
-        width: Math.max(layout.minWidth, entry.contentRect.width),
-        height: Math.max(layout.minHeight, entry.contentRect.height),
-      });
-    });
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, [frameRef, layout.minHeight, layout.minWidth]);
-
-  return { size, hasMeasured };
-}
