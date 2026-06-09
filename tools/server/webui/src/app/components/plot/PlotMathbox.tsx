@@ -53,6 +53,7 @@ export type PlotMathboxSeries =
       stroke?: TrajectoryStroke;
       markerSize?: number;
       markerColor?: string;
+      markerOpacity?: number;
       zIndex?: number;
     }
   | {
@@ -231,6 +232,7 @@ export function PlotMathbox({ x, y, series, references, legend, className }: Plo
         stroke: entry.stroke,
         markerSize: entry.markerSize,
         markerColor: entry.markerColor,
+        markerOpacity: entry.markerOpacity,
         zIndex: entry.zIndex ?? index + 10,
       };
     });

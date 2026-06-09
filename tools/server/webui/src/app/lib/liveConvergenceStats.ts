@@ -41,12 +41,6 @@ export type ConvergenceStatsPayload = {
   stopping_policy?: string;
   primary_policy?: string;
 
-  // Negative gradient (and curvature) of the point estimate vs. trials.
-  grad_p?: number;
-  neg_grad_p?: number;
-  grad_p_per_pass?: number;
-  hess_p?: number;
-
   // Wald policy (namespaced duplicate of the canonical Wald fields).
   wald_epsilon?: number;
   wald_target_epsilon?: number;

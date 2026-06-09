@@ -53,8 +53,11 @@ export function createLineSeries(view: MathBoxNode, spec: TrajectoryLineSeries):
   let point: MathBoxNode = null;
   let current = spec;
 
+  const lineWidthOf = (s: TrajectoryLineSeries) => (s.width !== undefined ? s.width : DEFAULT_LINE_WIDTH);
+  const markerOpacityOf = (s: TrajectoryLineSeries) => s.markerOpacity ?? s.opacity ?? 1;
+
   const buildDraw = (s: TrajectoryLineSeries) => {
-    const lineWidth = s.width ?? DEFAULT_LINE_WIDTH;
+    const lineWidth = lineWidthOf(s);
     if (lineWidth > 0) {
       line = group.line({
         id: `series-${s.id}-line`,
@@ -73,7 +76,7 @@ export function createLineSeries(view: MathBoxNode, spec: TrajectoryLineSeries):
         id: `series-${s.id}-point`,
         color: s.markerColor ?? s.color,
         size: s.markerSize,
-        opacity: s.opacity ?? 1,
+        opacity: markerOpacityOf(s),
         zIndex: (s.zIndex ?? 1) + 1,
         zWrite: false,
       });
@@ -99,13 +102,13 @@ export function createLineSeries(view: MathBoxNode, spec: TrajectoryLineSeries):
         line?.set({
           color: next.color,
           opacity: next.opacity ?? 1,
-          width: next.width ?? DEFAULT_LINE_WIDTH,
+          width: lineWidthOf(next),
           stroke: STROKE_TO_MB[next.stroke ?? "solid"],
         });
         point?.set({
           color: next.markerColor ?? next.color,
           size: next.markerSize ?? 0,
-          opacity: next.opacity ?? 1,
+          opacity: markerOpacityOf(next),
         });
       }
       current = next;

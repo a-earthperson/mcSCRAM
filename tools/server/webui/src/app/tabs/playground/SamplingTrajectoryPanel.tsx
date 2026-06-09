@@ -65,9 +65,6 @@ type LiveProbabilityPoint = {
   targetEpsilon?: number;
   epsilonConverged?: boolean;
   oracleP?: number;
-  grad?: number;
-  hess?: number;
-  gradPerPass?: number;
   // Per-policy convergence criteria (current half-width, target, projected N).
   waldEpsilon?: number;
   waldTargetEpsilon?: number;
@@ -94,11 +91,9 @@ type LiveProbabilityPoint = {
 
 const MAX_REPLAY_PATH_POINTS = 10_000;
 const MAX_RENDER_PATH_POINTS = 3_000;
-const MARKER_RENDER_THRESHOLD = 1_400;
 
 /** Stable formatter refs so axis label exprs are not re-pushed every render. */
 const EPSILON_Y_FORMAT = formatExp(2);
-const DERIVATIVE_Y_FORMAT = formatExp(1);
 
 export function SamplingTrajectoryPanel({
   samplingControls,
@@ -315,22 +310,6 @@ export function SamplingTrajectoryPanel({
           text="Streamed half-width ε from the active stopping policy alongside its δ·p̂ target. Convergence is ε ≤ target ε."
         />
         <EpsilonPlot points={replayPathPoints} yScale={{ type: "log", base: 2 }} xScale={{ type: "log", base: 2 }} />
-      </div>
-      <div className="playground-sampling-outputs__section">
-        <SectionTitle
-          eyebrow="Output: Estimator Gradient"
-          title="Gradient of the sampled probability"
-          text="First derivative of the point estimate with respect to cumulative trials. It relaxes toward the zero baseline as the estimate stabilizes."
-        />
-        <GradientPlot points={replayPathPoints} />
-      </div>
-      <div className="playground-sampling-outputs__section">
-        <SectionTitle
-          eyebrow="Output: Estimator Curvature"
-          title="Hessian of the sampled probability"
-          text="Second derivative of the point estimate with respect to cumulative trials, signed about the zero baseline; its decay tracks the curvature of the convergence path."
-        />
-        <HessianPlot points={replayPathPoints} />
       </div> */}
     </div>
   );
@@ -462,75 +441,6 @@ const EpsilonPlot = memo(function EpsilonPlot({
   );
 });
 
-const GradientPlot = memo(function GradientPlot({
-  points,
-  xScale,
-  yScale,
-}: { points: LiveProbabilityPoint[] } & AxisScaleProps) {
-  const { palette } = usePlotTheme();
-  // Cool register, deliberately distinct from the warm madder/ochre path plot.
-  const scene = useMemo(
-    () =>
-      buildDerivativeScene(points, (point) => point.grad, {
-        color: palette.indigoDeep,
-        ink: palette.ink,
-        title: "Gradient ∂p̂/∂N (per trial)",
-        legend: "gradient ∂p̂/∂N",
-        stroke: "solid",
-        width: 1.8,
-        markerSize: 4,
-      }),
-    [points, palette],
-  );
-  const view = applyScales(scene, { xScale, yScale });
-  return (
-    <TrajectoryPlotFrame>
-      <PlotMathbox
-        className="convergence-large-plot live-gradient-plot"
-        x={view.x}
-        y={view.y}
-        series={view.series}
-        references={view.references}
-        legend={view.legend}
-      />
-    </TrajectoryPlotFrame>
-  );
-});
-
-const HessianPlot = memo(function HessianPlot({
-  points,
-  xScale,
-  yScale,
-}: { points: LiveProbabilityPoint[] } & AxisScaleProps) {
-  const { palette } = usePlotTheme();
-  const scene = useMemo(
-    () =>
-      buildDerivativeScene(points, (point) => point.hess, {
-        color: palette.sage,
-        ink: palette.ink,
-        title: "Hessian ∂²p̂/∂N² (per trial²)",
-        legend: "hessian ∂²p̂/∂N²",
-        stroke: "dotted",
-        width: 1.6,
-        markerSize: 3,
-      }),
-    [points, palette],
-  );
-  const view = applyScales(scene, { xScale, yScale });
-  return (
-    <TrajectoryPlotFrame>
-      <PlotMathbox
-        className="convergence-large-plot live-hessian-plot"
-        x={view.x}
-        y={view.y}
-        series={view.series}
-        references={view.references}
-        legend={view.legend}
-      />
-    </TrajectoryPlotFrame>
-  );
-});
-
 function TrajectoryPlotFrame({ children }: { children: ReactNode }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -566,7 +476,6 @@ function buildProbabilityScene(
 
   const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
   const xs = trialsXAxis(renderPoints, xMode);
-  const markerSize = renderPoints.length <= MARKER_RENDER_THRESHOLD ? 4 : 0;
   const oracleP = renderPoints.find((point) => isPositiveNumber(point.oracleP))?.oracleP;
 
   const clientConfidence = confidenceFromAlpha(clientAlpha);
@@ -618,9 +527,10 @@ function buildProbabilityScene(
     x: xs,
     y: meanValues,
     color: colors.line,
-    width: 1.8,
-    markerSize,
+    width: 0,
+    markerSize: 3,
     markerColor: colors.line,
+    markerOpacity: 0.7,
   });
 
   const yValues: Array<number | null | undefined> = [
@@ -633,7 +543,7 @@ function buildProbabilityScene(
   const xMax = Math.max(1, ...xs.filter(isFiniteNumber));
 
   const legend: PlotMathboxLegendItem[] = [
-    { label: "sampled mean", color: colors.line, marker: markerSize > 0 },
+    { label: "sampled mean", color: colors.line, marker: true },
     { label: "p05–p95", color: colors.band, fill: true },
     { label: "p01–p99", color: colors.band, fill: true },
     { label: `client ${clientConfidenceLabel}% CI`, color: palette.sage, fill: true },
@@ -680,7 +590,6 @@ function buildGbasScene(
   const hasCi95 = ci95Lower.some(isFiniteNumber) && ci95Upper.some(isFiniteNumber);
   const hasCi99 = ci99Lower.some(isFiniteNumber) && ci99Upper.some(isFiniteNumber);
 
-  const markerSize = renderPoints.length <= MARKER_RENDER_THRESHOLD ? 4 : 0;
   const oracleP = renderPoints.find((point) => isPositiveNumber(point.oracleP))?.oracleP;
   const meanValues = renderPoints.map((point) => point.mean);
   // Cool, authoritative register — distinct from the warm madder/ochre primary path plot.
@@ -700,9 +609,10 @@ function buildGbasScene(
       x: xs,
       y: meanValues,
       color: lineColor,
-      width: 1.8,
-      markerSize,
+      width: 0,
+      markerSize: 3,
       markerColor: lineColor,
+      markerOpacity: 0.7,
     },
   ];
 
@@ -757,7 +667,7 @@ function buildGbasScene(
     : "GBAS CI";
 
   const legend: PlotMathboxLegendItem[] = [
-    { label: "sampled mean", color: lineColor, marker: markerSize > 0 },
+    { label: "sampled mean", color: lineColor, marker: true },
     { label: clientCiLabel, color: palette.sage, fill: true },
   ];
   if (hasCi95) legend.push({ label: "GBAS 95% CI", color: lineColor, fill: true });
@@ -999,16 +909,6 @@ function oracleLineSeries(
   ];
 }
 
-type DerivativeOptions = {
-  color: string;
-  ink: string;
-  title: string;
-  legend: string;
-  stroke: TrajectoryStroke;
-  width: number;
-  markerSize: number;
-};
-
 function buildEpsilonScene(
   points: LiveProbabilityPoint[],
   options: { currentColor: string; targetColor: string; ink: string },
@@ -1018,7 +918,6 @@ function buildEpsilonScene(
   const currentValues = renderPoints.map((point) => point.epsilon);
   const targetValues = renderPoints.map((point) => point.targetEpsilon);
 
-  const markerSize = renderPoints.length <= MARKER_RENDER_THRESHOLD ? 4 : 0;
   const xMax = Math.max(1, ...xs.filter(isFiniteNumber));
   const yRange = linearAxisRange([...currentValues, ...targetValues], { floor: 0, pad: 0.12 }) ?? [0, 1];
 
@@ -1031,7 +930,7 @@ function buildEpsilonScene(
       color: options.currentColor,
       width: 1.8,
       stroke: "solid",
-      markerSize,
+      markerSize: 4,
       markerColor: options.currentColor,
     },
     {
@@ -1042,14 +941,14 @@ function buildEpsilonScene(
       color: options.targetColor,
       width: 1.6,
       stroke: "dashed",
-      markerSize,
+      markerSize: 4,
       markerColor: options.targetColor,
     },
   ];
 
   const legend: PlotMathboxLegendItem[] = [
-    { label: "ε current", color: options.currentColor, stroke: "solid", marker: markerSize > 0 },
-    { label: "ε target", color: options.targetColor, stroke: "dashed", marker: markerSize > 0 },
+    { label: "ε current", color: options.currentColor, stroke: "solid", marker: true },
+    { label: "ε target", color: options.targetColor, stroke: "dashed", marker: true },
   ];
 
   return {
@@ -1069,73 +968,6 @@ function buildEpsilonScene(
     references: [],
     legend,
   };
-}
-
-function buildDerivativeScene(
-  points: LiveProbabilityPoint[],
-  select: (point: LiveProbabilityPoint) => number | undefined,
-  options: DerivativeOptions,
-): ProbabilityScene {
-  const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
-  const xs = renderPoints.map((point) => point.trials);
-  const values = renderPoints.map((point) => select(point));
-  const hasValues = values.some(isFiniteNumber);
-
-  const markerSize = renderPoints.length <= MARKER_RENDER_THRESHOLD ? options.markerSize : 0;
-  const xMax = Math.max(1, ...xs.filter(isFiniteNumber));
-  const range = symmetricRange(values) ?? [-1, 1];
-
-  return {
-    x: {
-      range: [0, xMax],
-      title: "Cumulative Bernoulli trials",
-      format: formatSI,
-      color: options.ink,
-    },
-    y: {
-      range,
-      title: options.title,
-      format: DERIVATIVE_Y_FORMAT,
-      color: options.color,
-    },
-    series: [
-      {
-        id: "derivative",
-        kind: "line",
-        x: xs,
-        y: values.map((value) => value ?? Number.NaN),
-        color: options.color,
-        width: options.width,
-        stroke: options.stroke,
-        markerSize,
-        markerColor: options.color,
-      },
-    ],
-    references: [
-      {
-        id: "y-zero",
-        axis: "y",
-        value: 0,
-        color: withAlpha(options.ink, 0.32),
-        stroke: "dashed",
-        label: "0",
-        opacity: hasValues ? 1 : 0,
-      },
-    ],
-    legend: [{ label: options.legend, color: options.color, stroke: options.stroke, marker: markerSize > 0 }],
-  };
-}
-
-function symmetricRange(
-  values: Array<number | null | undefined>,
-  pad = 0.12,
-): [number, number] | undefined {
-  const magnitudes = values.filter(isFiniteNumber).map((value) => Math.abs(value));
-  if (!magnitudes.length) return undefined;
-  const max = Math.max(...magnitudes);
-  if (max === 0 || !Number.isFinite(max)) return [-1, 1];
-  const bound = max * (1 + pad);
-  return [-bound, bound];
 }
 
 function completedStatus(previous: SamplingStatus | null, result: LiveResult): SamplingStatus {
@@ -1182,9 +1014,6 @@ function probabilityPoint(update: LiveProgressUpdate | null | undefined): LivePr
     targetEpsilon: update.target_epsilon,
     epsilonConverged: update.epsilon_converged,
     oracleP: update.oracle_p,
-    grad: update.grad_p,
-    hess: update.hess_p,
-    gradPerPass: update.grad_p_per_pass,
     waldEpsilon: update.wald_epsilon,
     waldTargetEpsilon: update.wald_target_epsilon,
     waldProjectedTrials: update.wald_projected_trials,

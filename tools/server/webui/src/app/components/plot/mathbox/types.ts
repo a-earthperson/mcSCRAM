@@ -66,6 +66,8 @@ export type TrajectoryLineSeries = {
   /** Marker size in px; omit/0 for a bare line. */
   markerSize?: number;
   markerColor?: string;
+  /** Marker alpha (MathBox `point.opacity`); defaults to `opacity` then 1. */
+  markerOpacity?: number;
   /** 2D stacking order; higher draws on top. */
   zIndex?: number;
 };
