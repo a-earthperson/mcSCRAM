@@ -28,139 +28,139 @@
     /* Paper: warm-neutral cold-pressed watercolor stock. R leads G≈B
        by a hair for a faint blush warmth — readable as paper-not-screen
        without sliding into yellow ivory or sepia. */
-    --paper:       #fffdfb;   /* warm pearl */
-    --paper-2:     #dcd6d0;   /* shaded plate */
-    --paper-tint:  #f4efe9;   /* gentle wash for hover / active */
-    --paper-cool:  #faf7f3;   /* the plate interior (specimen frame) */
+    --paper:       oklch(99.5% 0.0034 67.78);   /* warm pearl */
+    --paper-2:     oklch(87.92% 0.0105 67.69);   /* shaded plate */
+    --paper-tint:  oklch(95.43% 0.0097 72.66);   /* gentle wash for hover / active */
+    --paper-cool:  oklch(97.73% 0.0062 75.41);   /* the plate interior (specimen frame) */
   
     /* Ink: warm-leaning charcoal so it sits with the paper instead of
        fighting it as a cool slab. Cool charcoal on warm paper reads
        wrong; this stack is just enough warmer to harmonize. */
-    --ink:         #22201e;   /* primary */
-    --ink-2:       #35322f;   /* body ink */
-    --ink-mute:    #58524d;   /* annotation — meets AA on warm pearl */
-    --ink-faint:   #94897e;   /* decorative tertiary */
+    --ink:         oklch(24.5% 0.0048 67.6);   /* primary */
+    --ink-2:       oklch(31.92% 0.0068 67.58);   /* body ink */
+    --ink-mute:    oklch(44.27% 0.0113 62.37);   /* annotation — meets AA on warm pearl */
+    --ink-faint:   oklch(63.66% 0.0209 67.44);   /* decorative tertiary */
   
-    --rule:        rgba(34, 32, 30, 0.92);   /* hairline at strength */
-    --rule-mute:   rgba(34, 32, 30, 0.32);   /* dotted divider */
-    --rule-faint:  rgba(34, 32, 30, 0.12);   /* panel ruling */
+    --rule:        oklch(24.5% 0.0048 67.6 / 0.92);   /* hairline at strength */
+    --rule-mute:   oklch(24.5% 0.0048 67.6 / 0.32);   /* dotted divider */
+    --rule-faint:  oklch(24.5% 0.0048 67.6 / 0.12);   /* panel ruling */
   
     /* Watercolor pigments — muted, low-chroma botanical washes.
        The cool ones (indigo, paynes, sage) still read cool against
        the warmer paper; the warm ones (madder, ochre, rose) get more
        page-level airtime so the palette doesn't collapse back into a
        cool monograph. */
-    --pigment-indigo:      #6b7f96;   /* prussian wash */
-    --pigment-indigo-deep: #4a5e76;   /* text strength */
-    --pigment-sage:        #8ba189;   /* terre verte */
-    --pigment-ochre:       #b39866;   /* yellow ochre, restrained */
-    --pigment-madder:      #a8807a;   /* madder lake / dusty rose */
-    --pigment-paynes:      #555a64;   /* paynes grey */
+    --pigment-indigo:      oklch(58.89% 0.0425 252.12);   /* prussian wash */
+    --pigment-indigo-deep: oklch(47.52% 0.0461 253.3);   /* text strength */
+    --pigment-sage:        oklch(68.5% 0.0426 142.84);   /* terre verte */
+    --pigment-ochre:       oklch(69.22% 0.0743 82.31);   /* yellow ochre, restrained */
+    --pigment-madder:      oklch(63.69% 0.0507 28.31);   /* madder lake / dusty rose */
+    --pigment-paynes:      oklch(46.68% 0.0174 264.39);   /* paynes grey */
   
     /* Paled siblings — washes only, never type. */
-    --pigment-sky:         #b9c6d2;
-    --pigment-celadon:     #c3d0c2;
-    --pigment-rose:        #d5b9b1;
+    --pigment-sky:         oklch(82.03% 0.0221 245.91);
+    --pigment-celadon:     oklch(84.37% 0.0238 143.35);
+    --pigment-rose:        oklch(80.75% 0.0342 36.49);
 
     /* Bright pigments — full-strength botanical hues pulled straight from
        the tube (less water): saturated enough to read as crisp lines and
        markers over the plate, while holding the same indigo / sage / ochre
        / madder / paynes / rose hue axes as the washes above. For chart
        traces, not page-level washes or type. */
-    --pigment-indigo-bright:      #2f6ba8;   /* prussian, full strength */
-    --pigment-indigo-deep-bright: #21528a;   /* deep cobalt */
-    --pigment-sage-bright:        #4a9d5f;   /* viridian leaf */
-    --pigment-ochre-bright:       #c8942c;   /* raw gold ochre */
-    --pigment-madder-bright:      #c6505d;   /* madder lake crimson */
-    --pigment-paynes-bright:      #4e6a95;   /* steel slate blue */
-    --pigment-rose-bright:        #df7d8b;   /* clear rose pink */
+    --pigment-indigo-bright:      oklch(51.83% 0.1151 251.34);   /* prussian, full strength */
+    --pigment-indigo-deep-bright: oklch(43.51% 0.1066 253.93);   /* deep cobalt */
+    --pigment-sage-bright:        oklch(62.79% 0.1234 149.82);   /* viridian leaf */
+    --pigment-ochre-bright:       oklch(69.92% 0.1301 80.18);   /* raw gold ochre */
+    --pigment-madder-bright:      oklch(58.88% 0.1508 16.37);   /* madder lake crimson */
+    --pigment-paynes-bright:      oklch(52.09% 0.0761 258.75);   /* steel slate blue */
+    --pigment-rose-bright:        oklch(70.08% 0.1217 11.58);   /* clear rose pink */
 
     /* Dark pigments — the shadow side of each hue: deepened, saturated
        tones for the darkest pigment-tinted strokes, deep fills, and
        secondary/under traces on the plate. Hue-locked to their bright
        and wash siblings; darker than --pigment-*-deep, but never ink. */
-    --pigment-indigo-dark:        #244466;   /* deep prussian */
-    --pigment-indigo-deep-dark:   #1a3451;   /* midnight cobalt */
-    --pigment-sage-dark:          #285d32;   /* deep forest */
-    --pigment-ochre-dark:         #745425;   /* burnt umber / bronze */
-    --pigment-madder-dark:        #722c30;   /* deep maroon-madder */
-    --pigment-paynes-dark:        #2b3850;   /* charcoal slate */
-    --pigment-rose-dark:          #7e4b44;   /* deep brick rose */
+    --pigment-indigo-dark:        oklch(37.91% 0.0698 251.43);   /* deep prussian */
+    --pigment-indigo-deep-dark:   oklch(31.96% 0.0613 252.55);   /* midnight cobalt */
+    --pigment-sage-dark:          oklch(43.02% 0.09 147.85);   /* deep forest */
+    --pigment-ochre-dark:         oklch(47% 0.0762 74.44);   /* burnt umber / bronze */
+    --pigment-madder-dark:        oklch(39.45% 0.0991 19.41);   /* deep maroon-madder */
+    --pigment-paynes-dark:        oklch(34.03% 0.0459 262.27);   /* charcoal slate */
+    --pigment-rose-dark:          oklch(47.03% 0.0709 28.44);   /* deep brick rose */
 
     /* UI accent: deep indigo for hover, focus, active state, and
        the tracked labels that punctuate the scholarly layout. */
     --accent:      var(--pigment-indigo-deep);
-    --accent-soft: color-mix(in srgb, var(--pigment-indigo-deep) 16%, transparent);
+    --accent-soft: color-mix(in oklch, var(--pigment-indigo-deep) 16%, transparent);
 
     /* ---- Semantic washes & edges (pigment-tinted UI chrome) ----
        Built from botanical pigments via color-mix so light and dark
        plates inherit the same roles without re-tuning each component. */
 
     /* Plate edges: indigo hairlines on panels, cards, specimen frames. */
-    --edge-plate:              color-mix(in srgb, var(--pigment-indigo-deep) 14%, transparent);
-    --edge-plate-strong:       color-mix(in srgb, var(--pigment-indigo-deep) 18%, transparent);
-    --edge-plate-emphasis:     color-mix(in srgb, var(--pigment-indigo-deep) 22%, transparent);
-    --edge-plate-accent:       color-mix(in srgb, var(--pigment-indigo-deep) 28%, transparent);
-    --edge-plate-rail:         color-mix(in srgb, var(--pigment-indigo-deep) 16%, transparent);
+    --edge-plate:              color-mix(in oklch, var(--pigment-indigo-deep) 14%, transparent);
+    --edge-plate-strong:       color-mix(in oklch, var(--pigment-indigo-deep) 18%, transparent);
+    --edge-plate-emphasis:     color-mix(in oklch, var(--pigment-indigo-deep) 22%, transparent);
+    --edge-plate-accent:       color-mix(in oklch, var(--pigment-indigo-deep) 28%, transparent);
+    --edge-plate-rail:         color-mix(in oklch, var(--pigment-indigo-deep) 16%, transparent);
 
     /* Interactive washes: hover, active, focus on lists/tables/tabs. */
-    --wash-interactive-hover:  color-mix(in srgb, var(--pigment-indigo-deep) 6%, transparent);
-    --wash-interactive-active: color-mix(in srgb, var(--pigment-indigo-deep) 12%, transparent);
-    --wash-interactive-meter:  color-mix(in srgb, var(--pigment-indigo-deep) 12%, transparent);
-    --wash-tab-hover:          color-mix(in srgb, var(--pigment-indigo-deep) 5%, transparent);
-    --wash-tab-active-top:     color-mix(in srgb, var(--pigment-indigo-deep) 12%, transparent);
-    --wash-tab-active-bottom:  color-mix(in srgb, var(--pigment-indigo-deep) 4%, transparent);
-    --wash-focus-ring:         color-mix(in srgb, var(--pigment-indigo-deep) 22%, transparent);
+    --wash-interactive-hover:  color-mix(in oklch, var(--pigment-indigo-deep) 6%, transparent);
+    --wash-interactive-active: color-mix(in oklch, var(--pigment-indigo-deep) 12%, transparent);
+    --wash-interactive-meter:  color-mix(in oklch, var(--pigment-indigo-deep) 12%, transparent);
+    --wash-tab-hover:          color-mix(in oklch, var(--pigment-indigo-deep) 5%, transparent);
+    --wash-tab-active-top:     color-mix(in oklch, var(--pigment-indigo-deep) 12%, transparent);
+    --wash-tab-active-bottom:  color-mix(in oklch, var(--pigment-indigo-deep) 4%, transparent);
+    --wash-focus-ring:         color-mix(in oklch, var(--pigment-indigo-deep) 22%, transparent);
 
     /* Translucent plate interiors & modal scrim. */
-    --surface-plate-veil:      color-mix(in srgb, var(--paper-cool) 42%, transparent);
-    --scrim-ink:               color-mix(in srgb, var(--ink) 55%, transparent);
-    --wash-callout:            color-mix(in srgb, var(--pigment-indigo-deep) 6%, transparent);
+    --surface-plate-veil:      color-mix(in oklch, var(--paper-cool) 42%, transparent);
+    --scrim-ink:               color-mix(in oklch, var(--ink) 55%, transparent);
+    --wash-callout:            color-mix(in oklch, var(--pigment-indigo-deep) 6%, transparent);
 
     /* Pipeline stage surfaces (compiler dashboard). */
-    --stage-source-border:     color-mix(in srgb, var(--pigment-paynes) 22%, transparent);
-    --stage-compile-wash:      color-mix(in srgb, var(--pigment-indigo) 10%, transparent);
-    --stage-compile-border:    color-mix(in srgb, var(--pigment-indigo-deep) 35%, transparent);
-    --stage-optional-wash:     color-mix(in srgb, var(--pigment-madder) 6%, transparent);
-    --stage-optional-border:   color-mix(in srgb, var(--pigment-madder) 32%, transparent);
-    --stage-runtime-wash:      color-mix(in srgb, var(--pigment-sage) 10%, transparent);
-    --stage-runtime-border:    color-mix(in srgb, var(--pigment-sage) 40%, transparent);
+    --stage-source-border:     color-mix(in oklch, var(--pigment-paynes) 22%, transparent);
+    --stage-compile-wash:      color-mix(in oklch, var(--pigment-indigo) 10%, transparent);
+    --stage-compile-border:    color-mix(in oklch, var(--pigment-indigo-deep) 35%, transparent);
+    --stage-optional-wash:     color-mix(in oklch, var(--pigment-madder) 6%, transparent);
+    --stage-optional-border:   color-mix(in oklch, var(--pigment-madder) 32%, transparent);
+    --stage-runtime-wash:      color-mix(in oklch, var(--pigment-sage) 10%, transparent);
+    --stage-runtime-border:    color-mix(in oklch, var(--pigment-sage) 40%, transparent);
 
     /* Stage tags (taxonomy labels). */
-    --tag-cleanup-border:      color-mix(in srgb, var(--pigment-paynes) 40%, transparent);
-    --tag-structural-border:   color-mix(in srgb, var(--pigment-indigo-deep) 40%, transparent);
-    --tag-structural-wash:     color-mix(in srgb, var(--pigment-indigo-deep) 8%, transparent);
-    --tag-normalization-border: color-mix(in srgb, var(--pigment-madder) 50%, transparent);
-    --tag-normalization-wash:  color-mix(in srgb, var(--pigment-madder) 8%, transparent);
+    --tag-cleanup-border:      color-mix(in oklch, var(--pigment-paynes) 40%, transparent);
+    --tag-structural-border:   color-mix(in oklch, var(--pigment-indigo-deep) 40%, transparent);
+    --tag-structural-wash:     color-mix(in oklch, var(--pigment-indigo-deep) 8%, transparent);
+    --tag-normalization-border: color-mix(in oklch, var(--pigment-madder) 50%, transparent);
+    --tag-normalization-wash:  color-mix(in oklch, var(--pigment-madder) 8%, transparent);
 
     /* Control button washes (live demo, fault-tree toolbar). */
-    --wash-control-indigo:     color-mix(in srgb, var(--pigment-indigo-deep) 15%, transparent);
-    --wash-control-madder:     color-mix(in srgb, var(--pigment-madder) 16%, transparent);
-    --wash-control-sage:       color-mix(in srgb, var(--pigment-sage) 18%, transparent);
-    --wash-control-ochre:      color-mix(in srgb, var(--pigment-ochre) 18%, transparent);
+    --wash-control-indigo:     color-mix(in oklch, var(--pigment-indigo-deep) 15%, transparent);
+    --wash-control-madder:     color-mix(in oklch, var(--pigment-madder) 16%, transparent);
+    --wash-control-sage:       color-mix(in oklch, var(--pigment-sage) 18%, transparent);
+    --wash-control-ochre:      color-mix(in oklch, var(--pigment-ochre) 18%, transparent);
 
     /* Zen mode: warm dust (rose + ochre), kept off the indigo/sky cool axis used by fit. */
-    --pigment-zen:             color-mix(in srgb, var(--pigment-rose) 52%, var(--pigment-ochre) 48%);
-    --wash-control-zen:        color-mix(in srgb, var(--pigment-zen) 18%, transparent);
+    --pigment-zen:             color-mix(in oklch, var(--pigment-rose) 52%, var(--pigment-ochre) 48%);
+    --wash-control-zen:        color-mix(in oklch, var(--pigment-zen) 18%, transparent);
 
     /* Connection / status pills. */
-    --status-positive-border:  color-mix(in srgb, var(--pigment-sage) 34%, transparent);
-    --status-negative-border:  color-mix(in srgb, var(--pigment-madder) 34%, transparent);
+    --status-positive-border:  color-mix(in oklch, var(--pigment-sage) 34%, transparent);
+    --status-negative-border:  color-mix(in oklch, var(--pigment-madder) 34%, transparent);
 
     /* Plotly / chart chrome (read by plotTokens.ts). */
-    --plot-annotation-bg:      color-mix(in srgb, var(--paper-cool) 72%, transparent);
-    --plot-oracle-band-99:     color-mix(in srgb, var(--ink) 48%, transparent);
-    --plot-oracle-band-95:     color-mix(in srgb, var(--ink) 58%, transparent);
-    --plot-grid:               color-mix(in srgb, var(--ink) 8%, transparent);
-    --plot-marker-rim:         color-mix(in srgb, var(--paper-cool) 45%, var(--paper));
-    --plot-band-sage:          color-mix(in srgb, var(--pigment-sage) 12%, transparent);
-    --plot-band-madder:        color-mix(in srgb, var(--pigment-madder) 10%, transparent);
+    --plot-annotation-bg:      color-mix(in oklch, var(--paper-cool) 72%, transparent);
+    --plot-oracle-band-99:     color-mix(in oklch, var(--ink) 48%, transparent);
+    --plot-oracle-band-95:     color-mix(in oklch, var(--ink) 58%, transparent);
+    --plot-grid:               color-mix(in oklch, var(--ink) 8%, transparent);
+    --plot-marker-rim:         color-mix(in oklch, var(--paper-cool) 45%, var(--paper));
+    --plot-band-sage:          color-mix(in oklch, var(--pigment-sage) 12%, transparent);
+    --plot-band-madder:        color-mix(in oklch, var(--pigment-madder) 10%, transparent);
 
     /* Continuous scalar wash: pale stock → sky → indigo → deep prussian → ink. */
-    --plot-colorscale-0:       color-mix(in srgb, var(--paper) 72%, var(--paper-tint));
+    --plot-colorscale-0:       color-mix(in oklch, var(--paper) 72%, var(--paper-tint));
     --plot-colorscale-25:      var(--pigment-sky);
     --plot-colorscale-50:      var(--pigment-indigo);
-    --plot-colorscale-75:      color-mix(in srgb, var(--pigment-indigo-deep) 62%, var(--ink));
+    --plot-colorscale-75:      color-mix(in oklch, var(--pigment-indigo-deep) 62%, var(--ink));
     --plot-colorscale-100:     var(--ink);
   
     /* Type stacks:
@@ -251,16 +251,16 @@
     --paper-wash-intensity: 1.75;
 
     --paper-wash-base: color-mix(
-      in srgb,
+      in oklch,
       var(--paper) calc(100% - 35% * max(0, var(--paper-wash-intensity) - 1)),
       var(--paper-tint)
     );
 
     --paper-wash:
-      radial-gradient(60% 45% at 6% 4%,   rgba(107, 127, 150, min(0.42, calc(0.18 * var(--paper-wash-intensity)))), transparent 65%),
-      radial-gradient(55% 40% at 96% 18%, rgba(168, 128, 122, min(0.38, calc(0.16 * var(--paper-wash-intensity)))), transparent 65%),
-      radial-gradient(65% 50% at 80% 96%, rgba(139, 161, 137, min(0.34, calc(0.14 * var(--paper-wash-intensity)))), transparent 65%),
-      radial-gradient(50% 40% at 14% 86%, rgba(179, 152, 102, min(0.28, calc(0.10 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(60% 45% at 6% 4%,   oklch(58.89% 0.0425 252.12 / min(0.42, calc(0.18 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(55% 40% at 96% 18%, oklch(63.69% 0.0507 28.31 / min(0.38, calc(0.16 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(65% 50% at 80% 96%, oklch(68.5% 0.0426 142.84 / min(0.34, calc(0.14 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(50% 40% at 14% 86%, oklch(69.22% 0.0743 82.31 / min(0.28, calc(0.10 * var(--paper-wash-intensity)))), transparent 65%),
       var(--paper-wash-base);
 
     /* Parchment: translucent, buttery paper variant. */
@@ -268,10 +268,10 @@
     --double-parchment-backdrop: blur(16px) contrast(1.5) saturate(1) hue-rotate(-20deg) brightness(1);
     --parchment-background: linear-gradient(
       90deg,
-      color-mix(in srgb, var(--pigment-indigo) 8%, transparent) 0%,
+      color-mix(in oklch, var(--pigment-indigo) 8%, transparent) 0%,
       transparent 35%,
       transparent 65%,
-      color-mix(in srgb, var(--pigment-madder) 8%, transparent) 100%
+      color-mix(in oklch, var(--pigment-madder) 8%, transparent) 100%
     ), transparent;
   }
 
@@ -286,22 +286,22 @@
        whisper of cool blue (B leads R≈G) instead of the warm brown of day.
        The deep base is what lets the pigment washes read as far-off neon
        leaking across the page rather than mineral stains on warm stock. */
-    --paper:       #000000;   /* the night void */
-    --paper-2:     #1a1e2a;   /* lifted plate (raised cards) */
-    --paper-tint:  #11131c;   /* gentle wash for hover / active */
-    --paper-cool:  #0c0e15;   /* the plate interior (specimen frame) */
+    --paper:       oklch(0% 0 0);   /* the night void */
+    --paper-2:     oklch(23.67% 0.0239 270.2);   /* lifted plate (raised cards) */
+    --paper-tint:  oklch(18.91% 0.0186 274.76);   /* gentle wash for hover / active */
+    --paper-cool:  oklch(16.51% 0.0151 272.25);   /* the plate interior (specimen frame) */
 
     /* Ink: warm vellum kept deliberately warm against the cool-black stock —
        a lit room behind a cold neon night. The muted tier stays high
        contrast because it carries labels, captions, and table metadata. */
-    --ink:         #f1ebe2;   /* primary */
-    --ink-2:       #ded4c8;   /* body ink */
-    --ink-mute:    #b7a99a;   /* annotation */
-    --ink-faint:   #7c7167;   /* decorative tertiary */
+    --ink:         oklch(94.23% 0.0137 78.26);   /* primary */
+    --ink-2:       oklch(87.47% 0.0197 72.55);   /* body ink */
+    --ink-mute:    oklch(74.25% 0.0266 69.32);   /* annotation */
+    --ink-faint:   oklch(55.57% 0.0205 64.69);   /* decorative tertiary */
 
-    --rule:        rgba(241, 235, 226, 0.78);   /* hairline at strength */
-    --rule-mute:   rgba(241, 235, 226, 0.29);   /* dotted divider */
-    --rule-faint:  rgba(241, 235, 226, 0.12);   /* panel ruling */
+    --rule:        oklch(94.23% 0.0137 78.26 / 0.78);   /* hairline at strength */
+    --rule-mute:   oklch(94.23% 0.0137 78.26 / 0.29);   /* dotted divider */
+    --rule-faint:  oklch(94.23% 0.0137 78.26 / 0.12);   /* panel ruling */
 
     /* Neon pigments: the same botanical family lifted into a fluorescent
        register — electric azure, jade, amber, hot rose — luminous enough to
@@ -309,46 +309,46 @@
        pure primaries so the palette reads as elegant neon, not arcade. The
        -deep sibling is the brighter one in the dark (text strength + accent
        must out-glow, not recede). Paynes stays the cool "grey" of the set. */
-    --pigment-indigo:      #4cb9ee;   /* electric prussian / azure */
-    --pigment-indigo-deep: #76d6ff;   /* neon cyan — text strength, accent */
-    --pigment-sage:        #57e0a6;   /* fluorescent terre verte / jade */
-    --pigment-ochre:       #ffc24a;   /* electric amber */
-    --pigment-madder:      #ff7fa6;   /* hot madder / neon rose */
-    --pigment-paynes:      #8fb6cf;   /* steel cyan glow */
+    --pigment-indigo:      oklch(74.48% 0.1244 233.16);   /* electric prussian / azure */
+    --pigment-indigo-deep: oklch(83.24% 0.1074 227.92);   /* neon cyan — text strength, accent */
+    --pigment-sage:        oklch(81.66% 0.146 162.13);   /* fluorescent terre verte / jade */
+    --pigment-ochre:       oklch(84.89% 0.149 80.87);   /* electric amber */
+    --pigment-madder:      oklch(75.24% 0.1598 2.38);   /* hot madder / neon rose */
+    --pigment-paynes:      oklch(75.65% 0.0553 236.59);   /* steel cyan glow */
 
     /* Paled siblings: mid-ramp neon for the continuous colorscale / washes. */
-    --pigment-sky:         #3aa0d8;
-    --pigment-celadon:     #3f9f74;
-    --pigment-rose:        #c76b86;
+    --pigment-sky:         oklch(67.17% 0.1238 237.1);
+    --pigment-celadon:     oklch(63.37% 0.1121 161.13);
+    --pigment-rose:        oklch(64.01% 0.1198 2.3);
 
     /* Bright pigments: the neon family pushed to peak luminance for crisp
        plot lines & markers — distant signage at full glow over the void,
        one notch hotter and lighter than the wash-grade pigments above. */
-    --pigment-indigo-bright:      #5cc6ff;   /* peak azure */
-    --pigment-indigo-deep-bright: #9ce4ff;   /* luminous cyan */
-    --pigment-sage-bright:        #72efbb;   /* bright jade */
-    --pigment-ochre-bright:       #ffd16b;   /* bright amber */
-    --pigment-madder-bright:      #ff9cbb;   /* bright hot rose */
-    --pigment-paynes-bright:      #b1d1e6;   /* bright steel cyan */
-    --pigment-rose-bright:        #e591a8;   /* bright rose */
+    --pigment-indigo-bright:      oklch(78.7% 0.1267 235.12);   /* peak azure */
+    --pigment-indigo-deep-bright: oklch(88.07% 0.0805 223.49);   /* luminous cyan */
+    --pigment-sage-bright:        oklch(86.66% 0.1352 163.86);   /* bright jade */
+    --pigment-ochre-bright:       oklch(88.09% 0.1307 85.22);   /* bright amber */
+    --pigment-madder-bright:      oklch(80.22% 0.1229 0.05);   /* bright hot rose */
+    --pigment-paynes-bright:      oklch(84.41% 0.0451 236.84);   /* bright steel cyan */
+    --pigment-rose-bright:        oklch(74.86% 0.1049 2.17);   /* bright rose */
 
     /* Dark pigments: the neon family dimmed and deepened — signage seen
        from further off. Recedes toward the void for shadow strokes, deep
        fills, and secondary/under traces beneath the bright ones. */
-    --pigment-indigo-dark:        #1f6a9c;   /* deep azure */
-    --pigment-indigo-deep-dark:   #2d7ba8;   /* deep cyan */
-    --pigment-sage-dark:          #2a9168;   /* deep jade */
-    --pigment-ochre-dark:         #c08a24;   /* deep amber */
-    --pigment-madder-dark:        #c54e72;   /* deep hot rose */
-    --pigment-paynes-dark:        #4d7088;   /* deep steel cyan */
-    --pigment-rose-dark:          #9c4f66;   /* deep rose */
+    --pigment-indigo-dark:        oklch(50.4% 0.1067 242.95);   /* deep azure */
+    --pigment-indigo-deep-dark:   oklch(55.59% 0.1023 238.15);   /* deep cyan */
+    --pigment-sage-dark:          oklch(58.76% 0.1129 162.31);   /* deep jade */
+    --pigment-ochre-dark:         oklch(67.01% 0.1283 78.06);   /* deep amber */
+    --pigment-madder-dark:        oklch(59.02% 0.155 4.33);   /* deep hot rose */
+    --pigment-paynes-dark:        oklch(52.82% 0.0551 239.11);   /* deep steel cyan */
+    --pigment-rose-dark:          oklch(52.81% 0.1052 2.34);   /* deep rose */
 
     --accent:      var(--pigment-indigo-deep);
-    --accent-soft: color-mix(in srgb, var(--pigment-indigo-deep) 24%, transparent);
+    --accent-soft: color-mix(in oklch, var(--pigment-indigo-deep) 24%, transparent);
 
     /* Darkening blackout behind the lightbox so the lit plate pops out of
        the deepened night (the warm-ink default would milk the page white). */
-    --scrim-ink:   rgba(3, 4, 8, 0.78);
+    --scrim-ink:   oklch(10.77% 0.0134 269.72 / 0.78);
 
     /* Higher than day: against the near-black void the neon blooms can run
        hotter and softer — distant signage bleeding in from beyond the page. */
@@ -358,12 +358,12 @@
        with a long soft falloff so only the blurred tail leaks onto the page,
        plus a cool cyan haze from above and a warm rose haze from below. */
     --paper-wash:
-      radial-gradient(72% 56% at 4% 2%,   rgba(76, 185, 238, min(0.34, calc(0.20 * var(--paper-wash-intensity)))), transparent 70%),
-      radial-gradient(66% 50% at 98% 14%, rgba(255, 127, 166, min(0.28, calc(0.16 * var(--paper-wash-intensity)))), transparent 70%),
-      radial-gradient(74% 58% at 84% 100%, rgba(87, 224, 166, min(0.26, calc(0.15 * var(--paper-wash-intensity)))), transparent 70%),
-      radial-gradient(60% 48% at 10% 92%, rgba(255, 194, 74, min(0.22, calc(0.12 * var(--paper-wash-intensity)))), transparent 70%),
-      radial-gradient(80% 60% at 50% -16%, rgba(118, 214, 255, 0.07), transparent 72%),
-      radial-gradient(80% 55% at 50% 116%, rgba(255, 127, 166, 0.05), transparent 72%),
+      radial-gradient(72% 56% at 4% 2%,   oklch(74.48% 0.1244 233.16 / min(0.34, calc(0.20 * var(--paper-wash-intensity)))), transparent 70%),
+      radial-gradient(66% 50% at 98% 14%, oklch(75.24% 0.1598 2.38 / min(0.28, calc(0.16 * var(--paper-wash-intensity)))), transparent 70%),
+      radial-gradient(74% 58% at 84% 100%, oklch(81.66% 0.146 162.13 / min(0.26, calc(0.15 * var(--paper-wash-intensity)))), transparent 70%),
+      radial-gradient(60% 48% at 10% 92%, oklch(84.89% 0.149 80.87 / min(0.22, calc(0.12 * var(--paper-wash-intensity)))), transparent 70%),
+      radial-gradient(80% 60% at 50% -16%, oklch(83.24% 0.1074 227.92 / 0.07), transparent 72%),
+      radial-gradient(80% 55% at 50% 116%, oklch(75.24% 0.1598 2.38 / 0.05), transparent 72%),
       var(--paper-wash-base);
 
     /* Translucent control parchment: dark frosted glass with neon edge-tints
@@ -371,6 +371,6 @@
        through it keep their glow. */
     --parchment-backdrop: blur(32px) contrast(1.12) brightness(1.95) saturate(2.0);
     --double-parchment-backdrop: blur(20px) contrast(1.4) saturate(1.25) hue-rotate(-10deg) brightness(0.82);
-    --parchment-background: rgba(3, 4, 8, 0.1);
+    --parchment-background: oklch(10.77% 0.0134 269.72 / 0.1);
   }
 }
