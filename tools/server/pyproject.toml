@@ -5,7 +5,14 @@ description = "Small service wrapper around the native mcSCRAM Python extension.
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
+    "numpy>=2.4.6",
+    "scipy>=1.17.1",
     "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
 ]
 
 [project.scripts]
@@ -14,3 +21,7 @@ mcscram-server = "mcscram_server.app:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

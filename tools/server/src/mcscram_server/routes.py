@@ -31,11 +31,15 @@ class SamplingControlBody(BaseModel):
     ccf: bool | None = None
     keep_null_gates: bool | None = None
     num_trials: float | None = Field(default=None, gt=0)
-    overhead_ratio: float | None = Field(default=None, ge=0)
+    # Optimistic per-node trials-per-pass target (0 → auto: fill device memory).
+    requested_trials_per_pass: float | None = Field(default=None, ge=0)
     confidence: float | None = Field(default=None, gt=0, lt=1)
     delta: float | None = Field(default=None, gt=0)
     oracle: float | None = Field(default=None, ge=-1, le=1)
     early_stop: bool | None = None
+    # Host-side convergence policy that gates early-stop ("wald" | "bayes" | "gbas").
+    policy: str | None = Field(default=None, pattern="^(wald|bayes|gbas)$")
+    burn_in: float | None = Field(default=None, ge=0)
 
 
 def _calculation_config(body: SamplingControlBody | None = None) -> CalculationConfig:
@@ -63,8 +67,8 @@ def _calculation_config(body: SamplingControlBody | None = None) -> CalculationC
     overrides: dict[str, Any] = {}
     if body.num_trials is not None:
         overrides["num_trials"] = body.num_trials
-    if body.overhead_ratio is not None:
-        overrides["overhead_ratio"] = body.overhead_ratio
+    if body.requested_trials_per_pass is not None:
+        overrides["requested_trials_per_pass"] = body.requested_trials_per_pass
     if body.confidence is not None:
         overrides["confidence"] = body.confidence
     if body.delta is not None:
@@ -73,6 +77,10 @@ def _calculation_config(body: SamplingControlBody | None = None) -> CalculationC
         overrides["oracle"] = body.oracle
     if body.early_stop is not None:
         overrides["early_stop"] = body.early_stop
+    if body.policy is not None:
+        overrides["policy"] = body.policy
+    if body.burn_in is not None:
+        overrides["burn_in"] = body.burn_in
     if overrides:
         options.update(overrides)
     if input_files == config.input_files and options == config.options:
@@ -194,7 +202,7 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         ccf: bool | None = Query(default=None),
         keep_null_gates: bool | None = Query(default=None),
         num_trials: float | None = Query(default=None, gt=0),
-        overhead_ratio: float | None = Query(default=None, ge=0),
+        requested_trials_per_pass: float | None = Query(default=None, ge=0),
     ) -> dict[str, Any]:
         config = CalculationConfig.from_env()
         options = _compile_options(
@@ -209,8 +217,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         )
         if num_trials is not None:
             options["num_trials"] = num_trials
-        if overhead_ratio is not None:
-            options["overhead_ratio"] = overhead_ratio
+        if requested_trials_per_pass is not None:
+            options["requested_trials_per_pass"] = requested_trials_per_pass
         if model_id:
             try:
                 path = resolve_model_xml_path(model_id)
@@ -232,7 +240,7 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         ccf: bool | None = Query(default=None),
         keep_null_gates: bool | None = Query(default=None),
         num_trials: float | None = Query(default=None, gt=0),
-        overhead_ratio: float | None = Query(default=None, ge=0),
+        requested_trials_per_pass: float | None = Query(default=None, ge=0),
     ) -> dict[str, Any]:
         config = CalculationConfig.from_env()
         options = _compile_options(
@@ -247,8 +255,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         )
         if num_trials is not None:
             options["num_trials"] = num_trials
-        if overhead_ratio is not None:
-            options["overhead_ratio"] = overhead_ratio
+        if requested_trials_per_pass is not None:
+            options["requested_trials_per_pass"] = requested_trials_per_pass
         if model_id:
             try:
                 path = resolve_model_xml_path(model_id)

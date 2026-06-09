@@ -30,7 +30,7 @@ def options_from_env() -> dict[str, Any]:
 
     for env_name, key in (
         ("MCSCRAM_NUM_TRIALS", "num_trials"),
-        ("MCSCRAM_OVERHEAD_RATIO", "overhead_ratio"),
+        ("MCSCRAM_REQUESTED_TRIALS_PER_PASS", "requested_trials_per_pass"),
         ("MCSCRAM_DELTA", "delta"),
         ("MCSCRAM_BURN_IN", "burn_in"),
         ("MCSCRAM_CONFIDENCE", "confidence"),
