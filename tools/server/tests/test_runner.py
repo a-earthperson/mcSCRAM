@@ -1,10 +1,9 @@
 """End-to-end engine checks using the pure-Python BernoulliSampler.
 
-These exercise the full pass -> tally -> update -> emit loop and the three
-required deliverables simultaneously:
+These exercise the full pass -> tally -> update -> emit loop and the primary
+deliverables simultaneously:
   (a) Wald-linear convergence statistics (canonical fields),
-  (b) negative gradient of p_hat (``neg_grad_p``),
-  (c) Bayesian policy statistics (``bayes_*``).
+  (b) Bayesian policy statistics (``bayes_*``).
 """
 
 from __future__ import annotations
@@ -62,21 +61,13 @@ def test_converges_to_true_probability() -> None:
     assert final["epsilon_converged"] is True
 
 
-def test_emits_negative_gradient_and_bayes_streams() -> None:
+def test_emits_bayes_streams() -> None:
     sampler = BernoulliSampler(true_p=0.2, trials_per_pass=4096, target_index=1, seed=7)
-    # Force several passes via burn-in so gradient (>=2 points) is available.
-    config = ConvergenceConfig(
-        delta=0.05, confidence=0.95, early_stop=True, burn_in=4096 * 3
-    )
+    config = ConvergenceConfig(delta=0.05, confidence=0.95, early_stop=True, burn_in=4096 * 3)
     result, frames = _collect(config, sampler)
     final = result.final_progress
 
-    # (b) negative gradient of p_hat.
-    assert "neg_grad_p" in final and "grad_p" in final
-    assert final["neg_grad_p"] is not None and math.isfinite(final["neg_grad_p"])
-    assert final["neg_grad_p"] == pytest.approx(-final["grad_p"], rel=1e-9)
-
-    # (c) Bayesian policy stats streamed alongside Wald.
+    # Bayesian policy stats streamed alongside Wald.
     for key in ("bayes_mean", "bayes_epsilon", "bayes_target_epsilon", "bayes_converged"):
         assert key in final
     assert final["bayes_mean"] == pytest.approx(0.2, abs=0.02)

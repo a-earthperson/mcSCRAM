@@ -2,16 +2,16 @@
 
 The native ``mcscram_native`` engine is responsible only for the massively
 parallel, device-side bitstream sampling.  Everything statistical -- point
-estimates, confidence/credible intervals, convergence policies, gradients,
-information gain, diagnostics -- is computed here, on the host, in pure Python.
+estimates, confidence/credible intervals, convergence policies, information gain,
+diagnostics -- is computed here, on the host, in pure Python.
 
 Layered design (each layer is independently testable):
 
 * :mod:`.special`   -- dependency-free special functions / sampling formulas.
 * :mod:`.tally`     -- raw counter + trajectory state (``NodeState``, ``RunState``).
 * :mod:`.sampling`  -- the ``Sampler`` boundary (native + simulated).
-* :mod:`.metrics`   -- non-stopping derived metrics (point estimate, gradient,
-  information gain, oracle diagnostics).
+* :mod:`.metrics`   -- non-stopping derived metrics (point estimate, information
+  gain, oracle diagnostics).
 * :mod:`.policies`  -- convergence policies (Wald linear, Bayes credible, GBAS).
 * :mod:`.gbas`      -- Huber's GBAS numerics (numpy/scipy; imported lazily).
 * :mod:`.runner`    -- the pass->tally->update->emit loop and configuration.
@@ -25,14 +25,13 @@ or, for full control / testing::
 
     from mcscram_server.convergence import (
         BernoulliSampler, ConvergenceConfig, ConvergenceRunner,
-        WaldLinearPolicy, BayesPolicy, GradientMetric,
+        WaldLinearPolicy, BayesPolicy,
     )
 """
 
 from __future__ import annotations
 
 from .metrics import (
-    GradientMetric,
     InfoGainMetric,
     Metric,
     OracleDiagnostics,
@@ -86,7 +85,6 @@ __all__ = [
     # metrics
     "Metric",
     "PointEstimate",
-    "GradientMetric",
     "InfoGainMetric",
     "OracleDiagnostics",
     "default_metrics",

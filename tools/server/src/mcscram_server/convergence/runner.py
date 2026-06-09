@@ -13,7 +13,7 @@ The progress frame keeps the field names the existing web client consumes
 (``mean``, ``epsilon``, ``target_epsilon``, ``epsilon_converged``,
 ``p01/05/95/99``, ``info_bits_*`` …) filled from the *primary* policy (GBAS
 by default), and adds every policy/metric under its own namespace (``wald_*``,
-``bayes_*``, ``neg_grad_p`` …) so additional streams are available without
+``bayes_*``, ``info_bits_*`` …) so additional streams are available without
 breaking the UI.
 
 :class:`ConvergenceConfig` carries the host-side knobs and is built from the
@@ -307,7 +307,7 @@ class ConvergenceRunner:
             "trials_per_pass": tpp,
         }
 
-        # Auxiliary metrics (point estimate, gradient, info gain, diagnostics).
+        # Auxiliary metrics (point estimate, info gain, diagnostics).
         for metric in self.metrics:
             progress.update(metric.compute(target, self.ctx))
 

@@ -9,9 +9,6 @@ families of statistics are produced simultaneously every pass.
 Provided metrics:
 
 * :class:`PointEstimate` — ``mean`` (p_hat), ``std_err``, raw counters.
-* :class:`GradientMetric` — finite-difference gradient/Hessian of p_hat with
-  respect to accumulated trials.  Emits ``neg_grad_p`` (deliverable: negative
-  gradient of p_hat) alongside the raw gradient and curvature.
 * :class:`InfoGainMetric` — Shannon information gain (bits) of a ``Beta(1/2,1/2)``
   posterior, matching the native ``info_gain`` tracker.
 * :class:`OracleDiagnostics` — accuracy + sampling-theory diagnostics versus a
@@ -24,10 +21,10 @@ changes.
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from . import special
-from .tally import HistoryPoint, NodeState, RunContext
+from .tally import NodeState, RunContext
 
 
 @runtime_checkable
@@ -53,68 +50,6 @@ class PointEstimate:
             "total_bits": node.total_bits,
             "trials": node.total_bits,
         }
-
-
-class GradientMetric:
-    r"""Finite-difference gradient and Hessian of a scalar series vs. trials ``N``.
-
-    By default differentiates the point estimate ``p_hat(N)``.  With uniform pass
-    spacing ``h = trials_per_pass``:
-
-    * gradient (backward 1st order): :math:`g = (v_k - v_{k-1}) / (N_k - N_{k-1})`
-    * curvature (central 2nd diff): :math:`H = (v_k - 2v_{k-1} + v_{k-2}) / h^2`
-
-    Emits, for ``label='p'``:
-
-    * ``grad_p``      — :math:`dv/dN` (per trial)
-    * ``neg_grad_p``  — :math:`-dv/dN` (the requested negative gradient)
-    * ``grad_p_per_pass`` — :math:`v_k - v_{k-1}` (per-pass change, unitless)
-    * ``hess_p``      — :math:`d^2v/dN^2` (per trial squared), once >=3 points
-    """
-
-    def __init__(
-        self,
-        *,
-        label: str = "p",
-        value_fn: Callable[[HistoryPoint], float] | None = None,
-    ) -> None:
-        self.name = f"gradient[{label}]"
-        self._label = label
-        self._value_fn = value_fn or (lambda point: point.mean)
-
-    def compute(self, node: NodeState, ctx: RunContext) -> dict[str, Any]:
-        history = node.history
-        out: dict[str, Any] = {
-            f"grad_{self._label}": None,
-            f"neg_grad_{self._label}": None,
-            f"grad_{self._label}_per_pass": None,
-            f"hess_{self._label}": None,
-        }
-        if len(history) < 2:
-            return out
-
-        latest = history[-1]
-        prev = history[-2]
-        v_k = self._value_fn(latest)
-        v_km1 = self._value_fn(prev)
-        dn = latest.total_bits - prev.total_bits
-        if dn > 0:
-            grad = (v_k - v_km1) / dn
-            out[f"grad_{self._label}"] = grad
-            out[f"neg_grad_{self._label}"] = -grad
-        out[f"grad_{self._label}_per_pass"] = v_k - v_km1
-
-        if len(history) >= 3:
-            prev2 = history[-3]
-            v_km2 = self._value_fn(prev2)
-            # Uniform spacing h; use the average step to stay robust if a pass was
-            # coalesced (dn != h).
-            h1 = latest.total_bits - prev.total_bits
-            h2 = prev.total_bits - prev2.total_bits
-            if h1 > 0 and h2 > 0:
-                h = 0.5 * (h1 + h2)
-                out[f"hess_{self._label}"] = (v_k - 2.0 * v_km1 + v_km2) / (h * h)
-        return out
 
 
 class InfoGainMetric:
@@ -211,11 +146,9 @@ class OracleDiagnostics:
         }
 
 
-def default_metrics(*, with_gradient: bool = True, with_info_gain: bool = True) -> list[Metric]:
+def default_metrics(*, with_info_gain: bool = True) -> list[Metric]:
     """Convenience: the standard metric stack used by the live demo."""
     metrics: list[Metric] = [PointEstimate()]
-    if with_gradient:
-        metrics.append(GradientMetric(label="p"))
     if with_info_gain:
         metrics.append(InfoGainMetric())
     metrics.append(OracleDiagnostics())
@@ -225,7 +158,6 @@ def default_metrics(*, with_gradient: bool = True, with_info_gain: bool = True) 
 __all__ = [
     "Metric",
     "PointEstimate",
-    "GradientMetric",
     "InfoGainMetric",
     "OracleDiagnostics",
     "default_metrics",

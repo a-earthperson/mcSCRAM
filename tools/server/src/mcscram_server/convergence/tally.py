@@ -10,8 +10,8 @@ state model:
 * :class:`PassObservation` — the full output of one sampler pass: counters for
   every tracked node plus pass metadata (index, wall-clock, trials/pass).
 * :class:`NodeState` — accumulates a single node's counters across passes and
-  keeps a bounded trajectory ``history`` so trajectory metrics (gradient,
-  information gain, throughput) can be computed without re-deriving from scratch.
+  keeps a bounded trajectory ``history`` so per-pass metrics (information gain,
+  throughput) can be computed without re-deriving from scratch.
 * :class:`RunState` — the collection of :class:`NodeState` for a run.
 * :class:`RunContext` — immutable per-run configuration shared with every
   policy/metric (confidence ``z``, relative margin ``delta``, oracle, geometry).
@@ -28,9 +28,8 @@ from typing import Deque, Iterable, Mapping
 
 from .special import DELTA_EPSILON
 
-# Default trajectory window.  Trajectory metrics only need the last few points;
-# a few thousand is plenty to support smoothed/windowed differentiation while
-# bounding memory for unlimited (num_trials=0) live runs.
+# Default trajectory window.  Per-pass metrics only need the last few points;
+# a few thousand bounds memory for unlimited (num_trials=0) live runs.
 DEFAULT_HISTORY: int = 4096
 
 
