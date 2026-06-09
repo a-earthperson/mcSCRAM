@@ -6,7 +6,10 @@ import {
   DEFAULT_CONFIDENCE_CI_PERCENT,
 } from "./samplerCI";
 import { DEFAULT_DELTA, deltaSchema } from "./samplerDelta";
-import { DEFAULT_OVERHEAD_RATIO, overheadRatioSchema } from "./samplerOverheadRatio";
+import {
+  DEFAULT_REQUESTED_TRIALS_PER_PASS,
+  requestedTrialsPerPassSchema,
+} from "./samplerTrialsPerPass";
 import {
   createTrialsMantissaSchema,
   DEFAULT_TRIALS_MANTISSA,
@@ -21,8 +24,8 @@ export type SamplerSettings = {
   trialsCount: number;
   setTrialsMantissa: (mantissa: number) => void;
   setTrialsScaleExponent: (scaleExponent: TrialsScaleExponent) => void;
-  overheadRatio: number;
-  setOverheadRatio: (ratio: number) => void;
+  requestedTrialsPerPass: number;
+  setRequestedTrialsPerPass: (trials: number) => void;
   stopOnConvergence: boolean;
   setStopOnConvergence: (enabled: boolean) => void;
   confidenceCiPercent: number;
@@ -36,7 +39,7 @@ export type SamplerSettings = {
 export function useSamplerSettings(): SamplerSettings {
   const [trialsMantissa, setTrialsMantissaState] = useState(DEFAULT_TRIALS_MANTISSA);
   const [trialsScaleExponent, setTrialsScaleExponentState] = useState(DEFAULT_TRIALS_SCALE_EXPONENT);
-  const [overheadRatio, setOverheadRatioState] = useState(DEFAULT_OVERHEAD_RATIO);
+  const [requestedTrialsPerPass, setRequestedTrialsPerPassState] = useState(DEFAULT_REQUESTED_TRIALS_PER_PASS);
   const [stopOnConvergence, setStopOnConvergence] = useState(true);
   const [confidenceCiPercent, setConfidenceCiPercentState] = useState(DEFAULT_CONFIDENCE_CI_PERCENT);
   const [delta, setDeltaState] = useState(DEFAULT_DELTA);
@@ -50,9 +53,9 @@ export function useSamplerSettings(): SamplerSettings {
     setTrialsScaleExponentState(scaleExponent);
   }, []);
 
-  const setOverheadRatio = useCallback((ratio: number) => {
-    const parsed = parseZodField(overheadRatioSchema, ratio);
-    if (parsed.ok) setOverheadRatioState(parsed.value);
+  const setRequestedTrialsPerPass = useCallback((trials: number) => {
+    const parsed = parseZodField(requestedTrialsPerPassSchema, trials);
+    if (parsed.ok) setRequestedTrialsPerPassState(parsed.value);
   }, []);
 
   const setConfidenceCiPercent = useCallback((ciPercent: number) => {
@@ -77,8 +80,8 @@ export function useSamplerSettings(): SamplerSettings {
     trialsCount,
     setTrialsMantissa,
     setTrialsScaleExponent,
-    overheadRatio,
-    setOverheadRatio,
+    requestedTrialsPerPass,
+    setRequestedTrialsPerPass,
     stopOnConvergence,
     setStopOnConvergence,
     confidenceCiPercent,

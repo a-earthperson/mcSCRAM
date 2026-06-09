@@ -3,6 +3,8 @@ import { useSyncExternalStore } from "react";
 export type SamplingRunMetrics = {
   trialsPerSecond: number | null;
   completedPasses: number | null;
+  /** Live GBAS projected pass budget; populated while streaming when early-stop is on. */
+  gbasProjectedPasses: number | null;
   elapsedSeconds: number | null;
   timeToConvergenceSeconds: number | null;
   epsilonConverged: boolean;
@@ -20,6 +22,7 @@ export type SamplingRunMetricsStore = {
 export const EMPTY_SAMPLING_RUN_METRICS: SamplingRunMetrics = {
   trialsPerSecond: null,
   completedPasses: null,
+  gbasProjectedPasses: null,
   elapsedSeconds: null,
   timeToConvergenceSeconds: null,
   epsilonConverged: false,
@@ -29,6 +32,7 @@ function metricsEqual(left: SamplingRunMetrics, right: SamplingRunMetrics): bool
   return (
     left.trialsPerSecond === right.trialsPerSecond &&
     left.completedPasses === right.completedPasses &&
+    left.gbasProjectedPasses === right.gbasProjectedPasses &&
     left.elapsedSeconds === right.elapsedSeconds &&
     left.timeToConvergenceSeconds === right.timeToConvergenceSeconds &&
     left.epsilonConverged === right.epsilonConverged

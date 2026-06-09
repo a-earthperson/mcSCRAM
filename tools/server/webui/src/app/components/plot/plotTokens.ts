@@ -13,6 +13,22 @@ export type InkPalette = {
   madder: string;
   paynes: string;
   rose: string;
+  /** Full-strength bright pigments — crisp lines & markers (not washes/type). */
+  indigoBright: string;
+  indigoDeepBright: string;
+  sageBright: string;
+  ochreBright: string;
+  madderBright: string;
+  paynesBright: string;
+  roseBright: string;
+  /** Shadow-side dark pigments — deep strokes, fills, under traces. */
+  indigoDark: string;
+  indigoDeepDark: string;
+  sageDark: string;
+  ochreDark: string;
+  madderDark: string;
+  paynesDark: string;
+  roseDark: string;
   /** Halo on filled markers (rim against dense traces). */
   paper: string;
   /** Hover label / plate interior. */
@@ -61,6 +77,20 @@ const LIGHT_FALLBACK: InkPalette = {
   madder: "#a8807a",
   paynes: "#555a64",
   rose: "#d5b9b1",
+  indigoBright: "#2f6ba8",
+  indigoDeepBright: "#21528a",
+  sageBright: "#4a9d5f",
+  ochreBright: "#c8942c",
+  madderBright: "#c6505d",
+  paynesBright: "#4e6a95",
+  roseBright: "#df7d8b",
+  indigoDark: "#244466",
+  indigoDeepDark: "#1a3451",
+  sageDark: "#285d32",
+  ochreDark: "#745425",
+  madderDark: "#722c30",
+  paynesDark: "#2b3850",
+  roseDark: "#7e4b44",
   paper: "#ece8e4",
   plate: "#faf7f3",
   rule: "rgba(34, 32, 30, 0.92)",
@@ -107,6 +137,20 @@ export function getInkPalette(): InkPalette {
     madder: readCssVar("--pigment-madder", fb.madder),
     paynes: readCssVar("--pigment-paynes", fb.paynes),
     rose: readCssVar("--pigment-rose", fb.rose),
+    indigoBright: readCssVar("--pigment-indigo-bright", fb.indigoBright),
+    indigoDeepBright: readCssVar("--pigment-indigo-deep-bright", fb.indigoDeepBright),
+    sageBright: readCssVar("--pigment-sage-bright", fb.sageBright),
+    ochreBright: readCssVar("--pigment-ochre-bright", fb.ochreBright),
+    madderBright: readCssVar("--pigment-madder-bright", fb.madderBright),
+    paynesBright: readCssVar("--pigment-paynes-bright", fb.paynesBright),
+    roseBright: readCssVar("--pigment-rose-bright", fb.roseBright),
+    indigoDark: readCssVar("--pigment-indigo-dark", fb.indigoDark),
+    indigoDeepDark: readCssVar("--pigment-indigo-deep-dark", fb.indigoDeepDark),
+    sageDark: readCssVar("--pigment-sage-dark", fb.sageDark),
+    ochreDark: readCssVar("--pigment-ochre-dark", fb.ochreDark),
+    madderDark: readCssVar("--pigment-madder-dark", fb.madderDark),
+    paynesDark: readCssVar("--pigment-paynes-dark", fb.paynesDark),
+    roseDark: readCssVar("--pigment-rose-dark", fb.roseDark),
     paper: readCssVar("--plot-marker-rim", fb.paper),
     plate: readCssVar("--paper-cool", fb.plate),
     rule: readCssVar("--rule", fb.rule),
@@ -188,5 +232,20 @@ export function withAlpha(color: string, alpha: number): string {
   }
   const rgb = trimmed.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/);
   if (rgb) return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, ${alpha})`;
+  return trimmed;
+}
+
+/** Multiply RGB toward black (`factor` in [0,1]; 0.65 -> 35% darker). */
+export function darken(color: string, factor: number): string {
+  const trimmed = color.trim();
+  const scale = (value: number) => Math.max(0, Math.min(255, Math.round(value * factor)));
+  if (trimmed.startsWith("#") && trimmed.length === 7) {
+    const r = Number.parseInt(trimmed.slice(1, 3), 16);
+    const g = Number.parseInt(trimmed.slice(3, 5), 16);
+    const b = Number.parseInt(trimmed.slice(5, 7), 16);
+    return `rgb(${scale(r)}, ${scale(g)}, ${scale(b)})`;
+  }
+  const rgb = trimmed.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/);
+  if (rgb) return `rgb(${scale(Number(rgb[1]))}, ${scale(Number(rgb[2]))}, ${scale(Number(rgb[3]))})`;
   return trimmed;
 }

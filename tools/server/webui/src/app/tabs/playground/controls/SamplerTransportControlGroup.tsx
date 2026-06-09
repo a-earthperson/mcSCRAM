@@ -56,6 +56,7 @@ export function SamplerTransportControlGroup({
         sampleShape={sampleShape}
         loading={sampleShapeLoading}
         error={sampleShapeError}
+        stopOnConvergence={stopOnConvergence}
         samplingRunMetrics={samplingRunMetrics}
       />
       {controls.error ? <p className="sampler-transport-controls__error">{controls.error}</p> : null}
@@ -67,31 +68,41 @@ function SampleShapeMetrics({
   sampleShape,
   loading,
   error,
+  stopOnConvergence,
   samplingRunMetrics,
 }: {
   sampleShape: SampleShape | null;
   loading: boolean;
   error: string | null;
+  stopOnConvergence: boolean;
   samplingRunMetrics: SamplingRunMetrics;
 }) {
   const detail = error ?? (loading ? "Resolving native sample shape…" : undefined);
   const trialsPerPass = metricValue(sampleShape?.trials_per_pass, loading);
-  const totalIterations = metricValue(sampleShape?.total_iterations, loading);
+  const totalPassBudget = stopOnConvergence
+    ? (samplingRunMetrics.gbasProjectedPasses ?? sampleShape?.total_iterations)
+    : sampleShape?.total_iterations;
+  const totalIterations = metricValue(totalPassBudget, loading && !stopOnConvergence);
   const trialsPerSecond = formatSampleRate(samplingRunMetrics.trialsPerSecond);
   const trialsPerSecondDetail = passesPerSecondDetail(
     samplingRunMetrics.trialsPerSecond,
     sampleShape?.trials_per_pass,
   );
   const completedPasses = metricValue(samplingRunMetrics.completedPasses, false);
-  const completedPassDetail = completedPassPercentage(samplingRunMetrics.completedPasses, sampleShape?.total_iterations);
+  const completedPassDetail = completedPassPercentage(samplingRunMetrics.completedPasses, totalPassBudget);
   const elapsedTime = formatStreamDurationSeconds(samplingRunMetrics.elapsedSeconds);
-  const timeToConvergence = formatStreamDurationSeconds(samplingRunMetrics.timeToConvergenceSeconds);
+  const convergenceTime = formatConvergenceTime(
+    samplingRunMetrics,
+    stopOnConvergence,
+    totalPassBudget,
+    sampleShape?.trials_per_pass,
+  );
 
   return (
     <>
       <div className="sampler-transport-controls__timing-metrics" aria-busy={loading}>
         <Metric label="Elapsed Time" value={elapsedTime} />
-        <Metric label="Convergence Time" value={timeToConvergence} />
+        <Metric label="Convergence Time" value={convergenceTime.value} detail={convergenceTime.detail} />
       </div>
       <div className="sampler-transport-controls__metrics" aria-busy={loading}>
         <Metric label="TRIALS PER PASS" value={trialsPerPass} detail={detail} />
@@ -141,6 +152,61 @@ function passesPerSecondDetail(
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   }).format(passesPerSecond)} pass/sec`;
+}
+
+function formatConvergenceTime(
+  metrics: SamplingRunMetrics,
+  stopOnConvergence: boolean,
+  totalPassBudget: number | undefined,
+  trialsPerPass: number | undefined,
+): { value: string; detail?: string } {
+  const actual = metrics.timeToConvergenceSeconds;
+  if (actual !== null && actual !== undefined && Number.isFinite(actual)) {
+    return { value: formatStreamDurationSeconds(actual) };
+  }
+  if (!stopOnConvergence) {
+    return { value: "—" };
+  }
+  const remaining = estimateRemainingConvergenceSeconds(
+    metrics.completedPasses,
+    metrics.trialsPerSecond,
+    totalPassBudget,
+    trialsPerPass,
+  );
+  if (remaining === null) {
+    return { value: "—" };
+  }
+  return {
+    value: `~${formatStreamDurationSeconds(remaining)}`,
+    detail: "est. remaining",
+  };
+}
+
+/** Remaining wall time from pass budget, completed passes, and the live trial rate. */
+function estimateRemainingConvergenceSeconds(
+  completedPasses: number | null,
+  trialsPerSecond: number | null,
+  totalPassBudget: number | undefined,
+  trialsPerPass: number | undefined,
+): number | null {
+  if (
+    completedPasses === null ||
+    !Number.isFinite(completedPasses) ||
+    trialsPerSecond === null ||
+    !Number.isFinite(trialsPerSecond) ||
+    trialsPerSecond <= 0 ||
+    totalPassBudget === undefined ||
+    !Number.isFinite(totalPassBudget) ||
+    totalPassBudget <= 0 ||
+    trialsPerPass === undefined ||
+    !Number.isFinite(trialsPerPass) ||
+    trialsPerPass <= 0
+  ) {
+    return null;
+  }
+  const remainingPasses = totalPassBudget - completedPasses;
+  if (remainingPasses <= 0) return 0;
+  return (remainingPasses * trialsPerPass) / trialsPerSecond;
 }
 
 function completedPassPercentage(completed: number | null | undefined, total: number | null | undefined): string | undefined {

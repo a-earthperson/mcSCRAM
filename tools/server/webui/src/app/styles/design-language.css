@@ -61,7 +61,32 @@
     --pigment-sky:         #b9c6d2;
     --pigment-celadon:     #c3d0c2;
     --pigment-rose:        #d5b9b1;
-  
+
+    /* Bright pigments — full-strength botanical hues pulled straight from
+       the tube (less water): saturated enough to read as crisp lines and
+       markers over the plate, while holding the same indigo / sage / ochre
+       / madder / paynes / rose hue axes as the washes above. For chart
+       traces, not page-level washes or type. */
+    --pigment-indigo-bright:      #2f6ba8;   /* prussian, full strength */
+    --pigment-indigo-deep-bright: #21528a;   /* deep cobalt */
+    --pigment-sage-bright:        #4a9d5f;   /* viridian leaf */
+    --pigment-ochre-bright:       #c8942c;   /* raw gold ochre */
+    --pigment-madder-bright:      #c6505d;   /* madder lake crimson */
+    --pigment-paynes-bright:      #4e6a95;   /* steel slate blue */
+    --pigment-rose-bright:        #df7d8b;   /* clear rose pink */
+
+    /* Dark pigments — the shadow side of each hue: deepened, saturated
+       tones for the darkest pigment-tinted strokes, deep fills, and
+       secondary/under traces on the plate. Hue-locked to their bright
+       and wash siblings; darker than --pigment-*-deep, but never ink. */
+    --pigment-indigo-dark:        #244466;   /* deep prussian */
+    --pigment-indigo-deep-dark:   #1a3451;   /* midnight cobalt */
+    --pigment-sage-dark:          #285d32;   /* deep forest */
+    --pigment-ochre-dark:         #745425;   /* burnt umber / bronze */
+    --pigment-madder-dark:        #722c30;   /* deep maroon-madder */
+    --pigment-paynes-dark:        #2b3850;   /* charcoal slate */
+    --pigment-rose-dark:          #7e4b44;   /* deep brick rose */
+
     /* UI accent: deep indigo for hover, focus, active state, and
        the tracked labels that punctuate the scholarly layout. */
     --accent:      var(--pigment-indigo-deep);
@@ -295,6 +320,28 @@
     --pigment-sky:         #3aa0d8;
     --pigment-celadon:     #3f9f74;
     --pigment-rose:        #c76b86;
+
+    /* Bright pigments: the neon family pushed to peak luminance for crisp
+       plot lines & markers — distant signage at full glow over the void,
+       one notch hotter and lighter than the wash-grade pigments above. */
+    --pigment-indigo-bright:      #5cc6ff;   /* peak azure */
+    --pigment-indigo-deep-bright: #9ce4ff;   /* luminous cyan */
+    --pigment-sage-bright:        #72efbb;   /* bright jade */
+    --pigment-ochre-bright:       #ffd16b;   /* bright amber */
+    --pigment-madder-bright:      #ff9cbb;   /* bright hot rose */
+    --pigment-paynes-bright:      #b1d1e6;   /* bright steel cyan */
+    --pigment-rose-bright:        #e591a8;   /* bright rose */
+
+    /* Dark pigments: the neon family dimmed and deepened — signage seen
+       from further off. Recedes toward the void for shadow strokes, deep
+       fills, and secondary/under traces beneath the bright ones. */
+    --pigment-indigo-dark:        #1f6a9c;   /* deep azure */
+    --pigment-indigo-deep-dark:   #2d7ba8;   /* deep cyan */
+    --pigment-sage-dark:          #2a9168;   /* deep jade */
+    --pigment-ochre-dark:         #c08a24;   /* deep amber */
+    --pigment-madder-dark:        #c54e72;   /* deep hot rose */
+    --pigment-paynes-dark:        #4d7088;   /* deep steel cyan */
+    --pigment-rose-dark:          #9c4f66;   /* deep rose */
 
     --accent:      var(--pigment-indigo-deep);
     --accent-soft: color-mix(in srgb, var(--pigment-indigo-deep) 24%, transparent);

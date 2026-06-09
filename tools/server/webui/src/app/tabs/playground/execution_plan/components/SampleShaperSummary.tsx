@@ -4,8 +4,10 @@ import { compactCount } from "../scene/executionScene";
 import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";
 
 const STRATEGY_LABELS: Record<string, string> = {
-  nvidia_greedy_cacheline_aligned: "NVIDIA greedy / cache-aligned",
-  closest_fit: "closest-fit",
+  auto_memory_budget: "auto / memory budget",
+  auto_memory_budget_cacheline_aligned: "auto / memory budget, cache-aligned",
+  requested_trials_per_pass: "requested trials/pass",
+  requested_trials_per_pass_cacheline_aligned: "requested trials/pass, cache-aligned",
   uninitialized: "uninitialized",
 };
 
@@ -31,8 +33,16 @@ export function SampleShaperSummary({
     },
     { label: "trials / pass", value: compactCount(sample.bits_per_iteration), title: `${sample.bits_per_iteration} bits` },
     { label: "bits / bitpack", value: formatInteger(sample.bits_per_bitpack) },
-    { label: "overhead ratio", value: `${sample.overhead_ratio}` },
-    { label: "effective nodes", value: compactCount(sample.effective_nodes) },
+    {
+      label: "requested trials/pass",
+      value: sample.requested_trials_per_pass ? compactCount(sample.requested_trials_per_pass) : "auto",
+      title: `${sample.requested_trials_per_pass} (0 = auto)`,
+    },
+    {
+      label: "realized trials/pass",
+      value: compactCount(sample.realized_trials_per_pass),
+      title: `${sample.realized_trials_per_pass} trials`,
+    },
     {
       label: "resident",
       value: formatBytes(sample.resident_memory?.bytes_total),

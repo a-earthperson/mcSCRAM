@@ -2,12 +2,12 @@ import { z } from "zod";
 import { formatNumber, formatNumberFixed } from "../../../lib/format";
 
 /** User-facing two-sided confidence level (%). Source of truth for the control. */
-export const DEFAULT_CONFIDENCE_CI_PERCENT = 99.99;
+export const DEFAULT_CONFIDENCE_CI_PERCENT = 99.999;
 export const MIN_CONFIDENCE_CI_PERCENT = 90;
 export const MAX_CONFIDENCE_CI_PERCENT = 99.999;
 
 /** Preset ladder used by increment/decrement controls (not manual entry). */
-export const CONFIDENCE_CI_PRESETS = [90, 95, 99, 99.9, 99.99, 99.999] as const;
+export const CONFIDENCE_CI_PRESETS = [MIN_CONFIDENCE_CI_PERCENT, 95, 99, 99.9, 99.99, MAX_CONFIDENCE_CI_PERCENT] as const;
 
 const PRESET_EPSILON = 1e-6;
 

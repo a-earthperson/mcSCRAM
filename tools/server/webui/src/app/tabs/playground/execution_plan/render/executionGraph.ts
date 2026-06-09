@@ -270,7 +270,7 @@ export function createExecutionGraph(
       plugins: ["core", "controls", "cursor", "stats", "mathbox"],
       controls: { klass: OrbitControls },
       camera: {},
-      mathbox: { init: true, inspect: true, warmup: 1, splash: false },
+      mathbox: { init: true, inspect: true, warmup: 0, splash: false },
     });
   } catch (error) {
     cleanupContainer(container);

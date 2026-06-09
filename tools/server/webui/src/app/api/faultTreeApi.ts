@@ -55,7 +55,8 @@ export type SampleShape = {
 
 export type SampleShapeOptions = {
   numTrials: number;
-  overheadRatio: number;
+  /** Optimistic per-node trials-per-pass target (0 = auto: fill device memory). */
+  requestedTrialsPerPass: number;
 };
 
 export type SampleShapePayload = {
@@ -111,8 +112,9 @@ export type ExecutionSampleShaperDescription = {
   target_bits_per_iteration: number;
   bits_per_iteration: number;
   total_iterations: number;
-  overhead_ratio: number;
-  effective_nodes: number;
+  requested_trials_per_pass: number;
+  realized_trials_per_pass: number;
+  memory_budget_bitpacks_per_node: number;
   max_device_bytes: number;
   max_device_bits: number;
   cache_line_bitpacks: number;
@@ -275,7 +277,7 @@ export function fetchSampleShapeForModel(
     ccf: String(compileOptions.ccf),
     keep_null_gates: String(compileOptions.keepNullGates),
     num_trials: String(sampleOptions.numTrials),
-    overhead_ratio: String(sampleOptions.overheadRatio),
+    requested_trials_per_pass: String(sampleOptions.requestedTrialsPerPass),
   });
 }
 
@@ -295,7 +297,7 @@ export function fetchExecutionPlanForModel(
     ccf: String(compileOptions.ccf),
     keep_null_gates: String(compileOptions.keepNullGates),
     num_trials: String(sampleOptions.numTrials),
-    overhead_ratio: String(sampleOptions.overheadRatio),
+    requested_trials_per_pass: String(sampleOptions.requestedTrialsPerPass),
   });
 }
 

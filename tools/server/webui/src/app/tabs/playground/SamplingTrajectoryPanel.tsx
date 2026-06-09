@@ -1,18 +1,23 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Plot, usePlotTheme } from "../../components/plot/Plot";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { DiagramFullscreenButton } from "../../components/ui/DiagramFullscreenButton";
+import { darken, usePlotTheme, withAlpha, type InkPalette } from "../../components/plot/plotTokens";
 import {
-  logAxisRange,
-  PLOT_TRANSPARENT,
-  type PlotTrace,
-  withAlpha,
-} from "../../components/plot/plotDesign";
+  PlotMathbox,
+  type PlotMathboxAxis,
+  type PlotMathboxLegendItem,
+  type PlotMathboxReference,
+  type PlotMathboxSeries,
+} from "../../components/plot/PlotMathbox";
+import { formatExp, formatPower, formatSI } from "../../components/plot/mathbox/axis";
+import type { AxisScale, TrajectoryStroke } from "../../components/plot/mathbox/trajectoryPlot";
 import {
   confidenceFromAlpha,
+  gbasProjectedPasses,
   normalQuantileTwoSided,
   type ConvergenceStatsPayload,
 } from "../../lib/liveConvergenceStats";
-import { formatInteger, formatNumber } from "../../lib/format";
-import { EmptyState, SectionTitle } from "../../components";
+import { formatNumber } from "../../lib/format";
+import { SectionTitle } from "../../components";
 import { mcscramWebSocketUrl } from "../../api/mcscramClient";
 import type { SamplingStatus } from "./controls/samplingStatus";
 import type { SamplingControls } from "./controls/useSamplingControls";
@@ -60,15 +65,40 @@ type LiveProbabilityPoint = {
   targetEpsilon?: number;
   epsilonConverged?: boolean;
   oracleP?: number;
+  grad?: number;
+  hess?: number;
+  gradPerPass?: number;
+  // Per-policy convergence criteria (current half-width, target, projected N).
+  waldEpsilon?: number;
+  waldTargetEpsilon?: number;
+  waldProjectedTrials?: number;
+  bayesEpsilon?: number;
+  bayesTargetEpsilon?: number;
+  bayesProjectedTrials?: number;
+  gbasEpsilon?: number;
+  gbasTargetEpsilon?: number;
+  gbasProjectedTrials?: number;
+  // GBAS (Huber 2017) exact relative-error stream.
+  gbasRunCiLow?: number;
+  gbasRunCiHigh?: number;
+  gbasRunCi95Low?: number;
+  gbasRunCi95High?: number;
+  gbasRunCi99Low?: number;
+  gbasRunCi99High?: number;
+  gbasMean?: number;
+  gbasCiLow?: number;
+  gbasCiHigh?: number;
+  gbasConverged?: boolean;
+  gbasTargetDelta?: number;
 };
 
 const MAX_REPLAY_PATH_POINTS = 10_000;
 const MAX_RENDER_PATH_POINTS = 3_000;
 const MARKER_RENDER_THRESHOLD = 1_400;
-const EPSILON_TRACE_OPACITY = 0.48;
-const EPSILON_LINE_ALPHA = 0.62;
-const EPSILON_MARKER_ALPHA = 0.42;
-const EPSILON_MARKER_SIZE = 2;
+
+/** Stable formatter refs so axis label exprs are not re-pushed every render. */
+const EPSILON_Y_FORMAT = formatExp(2);
+const DERIVATIVE_Y_FORMAT = formatExp(1);
 
 export function SamplingTrajectoryPanel({
   samplingControls,
@@ -106,9 +136,11 @@ export function SamplingTrajectoryPanel({
     pendingUpdatesRef.current = [];
     const next = appendProbabilityUpdates(pointsRef.current, pending, MAX_REPLAY_PATH_POINTS);
     const latestUpdate = pending[pending.length - 1];
+    const projectedPasses = gbasProjectedPasses(latestUpdate);
     runMetricsStoreRef.current.setMetrics({
       trialsPerSecond: latestSampleRateRef.current,
       completedPasses: isFiniteNumber(latestUpdate.iterations) ? latestUpdate.iterations : null,
+      gbasProjectedPasses: projectedPasses ?? null,
       elapsedSeconds: latestTimingRef.current?.elapsedSeconds ?? null,
       timeToConvergenceSeconds: latestTimingRef.current?.timeToConvergenceSeconds ?? null,
       epsilonConverged: latestTimingRef.current?.epsilonConverged ?? false,
@@ -125,7 +157,7 @@ export function SamplingTrajectoryPanel({
     latestSampleRateRef.current = observation?.trialsPerSecond ?? null;
     latestTimingRef.current = sampleTimingTrackerRef.current.observe(
       timestampSeconds,
-      update.epsilon_converged === true,
+      update.converged === true,
     );
     if (frameRef.current === null) {
       frameRef.current = window.requestAnimationFrame(flushPendingUpdates);
@@ -249,226 +281,862 @@ export function SamplingTrajectoryPanel({
     };
   }, []);
 
-  const waitingText = connection === "open"
-    ? "Waiting for replayed stream points."
-    : "Connecting to the sampling stream...";
-
   return (
     <div className="panel span-3 playground-sampling-outputs">
       <div className="playground-sampling-outputs__section">
         <SectionTitle
           eyebrow="Output: Cumulative Trials since Start"
-          title="Sampled probability and epsilon trajectory with cumulative trials"
-          text="The primary axis tracks sampled probability intervals; the right axis overlays server epsilon in log-scale with the configured target half-width."
+          title="Sampled probability trajectory with cumulative trials"
+          text="WebGL line plot of the sampled probability point estimate with its percentile envelope, client confidence interval, and (when provided) the oracle reference bands."
         />
         {streamError ? <p className="live-demo-error playground-sampling-error">{streamError}</p> : null}
-        {replayPathPoints.length ? (
-          <LiveProbabilityPathPlot points={replayPathPoints} xMode="absolute" clientAlpha={clientAlpha} />
-        ) : (
-          <EmptyState text={waitingText} />
-        )}
+        <LiveProbabilityPathPlot points={replayPathPoints} xMode="absolute" clientAlpha={clientAlpha} />
       </div>
+      <div className="playground-sampling-outputs__section">
+        <SectionTitle
+          eyebrow="Output: GBAS Exact Relative-Error Interval"
+          title="GBAS estimate with its exact confidence band"
+          text="Running GBAS confidence band — the running mean scaled by the exact relative-error law Gamma(k, k−1), which is independent of p — with the exact interval marked once the success-count target k is reached. Oracle reference bands are shown when provided."
+        />
+        <LiveGbasPathPlot points={replayPathPoints} clientAlpha={clientAlpha} />
+      </div>
+      <div className="playground-sampling-outputs__section">
+        <SectionTitle
+          eyebrow="Output: Convergence Criteria"
+          title="Per-policy ε vs. target ε with projected sample sizes"
+          text="Each policy has its own hue and line style (GBAS solid, Wald dashed, Bayes dotted). Per policy: the current half-width ε is the lighter line, its stopping target ε the bolder line, and a thick darker vertical marks the projected total trials N."
+        />
+        <ConvergenceCriteriaPlot points={replayPathPoints} yScale={{ type: "log", base: 10 }} xScale={{ type: "log", base: 10 }} />
+      </div>
+      {/* <div className="playground-sampling-outputs__section">
+        <SectionTitle
+          eyebrow="Output: Convergence Criterion"
+          title="Epsilon vs. target epsilon"
+          text="Streamed half-width ε from the active stopping policy alongside its δ·p̂ target. Convergence is ε ≤ target ε."
+        />
+        <EpsilonPlot points={replayPathPoints} yScale={{ type: "log", base: 2 }} xScale={{ type: "log", base: 2 }} />
+      </div>
+      <div className="playground-sampling-outputs__section">
+        <SectionTitle
+          eyebrow="Output: Estimator Gradient"
+          title="Gradient of the sampled probability"
+          text="First derivative of the point estimate with respect to cumulative trials. It relaxes toward the zero baseline as the estimate stabilizes."
+        />
+        <GradientPlot points={replayPathPoints} />
+      </div>
+      <div className="playground-sampling-outputs__section">
+        <SectionTitle
+          eyebrow="Output: Estimator Curvature"
+          title="Hessian of the sampled probability"
+          text="Second derivative of the point estimate with respect to cumulative trials, signed about the zero baseline; its decay tracks the curvature of the convergence path."
+        />
+        <HessianPlot points={replayPathPoints} />
+      </div> */}
     </div>
   );
+}
+
+/** Per-plot log/linear axis configuration (defaults to linear when omitted). */
+type AxisScaleProps = { xScale?: AxisScale; yScale?: AxisScale };
+
+/** Overlay per-plot scale config onto a scene's axes (linear when unset). */
+function applyScales<T extends { x: PlotMathboxAxis; y: PlotMathboxAxis }>(
+  scene: T,
+  { xScale, yScale }: AxisScaleProps,
+): T {
+  if (!xScale && !yScale) return scene;
+  return {
+    ...scene,
+    x: xScale ? { ...scene.x, scale: xScale } : scene.x,
+    y: yScale ? { ...scene.y, scale: yScale } : scene.y,
+  };
 }
 
 const LiveProbabilityPathPlot = memo(function LiveProbabilityPathPlot({
   points,
   xMode,
   clientAlpha,
+  xScale,
+  yScale,
 }: {
   points: LiveProbabilityPoint[];
   xMode: "window" | "absolute";
   clientAlpha: number;
-}) {
-  const { palette: inkPalette } = usePlotTheme();
-  const { data, layout } = useMemo(() => {
-    const palette = xMode === "absolute"
-      ? {
-        line: inkPalette.madder,
-        band: inkPalette.ochre,
-        marker: inkPalette.madder,
-        legendgroup: "replay",
-      }
-      : {
-        line: inkPalette.indigoDeep,
-        band: inkPalette.indigoDeep,
-        marker: inkPalette.indigoDeep,
-        legendgroup: "live",
-      };
-    const epsilonPalette = {
-      line: inkPalette.paynes,
-      marker: inkPalette.paynes,
-      legendgroup: xMode === "absolute" ? "replay-epsilon" : "live-epsilon",
-    };
-    const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
-    const x = trialsXAxis(renderPoints, xMode);
-    const renderWithMarkers = renderPoints.length <= MARKER_RENDER_THRESHOLD;
-    const traceType = renderWithMarkers ? "scatter" : "scattergl";
-    const traceMode = renderWithMarkers ? "lines+markers" : "lines";
-    const oracleP = renderPoints.find((point) => isPositiveNumber(point.oracleP))?.oracleP;
-    const band99 = liveConfidenceBandTrace({
-      name: "sampled p01-p99",
-      x,
-      lower: renderPoints.map((point) => point.p01),
-      upper: renderPoints.map((point) => point.p99),
-      color: palette.band,
-      opacity: 0.08,
-      legendgroup: palette.legendgroup,
-    });
-    const band90 = liveConfidenceBandTrace({
-      name: "sampled p05-p95",
-      x,
-      lower: renderPoints.map((point) => point.p05),
-      upper: renderPoints.map((point) => point.p95),
-      color: palette.band,
-      opacity: 0.16,
-      legendgroup: palette.legendgroup,
-    });
-    const clientConfidence = confidenceFromAlpha(clientAlpha);
-    const clientConfidenceLabel = formatNumber(clientConfidence * 100, 4);
-    const clientAlphaZ = normalQuantileTwoSided(clientConfidence);
-    const clientAlphaLower = renderPoints.map((point) => {
-      const stdErr = Math.sqrt((point.mean * (1 - point.mean)) / point.trials);
-      return Math.max(0, point.mean - clientAlphaZ * stdErr);
-    });
-    const clientAlphaUpper = renderPoints.map((point) => {
-      const stdErr = Math.sqrt((point.mean * (1 - point.mean)) / point.trials);
-      return Math.min(1, point.mean + clientAlphaZ * stdErr);
-    });
-    const clientAlphaBand = liveConfidenceBandTrace({
-      name: `client ${clientConfidenceLabel}% confidence interval`,
-      x,
-      lower: clientAlphaLower,
-      upper: clientAlphaUpper,
-      color: inkPalette.sage,
-      opacity: 0.14,
-      legendgroup: palette.legendgroup,
-    });
-    const oracleLines = oracleReferenceTraces(renderPoints, x, oracleP, xMode, clientAlpha, inkPalette.ink);
-    const yValues = [
-      ...renderPoints.flatMap((point) => [point.mean, point.p01, point.p05, point.p95, point.p99]),
-      ...(Array.isArray(clientAlphaBand?.y) ? clientAlphaBand.y as Array<number | null | undefined> : []),
-      ...oracleLines.flatMap((trace) => Array.isArray(trace.y) ? trace.y as Array<number | null | undefined> : []),
-    ];
-    const epsilonValues = renderPoints.map((point) => point.epsilon);
-    const targetEpsilon = renderPoints.find((point) => isPositiveNumber(point.targetEpsilon))?.targetEpsilon;
-    const hasEpsilonAxis = epsilonValues.some(isPositiveNumber) || isPositiveNumber(targetEpsilon);
-    const epsilonRange = hasEpsilonAxis ? logAxisRange(epsilonValues, { include: [targetEpsilon], pad: 0.12 }) : undefined;
-    const epsilonAxisTicks = epsilonLogAxisTicks(epsilonRange, targetEpsilon);
-    const meanLine: PlotTrace = {
-      type: traceType,
-      mode: traceMode,
-      name: "live mean",
-      x,
-      y: renderPoints.map((point) => point.mean),
-      customdata: renderPoints.map((point) => [
-        point.iterations ?? null,
-        formatInteger(point.trials),
-        formatNumber(point.p05, 4),
-        formatNumber(point.p95, 4),
-        formatNumber(point.epsilon, 4),
-      ]),
-      line: { color: palette.line, width: 1.8 },
-      marker: { color: palette.marker, size: renderWithMarkers ? 4 : 0 },
-      legendgroup: palette.legendgroup,
-      hovertemplate: `${xMode === "window" ? "additional" : "total"} trials=%{x:.3s}<br>total trials=%{customdata[1]}<br>mean=%{y:.4e}<br>iterations=%{customdata[0]}<br>p05=%{customdata[2]}<br>p95=%{customdata[3]}<br>epsilon=%{customdata[4]}<extra>live run</extra>`,
-    };
-    const epsilonLine: PlotTrace | null = hasEpsilonAxis
-      ? {
-        type: traceType,
-        mode: traceMode,
-        name: "server epsilon",
-        x,
-        y: epsilonValues,
-        yaxis: "y2",
-        customdata: renderPoints.map((point) => [
-          point.iterations ?? null,
-          formatInteger(point.trials),
-          formatNumber(point.targetEpsilon, 4),
-          point.epsilonConverged ? "yes" : "no",
-        ]),
-        opacity: EPSILON_TRACE_OPACITY,
-        line: { color: withAlpha(epsilonPalette.line, EPSILON_LINE_ALPHA), width: 1.5 },
-        marker: { color: withAlpha(epsilonPalette.marker, EPSILON_MARKER_ALPHA), size: renderWithMarkers ? EPSILON_MARKER_SIZE : 0 },
-        legendgroup: epsilonPalette.legendgroup,
-        hovertemplate: `${xMode === "window" ? "additional" : "total"} trials=%{x:.3s}<br>total trials=%{customdata[1]}<br>epsilon=%{y:.4e}<br>target=%{customdata[2]}<br>converged=%{customdata[3]}<br>iterations=%{customdata[0]}<extra>live run</extra>`,
-      }
-      : null;
-    const targetEpsilonLine: PlotTrace | null = isPositiveNumber(targetEpsilon) && x.length > 1
-      ? {
-        type: "scatter",
-        mode: "lines",
-        name: `target ε=${formatNumber(targetEpsilon, 3)}`,
-        x: [x[0], x[x.length - 1]],
-        y: [targetEpsilon, targetEpsilon],
-        yaxis: "y2",
-        line: { color: withAlpha(epsilonPalette.line, 0.82), dash: "dash", width: 1.3 },
-        legendgroup: epsilonPalette.legendgroup,
-        hovertemplate: "target epsilon=%{y:.4e}<extra>target</extra>",
-      }
-      : null;
-
-    return {
-      data: [band99, band90, clientAlphaBand, ...oracleLines, meanLine, targetEpsilonLine, epsilonLine]
-        .filter(Boolean) as PlotTrace[],
-      layout: {
-        xaxis: {
-          title: {
-            text: xMode === "window"
-              ? "Additional Bernoulli trials since first streamed sample"
-              : "Cumulative Bernoulli trials",
-            standoff: 10,
-          },
-          rangemode: "tozero",
-          tickformat: "~s",
-        },
-        yaxis: {
-          title: { text: "Probability estimate", standoff: 12 },
-          tickformat: ".3e",
-          exponentformat: "e",
-          showexponent: "all",
-          range: linearAxisRange(yValues, { floor: 0, ceiling: 1, pad: 0.1 }),
-        },
-        yaxis2: {
-          title: {
-            text: "Epsilon (half-width, log scale)",
-            standoff: 12,
-            font: { color: withAlpha(epsilonPalette.line, 0.88) },
-          },
-          type: "log",
-          tickmode: "array",
-          tickvals: epsilonAxisTicks?.tickvals,
-          ticktext: epsilonAxisTicks?.ticktext,
-          range: epsilonRange,
-          overlaying: "y",
-          side: "right",
-          showgrid: false,
-          showline: true,
-          linecolor: withAlpha(epsilonPalette.line, 0.75),
-          tickcolor: withAlpha(epsilonPalette.line, 0.75),
-          ticks: "outside",
-          ticklen: 4,
-          tickwidth: 1,
-          tickfont: { color: withAlpha(epsilonPalette.line, 0.82), size: 11 },
-          minor: { ticks: "off", showgrid: false },
-          automargin: true,
-          visible: hasEpsilonAxis,
-        },
-        legend: { y: -0.28, orientation: "h", font: { size: 10 } },
-        margin: { l: 86, r: hasEpsilonAxis ? 98 : 22, t: 20, b: 112 },
-      },
-    };
-  }, [clientAlpha, inkPalette, points, xMode]);
+} & AxisScaleProps) {
+  const { palette } = usePlotTheme();
+  const scene = useMemo(
+    () => buildProbabilityScene(points, xMode, clientAlpha, palette),
+    [points, xMode, clientAlpha, palette],
+  );
+  const view = applyScales(scene, { xScale, yScale });
 
   return (
-    <Plot
-      className="plot convergence-large-plot live-probability-plot"
-      data={data}
-      layout={layout}
-    />
+    <TrajectoryPlotFrame>
+      <PlotMathbox
+        className="convergence-large-plot live-probability-plot"
+        x={view.x}
+        y={view.y}
+        series={view.series}
+        references={view.references}
+        legend={view.legend}
+      />
+    </TrajectoryPlotFrame>
   );
 });
+
+const LiveGbasPathPlot = memo(function LiveGbasPathPlot({
+  points,
+  clientAlpha,
+  xScale,
+  yScale,
+}: {
+  points: LiveProbabilityPoint[];
+  clientAlpha: number;
+} & AxisScaleProps) {
+  const { palette } = usePlotTheme();
+  const scene = useMemo(() => buildGbasScene(points, clientAlpha, palette), [points, clientAlpha, palette]);
+  const view = applyScales(scene, { xScale, yScale });
+  return (
+    <TrajectoryPlotFrame>
+      <PlotMathbox
+        className="convergence-large-plot live-gbas-plot"
+        x={view.x}
+        y={view.y}
+        series={view.series}
+        references={view.references}
+        legend={view.legend}
+      />
+    </TrajectoryPlotFrame>
+  );
+});
+
+const ConvergenceCriteriaPlot = memo(function ConvergenceCriteriaPlot({
+  points,
+  xScale,
+  yScale,
+}: { points: LiveProbabilityPoint[] } & AxisScaleProps) {
+  const { palette } = usePlotTheme();
+  const scene = useMemo(() => buildConvergenceCriteriaScene(points, palette), [points, palette]);
+  const view = applyScales(scene, { xScale, yScale });
+  return (
+    <TrajectoryPlotFrame>
+      <PlotMathbox
+        className="convergence-large-plot live-criteria-plot"
+        x={view.x}
+        y={view.y}
+        series={view.series}
+        references={view.references}
+        legend={view.legend}
+      />
+    </TrajectoryPlotFrame>
+  );
+});
+
+const EpsilonPlot = memo(function EpsilonPlot({
+  points,
+  xScale,
+  yScale,
+}: { points: LiveProbabilityPoint[] } & AxisScaleProps) {
+  const { palette } = usePlotTheme();
+  const scene = useMemo(
+    () =>
+      buildEpsilonScene(points, {
+        currentColor: palette.ochre,
+        targetColor: palette.ink,
+        ink: palette.ink,
+      }),
+    [points, palette],
+  );
+  const view = applyScales(scene, { xScale, yScale });
+  return (
+    <TrajectoryPlotFrame>
+      <PlotMathbox
+        className="convergence-large-plot live-epsilon-plot"
+        x={view.x}
+        y={view.y}
+        series={view.series}
+        references={view.references}
+        legend={view.legend}
+      />
+    </TrajectoryPlotFrame>
+  );
+});
+
+const GradientPlot = memo(function GradientPlot({
+  points,
+  xScale,
+  yScale,
+}: { points: LiveProbabilityPoint[] } & AxisScaleProps) {
+  const { palette } = usePlotTheme();
+  // Cool register, deliberately distinct from the warm madder/ochre path plot.
+  const scene = useMemo(
+    () =>
+      buildDerivativeScene(points, (point) => point.grad, {
+        color: palette.indigoDeep,
+        ink: palette.ink,
+        title: "Gradient ∂p̂/∂N (per trial)",
+        legend: "gradient ∂p̂/∂N",
+        stroke: "solid",
+        width: 1.8,
+        markerSize: 4,
+      }),
+    [points, palette],
+  );
+  const view = applyScales(scene, { xScale, yScale });
+  return (
+    <TrajectoryPlotFrame>
+      <PlotMathbox
+        className="convergence-large-plot live-gradient-plot"
+        x={view.x}
+        y={view.y}
+        series={view.series}
+        references={view.references}
+        legend={view.legend}
+      />
+    </TrajectoryPlotFrame>
+  );
+});
+
+const HessianPlot = memo(function HessianPlot({
+  points,
+  xScale,
+  yScale,
+}: { points: LiveProbabilityPoint[] } & AxisScaleProps) {
+  const { palette } = usePlotTheme();
+  const scene = useMemo(
+    () =>
+      buildDerivativeScene(points, (point) => point.hess, {
+        color: palette.sage,
+        ink: palette.ink,
+        title: "Hessian ∂²p̂/∂N² (per trial²)",
+        legend: "hessian ∂²p̂/∂N²",
+        stroke: "dotted",
+        width: 1.6,
+        markerSize: 3,
+      }),
+    [points, palette],
+  );
+  const view = applyScales(scene, { xScale, yScale });
+  return (
+    <TrajectoryPlotFrame>
+      <PlotMathbox
+        className="convergence-large-plot live-hessian-plot"
+        x={view.x}
+        y={view.y}
+        series={view.series}
+        references={view.references}
+        legend={view.legend}
+      />
+    </TrajectoryPlotFrame>
+  );
+});
+
+function TrajectoryPlotFrame({ children }: { children: ReactNode }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  return (
+    <div ref={rootRef} className="trajectory-plot-frame">
+      {children}
+      <div className="trajectory-plot-frame__hud">
+        <div className="trajectory-plot-frame__controls" aria-label="Plot view controls">
+          <DiagramFullscreenButton targetRef={rootRef} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ProbabilityScene = {
+  x: PlotMathboxAxis;
+  y: PlotMathboxAxis;
+  series: PlotMathboxSeries[];
+  references: PlotMathboxReference[];
+  legend: PlotMathboxLegendItem[];
+};
+
+function buildProbabilityScene(
+  points: LiveProbabilityPoint[],
+  xMode: "window" | "absolute",
+  clientAlpha: number,
+  palette: InkPalette,
+): ProbabilityScene {
+  const colors = xMode === "absolute"
+    ? { line: palette.madder, band: palette.ochre }
+    : { line: palette.indigoDeep, band: palette.indigoDeep };
+
+  const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
+  const xs = trialsXAxis(renderPoints, xMode);
+  const markerSize = renderPoints.length <= MARKER_RENDER_THRESHOLD ? 4 : 0;
+  const oracleP = renderPoints.find((point) => isPositiveNumber(point.oracleP))?.oracleP;
+
+  const clientConfidence = confidenceFromAlpha(clientAlpha);
+  const clientConfidenceLabel = formatNumber(clientConfidence * 100, 4);
+  const clientZ = normalQuantileTwoSided(clientConfidence);
+  const clientLower = renderPoints.map((point) => {
+    const stdErr = Math.sqrt((point.mean * (1 - point.mean)) / point.trials);
+    return Math.max(0, point.mean - clientZ * stdErr);
+  });
+  const clientUpper = renderPoints.map((point) => {
+    const stdErr = Math.sqrt((point.mean * (1 - point.mean)) / point.trials);
+    return Math.min(1, point.mean + clientZ * stdErr);
+  });
+
+  const meanValues = renderPoints.map((point) => point.mean);
+  const series: PlotMathboxSeries[] = [];
+  series.push({
+    id: "band99",
+    kind: "band",
+    x: xs,
+    lower: renderPoints.map((point) => point.p01 ?? Number.NaN),
+    upper: renderPoints.map((point) => point.p99 ?? Number.NaN),
+    color: colors.band,
+    opacity: 0.1,
+  });
+  series.push({
+    id: "band90",
+    kind: "band",
+    x: xs,
+    lower: renderPoints.map((point) => point.p05 ?? Number.NaN),
+    upper: renderPoints.map((point) => point.p95 ?? Number.NaN),
+    color: colors.band,
+    opacity: 0.18,
+  });
+  series.push({
+    id: "clientBand",
+    kind: "band",
+    x: xs,
+    lower: clientLower,
+    upper: clientUpper,
+    color: palette.sage,
+    opacity: 0.16,
+  });
+  const oracleSeries = oracleLineSeries(renderPoints, xs, oracleP, xMode, clientAlpha, palette.ink);
+  series.push(...oracleSeries);
+  series.push({
+    id: "mean",
+    kind: "line",
+    x: xs,
+    y: meanValues,
+    color: colors.line,
+    width: 1.8,
+    markerSize,
+    markerColor: colors.line,
+  });
+
+  const yValues: Array<number | null | undefined> = [
+    ...renderPoints.flatMap((point) => [point.mean, point.p01, point.p05, point.p95, point.p99]),
+    ...clientLower,
+    ...clientUpper,
+    ...oracleSeries.flatMap((entry) => (entry.kind === "line" ? Array.from(entry.y) : [])),
+  ];
+  const yRange = linearAxisRange(yValues, { floor: 0, ceiling: 1, pad: 0.1 }) ?? [0, 1];
+  const xMax = Math.max(1, ...xs.filter(isFiniteNumber));
+
+  const legend: PlotMathboxLegendItem[] = [
+    { label: "sampled mean", color: colors.line, marker: markerSize > 0 },
+    { label: "p05–p95", color: colors.band, fill: true },
+    { label: "p01–p99", color: colors.band, fill: true },
+    { label: `client ${clientConfidenceLabel}% CI`, color: palette.sage, fill: true },
+  ];
+  if (isPositiveNumber(oracleP)) {
+    legend.push({ label: "oracle p ± CI", color: palette.ink, stroke: "dashed" });
+  }
+
+  return {
+    x: {
+      range: [0, xMax],
+      title: xMode === "window"
+        ? "Additional Bernoulli trials since first streamed sample"
+        : "Cumulative Bernoulli trials",
+      format: formatSI,
+      color: palette.ink,
+    },
+    y: {
+      range: yRange,
+      title: "Probability estimate",
+      tickCount: 5,
+      color: palette.ink,
+    },
+    series,
+    references: [],
+    legend,
+  };
+}
+
+/** GBAS (Huber 2017) path plot: running mean + exact relative-error band + oracle. */
+function buildGbasScene(
+  points: LiveProbabilityPoint[],
+  clientAlpha: number,
+  palette: InkPalette,
+): ProbabilityScene {
+  const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
+  const xs = renderPoints.map((point) => point.trials);
+  const lower = renderPoints.map((point) => point.gbasRunCiLow ?? Number.NaN);
+  const upper = renderPoints.map((point) => point.gbasRunCiHigh ?? Number.NaN);
+  const ci95Lower = renderPoints.map((point) => point.gbasRunCi95Low ?? Number.NaN);
+  const ci95Upper = renderPoints.map((point) => point.gbasRunCi95High ?? Number.NaN);
+  const ci99Lower = renderPoints.map((point) => point.gbasRunCi99Low ?? Number.NaN);
+  const ci99Upper = renderPoints.map((point) => point.gbasRunCi99High ?? Number.NaN);
+  const hasCi95 = ci95Lower.some(isFiniteNumber) && ci95Upper.some(isFiniteNumber);
+  const hasCi99 = ci99Lower.some(isFiniteNumber) && ci99Upper.some(isFiniteNumber);
+
+  const markerSize = renderPoints.length <= MARKER_RENDER_THRESHOLD ? 4 : 0;
+  const oracleP = renderPoints.find((point) => isPositiveNumber(point.oracleP))?.oracleP;
+  const meanValues = renderPoints.map((point) => point.mean);
+  // Cool, authoritative register — distinct from the warm madder/ochre primary path plot.
+  const lineColor = palette.indigoDeep;
+
+  // Series ids are fixed across stream resets so the plot controller can refill
+  // GPU buffers via source.set instead of tearing down draw subtrees.
+  const oracleSeries = oracleLineSeries(renderPoints, xs, oracleP, "absolute", clientAlpha, palette.ink);
+  const series: PlotMathboxSeries[] = [
+    { id: "gbasBand99", kind: "band", x: xs, lower: ci99Lower, upper: ci99Upper, color: lineColor, opacity: 0.1 },
+    { id: "gbasBand95", kind: "band", x: xs, lower: ci95Lower, upper: ci95Upper, color: lineColor, opacity: 0.16 },
+    { id: "gbasBand", kind: "band", x: xs, lower, upper, color: palette.sage, opacity: 0.18 },
+    ...oracleSeries,
+    {
+      id: "gbasMean",
+      kind: "line",
+      x: xs,
+      y: meanValues,
+      color: lineColor,
+      width: 1.8,
+      markerSize,
+      markerColor: lineColor,
+    },
+  ];
+
+  const last = renderPoints[renderPoints.length - 1];
+  const converged = last?.gbasConverged === true;
+  const showCiLow = converged && isFiniteNumber(last?.gbasCiLow);
+  const showCiHigh = converged && isFiniteNumber(last?.gbasCiHigh);
+  const showMean = converged && isFiniteNumber(last?.gbasMean);
+  const references: PlotMathboxReference[] = [
+    {
+      id: "gbas-ci-low",
+      axis: "y",
+      value: showCiLow ? last.gbasCiLow! : 0,
+      color: withAlpha(lineColor, 0.55),
+      stroke: "dashed",
+      opacity: showCiLow ? 0.55 : 0,
+    },
+    {
+      id: "gbas-ci-high",
+      axis: "y",
+      value: showCiHigh ? last.gbasCiHigh! : 0,
+      color: withAlpha(lineColor, 0.55),
+      stroke: "dashed",
+      opacity: showCiHigh ? 0.55 : 0,
+    },
+    {
+      id: "gbas-mean",
+      axis: "y",
+      value: showMean ? last.gbasMean! : 0,
+      color: withAlpha(lineColor, 0.85),
+      stroke: "solid",
+      opacity: showMean ? 0.85 : 0,
+      label: "p̂ GBAS",
+    },
+  ];
+
+  const yValues: Array<number | null | undefined> = [
+    ...meanValues,
+    ...lower,
+    ...upper,
+    ...(hasCi99 ? [...ci99Lower, ...ci99Upper] : []),
+    converged ? last.gbasCiLow : undefined,
+    converged ? last.gbasCiHigh : undefined,
+    ...oracleSeries.flatMap((entry) => (entry.kind === "line" ? Array.from(entry.y) : [])),
+  ];
+  const yRange = linearAxisRange(yValues, { floor: 0, ceiling: 1, pad: 0.12 }) ?? [0, 1];
+  const xMax = Math.max(1, ...xs.filter(isFiniteNumber));
+
+  const targetDelta = renderPoints.map((point) => point.gbasTargetDelta).find(isFiniteNumber);
+  const clientCiLabel = isFiniteNumber(targetDelta)
+    ? `GBAS ${formatNumber((1 - targetDelta) * 100, 4)}% CI`
+    : "GBAS CI";
+
+  const legend: PlotMathboxLegendItem[] = [
+    { label: "sampled mean", color: lineColor, marker: markerSize > 0 },
+    { label: clientCiLabel, color: palette.sage, fill: true },
+  ];
+  if (hasCi95) legend.push({ label: "GBAS 95% CI", color: lineColor, fill: true });
+  if (hasCi99) legend.push({ label: "GBAS 99% CI", color: lineColor, fill: true });
+  if (converged) {
+    legend.push({ label: "p̂ ± CI (at k)", color: lineColor, stroke: "dashed" });
+  }
+  if (isPositiveNumber(oracleP)) {
+    legend.push({ label: "oracle p ± CI", color: palette.ink, stroke: "dashed" });
+  }
+
+  return {
+    x: {
+      range: [0, xMax],
+      title: "Cumulative Bernoulli trials",
+      format: formatSI,
+      color: palette.ink,
+    },
+    y: {
+      range: yRange,
+      title: "Probability estimate (GBAS)",
+      tickCount: 5,
+      color: palette.ink,
+    },
+    series,
+    references,
+    legend,
+  };
+}
+
+/** Per-policy convergence-criteria plot: ε (solid) + target ε (dashed), one hue per policy. */
+function buildConvergenceCriteriaScene(
+  points: LiveProbabilityPoint[],
+  palette: InkPalette,
+): ProbabilityScene {
+  const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
+  const xs = renderPoints.map((point) => point.trials);
+
+  // Encoding: policy = complementary hue + fixed stroke (GBAS solid, Wald dashed,
+  // Bayes dotted). Quantity is encoded on top of that: current ε at base alpha,
+  // target ε at higher alpha, projected-N as a thicker, darker vertical guide.
+  const policies: Array<{
+    key: string;
+    label: string;
+    color: string[];
+    markerSize?: number[];
+    markerColor?: string[];
+    width: number[];
+    opacity?: number[];
+    stroke: TrajectoryStroke[];
+    epsilon: (point: LiveProbabilityPoint) => number | undefined;
+    target: (point: LiveProbabilityPoint) => number | undefined;
+    projected: (point: LiveProbabilityPoint) => number | undefined;
+  }> = [
+    {
+      key: "gbas",
+      label: "GBAS",
+      opacity: [0.6, 0.8, 1.0],
+      markerSize: [1.5, 0, 0],
+      markerColor: [palette.inkSoft, palette.ochre, palette.ochreDark],
+      color: [palette.inkFaint, palette.inkMute, palette.inkSoft],
+      width: [1.0, 2.0, 1.0],
+      stroke: ["solid", "dashed", "solid"],
+      epsilon: (point) => point.gbasEpsilon,
+      target: (point) => point.gbasTargetEpsilon,
+      projected: (point) => point.gbasProjectedTrials,
+    },
+    {
+      key: "wald",
+      label: "Wald",
+      opacity: [1.0, 0.8, 1.0],
+      markerSize: [4.5, 0, 0],
+      markerColor: [palette.ochre, palette.ochre, palette.ochreDark],
+      color: [palette.ochreBright, palette.ochreBright, palette.ochreBright],
+      width: [1, 3.0, 4.0],
+      stroke: ["solid", "solid", "dashed"],
+      epsilon: (point) => point.waldEpsilon,
+      target: (point) => point.waldTargetEpsilon,
+      projected: (point) => point.waldProjectedTrials,
+    },
+    {
+      key: "bayes",
+      label: "Bayes",
+      opacity: [0.5, 0.8, 1.0],
+      markerSize: [1.5, 0, 0],
+      markerColor: [palette.indigoBright, palette.ochre, palette.ochreDark],
+      color: [palette.indigoBright, palette.indigoBright, palette.indigoBright],
+      width: [1, 2.0, 4.0],
+      stroke: ["solid", "dashed", "dotted"],
+      epsilon: (point) => point.bayesEpsilon,
+      target: (point) => point.bayesTargetEpsilon,
+      projected: (point) => point.bayesProjectedTrials,
+    },
+  ];
+
+  const series: PlotMathboxSeries[] = [];
+  const references: PlotMathboxReference[] = [];
+  const yValues: Array<number | null | undefined> = [];
+  const dataXMax = Math.max(1, ...xs.filter(isFiniteNumber));
+  let projectedXMax = 0;
+
+  // Per-quantity styling on top of the per-policy hue + stroke.
+  const CURRENT_ALPHA = 1.0;
+  const TARGET_ALPHA = 1.0;
+
+  const legend: PlotMathboxLegendItem[] = [];
+
+  for (const policy of policies) {
+    const epsilonValues = renderPoints.map(policy.epsilon);
+    const targetValues = renderPoints.map(policy.target);
+    const hasEpsilon = epsilonValues.some(isFiniteNumber);
+    const hasTarget = targetValues.some(isFiniteNumber);
+    const projected = lastFinitePositive(renderPoints.map(policy.projected));
+
+    series.push({
+      id: `${policy.key}-epsilon`,
+      kind: "line",
+      x: xs,
+      y: epsilonValues.map((value) => value ?? Number.NaN),
+      color: policy.color[0],
+      markerSize: policy.markerSize?.[0] ?? 0,
+      markerColor: policy.markerColor?.[0] ?? policy.color[0],
+      width: policy.width[0],
+      stroke: policy.stroke[0],
+      opacity: policy.opacity?.[0] ?? CURRENT_ALPHA,
+    });
+    series.push({
+      id: `${policy.key}-target`,
+      kind: "line",
+      x: xs,
+      y: targetValues.map((value) => value ?? Number.NaN),
+      color: policy.color[1],
+      width: policy.width[1],
+      stroke: policy.stroke[1],
+      opacity: policy.opacity?.[1] ?? TARGET_ALPHA,
+    });
+    if (hasEpsilon) yValues.push(...epsilonValues);
+    if (hasTarget) yValues.push(...targetValues);
+
+    // Projected total trials → a thick, darker vertical "deadline" guide in the
+    // policy's hue + stroke. Hidden (opacity 0) until a projection is known.
+    references.push({
+      id: `${policy.key}-projected`,
+      axis: "x",
+      value: projected ?? 1,
+      color: policy.color[2],
+      width: policy.width[2],
+      stroke: policy.stroke[2],
+      opacity: projected !== undefined ? (policy.opacity?.[2] ?? CURRENT_ALPHA) : 0,
+    });
+    if (projected !== undefined) projectedXMax = Math.max(projectedXMax, projected);
+
+    legend.push({ label: policy.label, color: policy.color[0], stroke: policy.stroke[0] });
+  }
+
+  const xMax = Math.max(dataXMax, projectedXMax, 1) * 1.05;
+
+  const yRange = linearAxisRange(yValues, { floor: 0, pad: 0.12 }) ?? [0, 1];
+
+  return {
+    x: {
+      range: [0, xMax],
+      title: "Cumulative Bernoulli trials",
+      format: formatSI,
+      color: palette.ink,
+    },
+    y: {
+      range: yRange,
+      title: "ε  /  target ε",
+      format: formatPower,
+      color: palette.ink,
+    },
+    series,
+    references,
+    legend,
+  };
+}
+
+/** Last finite, strictly-positive value in a series (for projected-N guides). */
+function lastFinitePositive(values: Array<number | null | undefined>): number | undefined {
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    if (isPositiveNumber(values[i])) return values[i] as number;
+  }
+  return undefined;
+}
+
+/** Oracle reference p line plus its analytic Wald CI envelopes (host curves). */
+function oracleLineSeries(
+  points: LiveProbabilityPoint[],
+  xs: number[],
+  oracleP: number | null | undefined,
+  xMode: "window" | "absolute",
+  clientAlpha: number,
+  inkColor: string,
+): Array<Extract<PlotMathboxSeries, { kind: "line" }>> {
+  const line = (
+    id: string,
+    y: number[],
+    stroke: TrajectoryStroke,
+    width: number,
+  ): Extract<PlotMathboxSeries, { kind: "line" }> => ({
+    id,
+    kind: "line",
+    x: xs,
+    y,
+    color: inkColor,
+    width,
+    opacity: 0.7,
+    stroke,
+  });
+
+  if (!isPositiveNumber(oracleP)) {
+    const emptyY = xs.map(() => Number.NaN);
+    return [
+      line("oracle-99-hi", emptyY, "solid", 1),
+      line("oracle-99-lo", emptyY, "solid", 1),
+      line("oracle-95-hi", emptyY, "dashed", 1),
+      line("oracle-95-lo", emptyY, "dashed", 1),
+      line("oracle-cl-hi", emptyY, "dotted", 1.1),
+      line("oracle-cl-lo", emptyY, "dotted", 1.1),
+      line("oracle-p", emptyY, "dashed", 1.8),
+    ];
+  }
+
+  const effectiveTrials = (index: number) => (xMode === "window" ? xs[index] : points[index].trials);
+  const halfWidth = (trials: number, z: number) => z * Math.sqrt((oracleP * (1 - oracleP)) / trials + 1e-15);
+  const upper = (z: number) => points.map((_, index) => Math.min(1, oracleP + halfWidth(effectiveTrials(index), z)));
+  const lower = (z: number) => points.map((_, index) => Math.max(0, oracleP - halfWidth(effectiveTrials(index), z)));
+  const oracleZ = normalQuantileTwoSided(confidenceFromAlpha(clientAlpha));
+
+  return [
+    line("oracle-99-hi", upper(2.576), "solid", 1),
+    line("oracle-99-lo", lower(2.576), "solid", 1),
+    line("oracle-95-hi", upper(1.96), "dashed", 1),
+    line("oracle-95-lo", lower(1.96), "dashed", 1),
+    line("oracle-cl-hi", upper(oracleZ), "dotted", 1.1),
+    line("oracle-cl-lo", lower(oracleZ), "dotted", 1.1),
+    line("oracle-p", points.map(() => oracleP), "dashed", 1.8),
+  ];
+}
+
+type DerivativeOptions = {
+  color: string;
+  ink: string;
+  title: string;
+  legend: string;
+  stroke: TrajectoryStroke;
+  width: number;
+  markerSize: number;
+};
+
+function buildEpsilonScene(
+  points: LiveProbabilityPoint[],
+  options: { currentColor: string; targetColor: string; ink: string },
+): ProbabilityScene {
+  const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
+  const xs = renderPoints.map((point) => point.trials);
+  const currentValues = renderPoints.map((point) => point.epsilon);
+  const targetValues = renderPoints.map((point) => point.targetEpsilon);
+
+  const markerSize = renderPoints.length <= MARKER_RENDER_THRESHOLD ? 4 : 0;
+  const xMax = Math.max(1, ...xs.filter(isFiniteNumber));
+  const yRange = linearAxisRange([...currentValues, ...targetValues], { floor: 0, pad: 0.12 }) ?? [0, 1];
+
+  const series: PlotMathboxSeries[] = [
+    {
+      id: "epsilon-current",
+      kind: "line",
+      x: xs,
+      y: currentValues.map((value) => value ?? Number.NaN),
+      color: options.currentColor,
+      width: 1.8,
+      stroke: "solid",
+      markerSize,
+      markerColor: options.currentColor,
+    },
+    {
+      id: "epsilon-target",
+      kind: "line",
+      x: xs,
+      y: targetValues.map((value) => value ?? Number.NaN),
+      color: options.targetColor,
+      width: 1.6,
+      stroke: "dashed",
+      markerSize,
+      markerColor: options.targetColor,
+    },
+  ];
+
+  const legend: PlotMathboxLegendItem[] = [
+    { label: "ε current", color: options.currentColor, stroke: "solid", marker: markerSize > 0 },
+    { label: "ε target", color: options.targetColor, stroke: "dashed", marker: markerSize > 0 },
+  ];
+
+  return {
+    x: {
+      range: [0, xMax],
+      title: "Cumulative Bernoulli trials",
+      format: formatSI,
+      color: options.ink,
+    },
+    y: {
+      range: yRange,
+      title: "ε / target ε",
+      format: EPSILON_Y_FORMAT,
+      color: options.currentColor,
+    },
+    series,
+    references: [],
+    legend,
+  };
+}
+
+function buildDerivativeScene(
+  points: LiveProbabilityPoint[],
+  select: (point: LiveProbabilityPoint) => number | undefined,
+  options: DerivativeOptions,
+): ProbabilityScene {
+  const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
+  const xs = renderPoints.map((point) => point.trials);
+  const values = renderPoints.map((point) => select(point));
+  const hasValues = values.some(isFiniteNumber);
+
+  const markerSize = renderPoints.length <= MARKER_RENDER_THRESHOLD ? options.markerSize : 0;
+  const xMax = Math.max(1, ...xs.filter(isFiniteNumber));
+  const range = symmetricRange(values) ?? [-1, 1];
+
+  return {
+    x: {
+      range: [0, xMax],
+      title: "Cumulative Bernoulli trials",
+      format: formatSI,
+      color: options.ink,
+    },
+    y: {
+      range,
+      title: options.title,
+      format: DERIVATIVE_Y_FORMAT,
+      color: options.color,
+    },
+    series: [
+      {
+        id: "derivative",
+        kind: "line",
+        x: xs,
+        y: values.map((value) => value ?? Number.NaN),
+        color: options.color,
+        width: options.width,
+        stroke: options.stroke,
+        markerSize,
+        markerColor: options.color,
+      },
+    ],
+    references: [
+      {
+        id: "y-zero",
+        axis: "y",
+        value: 0,
+        color: withAlpha(options.ink, 0.32),
+        stroke: "dashed",
+        label: "0",
+        opacity: hasValues ? 1 : 0,
+      },
+    ],
+    legend: [{ label: options.legend, color: options.color, stroke: options.stroke, marker: markerSize > 0 }],
+  };
+}
+
+function symmetricRange(
+  values: Array<number | null | undefined>,
+  pad = 0.12,
+): [number, number] | undefined {
+  const magnitudes = values.filter(isFiniteNumber).map((value) => Math.abs(value));
+  if (!magnitudes.length) return undefined;
+  const max = Math.max(...magnitudes);
+  if (max === 0 || !Number.isFinite(max)) return [-1, 1];
+  const bound = max * (1 + pad);
+  return [-bound, bound];
+}
 
 function completedStatus(previous: SamplingStatus | null, result: LiveResult): SamplingStatus {
   const now = Date.now() / 1000;
@@ -514,6 +1182,29 @@ function probabilityPoint(update: LiveProgressUpdate | null | undefined): LivePr
     targetEpsilon: update.target_epsilon,
     epsilonConverged: update.epsilon_converged,
     oracleP: update.oracle_p,
+    grad: update.grad_p,
+    hess: update.hess_p,
+    gradPerPass: update.grad_p_per_pass,
+    waldEpsilon: update.wald_epsilon,
+    waldTargetEpsilon: update.wald_target_epsilon,
+    waldProjectedTrials: update.wald_projected_trials,
+    bayesEpsilon: update.bayes_epsilon,
+    bayesTargetEpsilon: update.bayes_target_epsilon,
+    bayesProjectedTrials: update.bayes_projected_trials,
+    gbasEpsilon: update.gbas_epsilon,
+    gbasTargetEpsilon: update.gbas_target_epsilon,
+    gbasProjectedTrials: update.gbas_projected_trials,
+    gbasRunCiLow: update.gbas_run_ci_low,
+    gbasRunCiHigh: update.gbas_run_ci_high,
+    gbasRunCi95Low: update.gbas_run_ci95_low,
+    gbasRunCi95High: update.gbas_run_ci95_high,
+    gbasRunCi99Low: update.gbas_run_ci99_low,
+    gbasRunCi99High: update.gbas_run_ci99_high,
+    gbasMean: update.gbas_mean,
+    gbasCiLow: update.gbas_ci_low,
+    gbasCiHigh: update.gbas_ci_high,
+    gbasConverged: update.gbas_converged,
+    gbasTargetDelta: update.gbas_target_delta,
   };
 }
 
@@ -522,31 +1213,6 @@ function trialsXAxis(points: LiveProbabilityPoint[], xMode: "window" | "absolute
   return xMode === "window"
     ? points.map((point) => Math.max(0, point.trials - firstTrials))
     : points.map((point) => point.trials);
-}
-
-function epsilonLogAxisTicks(
-  log10Range: [number, number] | undefined,
-  targetEpsilon: number | undefined,
-): { tickvals: number[]; ticktext: string[] } | undefined {
-  if (!log10Range) return undefined;
-  const [lo, hi] = log10Range;
-  const tickvals: number[] = [];
-  for (let exp = Math.floor(lo); exp <= Math.ceil(hi); exp += 1) {
-    tickvals.push(10 ** exp);
-  }
-  if (isPositiveNumber(targetEpsilon)) {
-    const logTarget = Math.log10(targetEpsilon);
-    const onDecade = tickvals.some((tick) => Math.abs(Math.log10(tick) - logTarget) < 1e-9);
-    if (!onDecade && logTarget >= lo && logTarget <= hi) {
-      tickvals.push(targetEpsilon);
-      tickvals.sort((a, b) => a - b);
-    }
-  }
-  if (!tickvals.length) return undefined;
-  return {
-    tickvals,
-    ticktext: tickvals.map((value) => value.toExponential(3)),
-  };
 }
 
 function thinProbabilityPoints(points: LiveProbabilityPoint[], maxPoints: number): LiveProbabilityPoint[] {
@@ -589,85 +1255,6 @@ function appendProbabilityUpdates(
 
 function probabilityPointKey(point: LiveProbabilityPoint): string {
   return `${point.iterations ?? ""}:${point.trials}`;
-}
-
-function liveConfidenceBandTrace({
-  name,
-  x,
-  lower,
-  upper,
-  color,
-  opacity,
-  legendgroup,
-}: {
-  name: string;
-  x: number[];
-  lower: Array<number | null | undefined>;
-  upper: Array<number | null | undefined>;
-  color: string;
-  opacity: number;
-  legendgroup?: string;
-}): PlotTrace | null {
-  const rows = x
-    .map((value, index) => ({ x: value, lo: lower[index], hi: upper[index] }))
-    .filter((point): point is { x: number; lo: number; hi: number } => Number.isFinite(point.x) && point.x >= 0 && isPositiveNumber(point.lo) && isPositiveNumber(point.hi));
-  if (rows.length < 2) return null;
-  return {
-    type: "scatter",
-    mode: "lines",
-    name,
-    x: [...rows.map((point) => point.x), ...rows.map((point) => point.x).reverse()],
-    y: [...rows.map((point) => point.hi), ...rows.map((point) => point.lo).reverse()],
-    fill: "toself",
-    fillcolor: withAlpha(color, opacity),
-    line: { color: PLOT_TRANSPARENT, width: 0 },
-    hoverinfo: "skip",
-    legendgroup,
-  };
-}
-
-function oracleReferenceTraces(
-  points: LiveProbabilityPoint[],
-  x: number[],
-  oracleP: number | null | undefined,
-  xMode: "window" | "absolute",
-  clientAlpha: number,
-  inkColor: string,
-): PlotTrace[] {
-  if (!isPositiveNumber(oracleP)) return [];
-  const rows = points
-    .map((point, index) => ({ x: x[index], totalTrials: point.trials }))
-    .filter((point) => Number.isFinite(point.x) && point.x >= 0 && isPositiveNumber(point.totalTrials));
-  if (rows.length < 2) return [];
-
-  const xs = rows.map((row) => row.x);
-  const ciRows = xMode === "window" ? rows.filter((row) => row.x > 0) : rows;
-  const effectiveTrials = (row: { x: number; totalTrials: number }) => xMode === "window" ? row.x : row.totalTrials;
-  const halfWidth = (trials: number, z: number) => z * Math.sqrt((oracleP * (1 - oracleP)) / trials + 1e-15);
-  const upper = (z: number) => ciRows.map((row) => Math.min(1, oracleP + halfWidth(effectiveTrials(row), z)));
-  const lower = (z: number) => ciRows.map((row) => Math.max(0, oracleP - halfWidth(effectiveTrials(row), z)));
-  const oracleConfidence = confidenceFromAlpha(clientAlpha);
-  const oracleZ = normalQuantileTwoSided(oracleConfidence);
-  const oracleConfidenceLabel = formatNumber(oracleConfidence * 100, 4);
-  const line = (name: string, ys: number[], dash: string, width = 1.2): PlotTrace => ({
-    type: "scatter",
-    mode: "lines",
-    name,
-    x: ys.length === rows.length ? xs : ciRows.map((row) => row.x),
-    y: ys,
-    line: { color: inkColor, dash, width },
-    hovertemplate: `${name}<br>${xMode === "window" ? "additional" : "total"} trials=%{x:.3s}<br>p=%{y:.4e}<extra>oracle</extra>`,
-  });
-
-  return [
-    line("Oracle p", rows.map(() => oracleP), "dash", 1.8),
-    line("Oracle 99% CI upper", upper(2.576), "solid", 1),
-    line("Oracle 99% CI lower", lower(2.576), "solid", 1),
-    line("Oracle 95% CI upper", upper(1.96), "dash", 1),
-    line("Oracle 95% CI lower", lower(1.96), "dash", 1),
-    line(`Oracle ${oracleConfidenceLabel}% confidence upper`, upper(oracleZ), "dashdot", 1.1),
-    line(`Oracle ${oracleConfidenceLabel}% confidence lower`, lower(oracleZ), "dashdot", 1.1),
-  ];
 }
 
 function linearAxisRange(values: Array<number | null | undefined>, options: { floor?: number; ceiling?: number; pad?: number } = {}): [number, number] | undefined {

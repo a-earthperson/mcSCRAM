@@ -9,10 +9,12 @@ export type SamplerRunOptions = {
   keep_null_gates?: boolean;
   num_trials: number;
   early_stop: boolean;
-  /** Per-node allocator slack for sample_shaper (`settings.overhead_ratio`). */
-  overhead_ratio: number;
+  /** Optimistic per-node trials-per-pass target (`settings.requested_trials_per_pass`; 0 = auto). */
+  requested_trials_per_pass: number;
   confidence?: number;
   delta?: number;
+  /** Host-side convergence/stopping policy ("wald" | "bayes" | "gbas"). */
+  policy?: "wald" | "bayes" | "gbas";
   /** Known true probability µ (mcSCRAM `oracle`); omitted when diagnostics are off. */
   oracle?: number;
 };

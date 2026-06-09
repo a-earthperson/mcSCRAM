@@ -3,7 +3,7 @@ import { usePlotTheme } from "../../../../components/plot/plotTokens";
 import { formatBytes, formatInteger } from "../../../../lib/format";
 import { EmptyState, SectionTitle } from "../../../../components";
 import type { CompileDagOptions, SampleShapeOptions } from "../../../../api/faultTreeApi";
-import { DEFAULT_OVERHEAD_RATIO } from "../../controls/samplerOverheadRatio";
+import { DEFAULT_REQUESTED_TRIALS_PER_PASS } from "../../controls/samplerTrialsPerPass";
 import { DEFAULT_TRIALS_COUNT } from "../../controls/samplerTrials";
 import { DeviceSummary } from "./DeviceSummary";
 import { ExecutionGraph } from "./ExecutionGraph";
@@ -18,7 +18,7 @@ import "../execution-plan.css";
 
 const DEFAULT_SAMPLE_OPTIONS: SampleShapeOptions = {
   numTrials: DEFAULT_TRIALS_COUNT,
-  overheadRatio: DEFAULT_OVERHEAD_RATIO,
+  requestedTrialsPerPass: DEFAULT_REQUESTED_TRIALS_PER_PASS,
 };
 
 export function ExecutionPlanPanel({

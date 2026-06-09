@@ -35,7 +35,7 @@ export function useExecutionPlan({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { numTrials, overheadRatio } = sampleOptions;
+  const { numTrials, requestedTrialsPerPass } = sampleOptions;
 
   useEffect(() => {
     if (!selectedId) {
@@ -49,7 +49,7 @@ export function useExecutionPlan({
     setLoading(true);
     setError(null);
 
-    fetchExecutionPlanForModel(selectedId, compileOptions, { numTrials, overheadRatio })
+    fetchExecutionPlanForModel(selectedId, compileOptions, { numTrials, requestedTrialsPerPass })
       .then((payload) => {
         if (cancelled) return;
         if (payload.error) {
@@ -72,7 +72,7 @@ export function useExecutionPlan({
     return () => {
       cancelled = true;
     };
-  }, [selectedId, compileOptions, numTrials, overheadRatio]);
+  }, [selectedId, compileOptions, numTrials, requestedTrialsPerPass]);
 
   return { plan, loading, error };
 }

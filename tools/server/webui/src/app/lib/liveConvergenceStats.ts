@@ -28,6 +28,87 @@ export type ConvergenceStatsPayload = {
   info_bits_total?: number;
   oracle_p?: number;
   phase?: string;
+
+  // --- host-side (Python) engine extensions -------------------------------
+  // The convergence/statistics loop now runs on the host (see
+  // server `mcscram_server.convergence`).  In addition to the canonical Wald
+  // fields above, every attached policy/metric is streamed under its own
+  // namespace.  All optional and additive; existing consumers are unaffected.
+  pass_index?: number;
+  trials_per_pass?: number;
+  converged?: boolean;
+  stop_reason?: string;
+  stopping_policy?: string;
+  primary_policy?: string;
+
+  // Negative gradient (and curvature) of the point estimate vs. trials.
+  grad_p?: number;
+  neg_grad_p?: number;
+  grad_p_per_pass?: number;
+  hess_p?: number;
+
+  // Wald policy (namespaced duplicate of the canonical Wald fields).
+  wald_epsilon?: number;
+  wald_target_epsilon?: number;
+  wald_converged?: boolean;
+  wald_projected_trials?: number;
+
+  // Bayesian (Jeffreys Beta posterior) policy stream.
+  bayes_mean?: number;
+  bayes_std_err?: number;
+  bayes_epsilon?: number;
+  bayes_target_epsilon?: number;
+  bayes_converged?: boolean;
+  bayes_ci_low?: number;
+  bayes_ci_high?: number;
+  bayes_alpha?: number;
+  bayes_beta?: number;
+  bayes_projected_trials?: number;
+
+  // GBAS (Huber 2017) exact relative-error stream.  Stopping is on a fixed
+  // success count `gbas_k`; `gbas_epsilon`/`gbas_target_epsilon` are the current
+  // and target *relative* standard deviations (1/sqrt(successes-2) vs.
+  // 1/sqrt(k-2)), so converged iff successes >= k.  The point estimate
+  // (`gbas_mean = (k-1)/R`) and exact CI are populated only once converged.
+  gbas_k?: number;
+  gbas_successes?: number;
+  gbas_target_delta?: number;
+  gbas_achieved_delta?: number;
+  gbas_relative_tolerance?: number;
+  gbas_rel_sd?: number;
+  gbas_rel_sd_target?: number;
+  gbas_epsilon?: number;
+  gbas_target_epsilon?: number;
+  gbas_converged?: boolean;
+  gbas_projected_trials?: number;
+  // Running exact relative-error bands (every pass, once successes >= 3): the
+  // running mean scaled by the Gamma(S, S-1) relative interval at the current
+  // success count S. `run_ci_*` is the client-requested level; `run_ci95_*` and
+  // `run_ci99_*` are fixed 95%/99% bands (parity with the p05-p95 / p01-p99
+  // display). All shrink toward the exact intervals at the stopping time.
+  gbas_run_ci_low?: number;
+  gbas_run_ci_high?: number;
+  gbas_run_ci95_low?: number;
+  gbas_run_ci95_high?: number;
+  gbas_run_ci99_low?: number;
+  gbas_run_ci99_high?: number;
+  // Exact estimate + intervals, populated only once converged (successes >= k).
+  // `ci_*` is the client level; `ci95_*` / `ci99_*` are the fixed 95%/99% pivots.
+  gbas_mean?: number;
+  gbas_std_err?: number;
+  gbas_ci_low?: number;
+  gbas_ci_high?: number;
+  gbas_ci95_low?: number;
+  gbas_ci95_high?: number;
+  gbas_ci99_low?: number;
+  gbas_ci99_high?: number;
+  gbas_rel_low?: number;
+  gbas_rel_high?: number;
+  gbas_n_star?: number;
+  gbas_gamma_r?: number;
+
+  // Optional per-node summaries when multiple nodes are tracked.
+  nodes?: Record<string, { mean?: number; trials?: number }>;
 };
 
 export type WaldConvergenceParams = {
@@ -58,6 +139,16 @@ function trialsPerIteration(update: RawConvergenceInput): number | undefined {
 function iterationsFromTrials(trials: number | undefined, trialsPerIter: number | undefined): number | undefined {
   if (!finitePositive(trials) || !finitePositive(trialsPerIter)) return undefined;
   return Math.ceil(trials / trialsPerIter);
+}
+
+/** GBAS projected trial budget expressed as pass count (ceil trials / trials-per-pass). */
+export function gbasProjectedPasses(
+  update: Pick<ConvergenceStatsPayload, "gbas_projected_trials" | "trials_per_pass" | "trials" | "iterations">,
+): number | undefined {
+  const trialsPerPass = finitePositive(update.trials_per_pass)
+    ? update.trials_per_pass
+    : trialsPerIteration(update);
+  return iterationsFromTrials(update.gbas_projected_trials, trialsPerPass);
 }
 
 export function normalQuantileTwoSided(confidence: number): number {

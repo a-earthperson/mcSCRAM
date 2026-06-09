@@ -94,9 +94,10 @@ export function ControlPanel({
       keep_null_gates: compileOptions.keepNullGates,
       num_trials: samplerSettings.trialsCount,
       early_stop: samplerSettings.stopOnConvergence,
-      overhead_ratio: samplerSettings.overheadRatio,
+      requested_trials_per_pass: samplerSettings.requestedTrialsPerPass,
       confidence: samplerSettings.confidence,
       delta: samplerSettings.delta,
+      policy: "gbas",
       ...(inputSettings.oracleEnabled ? { oracle: inputSettings.oracleP } : {}),
     }),
   });
@@ -118,7 +119,7 @@ export function ControlPanel({
 
     fetchSampleShapeForModel(selectedId, compileOptions, {
       numTrials: samplerSettings.trialsCount,
-      overheadRatio: samplerSettings.overheadRatio,
+      requestedTrialsPerPass: samplerSettings.requestedTrialsPerPass,
     })
       .then((payload) => {
         if (cancelled) return;
@@ -137,7 +138,7 @@ export function ControlPanel({
     return () => {
       cancelled = true;
     };
-  }, [compileOptions, samplerSettings.overheadRatio, samplerSettings.trialsCount, selectedId]);
+  }, [compileOptions, samplerSettings.requestedTrialsPerPass, samplerSettings.trialsCount, selectedId]);
 
   useEffect(() => {
     onSamplingControlsChange?.(samplingControls);

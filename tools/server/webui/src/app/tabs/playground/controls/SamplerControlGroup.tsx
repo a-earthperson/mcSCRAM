@@ -1,7 +1,7 @@
 import { StickyPanelGroup, StickyPanelSlot, type StickyPanelSpan } from "../../../components/ui/StickyPanel";
 import { ConfidenceCiField } from "./ConfidenceCiField";
 import { DeltaField } from "./DeltaField";
-import { OverheadRatioField } from "./OverheadRatioField";
+import { TrialsPerPassField } from "./TrialsPerPassField";
 import { TrialsNField } from "./TrialsNField";
 import type { SamplerSettings } from "./useSamplerSettings";
 
@@ -27,10 +27,9 @@ export function SamplerControlGroup({
           stopOnConvergence={settings.stopOnConvergence}
           disabled={disabled}
         />
-        <OverheadRatioField
-          visible={false}
-          value={settings.overheadRatio}
-          onChange={settings.setOverheadRatio}
+        <TrialsPerPassField
+          value={settings.requestedTrialsPerPass}
+          onChange={settings.setRequestedTrialsPerPass}
           disabled={disabled}
         />
         <ConfidenceCiField
