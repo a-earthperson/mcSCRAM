@@ -40,7 +40,7 @@
 
 .playground-controls .pg-title .section-title .eyebrow {
   margin-bottom: 5px;
-  color: var(--accent);
+  color: var(--accent-rubric);
   font-size: 0.62rem;
   letter-spacing: 0.24em;
 }

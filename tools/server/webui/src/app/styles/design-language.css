@@ -110,10 +110,27 @@
     --pigment-paynes-dark:        oklch(34% 0.046 266);   /* charcoal slate */
     --pigment-rose-dark:          oklch(46% 0.085 10);    /* deep rose */
 
-    /* UI accent: deep indigo for hover, focus, active state, and
-       the tracked labels that punctuate the scholarly layout. */
-    --accent:      var(--pigment-indigo-deep);
-    --accent-soft: color-mix(in oklch, var(--pigment-indigo-deep) 16%, transparent);
+    /* ---- Accent roles: the second inks of the plate ----
+       One ink per editorial job, so the page reads as a full pigment
+       case instead of a one-ink print. Interaction keeps the single
+       indigo accent (links, hover, focus, selection, active states);
+       the non-interactive punctuation draws from the other families:
+         --accent-rubric   rubrication — eyebrows, section markers,
+                           card labels, footnote sigils (madder)
+         --accent-taxon    taxonomy — glossary terms, definition
+                           headings, legend keys (sage)
+         --accent-figure   figures — display numerals, metric values
+                           (bronze ochre; lantern amber at night)
+         --accent-formula  scholarly apparatus — formula rails and
+                           labels (paynes)
+       Built on pigment vars, so the night plate inherits the roles. */
+    --accent:         var(--pigment-indigo-deep);
+    --accent-soft:    color-mix(in oklch, var(--pigment-indigo-deep) 16%, transparent);
+    --accent-rubric:  var(--pigment-madder);
+    --accent-taxon:   var(--pigment-sage);
+    --accent-figure:  var(--pigment-ochre-dark);
+    --accent-formula: var(--pigment-paynes);
+    --wash-formula:   color-mix(in oklch, var(--pigment-paynes) 7%, transparent);
 
     /* ---- Semantic washes & edges (pigment-tinted UI chrome) ----
        Built from botanical pigments via color-mix so light and dark
@@ -304,6 +321,39 @@
     ), transparent;
   }
 
+/* ============================================================
+ * Night plate — abyssal bioluminescence.
+ * ------------------------------------------------------------
+ * The same archive after dark: the page sinks into a blue-black
+ * abyss and the botanical pigments come alive as far-off
+ * bioluminescent glow — vegetation at night, deep-sea lanterns.
+ * Restraint is the whole trick: tiny pools of saturated light
+ * over vast dark water, never a neon arcade.
+ *
+ * Palette system (night plate):
+ *   Each family keeps one locked hue axis, rotated a few degrees
+ *   from its daytime axis toward its fluorescent counterpart:
+ *     indigo 252°→230° (prussian → abyssal cyan-azure)
+ *     paynes 266°→250° (grey-blue → moon steel)
+ *     sage   145°→165° (terre verte → bioluminal teal)
+ *     ochre   80°→ 85° (yellow ochre → lantern amber)
+ *     madder  25°→ 10° (brick → hot rose)
+ *     rose    10°→340° (cool pink → orchid violet)
+ *   Tier roles invert with the plate, and every pigment is seated
+ *   at its hue's sRGB gamut cusp (~90–95% of max chroma at its L):
+ *   luminosity on a dark field is saturation-relative-to-lightness,
+ *   so a pale tint reads as chalk while a cusp color reads as glow.
+ *     wash   L 64–78, C 0.06–0.21 — page glow, borders, type
+ *            (each at its cusp; type-bearing washes ≥4.5:1 on cards)
+ *     pale   L 52–58 — mid-ramp for the continuous colorscale
+ *     bright L 68–82 — the flare: lighter than wash, still at the
+ *            cusp for the new L (glow cores whiten as they flare)
+ *     dark   L 48–62 — receding under-traces, saturation held
+ *   Neutrals: abyss locked to H 272 (blue-black water column),
+ *   ink locked to H 220 — moonlit, faintly cyan, with chroma
+ *   rising as it dissolves into the deep.
+ * ============================================================ */
+
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
@@ -311,88 +361,104 @@
     --global-lighting: unset;
     --paper-acid-wash: hue-rotate(282deg);
 
-    /* Paper: lampblack rag stock pushed to a near-black night void with a
-       whisper of cool blue (B leads R≈G) instead of the warm brown of day.
-       The deep base is what lets the pigment washes read as far-off neon
-       leaking across the page rather than mineral stains on warm stock. */
-    --paper:       oklch(0% 0 0);   /* the night void */
-    --paper-2:     oklch(23.67% 0.0239 270.2);   /* lifted plate (raised cards) */
-    --paper-tint:  oklch(18.91% 0.0186 274.76);   /* gentle wash for hover / active */
-    --paper-cool:  oklch(16.51% 0.0151 272.25);   /* the plate interior (specimen frame) */
+    /* Abyss: not a dead #000 — the water column carries a whisper of
+       blue (H locked to 272) that deepens the further down you look.
+       The faint lift off true black lets hairlines and glow tails
+       resolve instead of crushing, while staying unmistakably night. */
+    --paper:       oklch(3% 0.012 272);     /* the abyss */
+    --paper-2:     oklch(24% 0.024 272);    /* lifted plate (raised cards) */
+    --paper-tint:  oklch(19% 0.019 272);    /* gentle wash for hover / active */
+    --paper-cool:  oklch(16.5% 0.015 272);  /* the plate interior (specimen frame) */
 
-    /* Ink: warm vellum kept deliberately warm against the cool-black stock —
-       a lit room behind a cold neon night. The muted tier stays high
-       contrast because it carries labels, captions, and table metadata. */
-    --ink:         oklch(94.23% 0.0137 78.26);   /* primary */
-    --ink-2:       oklch(87.47% 0.0197 72.55);   /* body ink */
-    --ink-mute:    oklch(74.25% 0.0266 69.32);   /* annotation */
-    --ink-faint:   oklch(55.57% 0.0205 64.69);   /* decorative tertiary */
+    /* Ink: moonlight, not lamplight. Hue locked to 220 — a cool,
+       faintly cyan white that reads as pale glow over dark water;
+       chroma rises monotonically as the ink fades, dissolving into
+       the blue of the abyss the way dilute day-ink shows its stock.
+       ink-mute holds ~7:1 on the raised plate. */
+    --ink:         oklch(93.5% 0.01 220);   /* primary */
+    --ink-2:       oklch(87% 0.014 220);    /* body ink */
+    --ink-mute:    oklch(74% 0.018 220);    /* annotation */
+    --ink-faint:   oklch(55% 0.022 220);    /* decorative tertiary */
 
-    --rule:        oklch(94.23% 0.0137 78.26 / 0.78);   /* hairline at strength */
-    --rule-mute:   oklch(94.23% 0.0137 78.26 / 0.29);   /* dotted divider */
-    --rule-faint:  oklch(94.23% 0.0137 78.26 / 0.12);   /* panel ruling */
+    --rule:        oklch(93.5% 0.01 220 / 0.78);   /* hairline at strength */
+    --rule-mute:   oklch(93.5% 0.01 220 / 0.29);   /* dotted divider */
+    --rule-faint:  oklch(93.5% 0.01 220 / 0.12);   /* panel ruling */
 
-    /* Neon pigments: the same botanical family lifted into a fluorescent
-       register — electric azure, jade, amber, hot rose — luminous enough to
-       glow as washes and chart traces over the void, yet held just off the
-       pure primaries so the palette reads as elegant neon, not arcade. The
-       -deep sibling is the brighter one in the dark (text strength + accent
-       must out-glow, not recede). Paynes stays the cool "grey" of the set. */
-    --pigment-indigo:      oklch(74.48% 0.1244 233.16);   /* electric prussian / azure */
-    --pigment-indigo-deep: oklch(83.24% 0.1074 227.92);   /* neon cyan — text strength, accent */
-    --pigment-sage:        oklch(81.66% 0.146 162.13);   /* fluorescent terre verte / jade */
-    --pigment-ochre:       oklch(84.89% 0.149 80.87);   /* electric amber */
-    --pigment-madder:      oklch(75.24% 0.1598 2.38);   /* hot madder / neon rose */
-    --pigment-paynes:      oklch(75.65% 0.0553 236.59);   /* steel cyan glow */
+    /* Bioluminescent pigments: the botanical family emitting its own
+       light — azure, teal, amber, hot rose — each seated at its hue's
+       gamut cusp so it reads as saturated glow, not pale tint. The
+       cusp sets the natural lightness order (amber high, rose deep).
+       The -deep sibling is the brighter one at night (text strength +
+       accent must out-glow, not recede). Paynes is the moon-steel
+       grey, deliberately held far inside the gamut. */
+    --pigment-indigo:      oklch(68% 0.125 230);    /* abyssal azure */
+    --pigment-indigo-deep: oklch(74% 0.14 230);     /* lantern cyan — text strength, accent */
+    --pigment-sage:        oklch(72% 0.14 165);     /* bioluminal teal */
+    --pigment-ochre:       oklch(78% 0.155 85);     /* lantern amber */
+    --pigment-madder:      oklch(64% 0.21 10);      /* hot rose */
+    --pigment-paynes:      oklch(72% 0.06 250);     /* moon steel */
 
-    /* Paled siblings: mid-ramp neon for the continuous colorscale / washes. */
-    --pigment-sky:         oklch(67.17% 0.1238 237.1);
-    --pigment-celadon:     oklch(63.37% 0.1121 161.13);
-    --pigment-rose:        oklch(64.01% 0.1198 2.3);
+    /* Mid-ramp siblings: dimmed glow for the continuous colorscale —
+       tuned so the scalar ramp climbs evenly out of the abyss
+       (L ≈ 11 → 52 → 68 → 81 → 93.5). Rose turns orchid violet here,
+       the iridescent axis the day plate keeps furled. */
+    --pigment-sky:         oklch(52% 0.10 230);
+    --pigment-celadon:     oklch(56% 0.115 165);
+    --pigment-rose:        oklch(58% 0.16 340);
 
-    /* Bright pigments: the neon family pushed to peak luminance for crisp
-       plot lines & markers — distant signage at full glow over the void,
-       one notch hotter and lighter than the wash-grade pigments above. */
-    --pigment-indigo-bright:      oklch(78.7% 0.1267 235.12);   /* peak azure */
-    --pigment-indigo-deep-bright: oklch(88.07% 0.0805 223.49);   /* luminous cyan */
-    --pigment-sage-bright:        oklch(86.66% 0.1352 163.86);   /* bright jade */
-    --pigment-ochre-bright:       oklch(88.09% 0.1307 85.22);   /* bright amber */
-    --pigment-madder-bright:      oklch(80.22% 0.1229 0.05);   /* bright hot rose */
-    --pigment-paynes-bright:      oklch(84.41% 0.0451 236.84);   /* bright steel cyan */
-    --pigment-rose-bright:        oklch(74.86% 0.1049 2.17);   /* bright rose */
+    /* Bright pigments: the flare — lighter than the wash grade but
+       still riding the cusp at the new lightness, the way a glow core
+       whitens as it brightens. For crisp plot lines & markers. */
+    --pigment-indigo-bright:      oklch(72% 0.135 230);   /* peak azure */
+    --pigment-indigo-deep-bright: oklch(78% 0.128 230);   /* luminous cyan */
+    --pigment-sage-bright:        oklch(78% 0.155 165);   /* flaring teal */
+    --pigment-ochre-bright:       oklch(82% 0.16 85);     /* flaring amber */
+    --pigment-madder-bright:      oklch(68% 0.205 10);    /* flaring rose */
+    --pigment-paynes-bright:      oklch(78% 0.055 250);   /* bright moon steel */
+    --pigment-rose-bright:        oklch(68% 0.23 340);    /* flaring orchid */
 
-    /* Dark pigments: the neon family dimmed and deepened — signage seen
-       from further off. Recedes toward the void for shadow strokes, deep
-       fills, and secondary/under traces beneath the bright ones. */
-    --pigment-indigo-dark:        oklch(50.4% 0.1067 242.95);   /* deep azure */
-    --pigment-indigo-deep-dark:   oklch(55.59% 0.1023 238.15);   /* deep cyan */
-    --pigment-sage-dark:          oklch(58.76% 0.1129 162.31);   /* deep jade */
-    --pigment-ochre-dark:         oklch(67.01% 0.1283 78.06);   /* deep amber */
-    --pigment-madder-dark:        oklch(59.02% 0.155 4.33);   /* deep hot rose */
-    --pigment-paynes-dark:        oklch(52.82% 0.0551 239.11);   /* deep steel cyan */
-    --pigment-rose-dark:          oklch(52.81% 0.1052 2.34);   /* deep rose */
+    /* Dark pigments: the same organisms seen from further off —
+       dimmer but no less saturated (depth mutes light before color),
+       for shadow strokes, deep fills, and under-traces. */
+    --pigment-indigo-dark:        oklch(48% 0.09 230);    /* deep azure */
+    --pigment-indigo-deep-dark:   oklch(54% 0.105 230);   /* deep cyan */
+    --pigment-sage-dark:          oklch(54% 0.11 165);    /* deep teal */
+    --pigment-ochre-dark:         oklch(62% 0.12 85);     /* deep amber */
+    --pigment-madder-dark:        oklch(52% 0.185 10);    /* deep rose */
+    --pigment-paynes-dark:        oklch(50% 0.05 250);    /* deep moon steel */
+    --pigment-rose-dark:          oklch(50% 0.195 340);   /* deep orchid */
 
     --accent:      var(--pigment-indigo-deep);
     --accent-soft: color-mix(in oklch, var(--pigment-indigo-deep) 24%, transparent);
 
+    /* Accent roles inherit the night pigments automatically; only the
+       figure ink flips tier — day uses deep bronze (dark tier) for
+       weight on pale stock, night must glow, so it takes the lantern
+       amber wash grade instead of receding bronze. */
+    --accent-figure: var(--pigment-ochre);
+
     /* Darkening blackout behind the lightbox so the lit plate pops out of
-       the deepened night (the warm-ink default would milk the page white). */
-    --scrim-ink:   oklch(10.77% 0.0134 269.72 / 0.78);
+       the deepened night (the moon-ink default would milk the page white). */
+    --scrim-ink:   oklch(10.5% 0.013 272 / 0.78);
 
-    /* Higher than day: against the near-black void the neon blooms can run
-       hotter and softer — distant signage bleeding in from beyond the page. */
-    --paper-wash-intensity: 0.2;
+    /* Quieter than day: the blooms are saturated, so a low dial keeps
+       them reading as far-off glow through dark water, not stage light.
+       1 = this plate as tuned; raise it and the caps below hold the
+       ceiling before the page turns gaudy. */
+    --paper-wash-intensity: 0.67;
 
-    /* Four corner blooms (azure, hot rose, jade, amber) anchored off-canvas
-       with a long soft falloff so only the blurred tail leaks onto the page,
-       plus a cool cyan haze from above and a warm rose haze from below. */
+    /* Four corner blooms (azure, hot rose, teal, amber) anchored
+       off-canvas with a long soft falloff so only the blurred tail of
+       each glow drifts onto the page, plus a cyan haze sinking from
+       above and an orchid haze rising from below — the iridescent
+       counter-current. Literals mirror the pigment axes above. */
     --paper-wash:
-      radial-gradient(72% 56% at 4% 2%,   oklch(74.48% 0.1244 233.16 / min(0.34, calc(0.20 * var(--paper-wash-intensity)))), transparent 70%),
-      radial-gradient(66% 50% at 98% 14%, oklch(75.24% 0.1598 2.38 / min(0.28, calc(0.16 * var(--paper-wash-intensity)))), transparent 70%),
-      radial-gradient(74% 58% at 84% 100%, oklch(81.66% 0.146 162.13 / min(0.26, calc(0.15 * var(--paper-wash-intensity)))), transparent 70%),
-      radial-gradient(60% 48% at 10% 92%, oklch(84.89% 0.149 80.87 / min(0.22, calc(0.12 * var(--paper-wash-intensity)))), transparent 70%),
-      radial-gradient(80% 60% at 50% -16%, oklch(83.24% 0.1074 227.92 / 0.07), transparent 72%),
-      radial-gradient(80% 55% at 50% 116%, oklch(75.24% 0.1598 2.38 / 0.05), transparent 72%),
+      radial-gradient(76% 58% at 4% 2%,   oklch(68% 0.125 230 / min(0.30, calc(0.14 * var(--paper-wash-intensity)))), transparent 75%),
+      radial-gradient(68% 52% at 98% 14%, oklch(64% 0.21 10 / min(0.24, calc(0.11 * var(--paper-wash-intensity)))), transparent 75%),
+      radial-gradient(76% 60% at 84% 100%, oklch(72% 0.14 165 / min(0.22, calc(0.10 * var(--paper-wash-intensity)))), transparent 75%),
+      radial-gradient(62% 50% at 10% 92%, oklch(78% 0.155 85 / min(0.18, calc(0.08 * var(--paper-wash-intensity)))), transparent 75%),
+      radial-gradient(80% 60% at 50% -16%, oklch(74% 0.14 230 / 0.06), transparent 72%),
+      radial-gradient(80% 55% at 50% 116%, oklch(58% 0.16 340 / 0.05), transparent 72%),
       var(--paper-wash-base);
 
     /* Translucent control parchment: dark frosted glass with neon edge-tints
@@ -400,6 +466,6 @@
        through it keep their glow. */
     --parchment-backdrop: blur(32px) contrast(1.12) brightness(1.95) saturate(2.0);
     --double-parchment-backdrop: blur(20px) contrast(1.4) saturate(1.25) hue-rotate(-10deg) brightness(0.82);
-    --parchment-background: oklch(10.77% 0.0134 269.72 / 0.1);
+    --parchment-background: oklch(10.5% 0.013 272 / 0.1);
   }
 }

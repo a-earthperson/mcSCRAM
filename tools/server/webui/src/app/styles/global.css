@@ -124,7 +124,7 @@ select {
   content: "Specimen counts";
   display: block;
   margin: 0 0 12px;
-  color: var(--accent);
+  color: var(--accent-rubric);
   font-family: var(--sans);
   font-weight: 600;
   font-size: 0.72rem;
@@ -134,7 +134,7 @@ select {
 
 .eyebrow {
   margin: 0 0 14px;
-  color: var(--accent);
+  color: var(--accent-rubric);
   font-family: var(--sans);
   font-weight: 600;
   font-size: 0.74rem;
@@ -300,8 +300,8 @@ h2 {
   min-width: 0;
 }
 
-/* Section heading: tracked-uppercase sans eyebrow in indigo, a roman
-   serif title, and a faint pigment-tinted hairline rule. */
+/* Section heading: tracked-uppercase sans eyebrow in madder rubric,
+   a roman serif title, and a faint pigment-tinted hairline rule. */
 .section-title {
   margin-bottom: 22px;
   padding-bottom: 12px;
@@ -800,7 +800,7 @@ tbody tr:hover td {
 }
 
 .model-atlas-key strong {
-  color: var(--accent);
+  color: var(--accent-taxon);
   font-family: var(--sans);
   font-size: 0.68rem;
   letter-spacing: 0.16em;
@@ -823,7 +823,7 @@ tbody tr:hover td {
 .model-insight-card span,
 .reference-row span {
   display: block;
-  color: var(--accent);
+  color: var(--accent-rubric);
   font-family: var(--sans);
   font-size: 0.68rem;
   font-weight: 600;
@@ -966,7 +966,7 @@ tbody tr:hover td {
   font-size: 1.25rem;
   letter-spacing: 0;
   font-feature-settings: "tnum", "lnum";
-  color: var(--accent);
+  color: var(--accent-figure);
 }
 
 .narrative-card p:last-of-type {
@@ -1381,7 +1381,7 @@ tbody tr:hover td {
   font-family: var(--serif-display);
   font-weight: 500;
   font-size: 1.15rem;
-  color: var(--accent);
+  color: var(--accent-taxon);
 }
 
 .stage-tag {
@@ -1541,8 +1541,8 @@ tbody tr:hover td {
   display: grid;
   gap: 4px;
   padding: 12px 14px;
-  border-left: 2px solid var(--accent);
-  background: var(--wash-callout);
+  border-left: 2px solid var(--accent-formula);
+  background: var(--wash-formula);
 }
 
 .formula-label {
@@ -1551,7 +1551,7 @@ tbody tr:hover td {
   font-size: 0.68rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-formula);
 }
 
 .formula code {
@@ -1663,7 +1663,7 @@ tbody tr:hover td {
   font-weight: 500;
   font-size: 1.4rem;
   letter-spacing: -0.005em;
-  color: var(--accent);
+  color: var(--accent-taxon);
 }
 
 .flag-dict dd {
@@ -2032,7 +2032,7 @@ tbody tr:hover td {
   font-style: italic;
   font-size: 1.05rem;
   letter-spacing: -0.003em;
-  color: var(--accent);
+  color: var(--accent-taxon);
 }
 
 .glossary dd {
@@ -2079,7 +2079,7 @@ tbody tr:hover td {
   position: absolute;
   left: 0;
   top: 0;
-  color: var(--accent);
+  color: var(--accent-rubric);
   font-family: var(--serif-display);
   font-weight: 500;
 }

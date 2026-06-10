@@ -53,7 +53,7 @@
 
 .exec-card__eyebrow {
   margin: 0;
-  color: var(--accent);
+  color: var(--accent-rubric);
   font-family: var(--sans);
   font-weight: 600;
   font-size: 0.6rem;
