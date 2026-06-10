@@ -1,4 +1,5 @@
 import { useMemo, useSyncExternalStore } from "react";
+import { converter, parse } from "culori";
 
 /** Resolved ink + pigment register for Plotly traces (from :root CSS custom properties). */
 export type InkPalette = {
@@ -68,38 +69,38 @@ export type PlotTheme = {
 const LIGHT_FALLBACK: InkPalette = {
   ink: "#22201e",
   inkSoft: "#35322f",
-  inkMute: "#58524d",
-  inkFaint: "#94897e",
-  indigo: "#6b7f96",
-  indigoDeep: "#4a5e76",
-  sage: "#8ba189",
-  ochre: "#b39866",
-  madder: "#a8807a",
-  paynes: "#555a64",
-  rose: "#d5b9b1",
-  indigoBright: "#2f6ba8",
-  indigoDeepBright: "#21528a",
-  sageBright: "#4a9d5f",
-  ochreBright: "#c8942c",
-  madderBright: "#c6505d",
-  paynesBright: "#4e6a95",
-  roseBright: "#df7d8b",
-  indigoDark: "#244466",
-  indigoDeepDark: "#1a3451",
-  sageDark: "#285d32",
-  ochreDark: "#745425",
-  madderDark: "#722c30",
-  paynesDark: "#2b3850",
-  roseDark: "#7e4b44",
-  paper: "#ece8e4",
+  inkMute: "#56504b",
+  inkFaint: "#93897f",
+  indigo: "#637d9a",
+  indigoDeep: "#35577e",
+  sage: "#5c7f5d",
+  ochre: "#ae8c54",
+  madder: "#9a6460",
+  paynes: "#545966",
+  rose: "#d6b8bc",
+  indigoBright: "#316ba9",
+  indigoDeepBright: "#20548a",
+  sageBright: "#4a8c4e",
+  ochreBright: "#b4821b",
+  madderBright: "#ad4b47",
+  paynesBright: "#556895",
+  roseBright: "#c46a79",
+  indigoDark: "#254466",
+  indigoDeepDark: "#193451",
+  sageDark: "#2f5c31",
+  ochreDark: "#72551f",
+  madderDark: "#6f2d2a",
+  paynesDark: "#2d3750",
+  roseDark: "#80424d",
+  paper: "#fdfaf7",
   plate: "#faf7f3",
   rule: "rgba(34, 32, 30, 0.92)",
   grid: "rgba(34, 32, 30, 0.08)",
   annotationBg: "rgba(250, 247, 243, 0.72)",
   oracleBand99: "rgba(34, 32, 30, 0.48)",
   oracleBand95: "rgba(34, 32, 30, 0.58)",
-  bandSage: "rgba(139, 161, 137, 0.12)",
-  bandMadder: "rgba(168, 128, 122, 0.10)",
+  bandSage: "rgba(92, 127, 93, 0.12)",
+  bandMadder: "rgba(154, 100, 96, 0.10)",
 };
 
 export const PLOT_TRANSPARENT = "transparent";
@@ -108,6 +109,68 @@ function readCssVar(name: `--${string}`, fallback = ""): string {
   if (typeof document === "undefined") return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value || fallback;
+}
+
+/* ---- CSS color → legacy sRGB resolution ----------------------------
+   design-language.css is authored in oklch() and color-mix(), but the
+   downstream consumers (THREE.Color via mathbox, Plotly's tinycolor,
+   and the withAlpha/darken helpers below) only understand legacy
+   `#rrggbb` / `rgb()` / `rgba()` strings. Custom-property reads return
+   the raw token text — getComputedStyle does NOT resolve them to a
+   color — so every color token is normalized here, keeping the CSS
+   file as the single source of truth. */
+
+const toRgb = converter("rgb");
+
+let colorProbe: HTMLSpanElement | null = null;
+
+/** Let the CSS engine evaluate expressions culori can't (e.g. color-mix()). */
+function computeColorViaProbe(value: string): string {
+  if (typeof document === "undefined" || !document.documentElement) return "";
+  if (!colorProbe) {
+    colorProbe = document.createElement("span");
+    colorProbe.style.display = "none";
+    document.documentElement.appendChild(colorProbe);
+  }
+  colorProbe.style.color = "";
+  colorProbe.style.color = value;
+  if (!colorProbe.style.color) return "";
+  return getComputedStyle(colorProbe).color;
+}
+
+/** Token strings are stable per color scheme, so resolution is memoizable. */
+const resolvedColorCache = new Map<string, string>();
+
+/** Resolve any CSS color expression to `#rrggbb` or `rgba(r, g, b, a)`. */
+export function resolveCssColor(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith("#") || /^rgba?\(/i.test(trimmed)) return trimmed;
+  const cached = resolvedColorCache.get(trimmed);
+  if (cached !== undefined) return cached;
+
+  let parsed = parse(trimmed);
+  if (!parsed) {
+    const computed = computeColorViaProbe(trimmed);
+    parsed = computed ? parse(computed) : undefined;
+  }
+  const rgb = parsed ? toRgb(parsed) : undefined;
+  if (!rgb) return trimmed;
+
+  const channel = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  const r = channel(rgb.r);
+  const g = channel(rgb.g);
+  const b = channel(rgb.b);
+  const alpha = rgb.alpha ?? 1;
+  const resolved =
+    alpha < 1
+      ? `rgba(${r}, ${g}, ${b}, ${Math.round(alpha * 1000) / 1000})`
+      : `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  resolvedColorCache.set(trimmed, resolved);
+  return resolved;
+}
+
+function readCssColor(name: `--${string}`, fallback = ""): string {
+  return resolveCssColor(readCssVar(name, fallback));
 }
 
 function subscribeToColorScheme(onStoreChange: () => void): () => void {
@@ -122,44 +185,45 @@ function getColorSchemeSnapshot(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-/** Read the current plate palette from design-language.css custom properties. */
+/** Read the current plate palette from design-language.css custom properties,
+    resolved to legacy sRGB strings (THREE / Plotly / tinycolor safe). */
 export function getInkPalette(): InkPalette {
   const fb = LIGHT_FALLBACK;
   return {
-    ink: readCssVar("--ink", fb.ink),
-    inkSoft: readCssVar("--ink-2", fb.inkSoft),
-    inkMute: readCssVar("--ink-mute", fb.inkMute),
-    inkFaint: readCssVar("--ink-faint", fb.inkFaint),
-    indigo: readCssVar("--pigment-indigo", fb.indigo),
-    indigoDeep: readCssVar("--pigment-indigo-deep", fb.indigoDeep),
-    sage: readCssVar("--pigment-sage", fb.sage),
-    ochre: readCssVar("--pigment-ochre", fb.ochre),
-    madder: readCssVar("--pigment-madder", fb.madder),
-    paynes: readCssVar("--pigment-paynes", fb.paynes),
-    rose: readCssVar("--pigment-rose", fb.rose),
-    indigoBright: readCssVar("--pigment-indigo-bright", fb.indigoBright),
-    indigoDeepBright: readCssVar("--pigment-indigo-deep-bright", fb.indigoDeepBright),
-    sageBright: readCssVar("--pigment-sage-bright", fb.sageBright),
-    ochreBright: readCssVar("--pigment-ochre-bright", fb.ochreBright),
-    madderBright: readCssVar("--pigment-madder-bright", fb.madderBright),
-    paynesBright: readCssVar("--pigment-paynes-bright", fb.paynesBright),
-    roseBright: readCssVar("--pigment-rose-bright", fb.roseBright),
-    indigoDark: readCssVar("--pigment-indigo-dark", fb.indigoDark),
-    indigoDeepDark: readCssVar("--pigment-indigo-deep-dark", fb.indigoDeepDark),
-    sageDark: readCssVar("--pigment-sage-dark", fb.sageDark),
-    ochreDark: readCssVar("--pigment-ochre-dark", fb.ochreDark),
-    madderDark: readCssVar("--pigment-madder-dark", fb.madderDark),
-    paynesDark: readCssVar("--pigment-paynes-dark", fb.paynesDark),
-    roseDark: readCssVar("--pigment-rose-dark", fb.roseDark),
-    paper: readCssVar("--plot-marker-rim", fb.paper),
-    plate: readCssVar("--paper-cool", fb.plate),
-    rule: readCssVar("--rule", fb.rule),
-    grid: readCssVar("--plot-grid", fb.grid),
-    annotationBg: readCssVar("--plot-annotation-bg", fb.annotationBg),
-    oracleBand99: readCssVar("--plot-oracle-band-99", fb.oracleBand99),
-    oracleBand95: readCssVar("--plot-oracle-band-95", fb.oracleBand95),
-    bandSage: readCssVar("--plot-band-sage", fb.bandSage),
-    bandMadder: readCssVar("--plot-band-madder", fb.bandMadder),
+    ink: readCssColor("--ink", fb.ink),
+    inkSoft: readCssColor("--ink-2", fb.inkSoft),
+    inkMute: readCssColor("--ink-mute", fb.inkMute),
+    inkFaint: readCssColor("--ink-faint", fb.inkFaint),
+    indigo: readCssColor("--pigment-indigo", fb.indigo),
+    indigoDeep: readCssColor("--pigment-indigo-deep", fb.indigoDeep),
+    sage: readCssColor("--pigment-sage", fb.sage),
+    ochre: readCssColor("--pigment-ochre", fb.ochre),
+    madder: readCssColor("--pigment-madder", fb.madder),
+    paynes: readCssColor("--pigment-paynes", fb.paynes),
+    rose: readCssColor("--pigment-rose", fb.rose),
+    indigoBright: readCssColor("--pigment-indigo-bright", fb.indigoBright),
+    indigoDeepBright: readCssColor("--pigment-indigo-deep-bright", fb.indigoDeepBright),
+    sageBright: readCssColor("--pigment-sage-bright", fb.sageBright),
+    ochreBright: readCssColor("--pigment-ochre-bright", fb.ochreBright),
+    madderBright: readCssColor("--pigment-madder-bright", fb.madderBright),
+    paynesBright: readCssColor("--pigment-paynes-bright", fb.paynesBright),
+    roseBright: readCssColor("--pigment-rose-bright", fb.roseBright),
+    indigoDark: readCssColor("--pigment-indigo-dark", fb.indigoDark),
+    indigoDeepDark: readCssColor("--pigment-indigo-deep-dark", fb.indigoDeepDark),
+    sageDark: readCssColor("--pigment-sage-dark", fb.sageDark),
+    ochreDark: readCssColor("--pigment-ochre-dark", fb.ochreDark),
+    madderDark: readCssColor("--pigment-madder-dark", fb.madderDark),
+    paynesDark: readCssColor("--pigment-paynes-dark", fb.paynesDark),
+    roseDark: readCssColor("--pigment-rose-dark", fb.roseDark),
+    paper: readCssColor("--plot-marker-rim", fb.paper),
+    plate: readCssColor("--paper-cool", fb.plate),
+    rule: readCssColor("--rule", fb.rule),
+    grid: readCssColor("--plot-grid", fb.grid),
+    annotationBg: readCssColor("--plot-annotation-bg", fb.annotationBg),
+    oracleBand99: readCssColor("--plot-oracle-band-99", fb.oracleBand99),
+    oracleBand95: readCssColor("--plot-oracle-band-95", fb.oracleBand95),
+    bandSage: readCssColor("--plot-band-sage", fb.bandSage),
+    bandMadder: readCssColor("--plot-band-madder", fb.bandMadder),
   };
 }
 
@@ -172,11 +236,11 @@ export function getInkColorway(palette: InkPalette = getInkPalette()): string[] 
 export function getInkColorscale(): Array<[number, string]> {
   const fb = LIGHT_FALLBACK;
   return [
-    [0.0, readCssVar("--plot-colorscale-0", fb.plate)],
-    [0.25, readCssVar("--plot-colorscale-25", "#b8c1cb")],
-    [0.5, readCssVar("--plot-colorscale-50", fb.indigo)],
-    [0.75, readCssVar("--plot-colorscale-75", "#3a4658")],
-    [1.0, readCssVar("--plot-colorscale-100", fb.ink)],
+    [0.0, readCssColor("--plot-colorscale-0", fb.plate)],
+    [0.25, readCssColor("--plot-colorscale-25", "#b7c6d6")],
+    [0.5, readCssColor("--plot-colorscale-50", fb.indigo)],
+    [0.75, readCssColor("--plot-colorscale-75", "#2f4257")],
+    [1.0, readCssColor("--plot-colorscale-100", fb.ink)],
   ];
 }
 

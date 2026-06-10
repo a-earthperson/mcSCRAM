@@ -15,6 +15,7 @@
  */
 
 import { type AxisFormat, type MathBoxNode, type TrajectoryAxesSpec, type Vec2 } from "./types";
+import { splitColorAlpha } from "./color";
 
 export type AxesUpdate = {
   xRange: Vec2;
@@ -56,7 +57,9 @@ function exprOf(format: AxisFormat | undefined): (value: number) => string {
  * disposes in one call and never collides with series ids.
  */
 export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
-  const color = init.spec.color ?? "#000000";
+  // THREE.Color drops alpha, so a translucent ink (e.g. --rule) is split into
+  // an opaque color + an alpha factor folded into each node's opacity.
+  const { color, alpha } = splitColorAlpha(init.spec.color ?? "#000000");
   const group: MathBoxNode = view.group({ id: "axes" });
 
   const xDivide = init.spec.xDivide ?? DEFAULT_DIVIDE;
@@ -72,7 +75,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     divideX: xDivide,
     divideY: yDivide,
     width: 1,
-    opacity: GRID_OPACITY,
+    opacity: GRID_OPACITY * alpha,
     color,
     zBias: -5,
     zWrite: false,
@@ -85,7 +88,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     axis: 1,
     origin: [0, yMin, 0, 0],
     width: 2,
-    opacity: SPINE_OPACITY,
+    opacity: SPINE_OPACITY * alpha,
     color,
     end: false,
     zBias: -1,
@@ -106,6 +109,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     size: TICK_SIZE,
     width: 1,
     color,
+    opacity: alpha,
     zBias: -1,
     zWrite: false,
   });
@@ -120,6 +124,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     text: "#axes-x-format",
     size: LABEL_SIZE,
     color,
+    opacity: alpha,
     offset: X_LABEL_OFFSET,
     outline: 0,
     zIndex: 1,
@@ -132,7 +137,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     axis: 2,
     origin: [xMin, 0, 0, 0],
     width: 2,
-    opacity: SPINE_OPACITY,
+    opacity: SPINE_OPACITY * alpha,
     color,
     end: false,
     zBias: -1,
@@ -153,6 +158,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     size: TICK_SIZE,
     width: 1,
     color,
+    opacity: alpha,
     zBias: -1,
     zWrite: false,
   });
@@ -167,6 +173,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     text: "#axes-y-format",
     size: LABEL_SIZE,
     color,
+    opacity: alpha,
     offset: Y_LABEL_OFFSET,
     outline: 0,
     zIndex: 1,
@@ -178,7 +185,12 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
 
   return {
     update(next) {
-      const nextColor = next.spec.color ?? "#000000";
+      // Dirty-checks compare the raw spec strings; the split (opaque color +
+      // alpha-scaled opacity) is only computed when a node is actually set.
+      const rawColor = next.spec.color ?? "#000000";
+      const prevRawColor = prev.spec.color ?? "#000000";
+      const colorChanged = rawColor !== prevRawColor;
+      const nextInk = splitColorAlpha(rawColor);
       const nx = next.spec.xDivide ?? DEFAULT_DIVIDE;
       const ny = next.spec.yDivide ?? DEFAULT_DIVIDE;
       const nxMin = next.xRange[0];
@@ -195,18 +207,18 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
         nyMin !== prev.yRange[0] ||
         nx !== (prev.spec.xDivide ?? DEFAULT_DIVIDE) ||
         next.spec.xBase !== prev.spec.xBase ||
-        nextColor !== (prev.spec.color ?? "#000000")
+        colorChanged
       ) {
-        xAxis.set({ origin: [0, nyMin, 0, 0], color: nextColor });
+        xAxis.set({ origin: [0, nyMin, 0, 0], color: nextInk.color, opacity: SPINE_OPACITY * nextInk.alpha });
         xScale.set({ origin: [0, nyMin, 0, 0], divide: nx, base: nxBase, nice: !isLog(next.spec.xBase) });
       }
       if (
         nxMin !== prev.xRange[0] ||
         ny !== (prev.spec.yDivide ?? DEFAULT_DIVIDE) ||
         next.spec.yBase !== prev.spec.yBase ||
-        nextColor !== (prev.spec.color ?? "#000000")
+        colorChanged
       ) {
-        yAxis.set({ origin: [nxMin, 0, 0, 0], color: nextColor });
+        yAxis.set({ origin: [nxMin, 0, 0, 0], color: nextInk.color, opacity: SPINE_OPACITY * nextInk.alpha });
         yScale.set({ origin: [nxMin, 0, 0, 0], divide: ny, base: nyBase, nice: !isLog(next.spec.yBase) });
       }
       if (next.spec.xFormat !== prev.spec.xFormat) {
@@ -215,8 +227,8 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
       if (next.spec.yFormat !== prev.spec.yFormat) {
         yFormat.set("expr", exprOf(next.spec.yFormat));
       }
-      if ((next.spec.grid !== false) !== (prev.spec.grid !== false) || nextColor !== (prev.spec.color ?? "#000000")) {
-        grid.set({ visible: next.spec.grid !== false, color: nextColor });
+      if ((next.spec.grid !== false) !== (prev.spec.grid !== false) || colorChanged) {
+        grid.set({ visible: next.spec.grid !== false, color: nextInk.color, opacity: GRID_OPACITY * nextInk.alpha });
       }
       void yTop;
       prev = next;

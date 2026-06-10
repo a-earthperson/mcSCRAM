@@ -17,6 +17,21 @@
  *           muted botanical pigments — indigo, sage, ochre,
  *           madder, paynes, rose. Pigments drive page-level
  *           washes and chart traces, not just incidental UI.
+ *
+ * Palette system (light plate):
+ *   Each pigment family owns ONE hue axis, locked across every
+ *   tier — wash, pale, bright, dark:
+ *     indigo 252° · paynes 266° · sage 145° · ochre 80°
+ *     madder 25°  · rose 10°
+ *   Tier bands (OKLCH):
+ *     wash   L 45–66, C 0.022–0.085 — page washes, borders, and
+ *            small type (type-bearing washes hold ≥4.5:1 on paper)
+ *     pale   L 81–84, C ≈ 0.03     — washes only, never type
+ *     bright L 44–64, C 0.105–0.13 — chart traces; every member
+ *            holds ≥3:1 non-text contrast on paper (L ≤ 64)
+ *     dark   L 32–47, C 0.046–0.095 — shadow strokes, deep fills
+ *   Neutrals: paper locked to H 70, ink locked to H 67.5, with
+ *   monotone chroma ramps (warmer as they fade).
  * ============================================================ */
 
 :root {
@@ -27,65 +42,73 @@
   
     /* Paper: warm-neutral cold-pressed watercolor stock. R leads G≈B
        by a hair for a faint blush warmth — readable as paper-not-screen
-       without sliding into yellow ivory or sepia. */
-    --paper:       oklch(99.5% 0.0034 67.78);   /* warm pearl */
-    --paper-2:     oklch(87.92% 0.0105 67.69);   /* shaded plate */
-    --paper-tint:  oklch(95.43% 0.0097 72.66);   /* gentle wash for hover / active */
-    --paper-cool:  oklch(97.73% 0.0062 75.41);   /* the plate interior (specimen frame) */
+       without sliding into yellow ivory or sepia. Hue locked to 70°;
+       chroma rises gently as the stock deepens (pigment pools where
+       the paper shades). Even L ramp: 99.5 → 97.7 → 95.4 → 92. */
+    --paper:       oklch(99.5% 0.0035 70);   /* warm pearl */
+    --paper-2:     oklch(92% 0.011 70);      /* shaded plate */
+    --paper-tint:  oklch(95.4% 0.0095 70);   /* gentle wash for hover / active */
+    --paper-cool:  oklch(97.7% 0.006 70);    /* the plate interior (specimen frame) */
   
     /* Ink: warm-leaning charcoal so it sits with the paper instead of
-       fighting it as a cool slab. Cool charcoal on warm paper reads
-       wrong; this stack is just enough warmer to harmonize. */
-    --ink:         oklch(24.5% 0.0048 67.6);   /* primary */
-    --ink-2:       oklch(31.92% 0.0068 67.58);   /* body ink */
-    --ink-mute:    oklch(44.27% 0.0113 62.37);   /* annotation — meets AA on warm pearl */
-    --ink-faint:   oklch(63.66% 0.0209 67.44);   /* decorative tertiary */
+       fighting it as a cool slab. Hue locked to 67.5°; chroma rises
+       monotonically as the ink fades (dilute ink shows the warmth of
+       the stock through it). ink-mute holds ~7.8:1 on warm pearl. */
+    --ink:         oklch(24.5% 0.005 67.5);   /* primary */
+    --ink-2:       oklch(32% 0.007 67.5);     /* body ink */
+    --ink-mute:    oklch(43.5% 0.0115 67.5);  /* annotation — AA+ on warm pearl */
+    --ink-faint:   oklch(63.5% 0.019 67.5);   /* decorative tertiary */
   
-    --rule:        oklch(24.5% 0.0048 67.6 / 0.92);   /* hairline at strength */
-    --rule-mute:   oklch(24.5% 0.0048 67.6 / 0.32);   /* dotted divider */
-    --rule-faint:  oklch(24.5% 0.0048 67.6 / 0.12);   /* panel ruling */
+    --rule:        oklch(24.5% 0.005 67.5 / 0.92);   /* hairline at strength */
+    --rule-mute:   oklch(24.5% 0.005 67.5 / 0.32);   /* dotted divider */
+    --rule-faint:  oklch(24.5% 0.005 67.5 / 0.12);   /* panel ruling */
   
     /* Watercolor pigments — muted, low-chroma botanical washes.
        The cool ones (indigo, paynes, sage) still read cool against
        the warmer paper; the warm ones (madder, ochre, rose) get more
        page-level airtime so the palette doesn't collapse back into a
-       cool monograph. */
-    --pigment-indigo:      oklch(58.89% 0.0425 252.12);   /* prussian wash */
-    --pigment-indigo-deep: oklch(47.52% 0.0461 253.3);   /* text strength */
-    --pigment-sage:        oklch(68.5% 0.0426 142.84);   /* terre verte */
-    --pigment-ochre:       oklch(69.22% 0.0743 82.31);   /* yellow ochre, restrained */
-    --pigment-madder:      oklch(63.69% 0.0507 28.31);   /* madder lake / dusty rose */
-    --pigment-paynes:      oklch(46.68% 0.0174 264.39);   /* paynes grey */
-  
-    /* Paled siblings — washes only, never type. */
-    --pigment-sky:         oklch(82.03% 0.0221 245.91);
-    --pigment-celadon:     oklch(84.37% 0.0238 143.35);
-    --pigment-rose:        oklch(80.75% 0.0342 36.49);
+       cool monograph.
+       Sage and madder also serve as small type (status pills, invalid
+       inputs, stage tags), so both sit at L 56 — ≥4.5:1 on paper. */
+    --pigment-indigo:      oklch(58% 0.055 252);    /* prussian wash */
+    --pigment-indigo-deep: oklch(45% 0.075 252);    /* text strength — 7.4:1 */
+    --pigment-sage:        oklch(56% 0.065 145);    /* terre verte — 4.6:1 */
+    --pigment-ochre:       oklch(66% 0.085 80);     /* yellow ochre — 3:1 graphical */
+    --pigment-madder:      oklch(56% 0.07 25);      /* madder lake — 4.6:1 */
+    --pigment-paynes:      oklch(46.5% 0.022 266);  /* paynes grey — 6.8:1 */
+
+    /* Paled siblings — washes only, never type. Hue-locked to their
+       families (rose is the pale tier of its own cool-pink family,
+       and doubles as the warm wash next to madder's brick). */
+    --pigment-sky:         oklch(82% 0.028 252);
+    --pigment-celadon:     oklch(84% 0.028 145);
+    --pigment-rose:        oklch(81% 0.034 10);
 
     /* Bright pigments — full-strength botanical hues pulled straight from
-       the tube (less water): saturated enough to read as crisp lines and
-       markers over the plate, while holding the same indigo / sage / ochre
-       / madder / paynes / rose hue axes as the washes above. For chart
-       traces, not page-level washes or type. */
-    --pigment-indigo-bright:      oklch(51.83% 0.1151 251.34);   /* prussian, full strength */
-    --pigment-indigo-deep-bright: oklch(43.51% 0.1066 253.93);   /* deep cobalt */
-    --pigment-sage-bright:        oklch(62.79% 0.1234 149.82);   /* viridian leaf */
-    --pigment-ochre-bright:       oklch(69.92% 0.1301 80.18);   /* raw gold ochre */
-    --pigment-madder-bright:      oklch(58.88% 0.1508 16.37);   /* madder lake crimson */
-    --pigment-paynes-bright:      oklch(52.09% 0.0761 258.75);   /* steel slate blue */
-    --pigment-rose-bright:        oklch(70.08% 0.1217 11.58);   /* clear rose pink */
+       the tube (less water): the categorical trace register. Chroma is
+       harmonized to 0.105–0.13 (paynes deliberately greyer) and lightness
+       is graded by hue — yellow lightest, blues deepest — so every trace
+       carries matched visual weight and holds ≥3:1 on paper (L ≤ 64).
+       For chart traces, not page-level washes or type. */
+    --pigment-indigo-bright:      oklch(52% 0.115 252);   /* prussian, full strength */
+    --pigment-indigo-deep-bright: oklch(44% 0.105 252);   /* deep cobalt */
+    --pigment-sage-bright:        oklch(58% 0.115 145);   /* viridian leaf */
+    --pigment-ochre-bright:       oklch(64% 0.125 80);    /* raw gold ochre */
+    --pigment-madder-bright:      oklch(54% 0.13 25);     /* madder lake crimson */
+    --pigment-paynes-bright:      oklch(52% 0.075 266);   /* steel slate blue */
+    --pigment-rose-bright:        oklch(63% 0.115 10);    /* clear rose pink */
 
     /* Dark pigments — the shadow side of each hue: deepened, saturated
        tones for the darkest pigment-tinted strokes, deep fills, and
        secondary/under traces on the plate. Hue-locked to their bright
        and wash siblings; darker than --pigment-*-deep, but never ink. */
-    --pigment-indigo-dark:        oklch(37.91% 0.0698 251.43);   /* deep prussian */
-    --pigment-indigo-deep-dark:   oklch(31.96% 0.0613 252.55);   /* midnight cobalt */
-    --pigment-sage-dark:          oklch(43.02% 0.09 147.85);   /* deep forest */
-    --pigment-ochre-dark:         oklch(47% 0.0762 74.44);   /* burnt umber / bronze */
-    --pigment-madder-dark:        oklch(39.45% 0.0991 19.41);   /* deep maroon-madder */
-    --pigment-paynes-dark:        oklch(34.03% 0.0459 262.27);   /* charcoal slate */
-    --pigment-rose-dark:          oklch(47.03% 0.0709 28.44);   /* deep brick rose */
+    --pigment-indigo-dark:        oklch(38% 0.07 252);    /* deep prussian */
+    --pigment-indigo-deep-dark:   oklch(32% 0.062 252);   /* midnight cobalt */
+    --pigment-sage-dark:          oklch(43% 0.085 145);   /* deep forest */
+    --pigment-ochre-dark:         oklch(47% 0.08 80);     /* bronze ochre */
+    --pigment-madder-dark:        oklch(39% 0.095 25);    /* deep maroon-madder */
+    --pigment-paynes-dark:        oklch(34% 0.046 266);   /* charcoal slate */
+    --pigment-rose-dark:          oklch(46% 0.085 10);    /* deep rose */
 
     /* UI accent: deep indigo for hover, focus, active state, and
        the tracked labels that punctuate the scholarly layout. */
@@ -156,11 +179,14 @@
     --plot-band-sage:          color-mix(in oklch, var(--pigment-sage) 12%, transparent);
     --plot-band-madder:        color-mix(in oklch, var(--pigment-madder) 10%, transparent);
 
-    /* Continuous scalar wash: pale stock → sky → indigo → deep prussian → ink. */
+    /* Continuous scalar wash: pale stock → sky → indigo → deep prussian → ink.
+       The 75% stop mixes in oklab (cartesian): an oklch mix between hues
+       252° and 67.5° spins the shorter arc through violet and lands the
+       stop off the indigo axis in both color schemes. */
     --plot-colorscale-0:       color-mix(in oklch, var(--paper) 72%, var(--paper-tint));
     --plot-colorscale-25:      var(--pigment-sky);
     --plot-colorscale-50:      var(--pigment-indigo);
-    --plot-colorscale-75:      color-mix(in oklch, var(--pigment-indigo-deep) 62%, var(--ink));
+    --plot-colorscale-75:      color-mix(in oklab, var(--pigment-indigo-deep) 62%, var(--ink));
     --plot-colorscale-100:     var(--ink);
   
     /* Type stacks:
@@ -248,7 +274,7 @@
     text-rendering: optimizeLegibility;
 
     /* One dial: 0 = flat stock, 1 = original plate, >1 = more pigment / less bare paper. */
-    --paper-wash-intensity: 1.75;
+    --paper-wash-intensity: 1.5;
 
     --paper-wash-base: color-mix(
       in oklch,
@@ -256,11 +282,14 @@
       var(--paper-tint)
     );
 
+    /* Corner pools mirror the wash pigments (indigo / madder / sage /
+       ochre) — keep these literals in sync with the family axes above.
+       Alphas are tuned per pigment depth so the pooling reads even. */
     --paper-wash:
-      radial-gradient(60% 45% at 6% 4%,   oklch(58.89% 0.0425 252.12 / min(0.42, calc(0.18 * var(--paper-wash-intensity)))), transparent 65%),
-      radial-gradient(55% 40% at 96% 18%, oklch(63.69% 0.0507 28.31 / min(0.38, calc(0.16 * var(--paper-wash-intensity)))), transparent 65%),
-      radial-gradient(65% 50% at 80% 96%, oklch(68.5% 0.0426 142.84 / min(0.34, calc(0.14 * var(--paper-wash-intensity)))), transparent 65%),
-      radial-gradient(50% 40% at 14% 86%, oklch(69.22% 0.0743 82.31 / min(0.28, calc(0.10 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(60% 45% at 6% 4%,   oklch(58% 0.055 252 / min(0.40, calc(0.17 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(55% 40% at 96% 18%, oklch(56% 0.07 25 / min(0.32, calc(0.13 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(65% 50% at 80% 96%, oklch(56% 0.065 145 / min(0.28, calc(0.11 * var(--paper-wash-intensity)))), transparent 65%),
+      radial-gradient(50% 40% at 14% 86%, oklch(66% 0.085 80 / min(0.26, calc(0.09 * var(--paper-wash-intensity)))), transparent 65%),
       var(--paper-wash-base);
 
     /* Parchment: translucent, buttery paper variant. */

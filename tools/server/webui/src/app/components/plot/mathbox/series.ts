@@ -23,6 +23,7 @@ import {
   type TrajectoryLineSeries,
   type TrajectoryReference,
 } from "./types";
+import { splitColorAlpha } from "./color";
 
 /** An imperatively updatable drawable bound to one source subtree. */
 export type SeriesNode<TSpec> = {
@@ -59,11 +60,12 @@ export function createLineSeries(view: MathBoxNode, spec: TrajectoryLineSeries):
   const buildDraw = (s: TrajectoryLineSeries) => {
     const lineWidth = lineWidthOf(s);
     if (lineWidth > 0) {
+      const stroke = splitColorAlpha(s.color);
       line = group.line({
         id: `series-${s.id}-line`,
-        color: s.color,
+        color: stroke.color,
         width: lineWidth,
-        opacity: s.opacity ?? 1,
+        opacity: (s.opacity ?? 1) * stroke.alpha,
         stroke: STROKE_TO_MB[s.stroke ?? "solid"],
         start: false,
         end: false,
@@ -72,11 +74,12 @@ export function createLineSeries(view: MathBoxNode, spec: TrajectoryLineSeries):
       });
     }
     if (s.markerSize && s.markerSize > 0) {
+      const marker = splitColorAlpha(s.markerColor ?? s.color);
       point = group.point({
         id: `series-${s.id}-point`,
-        color: s.markerColor ?? s.color,
+        color: marker.color,
         size: s.markerSize,
-        opacity: markerOpacityOf(s),
+        opacity: markerOpacityOf(s) * marker.alpha,
         zIndex: (s.zIndex ?? 1) + 1,
         zWrite: false,
       });
@@ -99,16 +102,18 @@ export function createLineSeries(view: MathBoxNode, spec: TrajectoryLineSeries):
         line = point = null;
         buildDraw(next);
       } else {
+        const stroke = splitColorAlpha(next.color);
+        const marker = splitColorAlpha(next.markerColor ?? next.color);
         line?.set({
-          color: next.color,
-          opacity: next.opacity ?? 1,
+          color: stroke.color,
+          opacity: (next.opacity ?? 1) * stroke.alpha,
           width: lineWidthOf(next),
           stroke: STROKE_TO_MB[next.stroke ?? "solid"],
         });
         point?.set({
-          color: next.markerColor ?? next.color,
+          color: marker.color,
           size: next.markerSize ?? 0,
-          opacity: markerOpacityOf(next),
+          opacity: markerOpacityOf(next) * marker.alpha,
         });
       }
       current = next;
@@ -141,10 +146,11 @@ export function createBandSeries(view: MathBoxNode, spec: TrajectoryBandSeries):
       emit(state.x[idx], j === 0 ? state.lower[idx] : state.upper[idx]);
     },
   });
+  const fill = splitColorAlpha(spec.color);
   const surface: MathBoxNode = group.surface({
     id: `series-${spec.id}-fill`,
-    color: spec.color,
-    opacity: spec.opacity ?? 0.12,
+    color: fill.color,
+    opacity: (spec.opacity ?? 0.12) * fill.alpha,
     fill: true,
     shaded: false,
     lineX: false,
@@ -161,7 +167,8 @@ export function createBandSeries(view: MathBoxNode, spec: TrajectoryBandSeries):
       state.upper = next.upper;
       state.count = next.count;
       source.set("width", Math.max(2, next.count));
-      surface.set({ color: next.color, opacity: next.opacity ?? 0.12 });
+      const nextFill = splitColorAlpha(next.color);
+      surface.set({ color: nextFill.color, opacity: (next.opacity ?? 0.12) * nextFill.alpha });
     },
     dispose() {
       group.remove();
@@ -178,13 +185,14 @@ export function createBandSeries(view: MathBoxNode, spec: TrajectoryBandSeries):
 export function createReference(view: MathBoxNode, spec: TrajectoryReference): SeriesNode<TrajectoryReference> {
   const axis = spec.axis === "y" ? 1 : 2;
   const origin = spec.axis === "y" ? [0, spec.value, 0, 0] : [spec.value, 0, 0, 0];
+  const guide = splitColorAlpha(spec.color);
   const node: MathBoxNode = view.axis({
     id: `ref-${spec.id}`,
     axis,
     origin,
     width: spec.width ?? 1.2,
-    color: spec.color,
-    opacity: spec.opacity ?? 1,
+    color: guide.color,
+    opacity: (spec.opacity ?? 1) * guide.alpha,
     stroke: STROKE_TO_MB[spec.stroke ?? "dashed"],
     start: false,
     end: false,
@@ -195,10 +203,11 @@ export function createReference(view: MathBoxNode, spec: TrajectoryReference): S
   return {
     kind: spec.axis === "y" ? "y" : "x",
     update(next) {
+      const nextGuide = splitColorAlpha(next.color);
       node.set({
         origin: next.axis === "y" ? [0, next.value, 0, 0] : [next.value, 0, 0, 0],
-        color: next.color,
-        opacity: next.opacity ?? 1,
+        color: nextGuide.color,
+        opacity: (next.opacity ?? 1) * nextGuide.alpha,
         width: next.width ?? 1.2,
         stroke: STROKE_TO_MB[next.stroke ?? "dashed"],
       });
