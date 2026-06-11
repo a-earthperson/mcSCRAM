@@ -30,7 +30,8 @@ class SamplingControlBody(BaseModel):
     recognize_xor_groups: bool | None = None
     ccf: bool | None = None
     keep_null_gates: bool | None = None
-    num_trials: float | None = Field(default=None, gt=0)
+    # Total trial budget (0 → auto: unbounded / backend default).
+    num_trials: float | None = Field(default=None, ge=0)
     # Optimistic per-node trials-per-pass target (0 → auto: fill device memory).
     requested_trials_per_pass: float | None = Field(default=None, ge=0)
     confidence: float | None = Field(default=None, gt=0, lt=1)
@@ -201,7 +202,7 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         recognize_xor_groups: bool | None = Query(default=None),
         ccf: bool | None = Query(default=None),
         keep_null_gates: bool | None = Query(default=None),
-        num_trials: float | None = Query(default=None, gt=0),
+        num_trials: float | None = Query(default=None, ge=0),
         requested_trials_per_pass: float | None = Query(default=None, ge=0),
     ) -> dict[str, Any]:
         config = CalculationConfig.from_env()
@@ -239,7 +240,7 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
         recognize_xor_groups: bool | None = Query(default=None),
         ccf: bool | None = Query(default=None),
         keep_null_gates: bool | None = Query(default=None),
-        num_trials: float | None = Query(default=None, gt=0),
+        num_trials: float | None = Query(default=None, ge=0),
         requested_trials_per_pass: float | None = Query(default=None, ge=0),
     ) -> dict[str, Any]:
         config = CalculationConfig.from_env()
