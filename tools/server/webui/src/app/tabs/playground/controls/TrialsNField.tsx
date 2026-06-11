@@ -7,6 +7,7 @@ import {
   formatTrialsMantissa,
   isTrialsScaleExponent,
   stepTrialsMantissa,
+  MIN_TRIALS_MANTISSA,
   TRIALS_MANTISSA_STEP,
   TRIALS_N_FIELD_HINT,
   TRIALS_SCALE_EXPONENTS,
@@ -53,6 +54,12 @@ export function TrialsNField({
   };
 
   const commit = (raw: unknown, exponent = scaleExponent) => {
+    if (raw === "" || raw === null || raw === undefined || raw === "auto") {
+      setError(null);
+      onMantissaChange(0);
+      setDraft("");
+      return true;
+    }
     const next = validate(raw, exponent);
     if (next === null) return false;
     onMantissaChange(next);
@@ -108,8 +115,9 @@ export function TrialsNField({
         inputProps={{
           id: fieldId,
           type: "number",
-          min: TRIALS_MANTISSA_STEP,
+          min: MIN_TRIALS_MANTISSA,
           step: TRIALS_MANTISSA_STEP,
+          placeholder: "auto",
           value: displayValue,
           "aria-invalid": error ? true : undefined,
           "aria-describedby": describedBy,

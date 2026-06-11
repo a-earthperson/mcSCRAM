@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DiagramFullscreenButton } from "../../../../components/ui/DiagramFullscreenButton";
-import { usePlotTheme } from "../../../../components/plot/plotTokens";
-import { classNames } from "../../../../lib/format";
+import { DiagramFullscreenButton } from "../../../../../components/ui/DiagramFullscreenButton";
+import { usePlotTheme } from "../../../../../components/plot/plotTokens";
+import { classNames } from "../../../../../lib/format";
 import { ExecutionFallbackMap } from "./ExecutionFallbackMap";
 import { ExecutionGraphCameraOverlay } from "./ExecutionGraphCameraOverlay";
 import { ExecutionGraphLegend } from "./ExecutionGraphLegend";

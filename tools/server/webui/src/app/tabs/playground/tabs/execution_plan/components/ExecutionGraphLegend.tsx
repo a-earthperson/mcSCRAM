@@ -1,4 +1,4 @@
-import type { InkPalette } from "../../../../components/plot/plotTokens";
+import type { InkPalette } from "../../../../../components/plot/plotTokens";
 import { kindColor, kindLabel, type ExecKindKey } from "../scene/executionScene";
 
 export function ExecutionGraphLegend({

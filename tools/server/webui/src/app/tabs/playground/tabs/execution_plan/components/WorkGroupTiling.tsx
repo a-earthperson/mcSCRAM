@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import type { InkPalette } from "../../../../components/plot/plotTokens";
-import { withAlpha } from "../../../../components/plot/plotTokens";
+import type { InkPalette } from "../../../../../components/plot/plotTokens";
+import { withAlpha } from "../../../../../components/plot/plotTokens";
 import { compactCount, formatRange3, type ExecKindKey, kindColor } from "../scene/executionScene";
-import type { ExecutionPartitionDescription } from "../../../../api/faultTreeApi";
+import type { ExecutionPartitionDescription } from "../../../../../api/faultTreeApi";
 
 /**
  * Shows how a partition's global launch range is tiled into work-groups by its

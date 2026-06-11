@@ -1,5 +1,5 @@
-import { formatBytes, formatInteger } from "../../../../lib/format";
-import type { ExecutionSampleShaperDescription } from "../../../../api/faultTreeApi";
+import { formatBytes, formatInteger } from "../../../../../lib/format";
+import type { ExecutionSampleShaperDescription } from "../../../../../api/faultTreeApi";
 import { compactCount } from "../scene/executionScene";
 import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";
 

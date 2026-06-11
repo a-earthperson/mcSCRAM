@@ -14,7 +14,14 @@
  * tick labels render in the reserved margins regardless of where 0 falls.
  */
 
-import { type AxisFormat, type MathBoxNode, type TrajectoryAxesSpec, type Vec2 } from "./types";
+import { getPlotFontStacks } from "../plotTokens";
+import {
+  Y_TICK_LABEL_OFFSET_LEFT,
+  type AxisFormat,
+  type MathBoxNode,
+  type TrajectoryAxesSpec,
+  type Vec2,
+} from "./types";
 import { splitColorAlpha } from "./color";
 
 export type AxesUpdate = {
@@ -30,9 +37,9 @@ export type AxesHandle = {
 
 const DEFAULT_DIVIDE = 6;
 const TICK_SIZE = 6;
-const LABEL_SIZE = 12;
-const X_LABEL_OFFSET: Vec2 = [0, -16];
-const Y_LABEL_OFFSET: Vec2 = [-18, 0];
+const LABEL_SIZE = 10;
+const X_LABEL_OFFSET: Vec2 = [0, -20];
+const Y_LABEL_OFFSET: Vec2 = [-Y_TICK_LABEL_OFFSET_LEFT, 0];
 // Visual hierarchy: a quiet grid backdrop, present-but-restrained spines, and
 // full-ink ticks + labels carrying the actual information.
 const GRID_OPACITY = 0.14;
@@ -50,6 +57,10 @@ function isLog(base: number | undefined): boolean {
 function exprOf(format: AxisFormat | undefined): (value: number) => string {
   const fmt = format ?? ((value: number) => String(value));
   return (value: number) => fmt(value);
+}
+
+function tickFontOf(spec: TrajectoryAxesSpec): string {
+  return spec.tickFont ?? getPlotFontStacks().mono;
 }
 
 /**
@@ -117,6 +128,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     id: "axes-x-format",
     source: "#axes-x-scale",
     expr: exprOf(init.spec.xFormat),
+    font: tickFontOf(init.spec),
   });
   group.label({
     id: "axes-x-label",
@@ -166,6 +178,7 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
     id: "axes-y-format",
     source: "#axes-y-scale",
     expr: exprOf(init.spec.yFormat),
+    font: tickFontOf(init.spec),
   });
   group.label({
     id: "axes-y-label",
@@ -226,6 +239,11 @@ export function createAxes(view: MathBoxNode, init: AxesUpdate): AxesHandle {
       }
       if (next.spec.yFormat !== prev.spec.yFormat) {
         yFormat.set("expr", exprOf(next.spec.yFormat));
+      }
+      if (tickFontOf(next.spec) !== tickFontOf(prev.spec)) {
+        const font = tickFontOf(next.spec);
+        xFormat.set({ font });
+        yFormat.set({ font });
       }
       if ((next.spec.grid !== false) !== (prev.spec.grid !== false) || colorChanged) {
         grid.set({ visible: next.spec.grid !== false, color: nextInk.color, opacity: GRID_OPACITY * nextInk.alpha });

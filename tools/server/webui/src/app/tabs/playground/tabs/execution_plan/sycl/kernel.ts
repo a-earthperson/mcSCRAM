@@ -20,7 +20,7 @@
  * work-items maps to a contiguous run of columns, so sub-groups and work-groups
  * are exact axis-aligned tile rectangles.
  */
-import type { ExecutionPartitionDescription } from "../../../../api/faultTreeApi";
+import type { ExecutionPartitionDescription } from "../../../../../api/faultTreeApi";
 import type { DeviceModel } from "./device";
 import {
   type Dim3,

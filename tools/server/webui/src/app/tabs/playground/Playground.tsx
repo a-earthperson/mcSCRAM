@@ -11,7 +11,7 @@ import {
 import { classNames } from "../../lib/format";
 import { EmptyState, SectionTitle } from "../../components";
 import { ControlPanel } from "./ControlPanel";
-import { ExecutionPlanPanel } from "./execution_plan";
+import { ExecutionPlanPanel } from "./tabs/execution_plan";
 import { SamplingTrajectoryPanel } from "./SamplingTrajectoryPanel";
 import { ciPercentToConfidence, DEFAULT_CONFIDENCE_CI_PERCENT } from "./controls/samplerCI";
 import type { SamplingControls } from "./controls/useSamplingControls";

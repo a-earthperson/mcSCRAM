@@ -1,20 +1,12 @@
 import { Suspense, useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router";
+import { Navigate, NavLink, Route, Routes } from "react-router";
 import { Hero } from "./app/shell/Hero";
 import { loadSiteData } from "./app/lib/loadSiteData";
-import { ClientOnly } from "./app/components/ui/ClientOnly";
-import {
-  ArtifactsTab,
-  CompilerTab,
-  ConvergenceTab,
-  HardwareTab,
-  PlaygroundTab,
-  ModelsTab,
-  OverviewTab,
-  PerformanceTab,
-  sectionHref,
-  sections,
-} from "./app/tabs/lazyTabs";
+import { BenchmarksLayout } from "./app/tabs/benchmarks/BenchmarksLayout";
+import { PlaygroundRouter } from "./app/tabs/playground/PlaygroundRoutes";
+import { benchmarksBasePath } from "./app/tabs/benchmarks/routes";
+import { playgroundPath } from "./app/tabs/playground/routes";
+import { topLevelNavSections } from "./app/tabs/routes";
 import { AssetPreviewModal } from "./app/components";
 import type { PlotAsset, SiteData } from "./app/types";
 import { classNames } from "./app/lib/format";
@@ -63,41 +55,36 @@ function App({ initialData = null }: AppProps) {
       <main className="shell" style={{ paddingBottom: 0 }}>
         <Hero data={data} />
       </main>
-      <nav className="tabs" aria-label="Benchmark site sections">
-        {sections.map((item) => (
+      <nav className="tabs tabs-primary" aria-label="Site Sections">
+        {topLevelNavSections.map((item) => (
           <NavLink
-            key={item.path}
-            to={sectionHref(item.path)}
+            key={item.href}
+            to={item.href}
             className={({ isActive }) => classNames("tab", isActive && "active")}
           >
             {item.label}
           </NavLink>
         ))}
       </nav>
-      <main className="shell">
-        <Suspense fallback={<TabFallback />}>
-          <Routes>
-            <Route path="/" element={<PlaygroundTab />} />
-            <Route
-              path="/playground"
-              element={(
-                <ClientOnly fallback={<TabFallback />}>
-                  <PlaygroundTab />
-                </ClientOnly>
-              )}
-            />
-            <Route path="/overview" element={<OverviewTab data={data} onPreviewAsset={setPreviewAsset} />} />
-            <Route path="/hardware" element={<HardwareTab data={data} />} />
-            <Route path="/performance" element={<PerformanceTab data={data} />} />
-            <Route path="/compiler" element={<CompilerTab data={data} />} />
-            <Route path="/convergence" element={<ConvergenceTab data={data} />} />
-            <Route path="/models" element={<ModelsTab data={data} onPreviewAsset={setPreviewAsset} />} />
-            <Route path="/artifacts" element={<ArtifactsTab artifacts={data.artifacts} onPreviewAsset={setPreviewAsset} />} />
-            <Route path="*" element={<PlaygroundTab />} />
-          </Routes>
-        </Suspense>
-        {previewAsset && <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}
-      </main>
+      <Suspense fallback={<TabFallback />}>
+        <Routes>
+          <Route path="/" element={<Navigate to={playgroundPath} replace />} />
+          <Route
+            path={`${playgroundPath}/*`}
+            element={(
+              <main className="shell">
+                <PlaygroundRouter fallback={<TabFallback />} />
+              </main>
+            )}
+          />
+          <Route
+            path={`${benchmarksBasePath}/*`}
+            element={<BenchmarksLayout data={data} onPreviewAsset={setPreviewAsset} />}
+          />
+          <Route path="*" element={<Navigate to={playgroundPath} replace />} />
+        </Routes>
+      </Suspense>
+      {previewAsset && <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}
     </>
   );
 }

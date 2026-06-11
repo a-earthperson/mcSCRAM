@@ -4,7 +4,7 @@ import {
   type CompileDagOptions,
   type ExecutionPlanPayload,
   type SampleShapeOptions,
-} from "../../../../api/faultTreeApi";
+} from "../../../../../api/faultTreeApi";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

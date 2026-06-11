@@ -116,6 +116,8 @@ export type TrajectoryAxesSpec = {
   yBase?: number;
   grid?: boolean;
   color?: string;
+  /** CSS font-family stack for GL tick labels (MathBox `format.font`). */
+  tickFont?: string;
 };
 
 export type TrajectoryFrame = {
@@ -129,7 +131,15 @@ export type TrajectoryFrame = {
 /** Plot-area inset (px) within the GL canvas, reserved for tick labels. */
 export type TrajectoryMargin = { left: number; right: number; top: number; bottom: number };
 
-export const DEFAULT_MARGIN: TrajectoryMargin = { left: 56, right: 18, top: 14, bottom: 26 };
+/** Matches |Y_LABEL_OFFSET.x| in {@link ./axes} so tick labels sit in [0, left] px. */
+export const Y_TICK_LABEL_OFFSET_LEFT = 72;
+
+export const DEFAULT_MARGIN: TrajectoryMargin = {
+  left: Y_TICK_LABEL_OFFSET_LEFT,
+  right: 18,
+  top: 14,
+  bottom: 26,
+};
 
 export type TrajectoryPlotController = {
   render: (frame: TrajectoryFrame) => void;

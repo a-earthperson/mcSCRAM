@@ -1,8 +1,10 @@
-import { defaultSection, sectionHref, sections } from "./tabs/lazyTabs";
-
-export function knownAppPaths(): string[] {
-  return sections.map((section) => sectionHref(section.path));
-}
+import {
+  benchmarkSectionHref,
+  benchmarksBasePath,
+  defaultBenchmarkSection,
+} from "./tabs/benchmarks/routes";
+import { playgroundPath } from "./tabs/playground/routes";
+import { knownAppPaths } from "./tabs/routes";
 
 /** Map `/` and unknown paths to the default tab route for SSR + CSR consistency. */
 export function normalizeAppPath(url: string, basename = ""): string {
@@ -12,6 +14,12 @@ export function normalizeAppPath(url: string, basename = ""): string {
     ? pathname.slice(normalizedBase.length) || "/"
     : pathname;
   const bare = pathWithoutBase.replace(/\/$/, "") || "/";
-  const resolved = bare === "/" || !knownAppPaths().includes(bare) ? sectionHref(defaultSection) : pathWithoutBase;
+  const resolved = bare === "/"
+    ? playgroundPath
+    : bare === benchmarksBasePath
+      ? benchmarkSectionHref(defaultBenchmarkSection)
+      : knownAppPaths().includes(bare)
+        ? pathWithoutBase
+        : playgroundPath;
   return `${normalizedBase}${resolved}${search}${hash}`;
 }

@@ -1,8 +1,9 @@
 /**
  * Number formatters used as MathBox `format` exprs to label axis ticks. The
  * `scale` primitive generates "nice" tick *positions*; these turn each value
- * into display text. GL labels render arbitrary Unicode (the atlas is built
- * from the page font), so we use true superscript glyphs for exponents.
+ * into display text. GL labels rasterize via canvas 2D using the stack from
+ * `--plot-tick-font` (defaults to `var(--mono)`), so we use true superscript
+ * glyphs for exponents.
  */
 
 const SUPERSCRIPTS: Record<string, string> = {
@@ -54,21 +55,27 @@ export function formatPower(value: number): string {
   return `${trimZeros(mantissa.toPrecision(2))}\u00D710${toSuperscript(floorExp)}`;
 }
 
-/** Default linear-axis tick label: `a.bbbb\u00D710\u1d9c` (4 mantissa decimals). */
-export function formatDefault(decimals = 4): (value: number) => string {
+/** Default linear-axis tick label: `a.bb\u00D710\u1d9c` (fixed mantissa decimals). */
+export function formatDefault(decimals = 2): (value: number) => string {
   return (value: number) => {
     if (!Number.isFinite(value)) return "";
     if (value === 0) return "0";
-    const exp = Math.floor(Math.log10(Math.abs(value)));
-    const mantissa = value / 10 ** exp;
-    const head = trimZeros(mantissa.toFixed(decimals));
+    let exp = Math.floor(Math.log10(Math.abs(value)));
+    let mantissa = value / 10 ** exp;
+    let head = mantissa.toFixed(decimals);
+    // Rounding can push the mantissa to 10.00 (e.g. 9.995 -> "10.00"); renormalize.
+    if (Math.abs(parseFloat(head)) >= 10) {
+      mantissa /= 10;
+      exp += 1;
+      head = mantissa.toFixed(decimals);
+    }
     if (exp === 0) return head;
     return `${head}\u00D710${toSuperscript(exp)}`;
   };
 }
 
 /** Shared instance for stable reference equality across renders. */
-export const formatDefaultLinear = formatDefault(4);
+export const formatDefaultLinear = formatDefault();
 
 /** Compact scientific format with Unicode superscript (`1.2\u00D710\u207B\u2078`). */
 export function formatSci(sig = 2): (value: number) => string {

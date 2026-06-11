@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { classNames } from "../../../../lib/format";
+import { classNames } from "../../../../../lib/format";
 
 export type ExecutionStat = {
   label: string;

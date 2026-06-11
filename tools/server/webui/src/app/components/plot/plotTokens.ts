@@ -266,6 +266,15 @@ export function getPlotFontStacks(): { sans: string; mono: string } {
   };
 }
 
+/** Resolved font-family stack for MathBox GL tick labels (from `.plot-mathbox`). */
+export function readPlotTickFont(element?: Element | null): string {
+  if (typeof document !== "undefined" && element) {
+    const value = getComputedStyle(element).getPropertyValue("--plot-tick-font").trim();
+    if (value) return value;
+  }
+  return getPlotFontStacks().mono;
+}
+
 /** Re-read tokens when the OS color scheme changes (dark mode). */
 export function usePlotTheme(): PlotTheme {
   const scheme = useSyncExternalStore(subscribeToColorScheme, getColorSchemeSnapshot, () => "light");

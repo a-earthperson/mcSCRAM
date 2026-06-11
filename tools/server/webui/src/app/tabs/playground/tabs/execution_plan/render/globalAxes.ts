@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { InkPalette } from "../../../../components/plot/plotTokens";
+import type { InkPalette } from "../../../../../components/plot/plotTokens";
 import type { MathBoxView } from "./types";
 
 export const AXIS_LABEL_COLORS_ID = "exec-axis-label-colors";

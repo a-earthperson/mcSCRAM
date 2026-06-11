@@ -8,7 +8,7 @@ import {
   type PlotMathboxReference,
   type PlotMathboxSeries,
 } from "../../components/plot/PlotMathbox";
-import { formatExp, formatPower, formatSI } from "../../components/plot/mathbox/axis";
+import { formatDefaultLinear, formatExp, formatPower, formatSI } from "../../components/plot/mathbox/axis";
 import type { AxisScale, TrajectoryStroke } from "../../components/plot/mathbox/trajectoryPlot";
 import {
   confidenceFromAlpha,
@@ -93,6 +93,7 @@ const MAX_REPLAY_PATH_POINTS = 10_000;
 const MAX_RENDER_PATH_POINTS = 3_000;
 
 /** Stable formatter refs so axis label exprs are not re-pushed every render. */
+const PROBABILITY_Y_FORMAT = formatDefaultLinear;
 const EPSILON_Y_FORMAT = formatExp(2);
 
 export function SamplingTrajectoryPanel({
@@ -564,6 +565,7 @@ function buildProbabilityScene(
     y: {
       range: yRange,
       title: "Probability estimate",
+      format: PROBABILITY_Y_FORMAT,
       tickCount: 5,
       color: palette.ink,
     },
@@ -689,6 +691,7 @@ function buildGbasScene(
     y: {
       range: yRange,
       title: "Probability estimate (GBAS)",
+      format: PROBABILITY_Y_FORMAT,
       tickCount: 5,
       color: palette.ink,
     },

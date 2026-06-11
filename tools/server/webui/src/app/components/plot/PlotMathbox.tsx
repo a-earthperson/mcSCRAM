@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { getPlotFontStacks, readPlotTickFont } from "./plotTokens";
 import {
   createTrajectoryPlot,
   type AxisFormat,
@@ -19,6 +20,7 @@ import {
   type AxisTransform,
   type Extent,
 } from "./mathbox/scaleTransform";
+import "./mathbox/plot-mathbox.css"
 
 /**
  * Declarative React facade over the MathBox 2D plotter.
@@ -98,7 +100,8 @@ export type PlotMathboxProps = {
   className?: string;
 };
 
-const Y_TITLE_WIDTH = 20;
+const Y_TITLE_MIN_WIDTH = 14;
+const Y_TITLE_GAP = 8;
 const X_TITLE_HEIGHT = 18;
 const LEGEND_MIN_HEIGHT = 26;
 
@@ -179,20 +182,23 @@ function wrapFormat(transform: AxisTransform, format: AxisFormat | undefined): A
 export function PlotMathbox({ x, y, series, references, legend, className }: PlotMathboxProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const glRef = useRef<HTMLDivElement | null>(null);
+  const yTitleSpanRef = useRef<HTMLSpanElement | null>(null);
   const legendRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<TrajectoryPlotController | null>(null);
   const [failed, setFailed] = useState(false);
+  const [tickFont, setTickFont] = useState(() => getPlotFontStacks().mono);
   const hasLegend = Boolean(legend && legend.length);
   // Measure the legend so the GL inset reserves exactly enough room however many
   // rows it wraps to -- a fixed reserve clipped large legends (e.g. 6-9 items).
   const [legendHeight, setLegendHeight] = useState(LEGEND_MIN_HEIGHT);
+  const [yTitleWidth, setYTitleWidth] = useState(Y_TITLE_MIN_WIDTH);
 
   const glInset = useMemo(
     () => ({
-      left: y.title ? Y_TITLE_WIDTH : 0,
+      left: y.title ? yTitleWidth + Y_TITLE_GAP : 0,
       bottom: (x.title ? X_TITLE_HEIGHT : 0) + (hasLegend ? legendHeight : 0),
     }),
-    [x.title, y.title, hasLegend, legendHeight],
+    [x.title, y.title, hasLegend, legendHeight, yTitleWidth],
   );
 
   // Translate declarative props into a controller frame (plot-space typed
@@ -271,10 +277,31 @@ export function PlotMathbox({ x, y, series, references, legend, className }: Plo
         xBase: xT.type === "log" ? xT.base : undefined,
         yBase: yT.type === "log" ? yT.base : undefined,
         color: x.color ?? y.color,
+        tickFont,
         grid: true,
       },
     };
-  }, [series, references, x.range, y.range, x.format, y.format, x.tickCount, y.tickCount, x.color, y.color, x.scale, y.scale]);
+  }, [series, references, x.range, y.range, x.format, y.format, x.tickCount, y.tickCount, x.color, y.color, x.scale, y.scale, tickFont]);
+
+  // Resolve tick label font from `.plot-mathbox { --plot-tick-font }` once mounted.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    setTickFont(readPlotTickFont(root));
+  }, []);
+
+  // Measure the y-axis title column so the GL canvas starts after it (+ gap).
+  useLayoutEffect(() => {
+    const span = yTitleSpanRef.current;
+    if (!y.title || !span) return undefined;
+    const measure = () => {
+      setYTitleWidth(Math.max(Y_TITLE_MIN_WIDTH, Math.ceil(span.getBoundingClientRect().width)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(span);
+    return () => observer.disconnect();
+  }, [y.title]);
 
   // Create the controller once; tear it down on unmount.
   useEffect(() => {
@@ -330,8 +357,10 @@ export function PlotMathbox({ x, y, series, references, legend, className }: Plo
       />
 
       {y.title ? (
-        <div className="plot-mathbox__y-title" style={{ width: Y_TITLE_WIDTH, bottom: glInset.bottom }}>
-          <span style={{ color: y.color }}>{y.title}</span>
+        <div className="plot-mathbox__y-title" style={{ width: yTitleWidth, bottom: glInset.bottom }}>
+          <span ref={yTitleSpanRef} style={{ color: y.color }}>
+            {y.title}
+          </span>
         </div>
       ) : null}
 

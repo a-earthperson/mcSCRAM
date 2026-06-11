@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { usePlotTheme } from "../../../../components/plot/plotTokens";
-import { formatBytes, formatInteger } from "../../../../lib/format";
-import { EmptyState, SectionTitle } from "../../../../components";
-import type { CompileDagOptions, SampleShapeOptions } from "../../../../api/faultTreeApi";
-import { DEFAULT_REQUESTED_TRIALS_PER_PASS } from "../../controls/samplerTrialsPerPass";
-import { DEFAULT_TRIALS_COUNT } from "../../controls/samplerTrials";
+import { usePlotTheme } from "../../../../../components/plot/plotTokens";
+import { formatBytes, formatInteger } from "../../../../../lib/format";
+import { EmptyState, SectionTitle } from "../../../../../components";
+import type { CompileDagOptions, SampleShapeOptions } from "../../../../../api/faultTreeApi";
+import { DEFAULT_REQUESTED_TRIALS_PER_PASS } from "../../../controls/samplerTrialsPerPass";
+import { DEFAULT_TRIALS_COUNT } from "../../../controls/samplerTrials";
 import { DeviceSummary } from "./DeviceSummary";
 import { ExecutionGraph } from "./ExecutionGraph";
 import { ExecutionStatGrid, type ExecutionStat } from "./ExecutionStatGrid";

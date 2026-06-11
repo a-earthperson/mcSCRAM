@@ -15,7 +15,7 @@
  * visibility toggle, and `setOpacity` scales every draw node's opacity for the
  * cross-fade. The controller owns the tween; this module just exposes the knobs.
  */
-import type { InkPalette } from "../../../../components/plot/plotTokens";
+import type { InkPalette } from "../../../../../components/plot/plotTokens";
 import { type KernelModel, span, subGroupWindows } from "../sycl";
 import { partitionKind } from "../scene/executionScene";
 import type { FieldFrame } from "./bitpackField";

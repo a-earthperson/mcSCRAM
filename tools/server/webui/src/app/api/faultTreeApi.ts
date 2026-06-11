@@ -54,6 +54,7 @@ export type SampleShape = {
 };
 
 export type SampleShapeOptions = {
+  /** Total trial budget (0 = auto: unbounded / backend default). */
   numTrials: number;
   /** Optimistic per-node trials-per-pass target (0 = auto: fill device memory). */
   requestedTrialsPerPass: number;
