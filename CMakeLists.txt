@@ -337,6 +337,9 @@ add_subdirectory(src/io)
 # FUZZYBITS_PCFB_SOURCE_DIR for a local checkout (cmake/FuzzybitsPcfb.cmake).
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsPcfb.cmake")
 add_subdirectory(src/compile)
+if(FUZZYBITS_WITH_MC)
+  add_subdirectory(src/runtime)
+endif()
 add_subdirectory(targets/fzb)
 
 if(FUZZYBITS_WITH_MC)

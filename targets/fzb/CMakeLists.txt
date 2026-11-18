@@ -11,7 +11,8 @@ if(NOT APPLE AND NOT FUZZYBITS_WITH_MC)
   target_sources(fzb PRIVATE "${PROJECT_SOURCE_DIR}/src/compile/direct_eval_host_stubs.cc")
   target_include_directories(fzb PRIVATE "${PROJECT_SOURCE_DIR}/src/mc")
 elseif(FUZZYBITS_WITH_MC)
-  target_link_libraries(fzb PRIVATE mc)
+  target_link_libraries(fzb PRIVATE fuzzybits_runtime)
+  target_compile_definitions(fzb PRIVATE FZB_HAS_RUNTIME=1)
 endif()
 install(
   TARGETS fzb
