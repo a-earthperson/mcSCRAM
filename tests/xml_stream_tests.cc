@@ -23,7 +23,7 @@
 
 #include <boost/filesystem.hpp>
 
-#include <catch2/catch.hpp>
+#include "catch2_compat.hpp"
 
 namespace fs = boost::filesystem;
 

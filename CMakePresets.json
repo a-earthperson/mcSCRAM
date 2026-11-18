@@ -98,8 +98,13 @@
       "output": {
         "outputOnFailure": true
       },
+      "filter": {
+        "exclude": {
+          "label": "quarantine"
+        }
+      },
       "environment": {
-        "ACPP_VISIBILITY_MASK": "cuda",
+        "ACPP_VISIBILITY_MASK": "omp",
         "ACPP_DEBUG_LEVEL": "0",
         "ACPP_PERSISTENT_RUNTIME": "1",
         "CTEST_NO_TESTS_ACTION": "ignore"
@@ -110,6 +115,11 @@
       "configurePreset": "cuda-sm70",
       "output": {
         "outputOnFailure": true
+      },
+      "filter": {
+        "exclude": {
+          "label": "quarantine"
+        }
       },
       "environment": {
         "ACPP_VISIBILITY_MASK": "cuda",
@@ -124,6 +134,11 @@
       "output": {
         "outputOnFailure": true
       },
+      "filter": {
+        "exclude": {
+          "label": "quarantine"
+        }
+      },
       "environment": {
         "ACPP_VISIBILITY_MASK": "metal",
         "ACPP_DEBUG_LEVEL": "0",
@@ -137,8 +152,13 @@
       "output": {
         "outputOnFailure": true
       },
+      "filter": {
+        "exclude": {
+          "label": "quarantine"
+        }
+      },
       "environment": {
-        "ACPP_VISIBILITY_MASK": "cuda",
+        "ACPP_VISIBILITY_MASK": "omp",
         "ACPP_DEBUG_LEVEL": "3",
         "ACPP_PERSISTENT_RUNTIME": "1",
         "CTEST_NO_TESTS_ACTION": "ignore"

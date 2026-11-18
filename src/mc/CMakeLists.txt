@@ -73,20 +73,13 @@ target_include_directories(mc_host_stats
 )
 target_link_libraries(mc_host_stats PUBLIC Boost::math)
 
-# Standalone Catch2 target for the host-only convergence statistic.  The
-# global suite in tests/ is still disabled (#31); do not re-enable it here.
+# Standalone Catch2 target for the host-only convergence statistic.
 # Placed before the Apple early-return so the target is available on all hosts.
+# Catch2 is fetched once at the top level (v3.4.0 pin in cmake/FuzzybitsCatch2.cmake).
 if(BUILD_TESTING)
-  include(FetchContent)
   if(NOT TARGET Catch2::Catch2WithMain)
-    set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
-    set(CATCH_INSTALL_EXTRAS OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-      Catch2
-      URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.8.1.tar.gz
-      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    )
-    FetchContent_MakeAvailable(Catch2)
+    include("${PROJECT_SOURCE_DIR}/cmake/FuzzybitsCatch2.cmake")
+    fuzzybits_ensure_catch2()
   endif()
 
   add_executable(convergence_stats_tests
@@ -101,6 +94,8 @@ if(BUILD_TESTING)
     mc_host_stats
   )
   target_compile_features(convergence_stats_tests PRIVATE cxx_std_23)
+  add_test(NAME convergence_stats_tests COMMAND convergence_stats_tests)
+  set_property(TEST convergence_stats_tests PROPERTY LABELS convergence unit)
 endif()
 
 if(APPLE)
@@ -135,11 +130,15 @@ target_include_directories(mc
 # The imported SYCL::SYCL target is provided by AdaptiveCpp when `find_package(_adaptivecpp)`
 # is invoked from the top-level CMakeLists.txt.
 # `${LIBS}` comes from the parent scope and contains third-party dependencies.
+# Drop Boost.Test: it is a leftover in ${LIBS} from the Boost.Test era and
+# would inject a competing `main` into every Catch2 executable that links mc.
+set(_MC_LIBS ${LIBS})
+list(REMOVE_ITEM _MC_LIBS Boost::unit_test_framework)
 
 target_link_libraries(mc
   PUBLIC
     scram
-    ${LIBS}
+    ${_MC_LIBS}
     mc_host_stats
 )
 

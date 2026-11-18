@@ -17,7 +17,7 @@
 
 #include "settings.h"
 
-#include <catch2/catch.hpp>
+#include "catch2_compat.hpp"
 
 #include "error.h"
 
@@ -34,9 +34,11 @@ TEST_CASE("SettingsTest IncorrectSetup", "[settings]") {
   // Incorrect cut-off probability.
   CHECK_THROWS_AS(s.cut_off(-1), SettingsError);
   CHECK_THROWS_AS(s.cut_off(10), SettingsError);
-  // Incorrect number of trials.
-  CHECK_THROWS_AS(s.num_trials(-10), SettingsError);
-  CHECK_THROWS_AS(s.num_trials(0), SettingsError);
+  // num_trials ≤ 0 is unbounded (early-stop); negatives clamp to 0.
+  CHECK_NOTHROW(s.num_trials(-10));
+  CHECK(s.num_trials() == 0);
+  CHECK_NOTHROW(s.num_trials(0));
+  CHECK(s.early_stop());
   // Incorrect number of quantiles.
   CHECK_THROWS_AS(s.num_quantiles(-10), SettingsError);
   CHECK_THROWS_AS(s.num_quantiles(0), SettingsError);

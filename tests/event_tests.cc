@@ -17,7 +17,7 @@
 
 #include "event.h"
 
-#include <catch2/catch.hpp>
+#include "catch2_compat.hpp"
 
 #include "cycle.h"
 #include "error.h"

@@ -20,6 +20,19 @@ namespace detail {
 void update_wald(mc::stats::tally &t, double rel_margin_error, double z);
 void update_bayes(mc::stats::tally &t, double rel_margin_error, double z);
 
+/// Quantile of Beta(1/2, β).  Uses Boost.Math's inverse incomplete beta while
+/// β is in the series-stable range, and `beta_half_quantile_approx` above it.
+double beta_half_quantile(double p, double beta);
+
+/// Large-n approximation of the Beta(1/2, β) quantile.
+///
+/// Gamma(1/2) has CDF erf(√x), so the inverse is [erf⁻¹(u)]² — that part is
+/// exact.  The Beta(1/2, β) = X / (X + Y) representation then *replaces*
+/// Y ~ Gamma(β) by its mean β, yielding x_u / (x_u + β).  This is not a
+/// closed form of the Beta quantile; the relative error is O(1/√β).
+/// β = 1/2 recovers the arcsine law exactly via the trigonometric form.
+double beta_half_quantile_approx(double p, double beta);
+
 } // namespace detail
 
 // -----------------------------------------------------------------------------

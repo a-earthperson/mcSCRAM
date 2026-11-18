@@ -43,7 +43,9 @@ set(ALLOWED_MALLOC_TYPES "tcmalloc" "jemalloc" "malloc" CACHE STRING "Allowed me
 set(MALLOC_TYPE "malloc" CACHE STRING "Select the memory allocator type (tcmalloc, jemalloc, malloc)")
 option(WITH_COVERAGE "Instrument for coverage analysis" OFF)
 option(WITH_PROFILE "Instrument for performance profiling" OFF)
-option(BUILD_TESTS "Build the tests" ON)  # Suite currently commented out; #31 re-enables it.
+# BUILD_TESTING (from include(CTest) below) is canonical. BUILD_TESTS is the
+# legacy option name still passed by Dockerfiles (`-DBUILD_TESTS=OFF`).
+option(BUILD_TESTS "Deprecated alias of BUILD_TESTING" ON)
 option(OPTIMIZE_FOR_NATIVE "Build with -march=native" ON)
 option(BUILD_PYTHON_BINDINGS "Build the native Python extension module" ON)
 option(FUZZYBITS_WITH_MC "Build the SYCL Monte Carlo engine (libmc, scram-cli, Python)" ON)
@@ -150,7 +152,22 @@ endif()
 
 ##################### Begin cmake configuration ################### {{{
 
+# Honour -DBUILD_TESTS=OFF from Dockerfiles / legacy callers before CTest
+# defines BUILD_TESTING.
+if(DEFINED BUILD_TESTS AND NOT BUILD_TESTS)
+  set(BUILD_TESTING OFF CACHE BOOL "Build the testing tree." FORCE)
+endif()
 include(CTest)
+if(NOT BUILD_TESTING)
+  set(BUILD_TESTS OFF CACHE BOOL "Deprecated alias of BUILD_TESTING" FORCE)
+endif()
+message(STATUS "BUILD_TESTING=${BUILD_TESTING} (BUILD_TESTS is a deprecated alias)")
+
+if(BUILD_TESTING)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsCatch2.cmake")
+  fuzzybits_ensure_catch2()
+  include(Catch)
+endif()
 
 if(WIN32)
   set(CMAKE_SKIP_RPATH TRUE)
@@ -331,23 +348,6 @@ else()
   message(STATUS "FUZZYBITS_WITH_MC=OFF: skipping scram-cli and Python bindings")
 endif()
 
-#if(BUILD_TESTS)
-#  # Fetch Catch2 for testing
-#  include(FetchContent)
-#  FetchContent_Declare(
-#    Catch2
-#    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-#    GIT_TAG        v3.4.0  # Use latest stable version
-#  )
-#  FetchContent_MakeAvailable(Catch2)
-#
-#  # Add Catch2 CMake modules to path
-#  list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
-#
-#  # Ensure Catch2 is available before including tests
-#  find_package(Catch2 REQUIRED)
-#  include(CTest)
-#  include(Catch)
-#  enable_testing()
-#  add_subdirectory(tests)
-#endif()
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()

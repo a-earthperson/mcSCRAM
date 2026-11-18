@@ -19,7 +19,7 @@
 
 #include <boost/filesystem.hpp>
 
-#include <catch2/catch.hpp>
+#include "catch2_compat.hpp"
 
 #include "env.h"
 #include "initializer.h"
@@ -31,7 +31,9 @@ namespace fs = boost::filesystem;
 namespace scram::mef::test {
 
 TEST_CASE("SerializationTest.InputOutput", "[mef::serialization]") {
-  xml::Validator validator(env::install_dir() + "/share/scram/gui.rng");
+  // GUI RelaxNG (share/scram/gui.rng) and env::install_dir() were removed when
+  // schemas were embedded. Validate the round-trip against the MEF input schema.
+  xml::Validator validator = xml::Validator::from_memory(env::input_schema());
 
   auto input = GENERATE(values<std::vector<std::string>>(
       {{"tests/input/xml_special_chars.xml"},
@@ -46,12 +48,11 @@ TEST_CASE("SerializationTest.InputOutput", "[mef::serialization]") {
        {"input/Baobab/baobab2.xml", "input/Baobab/baobab2-basic-events.xml"}}));
 
   std::unique_ptr<Model> model;
-  INFO("inputs: " +
-       Catch::StringMaker<std::vector<std::string>>::convert(input))
+  INFO("input count=" << input.size());
   REQUIRE_NOTHROW(model = mef::Initializer(input, core::Settings{}).model());
   fs::path unique_name = "scram_test-" + fs::unique_path().string();
   fs::path temp_file = fs::temp_directory_path() / unique_name;
-  INFO("temp file: " + temp_file.string());
+  INFO("temp file: " << temp_file.string());
   REQUIRE_NOTHROW(Serialize(*model, temp_file.string()));
   REQUIRE_NOTHROW(xml::Document(temp_file.string(), &validator));
   fs::remove(temp_file);

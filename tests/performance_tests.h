@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-#include <catch2/catch.hpp>
+#include "catch2_compat.hpp"
 
 #include "fault_tree_analysis.h"
 #include "initializer.h"

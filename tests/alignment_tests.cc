@@ -17,7 +17,7 @@
 
 #include "alignment.h"
 
-#include <catch2/catch.hpp>
+#include "catch2_compat.hpp"
 
 #include "error.h"
 
