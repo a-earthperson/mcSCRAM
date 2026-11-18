@@ -21,11 +21,16 @@ target_link_libraries(fuzzybits_compile
 )
 
 # CustomPreprocessor<DirectEval>::Run lives in src/mc/core/preprocessor.cc.
-# On Apple it is already compiled into libscram; on Linux it lives in libmc
-# (SYCL). Compile it here so `fzb` does not need AdaptiveCpp.
-if(NOT APPLE)
+# On Apple it is already compiled into libscram. On Linux it lives in libmc
+# (SYCL). Compile it here only for the host-only path — otherwise both
+# fuzzybits_compile and libmc define Run (different flags → ODR).
+if(NOT APPLE AND NOT FUZZYBITS_WITH_MC)
   target_sources(fuzzybits_compile PRIVATE "${PROJECT_SOURCE_DIR}/src/mc/core/preprocessor.cc")
   target_include_directories(fuzzybits_compile PRIVATE "${PROJECT_SOURCE_DIR}/src/mc")
+endif()
+
+if(FUZZYBITS_WITH_MC)
+  target_link_libraries(fuzzybits_compile PUBLIC mc)
 endif()
 
 if(BUILD_TESTING)

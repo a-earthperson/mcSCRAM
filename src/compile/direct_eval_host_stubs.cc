@@ -1,7 +1,12 @@
 /// Host-only stubs for ProbabilityAnalyzer<DirectEval>.
 ///
-/// On Linux, libscram.so references these symbols (they live in SYCL libmc).
-/// `fzb` does not link libmc; this TU satisfies the dynamic loader.
+/// Layering inversion: libscram.so references these symbols, which live in
+/// SYCL libmc. This TU is compiled into `fzb` / `fzb_compile_tests` only when
+/// FUZZYBITS_WITH_MC=OFF (see targets/fzb/CMakeLists.txt). If it is also
+/// linked when libmc is present, ELF interposition binds libscram.so to the
+/// stubs and `fzb run` (#44) would throw / observe an empty set. The proper
+/// fix — move DirectEval instantiations out of libscram, or make the core
+/// analyzer independent of mc — is out of scope for Phase 1.
 
 #include "probability_analysis.h"
 

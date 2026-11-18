@@ -1,15 +1,14 @@
-# pcfb is a private repo; fuzzybits is public. Prefer a local override, otherwise
-# FetchContent the pinned v1.1 implementation (fuzzybit-org/pcfb@6b1af8bb).
-#
-# Docker / local:  -DFUZZYBITS_PCFB_SOURCE_DIR=/deps/pcfb
-# (see Dockerfile.fzb --build-context pcfb=...)
+# pcfb is public. Default: FetchContent the pinned v1.1 implementation
+# (fuzzybit-org/pcfb@6b1af8bb) anonymously. Optional local override:
+#   -DFUZZYBITS_PCFB_SOURCE_DIR=/path/to/pcfb
+# (Dockerfile.fzb still accepts --build-context pcfb=… for offline builds.)
 #
 # Pin: toolchain.env PCFB_GIT_TAG → FUZZYBITS_PIN_PCFB_GIT_TAG (#59). The
 # CACHE default below matches that pin so a configure without ToolchainPins
 # still FetchContents the same revision.
 
 set(FUZZYBITS_PCFB_SOURCE_DIR "" CACHE PATH
-    "Path to a local pcfb checkout (skips FetchContent of the private repo)")
+    "Path to a local pcfb checkout (skips FetchContent)")
 if(DEFINED FUZZYBITS_PIN_PCFB_GIT_TAG AND NOT FUZZYBITS_PIN_PCFB_GIT_TAG STREQUAL "")
   set(_pcfb_git_tag_default "${FUZZYBITS_PIN_PCFB_GIT_TAG}")
 else()
@@ -25,7 +24,7 @@ else()
   set(_pcfb_git_repo_default "https://github.com/fuzzybit-org/pcfb.git")
 endif()
 set(FUZZYBITS_PCFB_GIT_REPO "${_pcfb_git_repo_default}" CACHE STRING
-    "pcfb git remote (private; ignored when FUZZYBITS_PCFB_SOURCE_DIR is set)")
+    "pcfb git remote (ignored when FUZZYBITS_PCFB_SOURCE_DIR is set)")
 unset(_pcfb_git_repo_default)
 
 function(fuzzybits_add_pcfb)

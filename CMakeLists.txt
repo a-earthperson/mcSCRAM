@@ -315,8 +315,9 @@ add_subdirectory(src/api)
 add_subdirectory(src/ir)
 add_subdirectory(src/io)
 
-# pcfb is private; override with FUZZYBITS_PCFB_SOURCE_DIR (see cmake/FuzzybitsPcfb.cmake).
-# Pin: toolchain.env PCFB_GIT_TAG (currently 6b1af8bb4bb9af3d217a33317c006f0ff9516cf1).
+# pcfb is public; FetchContent uses toolchain.env PCFB_GIT_TAG
+# (currently 6b1af8bb4bb9af3d217a33317c006f0ff9516cf1). Override with
+# FUZZYBITS_PCFB_SOURCE_DIR for a local checkout (cmake/FuzzybitsPcfb.cmake).
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsPcfb.cmake")
 add_subdirectory(src/compile)
 add_subdirectory(targets/fzb)
