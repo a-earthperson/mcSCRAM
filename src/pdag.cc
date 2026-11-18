@@ -27,6 +27,7 @@
 #include "pdag.h"
 
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <unordered_set>
 
@@ -46,6 +47,26 @@ const std::unordered_set<const mef::Gate *> *Pdag::watched_gates_ = nullptr;
 
 void Pdag::SetWatchedGates(const std::unordered_set<const mef::Gate *> *gates) {
   watched_gates_ = gates;
+}
+
+void Pdag::SetNextNodeIndex(int index) {
+  if (index <= node_index_) {
+    throw std::logic_error("Pdag::SetNextNodeIndex: index " + std::to_string(index) +
+                           " does not exceed last assigned " + std::to_string(node_index_));
+  }
+  node_index_ = index - 1;
+}
+
+void Pdag::SetBasicEvent(int variable_index, const mef::BasicEvent *event) {
+  const int slot = variable_index - kVariableStartIndex;
+  if (slot < 0) {
+    throw std::logic_error("Pdag::SetBasicEvent: index " + std::to_string(variable_index) +
+                           " is below kVariableStartIndex");
+  }
+  if (static_cast<std::size_t>(slot) >= basic_events_.size()) {
+    basic_events_.resize(static_cast<std::size_t>(slot) + 1, nullptr);
+  }
+  basic_events_[variable_index] = event;
 }
 
 void NodeParentManager::AddParent(const GatePtr& gate) {

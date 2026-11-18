@@ -394,7 +394,13 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
   return b.finish();
 }
 
-pcfb::Result<Compiled> compile_files(const std::vector<std::string> &input_files, const Options &options) {
+CompiledGraph::CompiledGraph() = default;
+CompiledGraph::CompiledGraph(CompiledGraph &&) noexcept = default;
+CompiledGraph &CompiledGraph::operator=(CompiledGraph &&) noexcept = default;
+CompiledGraph::~CompiledGraph() = default;
+
+pcfb::Result<CompiledGraph> compile_to_graph(const std::vector<std::string> &input_files,
+                                             const Options &options) {
   if (input_files.empty()) {
     return std::unexpected(compile_error("compile requires at least one input file"));
   }
@@ -447,13 +453,28 @@ pcfb::Result<Compiled> compile_files(const std::vector<std::string> &input_files
     return std::unexpected(compile_error(std::string("preprocessor: ") + ex.what()));
   }
 
-  Compiled out;
-  out.model_name = model->GetOptionalName();
+  CompiledGraph out;
+  out.target_id = target->id();
+  out.target_name = target->name();
+  out.model = std::move(model);
+  out.graph = std::move(graph);
+  out.model_name = out.model->GetOptionalName();
   if (out.model_name.empty()) {
     out.model_name = std::filesystem::path(input_files.front()).stem().string();
   }
-  out.target_id = target->id();
-  out.target_name = target->name();
+  return out;
+}
+
+pcfb::Result<Compiled> compile_files(const std::vector<std::string> &input_files, const Options &options) {
+  auto graph = compile_to_graph(input_files, options);
+  if (!graph) {
+    return std::unexpected(graph.error());
+  }
+
+  Compiled out;
+  out.model_name = graph->model_name;
+  out.target_id = graph->target_id;
+  out.target_name = graph->target_name;
 
   std::array<std::uint8_t, 32> digest{};
   try {
@@ -466,7 +487,7 @@ pcfb::Result<Compiled> compile_files(const std::vector<std::string> &input_files
     sha_bytes[i] = static_cast<std::byte>(digest[i]);
   }
 
-  auto bytes = pdag_to_pcfb(*graph, options, out.model_name, out.target_id,
+  auto bytes = pdag_to_pcfb(*graph->graph, options, out.model_name, out.target_id,
                             std::span<const std::byte>{sha_bytes, 32});
   if (!bytes) {
     return std::unexpected(bytes.error());

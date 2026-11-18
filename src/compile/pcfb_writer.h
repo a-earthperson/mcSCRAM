@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -13,6 +14,10 @@ namespace scram::core {
 class Pdag;
 class Settings;
 }  // namespace scram::core
+
+namespace scram::mef {
+class Model;
+}  // namespace scram::mef
 
 namespace fuzzybits::compile {
 
@@ -40,8 +45,26 @@ struct Compiled {
   std::string target_name;
 };
 
+/// In-memory compile result. `model` must outlive `graph` (BasicEvent pointers).
+struct CompiledGraph {
+  std::unique_ptr<scram::mef::Model> model;
+  std::unique_ptr<scram::core::Pdag> graph;
+  std::string model_name;
+  std::string target_id;
+  std::string target_name;
+
+  CompiledGraph();
+  CompiledGraph(CompiledGraph &&) noexcept;
+  CompiledGraph &operator=(CompiledGraph &&) noexcept;
+  ~CompiledGraph();
+};
+
 /// Apply `options` to a Settings object (compilation flags only).
 void apply_options(scram::core::Settings &settings, const Options &options);
+
+/// OpenPSA/MEF XML → preprocessed PDAG. Used by compile and by the bit-identity test.
+[[nodiscard]] pcfb::Result<CompiledGraph> compile_to_graph(const std::vector<std::string> &input_files,
+                                                           const Options &options);
 
 /// OpenPSA/MEF XML → preprocessed PDAG → pcfb core-1.1 buffer.
 [[nodiscard]] pcfb::Result<Compiled> compile_files(const std::vector<std::string> &input_files,

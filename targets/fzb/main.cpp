@@ -3,11 +3,16 @@
 #include "compile/sha256.h"
 #include "version.h"
 
+#ifdef FZB_HAS_RUNTIME
+#include "runtime/runtime.h"
+#endif
+
 #include <boost/program_options.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -29,12 +34,7 @@ void print_root_usage(std::ostream &out) {
       << "Commands:\n"
       << "  compile   OpenPSA/MEF XML → preprocessed PDAG → .pcfb\n"
       << "  inspect   Summarise, validate, or exactly evaluate a .pcfb\n"
-      << "  run       Monte Carlo runtime (not yet implemented; see #44)\n";
-}
-
-int cmd_run(int, char **) {
-  std::cerr << "fzb run is not implemented in this wave (fuzzybits#44).\n";
-  return 2;
+      << "  run       Monte Carlo a .pcfb (estimate and CI per query)\n";
 }
 
 std::string json_escape(std::string_view s) {
@@ -69,6 +69,116 @@ std::string json_escape(std::string_view s) {
   }
   return out;
 }
+
+#ifdef FZB_HAS_RUNTIME
+std::uint64_t parse_trials(const std::string &text) {
+  char *end = nullptr;
+  const double v = std::strtod(text.c_str(), &end);
+  if (end == text.c_str() || v <= 0 || !std::isfinite(v)) {
+    throw fuzzybits::runtime::RuntimeError("invalid --trials '" + text + "'");
+  }
+  return static_cast<std::uint64_t>(v);
+}
+
+int cmd_run(int argc, char **argv) {
+  po::options_description desc("fzb run options");
+  desc.add_options()
+      ("help,h", "display this help message")
+      ("trials,N", po::value<std::string>(), "Bernoulli trials (e.g. 1e9, 1000000)")
+      ("seed,S", po::value<int>()->default_value(372),
+       "legacy Settings::seed (Bernoulli Philox is counter-based and ignores this)")
+      ("backend", po::value<std::string>(), "AdaptiveCpp backend: cuda or omp (sets ACPP_VISIBILITY_MASK first)")
+      ("json", "print results as JSON")
+      ("input-file", po::value<std::string>(), ".pcfb file");
+
+  po::positional_options_description pos;
+  pos.add("input-file", 1);
+
+  po::variables_map vm;
+  try {
+    po::store(po::command_line_parser(argc, argv).options(desc).positional(pos).run(), vm);
+    po::notify(vm);
+  } catch (const std::exception &ex) {
+    std::cerr << "Option error: " << ex.what() << "\n\n" << desc << std::endl;
+    return 1;
+  }
+  if (vm.count("help")) {
+    std::cout << "Usage: fzb run model.pcfb --trials N [--seed S] [--backend cuda|omp] [--json]\n\n"
+              << desc << std::endl;
+    return 0;
+  }
+  if (!vm.count("input-file")) {
+    std::cerr << "fzb run: missing .pcfb file\n\n" << desc << std::endl;
+    return 1;
+  }
+  if (!vm.count("trials")) {
+    std::cerr << "fzb run: --trials is required\n\n" << desc << std::endl;
+    return 1;
+  }
+
+  fuzzybits::runtime::RunOptions opt;
+  try {
+    opt.trials = parse_trials(vm["trials"].as<std::string>());
+  } catch (const std::exception &ex) {
+    std::cerr << "fzb run: " << ex.what() << std::endl;
+    return 1;
+  }
+  opt.seed = vm["seed"].as<int>();
+  if (vm.count("backend")) {
+    opt.backend = vm["backend"].as<std::string>();
+  }
+
+  // ACPP_VISIBILITY_MASK must be set before AdaptiveCpp constructs a queue.
+  try {
+    fuzzybits::runtime::apply_backend_mask(opt.backend);
+  } catch (const std::exception &ex) {
+    std::cerr << "fzb run: " << ex.what() << std::endl;
+    return 1;
+  }
+
+  try {
+    const auto results = fuzzybits::runtime::run_pcfb(vm["input-file"].as<std::string>(), opt);
+    if (vm.count("json")) {
+      std::cout << "{\n  \"queries\": [\n";
+      for (std::size_t i = 0; i < results.size(); ++i) {
+        const auto &r = results[i];
+        std::cout << "    {\"name\": \"" << json_escape(r.name) << "\", "
+                  << "\"estimate\": " << std::setprecision(16) << std::scientific << r.estimate << ", "
+                  << "\"ci_low\": " << r.ci_low << ", "
+                  << "\"ci_high\": " << r.ci_high << ", "
+                  << "\"n\": " << std::dec << r.n << ", "
+                  << "\"hits\": " << r.hits << "}";
+        if (i + 1 < results.size()) {
+          std::cout << ",";
+        }
+        std::cout << "\n";
+      }
+      std::cout << "  ]\n}\n";
+    } else {
+      for (const auto &r : results) {
+        std::cout << r.name << "  " << std::setprecision(8) << std::scientific << r.estimate << "  ["
+                  << r.ci_low << ", " << r.ci_high << "]  n=" << std::dec << r.n << "  hits=" << r.hits
+                  << "\n";
+      }
+    }
+    return 0;
+  } catch (const fuzzybits::runtime::InvalidPcfbError &ex) {
+    std::cerr << "fzb run: " << ex.what() << std::endl;
+    for (const auto &d : ex.diagnostics) {
+      std::cerr << "validate: " << d.location << ": " << d.message << std::endl;
+    }
+    return 1;
+  } catch (const std::exception &ex) {
+    std::cerr << "fzb run: " << ex.what() << std::endl;
+    return 1;
+  }
+}
+#else
+int cmd_run(int, char **) {
+  std::cerr << "fzb run requires FUZZYBITS_WITH_MC=ON (the SYCL Monte Carlo engine).\n";
+  return 2;
+}
+#endif
 
 const char *opcode_name(pcfb::OpCode op) {
   switch (op) {

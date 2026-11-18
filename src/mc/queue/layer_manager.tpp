@@ -103,15 +103,19 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::layered_toposort(
                       if (!varL && varR)
                           return false;
 
-                      // If both are variables, treat them as equivalent in this ordering
-                      // (no further ordering required among variables)
+                      // Variables in a layer are ordered by PDAG index. That index is
+                      // SAMPLE event_id after pcfb reconstruction, and it is the
+                      // Philox `pdag_idx` / block `event_idx` rank, so compile/run
+                      // bit-identity does not depend on DFS insertion order.
                       if (varL && varR)
-                          return false;
+                          return lhs->index() < rhs->index();
 
-                      // Otherwise, both must be gates. Compare by gate->type()
+                      // Otherwise, both must be gates. Compare by gate->type(), then index.
                       auto gateL = std::dynamic_pointer_cast<core::Gate>(lhs);
                       auto gateR = std::dynamic_pointer_cast<core::Gate>(rhs);
-                      return gateL->type() < gateR->type();
+                      if (gateL && gateR && gateL->type() != gateR->type())
+                          return gateL->type() < gateR->type();
+                      return lhs->index() < rhs->index();
                   });
     }
     LOG(DEBUG5) << "num_nodes: " << nodes.size();

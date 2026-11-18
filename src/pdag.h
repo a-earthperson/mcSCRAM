@@ -1033,6 +1033,18 @@ class Pdag : private boost::noncopyable {
   // nullptr to clear.
   static void SetWatchedGates(const std::unordered_set<const mef::Gate*> *gates);
 
+  /// Next constructed Node receives `index`. Used by the pcfb runtime so
+  /// SAMPLE `event_id` becomes the Variable index (Philox `pdag_idx`).
+  /// `index` must exceed the last assigned index.
+  void SetNextNodeIndex(int index);
+
+  /// Last assigned node index (0 before the Constant at 1 is created).
+  [[nodiscard]] int last_node_index() const { return node_index_; }
+
+  /// Map a Variable index onto a MEF BasicEvent for kernel_builder lookup.
+  /// `variable_index` is the PDAG index (`kVariableStartIndex`-based).
+  void SetBasicEvent(int variable_index, const mef::BasicEvent *event);
+
  private:
   /// Holder for nodes that are created from fault tree events.
   /// This is a helper structure
