@@ -110,8 +110,8 @@ docker --context xerxes build -f docker/wheel.Dockerfile \
 `auditwheel repair` on Ubuntu 24.04 tags **`manylinux_2_39`**. A
 `manylinux_2_28` rebuild is a follow-up. Driver libs are passed to
 `--exclude libcuda.so.1`. Approximate wheel sizes (cp312, x86_64):
-`generic` ~180 MB (dominated by `libLLVM.so.20.1` for SSCP JIT);
-`cuda-sm70` ~65 MB.
+`generic` and `cuda-sm70` are both ~66 MB, dominated by `libLLVM.so.20.1`
+(~153 MB uncompressed) for SSCP JIT.
 
 ## Tests
 
