@@ -34,10 +34,11 @@ TEST_CASE("SettingsTest IncorrectSetup", "[settings]") {
   // Incorrect cut-off probability.
   CHECK_THROWS_AS(s.cut_off(-1), SettingsError);
   CHECK_THROWS_AS(s.cut_off(10), SettingsError);
-  // num_trials ≤ 0 is unbounded (early-stop); negatives clamp to 0.
-  CHECK_NOTHROW(s.num_trials(-10));
-  CHECK(s.num_trials() == 0);
+  // Negative is a CLI typo (e.g. -N -1e8) and must not become unbounded.
+  CHECK_THROWS_AS(s.num_trials(-10), SettingsError);
+  // 0 is unbounded with early-stop (mcSCRAM semantics).
   CHECK_NOTHROW(s.num_trials(0));
+  CHECK(s.num_trials() == 0);
   CHECK(s.early_stop());
   // Incorrect number of quantiles.
   CHECK_THROWS_AS(s.num_quantiles(-10), SettingsError);
