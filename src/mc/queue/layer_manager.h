@@ -60,6 +60,93 @@ namespace scram::log::layers {
 
 namespace scram::mc::queue {
 
+struct range3_description {
+    std::size_t x = 0;
+    std::size_t y = 0;
+    std::size_t z = 0;
+
+    [[nodiscard]] std::size_t product() const {
+        return x * y * z;
+    }
+};
+
+struct device_description {
+    std::string type;
+    std::string name;
+    std::uint32_t vendor_id = 0;
+    std::string vendor;
+    std::string driver_version;
+    std::string profile;
+    std::string version;
+    std::string opencl_c_version;
+    std::vector<int> aspects;
+    std::vector<std::string> extensions;
+    std::uint32_t max_compute_units = 0;
+    std::uint32_t max_clock_frequency = 0;
+    std::uint32_t max_work_item_dimensions = 0;
+    range3_description max_work_item_sizes_1d{};
+    range3_description max_work_item_sizes_2d{};
+    range3_description max_work_item_sizes_3d{};
+    bool work_item_independent_forward_progress = false;
+    std::size_t max_work_group_size = 0;
+    std::uint32_t max_num_sub_groups = 0;
+    bool sub_group_independent_forward_progress = false;
+    std::vector<std::size_t> sub_group_sizes;
+    std::uint32_t preferred_vector_width_char = 0;
+    std::uint64_t max_mem_alloc_size = 0;
+    std::uint64_t global_mem_size = 0;
+    std::uint64_t global_mem_cache_size = 0;
+    std::uint32_t global_mem_cache_line_size = 0;
+    std::string global_mem_cache_type;
+    std::string local_mem_type;
+    std::uint64_t local_mem_size = 0;
+};
+
+struct kernel_dependency_edge {
+    std::size_t source_partition = 0;
+    std::size_t target_partition = 0;
+    std::string reason = "buffer_dependency";
+};
+
+struct kernel_partition_description {
+    std::size_t id = 0;
+    std::size_t layer = 0;
+    std::string kind;
+    std::string connective;
+    std::vector<std::int32_t> node_indices;
+    std::vector<std::size_t> dependency_partition_ids;
+    range3_description logical_range{};
+    range3_description local_range{};
+    range3_description global_range{};
+    std::size_t node_count = 0;
+    std::size_t work_group_count = 0;
+    std::size_t work_item_count = 0;
+    std::size_t logical_work_item_count = 0;
+    std::size_t overprovisioned_work_items = 0;
+    std::size_t bitpacks_per_node = 0;
+    std::size_t bits_per_node = 0;
+    std::size_t bytes_per_node = 0;
+    std::size_t resident_bytes = 0;
+    std::size_t min_fan_in = 0;
+    std::size_t max_fan_in = 0;
+    std::size_t total_fan_in = 0;
+    std::size_t positive_input_count = 0;
+    std::size_t negated_input_count = 0;
+};
+
+struct execution_node_description {
+    std::int32_t index = 0;
+    std::size_t layer = 0;
+    std::size_t partition = 0;
+    std::string kind;
+    std::string connective;
+    std::size_t fan_in = 0;
+    std::size_t positive_input_count = 0;
+    std::size_t negated_input_count = 0;
+    std::size_t atleast_min = 0;
+    bool module = false;
+};
+
 /**
  * @class layer_manager
  * @brief Manages layered execution of pdag computations on SYCL devices
@@ -126,6 +213,10 @@ class layer_manager {
     
     /// @brief Vector of all queueable objects in execution order
     std::vector<std::shared_ptr<queueable_base>> queueables_;
+
+    std::unordered_map<const queueable_base *, std::size_t> partition_ids_by_queueable_;
+    std::vector<kernel_partition_description> execution_partitions_;
+    std::vector<kernel_dependency_edge> execution_dependency_edges_;
 
     /// @brief Map from node index to allocated device-side tally event structures
     std::unordered_map<index_t_, event::tally<bitpack_t_> *> allocated_tally_events_by_index_;
@@ -244,7 +335,7 @@ class layer_manager {
      * build_kernels_for_layer(nodes_by_layer[0]);
      * @endcode
      */
-    void build_kernels_for_layer(const std::vector<std::shared_ptr<core::Node>> &layer_nodes);
+    void build_kernels_for_layer(const std::vector<std::shared_ptr<core::Node>> &layer_nodes, std::size_t layer_index);
 
     /**
      * @brief Maps nodes by layer and builds corresponding kernels
@@ -293,6 +384,18 @@ class layer_manager {
         std::size_t total_iterations = 0;
     };
 
+    struct execution_plan_description {
+        std::string schema = "mcscram.execution_plan.v1";
+        std::string bitpack_type;
+        std::size_t bits_per_bitpack = 0;
+        std::size_t node_count = 0;
+        device_description device;
+        typename sample_shaper<bitpack_t_>::description sample_shaper;
+        std::vector<kernel_partition_description> partitions;
+        std::vector<kernel_dependency_edge> dependency_edges;
+        std::vector<execution_node_description> nodes;
+    };
+
     /**
      * @brief Constructs a layer manager for the given PDAG
      * 
@@ -308,7 +411,7 @@ class layer_manager {
      * @note Sample shape is optimized for the target SYCL device
      *
      */
-    layer_manager(core::Pdag *pdag, size_t_ num_trials, const stats::TallyNodeMap &to_tally, std::double_t overhead_ratio);
+    layer_manager(core::Pdag *pdag, size_t_ num_trials, const stats::TallyNodeMap &to_tally, std::size_t requested_trials_per_pass);
 
     /**
      * @brief Submits all queued computations to the SYCL device
@@ -380,6 +483,8 @@ class layer_manager {
     [[nodiscard]] std::size_t node_count() const;
 
     [[nodiscard]] kernel_dag_description describe_kernel_dag() const;
+
+    [[nodiscard]] execution_plan_description describe_execution_plan() const;
 
     /**
      * @brief Retrieves the original MEF event (BasicEvent) corresponding to a PDAG node index.

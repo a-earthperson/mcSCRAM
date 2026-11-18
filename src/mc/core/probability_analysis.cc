@@ -113,7 +113,7 @@ void ProbabilityAnalyzer<mc::DirectEval>::ComputeTallies(const bool converge_on_
     using prob_t_ = std::double_t;
     using size_t_ = std::size_t;
     const mc::stats::TallyNodeMap &tally_node_map = this->monitored();
-    mc::queue::layer_manager<bitpack_t_, prob_t_, size_t_> manager(pdag, N, tally_node_map, settings.overhead_ratio());
+    mc::queue::layer_manager<bitpack_t_, prob_t_, size_t_> manager(pdag, N, tally_node_map, settings.requested_trials_per_pass());
 
     using bayes_t = mc::stats::bayes_policy;
     using wald_t  = mc::stats::wald_policy;

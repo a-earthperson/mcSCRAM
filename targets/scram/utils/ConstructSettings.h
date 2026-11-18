@@ -103,7 +103,7 @@ namespace ScramCLI {
         SET("delta", double, ci_rel_margin_error);
         SET("burn-in", double, ci_burnin_trials);
 
-        SET("overhead-ratio", double, overhead_ratio);
+        SET("trials-per-pass", double, requested_trials_per_pass);
 
 
         if (vm.contains("policy")) {

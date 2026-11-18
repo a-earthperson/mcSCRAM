@@ -410,12 +410,18 @@ class Settings {
   /// Accepts non-negative values. Negative values are simply set as -1 to unset the variable.
   Settings &oracle_p(const double p) { oracle_p_ = p >= 0 ? p : -1.0; return *this; }
 
-    /// @returns Node allocation overhead ratio
-    [[nodiscard]] double overhead_ratio() const { return overhead_ratio_; }
+    /// @returns The optimistic number of Bernoulli trials to sample per node per
+    ///          device pass (0 → "auto": fill the per-node device-memory budget).
+    [[nodiscard]] std::size_t requested_trials_per_pass() const { return requested_trials_per_pass_; }
 
-    /// Sets the ground-truth probability/frequency that will be used for diagnostic statistics.
-    /// Accepts non-negative values. Negative values are simply set as -1 to unset the variable.
-    Settings &overhead_ratio(const double r) { overhead_ratio_ = r >= 0 ? r : 0.; return *this; }
+    /// Sets the optimistic per-node trials-per-pass target used by the sample
+    /// shaper.  The shaper treats this as a *target*: the realized value may be
+    /// smaller after device-memory and cache-line-alignment constraints are
+    /// applied.  Non-positive values select the automatic (memory-budget) policy.
+    Settings &requested_trials_per_pass(const double n) {
+        requested_trials_per_pass_ = n > 0 ? static_cast<std::size_t>(n) : 0;
+        return *this;
+    }
 
   /// @returns the list of MEF input files provided for the analysis (can be empty).
   [[nodiscard]] const std::vector<std::string>& input_files() const { return input_files_; }
@@ -481,7 +487,9 @@ class Settings {
   bool recognize_atleast_groups_ = true;
   int compilation_level_ = 2;
 
-  double overhead_ratio_ = 0.05;
+  /// Optimistic per-node trials-per-pass target for the sample shaper.
+  /// 0 → automatic policy (size each pass to the per-node memory budget).
+  std::size_t requested_trials_per_pass_ = 0;
 
   // A copy of the final list of MEF input files passed on the command-line.  Read-only access is provided via the getter above.
   std::vector<std::string> input_files_;

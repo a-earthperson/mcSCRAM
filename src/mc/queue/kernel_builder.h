@@ -74,7 +74,116 @@
 
 #include <sycl/sycl.hpp>
 
+#include <algorithm>
+#include <limits>
+#include <set>
+#include <unordered_map>
+
 namespace scram::mc::queue {
+
+    inline range3_description describe_range3(const sycl::range<3> &range) {
+        return {
+            .x = range[0],
+            .y = range[1],
+            .z = range[2],
+        };
+    }
+
+    template<typename size_t_, typename bitpack_t_>
+    static kernel_partition_description make_kernel_partition_description(
+        const std::size_t layer,
+        const std::string &kind,
+        const std::string &connective,
+        const std::vector<std::int32_t> &node_indices,
+        const std::vector<std::size_t> &dependency_partition_ids,
+        const sycl::range<3> &global_range,
+        const sycl::range<3> &local_range,
+        const event::sample_shape<size_t_> &sample_shape,
+        const std::size_t min_fan_in = 0,
+        const std::size_t max_fan_in = 0,
+        const std::size_t total_fan_in = 0,
+        const std::size_t positive_input_count = 0,
+        const std::size_t negated_input_count = 0) {
+        const range3_description logical_range{
+            .x = node_indices.size(),
+            .y = sample_shape.batch_size,
+            .z = sample_shape.bitpacks_per_batch,
+        };
+        const range3_description local = describe_range3(local_range);
+        const range3_description global = describe_range3(global_range);
+        const auto local_product = std::max<std::size_t>(local.product(), 1);
+        const auto logical_work_items = logical_range.product();
+        const auto work_items = global.product();
+        const auto bitpacks_per_node = sample_shape.num_bitpacks();
+
+        return {
+            .id = 0,
+            .layer = layer,
+            .kind = kind,
+            .connective = connective,
+            .node_indices = node_indices,
+            .dependency_partition_ids = dependency_partition_ids,
+            .logical_range = logical_range,
+            .local_range = local,
+            .global_range = global,
+            .node_count = node_indices.size(),
+            .work_group_count = work_items / local_product,
+            .work_item_count = work_items,
+            .logical_work_item_count = logical_work_items,
+            .overprovisioned_work_items = work_items > logical_work_items ? work_items - logical_work_items : 0,
+            .bitpacks_per_node = bitpacks_per_node,
+            .bits_per_node = bitpacks_per_node * sizeof(bitpack_t_) * 8,
+            .bytes_per_node = bitpacks_per_node * sizeof(bitpack_t_),
+            .resident_bytes = node_indices.size() * bitpacks_per_node * sizeof(bitpack_t_),
+            .min_fan_in = min_fan_in,
+            .max_fan_in = max_fan_in,
+            .total_fan_in = total_fan_in,
+            .positive_input_count = positive_input_count,
+            .negated_input_count = negated_input_count,
+        };
+    }
+
+    inline std::vector<std::size_t> dependency_partition_ids(
+        const std::set<std::shared_ptr<queueable_base>> &dependencies,
+        const std::unordered_map<const queueable_base *, std::size_t> &partition_ids_by_queueable) {
+        std::vector<std::size_t> ids;
+        ids.reserve(dependencies.size());
+        for (const auto &dependency : dependencies) {
+            auto it = partition_ids_by_queueable.find(dependency.get());
+            if (it != partition_ids_by_queueable.end()) {
+                ids.push_back(it->second);
+            }
+        }
+        std::sort(ids.begin(), ids.end());
+        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+        return ids;
+    }
+
+    inline void append_dependency_edges(
+        const std::vector<std::size_t> &source_partition_ids,
+        const std::size_t target_partition_id,
+        std::vector<kernel_dependency_edge> &dependency_edges) {
+        for (const auto source_partition_id : source_partition_ids) {
+            dependency_edges.push_back({
+                .source_partition = source_partition_id,
+                .target_partition = target_partition_id,
+                .reason = "buffer_dependency",
+            });
+        }
+    }
+
+    inline void register_kernel_partition(
+        const std::shared_ptr<queueable_base> &queueable_partition,
+        kernel_partition_description description,
+        std::vector<kernel_partition_description> &execution_partitions,
+        std::vector<kernel_dependency_edge> &dependency_edges,
+        std::unordered_map<const queueable_base *, std::size_t> &partition_ids_by_queueable) {
+        const std::size_t id = execution_partitions.size();
+        description.id = id;
+        append_dependency_edges(description.dependency_partition_ids, id, dependency_edges);
+        partition_ids_by_queueable[queueable_partition.get()] = id;
+        execution_partitions.push_back(std::move(description));
+    }
 
     /**
      * @brief Builds a SYCL kernel for parallel basic event sampling
@@ -161,7 +270,11 @@ namespace scram::mc::queue {
         std::vector<std::shared_ptr<queueable_base>> &queueables_,
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
         std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
-        std::vector<event::basic_event_block<prob_t_, bitpack_t_, index_t_>> &device_basic_event_blocks_) {
+        std::vector<event::basic_event_block<prob_t_, bitpack_t_, index_t_>> &device_basic_event_blocks_,
+        std::vector<kernel_partition_description> &execution_partitions_,
+        std::vector<kernel_dependency_edge> &execution_dependency_edges_,
+        std::unordered_map<const queueable_base *, std::size_t> &partition_ids_by_queueable_,
+        const std::size_t layer_index_) {
 
         if (variables_.empty()) {
             return nullptr;
@@ -188,6 +301,11 @@ namespace scram::mc::queue {
         }
 
         const auto num_events_in_kernel = indexed_probabilities.size();
+        std::vector<std::int32_t> node_indices;
+        node_indices.reserve(indexed_probabilities.size());
+        for (const auto &[index, _] : indexed_probabilities) {
+            node_indices.push_back(static_cast<std::int32_t>(index));
+        }
 
         // 2) Create a contiguous block of basic_events
         using block_type = event::basic_event_block<prob_t_, bitpack_t_>;
@@ -202,6 +320,20 @@ namespace scram::mc::queue {
         const auto nd_range = be_kernel.get_range(num_events_in_kernel, local_range, sample_shape_);
         iterable_queueable<kernel_type, 3> be_partition(queue_, be_kernel, nd_range);
         auto queueable_partition = std::make_shared<decltype(be_partition)>(be_partition);
+        register_kernel_partition(
+            queueable_partition,
+            make_kernel_partition_description<size_t_, bitpack_t_>(
+                layer_index_,
+                "basic_event",
+                "sample",
+                node_indices,
+                {},
+                nd_range.get_global_range(),
+                nd_range.get_local_range(),
+                sample_shape_),
+            execution_partitions_,
+            execution_dependency_edges_,
+            partition_ids_by_queueable_);
 
         // 5) Update allocated objects and queueables in the global maps
         for (auto i = 0; i < num_events_in_kernel; ++i) {
@@ -305,7 +437,11 @@ namespace scram::mc::queue {
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
         std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
         std::vector<event::gate_block<bitpack_t_, size_t_>> &device_gate_blocks_,
-        std::vector<event::atleast_gate_block<bitpack_t_, size_t_>> &device_atleast_gate_blocks_) {
+        std::vector<event::atleast_gate_block<bitpack_t_, size_t_>> &device_atleast_gate_blocks_,
+        std::vector<kernel_partition_description> &execution_partitions_,
+        std::vector<kernel_dependency_edge> &execution_dependency_edges_,
+        std::unordered_map<const queueable_base *, std::size_t> &partition_ids_by_queueable_,
+        const std::size_t layer_index_) {
 
         if (gates_.empty()) {
             return nullptr;
@@ -315,6 +451,11 @@ namespace scram::mc::queue {
         std::vector<std::pair<std::vector<bitpack_t_*>, size_t_>> inputs_by_gate_with_negated_offset; // positive and negated inputs, with a value for the offset at which the negatives begin
         std::vector<size_t_> atleast_args_by_gate;
         std::set<std::shared_ptr<queueable_base>> layer_dependencies;
+        std::size_t min_fan_in = std::numeric_limits<std::size_t>::max();
+        std::size_t max_fan_in = 0;
+        std::size_t total_fan_in = 0;
+        std::size_t positive_input_count = 0;
+        std::size_t negated_input_count = 0;
 
         indices.reserve(gates_.size());
         inputs_by_gate_with_negated_offset.reserve(gates_.size());
@@ -372,6 +513,13 @@ namespace scram::mc::queue {
             }
 
             const auto num_negated_events = negative_gate_inputs.size();
+            const auto num_positive_events = positive_gate_inputs.size();
+            const auto fan_in = num_positive_events + num_negated_events;
+            min_fan_in = std::min<std::size_t>(min_fan_in, fan_in);
+            max_fan_in = std::max<std::size_t>(max_fan_in, fan_in);
+            total_fan_in += fan_in;
+            positive_input_count += num_positive_events;
+            negated_input_count += num_negated_events;
             // merge these two vectors
             positive_gate_inputs.insert(positive_gate_inputs.end(), negative_gate_inputs.begin(), negative_gate_inputs.end());
 
@@ -382,6 +530,12 @@ namespace scram::mc::queue {
         // 2) Create a contiguous array for these gates
         const size_t num_events_in_layer = indices.size();
         const auto local_range = working_set<size_t_, bitpack_t_>(queue_, num_events_in_layer, sample_shape_).compute_optimal_local_range_3d();
+        std::vector<std::int32_t> node_indices;
+        node_indices.reserve(indices.size());
+        for (const auto index : indices) {
+            node_indices.push_back(static_cast<std::int32_t>(index));
+        }
+        const auto dependency_ids = dependency_partition_ids(layer_dependencies, partition_ids_by_queueable_);
 
         // 3) Instantiate the appropriate kernel for this gate type, along with the partition
         using kernel_type = kernel::op<gate_type_, bitpack_t_, size_t_>;
@@ -395,6 +549,25 @@ namespace scram::mc::queue {
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
             queueable<kernel_type, 3> partition(queue_, typed_kernel, nd_range, layer_dependencies);
             queueable_partition = std::make_shared<decltype(partition)>(partition);
+            register_kernel_partition(
+                queueable_partition,
+                make_kernel_partition_description<size_t_, bitpack_t_>(
+                    layer_index_,
+                    "gate",
+                    core::OpName.at(gate_type_),
+                    node_indices,
+                    dependency_ids,
+                    nd_range.get_global_range(),
+                    nd_range.get_local_range(),
+                    sample_shape_,
+                    min_fan_in == std::numeric_limits<std::size_t>::max() ? 0 : min_fan_in,
+                    max_fan_in,
+                    total_fan_in,
+                    positive_input_count,
+                    negated_input_count),
+                execution_partitions_,
+                execution_dependency_edges_,
+                partition_ids_by_queueable_);
 
             // 4) Record the newly allocated gate pointers and queueables
             for (std::size_t i = 0; i < num_events_in_layer; ++i)
@@ -410,6 +583,25 @@ namespace scram::mc::queue {
             const auto nd_range = typed_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
             queueable<kernel_type, 3> partition(queue_, typed_kernel, nd_range, layer_dependencies);
             queueable_partition = std::make_shared<decltype(partition)>(partition);
+            register_kernel_partition(
+                queueable_partition,
+                make_kernel_partition_description<size_t_, bitpack_t_>(
+                    layer_index_,
+                    "gate",
+                    core::OpName.at(gate_type_),
+                    node_indices,
+                    dependency_ids,
+                    nd_range.get_global_range(),
+                    nd_range.get_local_range(),
+                    sample_shape_,
+                    min_fan_in == std::numeric_limits<std::size_t>::max() ? 0 : min_fan_in,
+                    max_fan_in,
+                    total_fan_in,
+                    positive_input_count,
+                    negated_input_count),
+                execution_partitions_,
+                execution_dependency_edges_,
+                partition_ids_by_queueable_);
 
             // 4) Record the newly allocated gate pointers and queueables
             for (std::size_t i = 0; i < num_events_in_layer; ++i)
@@ -530,7 +722,11 @@ namespace scram::mc::queue {
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
         std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
         std::vector<event::gate_block<bitpack_t_, size_t_>> &device_gate_blocks_,
-        std::vector<event::atleast_gate_block<bitpack_t_, size_t_>> &device_atleast_gate_blocks_
+        std::vector<event::atleast_gate_block<bitpack_t_, size_t_>> &device_atleast_gate_blocks_,
+        std::vector<kernel_partition_description> &execution_partitions_,
+        std::vector<kernel_dependency_edge> &execution_dependency_edges_,
+        std::unordered_map<const queueable_base *, std::size_t> &partition_ids_by_queueable_,
+        const std::size_t layer_index_
         ) {
         std::vector<std::shared_ptr<queueable_base>> kernels;
         kernels.reserve(gates_by_type.size());
@@ -545,28 +741,28 @@ namespace scram::mc::queue {
 
             switch (gate_type) {
                 case core::kAnd:
-                    kernel = build_kernel_for_gates_of_type<core::kAnd, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+                    kernel = build_kernel_for_gates_of_type<core::kAnd, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
                 case core::kOr:
-                    kernel = build_kernel_for_gates_of_type<core::kOr, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+                    kernel = build_kernel_for_gates_of_type<core::kOr, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
                 case core::kAtleast:
-                    kernel = build_kernel_for_gates_of_type<core::kAtleast, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+                    kernel = build_kernel_for_gates_of_type<core::kAtleast, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
                 case core::kXor:
-                    kernel = build_kernel_for_gates_of_type<core::kXor, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+                    kernel = build_kernel_for_gates_of_type<core::kXor, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
                 case core::kNot:
-                    kernel = build_kernel_for_gates_of_type<core::kNot, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+                    kernel = build_kernel_for_gates_of_type<core::kNot, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
                 case core::kNand:
-                    kernel = build_kernel_for_gates_of_type<core::kNand, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+                    kernel = build_kernel_for_gates_of_type<core::kNand, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
                 case core::kNor:
-                    kernel = build_kernel_for_gates_of_type<core::kNor, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+                    kernel = build_kernel_for_gates_of_type<core::kNor, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
                 case core::kNull:
-                    kernel = build_kernel_for_gates_of_type<core::kNull, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+                    kernel = build_kernel_for_gates_of_type<core::kNull, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
             }
             // Build exactly one kernel for gates of this type in the layer
@@ -701,7 +897,11 @@ namespace scram::mc::queue {
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
         const std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
         std::unordered_map<index_t_, event::tally<bitpack_t_> *> &allocated_tally_events_by_index_,
-        std::vector<event::tally_block<bitpack_t_>> &device_tally_blocks_) {
+        std::vector<event::tally_block<bitpack_t_>> &device_tally_blocks_,
+        std::vector<kernel_partition_description> &execution_partitions_,
+        std::vector<kernel_dependency_edge> &execution_dependency_edges_,
+        std::unordered_map<const queueable_base *, std::size_t> &partition_ids_by_queueable_,
+        const std::size_t layer_index_) {
         // collect all events in this layer
         std::vector<index_t_> indices;
         std::vector<bitpack_t_ *> node_buffers;
@@ -740,6 +940,12 @@ namespace scram::mc::queue {
         }
 
         const auto num_events_in_layer = indices.size();
+        std::vector<std::int32_t> node_indices;
+        node_indices.reserve(indices.size());
+        for (const auto index : indices) {
+            node_indices.push_back(static_cast<std::int32_t>(index));
+        }
+        const auto dependency_ids = dependency_partition_ids(layer_dependencies, partition_ids_by_queueable_);
         using block_type = event::tally_block<bitpack_t_>;
         block_type tally_blk = event::create_tally_block<bitpack_t_>(queue_, node_buffers);
         // track this allocated block.
@@ -753,6 +959,20 @@ namespace scram::mc::queue {
         const auto nd_range = tally_kernel.get_range(num_events_in_layer, local_range, sample_shape_);
         iterable_queueable<kernel_type, 3> tally_partition(queue_, tally_kernel, nd_range, layer_dependencies);
         auto queueable_partition = std::make_shared<decltype(tally_partition)>(tally_partition);
+        register_kernel_partition(
+            queueable_partition,
+            make_kernel_partition_description<size_t_, bitpack_t_>(
+                layer_index_,
+                "tally",
+                "popcount",
+                node_indices,
+                dependency_ids,
+                nd_range.get_global_range(),
+                nd_range.get_local_range(),
+                sample_shape_),
+            execution_partitions_,
+            execution_dependency_edges_,
+            partition_ids_by_queueable_);
 
         // store each event raw pointer in the identity/index map
         for (auto i = 0; i < num_events_in_layer; i++) {
