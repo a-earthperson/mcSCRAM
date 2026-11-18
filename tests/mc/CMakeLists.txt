@@ -2,7 +2,7 @@
 # non-terminating sampler (#22) fails fast. Device selection is via
 # ACPP_VISIBILITY_MASK (test presets: omp on CPU, cuda/metal on GPU).
 
-if(APPLE OR NOT TARGET mc)
+if(APPLE OR NOT FUZZYBITS_WITH_MC)
   return()
 endif()
 

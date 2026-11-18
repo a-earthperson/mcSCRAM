@@ -1,6 +1,14 @@
 # vim: set foldmarker={{{,}}} foldlevel=0 foldmethod=marker:
 
 # Catch2 is fetched once at the top level (cmake/FuzzybitsCatch2.cmake, v3.4.0).
+# This directory is the SCRAM/MC suite; ir::pc, FTP/AIGER, and fzb compile
+# tests live next to those targets. Host-only `fzb compile` sets
+# FUZZYBITS_WITH_MC=OFF and has no libscram/libmc to link here.
+if(NOT FUZZYBITS_WITH_MC)
+  message(STATUS "tests/: skipping SCRAM/MC suite (FUZZYBITS_WITH_MC=OFF)")
+  return()
+endif()
+
 include(Catch)
 
 include_directories("${CMAKE_SOURCE_DIR}/src")
