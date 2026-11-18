@@ -245,6 +245,7 @@ COPY . /app
 WORKDIR /app/build
 ARG APP_MALLOC_TYPE="tcmalloc"
 ARG ACPP_TARGETS="generic"
+ARG BUILD_TESTING=OFF
 RUN cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
           -DMALLOC_TYPE=$APP_MALLOC_TYPE \
           -DCMAKE_C_COMPILER=$CMAKE_C_COMPILER \
@@ -256,7 +257,8 @@ RUN cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
           -DACPP_STDPAR=OFF \
           -DCMAKE_CXX_SCAN_FOR_MODULES=OFF \
           -DOPTIMIZE_FOR_NATIVE=OFF \
-          -DBUILD_TESTS=OFF \
+          -DBUILD_TESTING=${BUILD_TESTING} \
+          -DBUILD_TESTS=${BUILD_TESTING} \
           .. && \
      make -j && \
      make install
@@ -334,6 +336,7 @@ COPY --from=adaptivecpp-clang /usr/local/lib/libacpp*.so /usr/local/lib/
 
 # Copy built SCRAM binaries and libraries from builder stage
 COPY --from=builder /app/build/targets/scram/scram-cli /usr/local/bin/
+COPY --from=builder /usr/local/bin/fzb /usr/local/bin/
 COPY --from=builder /app/build/src/libscram.so /usr/local/lib/
 COPY --from=builder /app/build/src/mc/libmc.so /usr/local/lib/
 COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
@@ -343,7 +346,13 @@ COPY docker/smoke.sh /usr/local/bin/mcscram-smoke
 
 USER root
 # Update library cache
-RUN chmod 0755 /usr/local/bin/mcscram-smoke && ldconfig
+RUN chmod 0755 /usr/local/bin/mcscram-smoke && \
+    printf '%s\n' '#!/bin/sh' \
+      'if [ "$1" = "fzb" ]; then shift; exec /usr/local/bin/fzb "$@"; fi' \
+      'exec /usr/local/bin/scram-cli "$@"' \
+      > /usr/local/bin/scram-or-fzb-entrypoint && \
+    chmod 0755 /usr/local/bin/scram-or-fzb-entrypoint && \
+    ldconfig
 
 USER ${USER}
 WORKDIR /app
@@ -378,6 +387,6 @@ ENV ACPP_PERSISTENT_RUNTIME=1
 # after CPython has allocated its runtime state.
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4
 
-# Set the entrypoint to the SCRAM binary
-ENTRYPOINT ["/usr/local/bin/scram-cli"]
+# scram-cli by default; `docker run IMAGE fzb …` reaches the fzb binary (#45).
+ENTRYPOINT ["/usr/local/bin/scram-or-fzb-entrypoint"]
 CMD ["--help"]

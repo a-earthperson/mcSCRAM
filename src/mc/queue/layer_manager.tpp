@@ -103,10 +103,13 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::layered_toposort(
                       if (!varL && varR)
                           return false;
 
-                      // Variables in a layer are ordered by PDAG index. That index is
-                      // SAMPLE event_id after pcfb reconstruction, and it is the
-                      // Philox `pdag_idx` / block `event_idx` rank, so compile/run
-                      // bit-identity does not depend on DFS insertion order.
+                      // Variables: sort by PDAG index. The previous comparator treated
+                      // all variables as equivalent, so std::sort's order among them
+                      // was unspecified. Index order is a deterministic function of the
+                      // PDAG (SAMPLE event_id after pcfb reconstruction) and makes
+                      // Philox event_idx = rank(index) on both the in-memory and
+                      // reconstructed paths. mc.bitpack_identity is independent: it
+                      // feeds fixed (event_idx, pdag_idx) counters, not this sort.
                       if (varL && varR)
                           return lhs->index() < rhs->index();
 

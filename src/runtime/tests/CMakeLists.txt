@@ -7,5 +7,4 @@ fuzzybits_add_imported_test(
 set_tests_properties(fzb_runtime_tests PROPERTIES
   LABELS "mc"
   TIMEOUT 120
-  ENVIRONMENT "ACPP_VISIBILITY_MASK=omp"
 )

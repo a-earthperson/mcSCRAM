@@ -160,6 +160,7 @@ RUN git clone --filter=blob:none --depth 1 --branch "${ACPP_REF}" "${ACPP_REPO}"
 FROM adaptivecpp-clang AS builder
 ARG CMAKE_BUILD_TYPE=Release
 ARG APP_MALLOC_TYPE=tcmalloc
+ARG BUILD_TESTING=OFF
 ARG ACPP_TARGETS="cuda:sm_86"
 ARG CUDA_EMBED_PTX=highest
 ARG ACPP_COMPILER_FEATURE_PROFILE=minimal
@@ -187,7 +188,8 @@ RUN python3 /app/docker/acpp-cuda-config.py /usr/local/share && \
           -DACPP_EXTRA_COMPILE_OPTIONS="${ptx_flags}" \
           -DCMAKE_CXX_SCAN_FOR_MODULES=OFF \
           -DOPTIMIZE_FOR_NATIVE=OFF \
-          -DBUILD_TESTS=OFF && \
+          -DBUILD_TESTING=${BUILD_TESTING} \
+          -DBUILD_TESTS=${BUILD_TESTING} && \
     cmake --build /app/build -j "$(nproc)" && \
     cmake --install /app/build
 
@@ -287,6 +289,7 @@ COPY --from=adaptivecpp-clang /usr/local/etc/AdaptiveCpp /usr/local/etc/Adaptive
 COPY --from=adaptivecpp-clang /usr/local/share/acpp-commit /usr/local/share/acpp-commit
 COPY --from=adaptivecpp-clang /usr/local/share/acpp-describe /usr/local/share/acpp-describe
 COPY --from=builder /app/build/targets/scram/scram-cli /usr/local/bin/
+COPY --from=builder /usr/local/bin/fzb /usr/local/bin/
 COPY --from=builder /app/build/src/libscram.so /usr/local/lib/
 COPY --from=builder /app/build/src/mc/libmc.so /usr/local/lib/
 COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
@@ -296,12 +299,17 @@ COPY --from=builder /usr/local/share/cuda-embed-ptx /usr/local/share/cuda-embed-
 COPY docker/inputs/das9201.xml docker/inputs/chinese.xml docker/inputs/baobab1.xml /app/input/
 COPY docker/smoke.sh /usr/local/bin/mcscram-smoke
 RUN chmod 0755 /usr/local/bin/mcscram-smoke && \
+    printf '%s\n' '#!/bin/sh' \
+      'if [ "$1" = "fzb" ]; then shift; exec /usr/local/bin/fzb "$@"; fi' \
+      'exec /usr/local/bin/scram-cli "$@"' \
+      > /usr/local/bin/scram-or-fzb-entrypoint && \
+    chmod 0755 /usr/local/bin/scram-or-fzb-entrypoint && \
     ldconfig && \
     chown -R ${USER}:${USER} /app
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4
 USER ${USER}
 WORKDIR /app
-ENTRYPOINT ["/usr/local/bin/scram-cli"]
+ENTRYPOINT ["/usr/local/bin/scram-or-fzb-entrypoint"]
 CMD ["--help"]
 
 # Nsight CLIs on top of the slim runtime. Versions MUST be ≤ host driver CUDA.
