@@ -1,0 +1,182 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MALLOC_TYPE": "malloc",
+        "BUILD_PYTHON_BINDINGS": "ON",
+        "OPTIMIZE_FOR_NATIVE": "OFF",
+        "WITH_PROFILE": "OFF",
+        "WITH_COVERAGE": "OFF",
+        "CMAKE_CXX_SCAN_FOR_MODULES": "OFF"
+      }
+    },
+    {
+      "name": "generic",
+      "displayName": "generic (SSCP JIT)",
+      "description": "Default Linux variant. ACPP_TARGETS=generic (SSCP), MALLOC_TYPE=malloc, Release, Python module on. Requires AdaptiveCpp built with ACPP_COMPILER_FEATURE_PROFILE=full, WITH_CUDA_BACKEND=ON, OpenMP. See docs/build-variants.md.",
+      "inherits": "base",
+      "cacheVariables": {
+        "ACPP_TARGETS": "generic"
+      }
+    },
+    {
+      "name": "cuda-sm70",
+      "displayName": "cuda-sm70 (Volta SMCP AOT)",
+      "description": "Linux x86_64 Volta-specialised AOT. ACPP_TARGETS=cuda:sm_70 (clang CUDA SMCP) with PTX of sm_70 embedded. AdaptiveCpp may use ACPP_COMPILER_FEATURE_PROFILE=minimal. See docs/build-variants.md.",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "ACPP_TARGETS": "cuda:sm_70",
+        "ACPP_USE_ACCELERATED_CPU": "off",
+        "ACPP_STDPAR": "off",
+        "ACPP_EXTRA_COMPILE_OPTIONS": "--cuda-include-ptx=sm_70"
+      }
+    },
+    {
+      "name": "metal",
+      "displayName": "metal (macOS generic + Metal)",
+      "description": "macOS 26 Apple Silicon. ACPP_TARGETS=generic against AdaptiveCpp built with WITH_METAL_BACKEND=ON and METAL_INCLUDE_DIR (metal-cpp pin TBD, #30). Not verifiable on Intel Macs.",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "ACPP_TARGETS": "generic"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "debug (generic, Debug)",
+      "description": "Developer preset: generic SSCP, Debug, native -march, AdaptiveCpp debug level 4.",
+      "inherits": "generic",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "OPTIMIZE_FOR_NATIVE": "ON",
+        "ACPP_DEBUG_LEVEL": "4"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "generic",
+      "configurePreset": "generic"
+    },
+    {
+      "name": "cuda-sm70",
+      "configurePreset": "cuda-sm70"
+    },
+    {
+      "name": "metal",
+      "configurePreset": "metal"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "generic",
+      "configurePreset": "generic",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ACPP_VISIBILITY_MASK": "cuda",
+        "ACPP_DEBUG_LEVEL": "0",
+        "ACPP_PERSISTENT_RUNTIME": "1",
+        "CTEST_NO_TESTS_ACTION": "ignore"
+      }
+    },
+    {
+      "name": "cuda-sm70",
+      "configurePreset": "cuda-sm70",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ACPP_VISIBILITY_MASK": "cuda",
+        "ACPP_DEBUG_LEVEL": "0",
+        "ACPP_PERSISTENT_RUNTIME": "1",
+        "CTEST_NO_TESTS_ACTION": "ignore"
+      }
+    },
+    {
+      "name": "metal",
+      "configurePreset": "metal",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ACPP_VISIBILITY_MASK": "metal",
+        "ACPP_DEBUG_LEVEL": "0",
+        "ACPP_PERSISTENT_RUNTIME": "1",
+        "CTEST_NO_TESTS_ACTION": "ignore"
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ACPP_VISIBILITY_MASK": "cuda",
+        "ACPP_DEBUG_LEVEL": "3",
+        "ACPP_PERSISTENT_RUNTIME": "1",
+        "CTEST_NO_TESTS_ACTION": "ignore"
+      }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "generic",
+      "steps": [
+        { "type": "configure", "name": "generic" },
+        { "type": "build", "name": "generic" },
+        { "type": "test", "name": "generic" }
+      ]
+    },
+    {
+      "name": "cuda-sm70",
+      "steps": [
+        { "type": "configure", "name": "cuda-sm70" },
+        { "type": "build", "name": "cuda-sm70" },
+        { "type": "test", "name": "cuda-sm70" }
+      ]
+    },
+    {
+      "name": "metal",
+      "steps": [
+        { "type": "configure", "name": "metal" },
+        { "type": "build", "name": "metal" },
+        { "type": "test", "name": "metal" }
+      ]
+    },
+    {
+      "name": "debug",
+      "steps": [
+        { "type": "configure", "name": "debug" },
+        { "type": "build", "name": "debug" },
+        { "type": "test", "name": "debug" }
+      ]
+    }
+  ]
+}
