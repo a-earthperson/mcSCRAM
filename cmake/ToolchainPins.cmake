@@ -35,4 +35,5 @@ message(STATUS "  CUDA            : ${FUZZYBITS_PIN_CUDA_VERSION} (${FUZZYBITS_P
 message(STATUS "  Boost           : ${FUZZYBITS_PIN_BOOST_VERSION} (min ${FUZZYBITS_PIN_BOOST_MIN_VERSION})")
 message(STATUS "  metal-cpp       : ${FUZZYBITS_PIN_METAL_CPP_VERSION} (${FUZZYBITS_PIN_METAL_CPP_ISSUE})")
 message(STATUS "  AdaptiveCpp metal ref : ${FUZZYBITS_PIN_ACPP_REF_METAL}")
+message(STATUS "  pcfb            : ${FUZZYBITS_PIN_PCFB_GIT_TAG}")
 unset(_fuzzybits_pins_file)

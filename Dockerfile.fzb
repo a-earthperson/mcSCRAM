@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1.10.0
+#
+# Host-only `fzb compile` verification. pcfb is private, so inject it as a
+# named BuildKit context — never bake GitHub credentials into the image.
+#
+#   docker --context xerxes build -f Dockerfile.fzb \
+#     --build-context pcfb=/Users/arjun/Projects/@fuzzybit-org/risk-tools/pcfb \
+#     --target verify -t fzb-compile:verify .
+#
+# Base is mcscram:llvm-clang (no AdaptiveCpp / no GPU). Override with
+#   --build-arg BASE_IMAGE=mcscram:f-generic-builder
+# and -DFUZZYBITS_WITH_MC=ON if you also want scram-cli.
+
+ARG BASE_IMAGE=mcscram:llvm-clang
+FROM ${BASE_IMAGE} AS build
+
+COPY --from=pcfb . /deps/pcfb
+COPY . /app
+WORKDIR /app
+
+ARG CMAKE_BUILD_TYPE=Release
+ARG FUZZYBITS_WITH_MC=OFF
+ENV CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+
+RUN cmake -S /app -B /app/build-fzb -G Ninja \
+          -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+          -DFUZZYBITS_PCFB_SOURCE_DIR=/deps/pcfb \
+          -DFUZZYBITS_WITH_MC=${FUZZYBITS_WITH_MC} \
+          -DBUILD_PYTHON_BINDINGS=OFF \
+          -DOPTIMIZE_FOR_NATIVE=OFF \
+          -DBUILD_TESTING=ON \
+          -DMALLOC_TYPE=malloc \
+          -DCMAKE_CXX_SCAN_FOR_MODULES=OFF && \
+    cmake --build /app/build-fzb --target fzb fzb_compile_tests -j "$(nproc)"
+
+FROM build AS verify
+WORKDIR /tmp/fzb-out
+# Compile + inspect + validate the models named in fuzzybits#43.
+RUN /app/build-fzb/targets/fzb/fzb compile /app/input/Aralia/chinese.xml -o chinese.pcfb && \
+    /app/build-fzb/targets/fzb/fzb inspect chinese.pcfb --validate --exact && \
+    /app/build-fzb/targets/fzb/fzb compile /app/input/Aralia/das9201.xml -o das9201.pcfb && \
+    /app/build-fzb/targets/fzb/fzb inspect das9201.pcfb --validate && \
+    /app/build-fzb/targets/fzb/fzb compile /app/input/Aralia/baobab2.xml -o baobab2.pcfb && \
+    /app/build-fzb/targets/fzb/fzb inspect baobab2.pcfb --validate
+RUN ctest --test-dir /app/build-fzb --output-on-failure -R fzb_compile_tests

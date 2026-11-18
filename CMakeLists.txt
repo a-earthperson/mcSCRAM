@@ -46,6 +46,7 @@ option(WITH_PROFILE "Instrument for performance profiling" OFF)
 option(BUILD_TESTS "Build the tests" ON)  # Suite currently commented out; #31 re-enables it.
 option(OPTIMIZE_FOR_NATIVE "Build with -march=native" ON)
 option(BUILD_PYTHON_BINDINGS "Build the native Python extension module" ON)
+option(FUZZYBITS_WITH_MC "Build the SYCL Monte Carlo engine (libmc, scram-cli, Python)" ON)
 
 if(BUILD_PYTHON_BINDINGS AND MALLOC_TYPE STREQUAL "tcmalloc")
   message(WARNING
@@ -314,10 +315,19 @@ add_subdirectory(src/api)
 add_subdirectory(src/ir)
 add_subdirectory(src/io)
 
-add_subdirectory(targets/scram)
+# pcfb is private; override with FUZZYBITS_PCFB_SOURCE_DIR (see cmake/FuzzybitsPcfb.cmake).
+# Pin: toolchain.env PCFB_GIT_TAG (currently 6b1af8bb4bb9af3d217a33317c006f0ff9516cf1).
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsPcfb.cmake")
+add_subdirectory(src/compile)
+add_subdirectory(targets/fzb)
 
-if(BUILD_PYTHON_BINDINGS)
-  add_subdirectory(targets/python)
+if(FUZZYBITS_WITH_MC)
+  add_subdirectory(targets/scram)
+  if(BUILD_PYTHON_BINDINGS)
+    add_subdirectory(targets/python)
+  endif()
+else()
+  message(STATUS "FUZZYBITS_WITH_MC=OFF: skipping scram-cli and Python bindings")
 endif()
 
 #if(BUILD_TESTS)

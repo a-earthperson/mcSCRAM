@@ -97,10 +97,16 @@ install(
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-# add mc
-add_subdirectory(mc)
-
-# Make the SYCL mc library available to downstream targets
-# by appending it to the common ${LIBS} list that all executables use.
-list(APPEND LIBS mc)
+# add mc (SYCL). Host-only `fzb compile` sets FUZZYBITS_WITH_MC=OFF.
+if(FUZZYBITS_WITH_MC)
+  add_subdirectory(mc)
+  # Make the SYCL mc library available to downstream targets
+  # by appending it to the common ${LIBS} list that all executables use.
+  list(APPEND LIBS mc)
+else()
+  add_library(mc INTERFACE)
+  target_include_directories(mc INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mc>
+  )
+endif()
 
