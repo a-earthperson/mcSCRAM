@@ -160,8 +160,8 @@ Build arguments for configurations:
 
 
 ```bash
-git clone --recursive https://github.com/a-earthperson/mcSCRAM.git
-cd mc-scram
+git clone --recursive https://github.com/fuzzybit-org/fuzzybits.git
+cd fuzzybits
 mkdir build && cd build
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
