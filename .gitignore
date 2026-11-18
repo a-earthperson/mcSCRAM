@@ -20,6 +20,18 @@ build/
 
 # Python compiled files
 *.pyc
+__pycache__/
+.pytest_cache/
+*.egg-info/
+.eggs/
+dist/
+wheelhouse/
+docker/wheel-test-context/
+docker/wheel-test-context-sm70/
+docker/wheel-fallback-context/
+_skbuild/
+.venv/
+venv/
 
 # Pytest cache
 .cache

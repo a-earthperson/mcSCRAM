@@ -50,6 +50,15 @@ option(OPTIMIZE_FOR_NATIVE "Build with -march=native" ON)
 option(BUILD_PYTHON_BINDINGS "Build the native Python extension module" ON)
 option(FUZZYBITS_WITH_MC "Build the SYCL Monte Carlo engine (libmc, scram-cli, Python)" ON)
 
+if(SKBUILD)
+  # pip/scikit-build-core: skip Catch2 and bake $ORIGIN RPATH into the
+  # extension + libscram/libmc so the wheel does not record the build prefix.
+  # fzb/pcfb are skipped below; FUZZYBITS_WITH_MC stays ON (need libmc).
+  set(BUILD_TESTS OFF CACHE BOOL "Deprecated alias of BUILD_TESTING" FORCE)
+  set(BUILD_TESTING OFF CACHE BOOL "Build the testing tree." FORCE)
+  set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+endif()
+
 if(BUILD_PYTHON_BINDINGS AND MALLOC_TYPE STREQUAL "tcmalloc")
   message(WARNING
     "MALLOC_TYPE=tcmalloc cannot apply to a pip-installed Python module: "
@@ -187,6 +196,12 @@ else()
   # which point to directories outside the build tree
   # to the install RPATH.
   set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+endif()
+
+if(SKBUILD)
+  set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/lib")
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 endif()
 
 ######################## End cmake configuration ################### }}}
@@ -332,18 +347,22 @@ add_subdirectory(src/api)
 add_subdirectory(src/ir)
 add_subdirectory(src/io)
 
-# pcfb is public; FetchContent uses toolchain.env PCFB_GIT_TAG
-# (currently 6b1af8bb4bb9af3d217a33317c006f0ff9516cf1). Override with
-# FUZZYBITS_PCFB_SOURCE_DIR for a local checkout (cmake/FuzzybitsPcfb.cmake).
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsPcfb.cmake")
-add_subdirectory(src/compile)
-if(FUZZYBITS_WITH_MC)
-  add_subdirectory(src/runtime)
+if(NOT SKBUILD)
+  # pcfb is public; FetchContent uses toolchain.env PCFB_GIT_TAG
+  # (currently 6b1af8bb4bb9af3d217a33317c006f0ff9516cf1). Override with
+  # FUZZYBITS_PCFB_SOURCE_DIR for a local checkout (cmake/FuzzybitsPcfb.cmake).
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsPcfb.cmake")
+  add_subdirectory(src/compile)
+  if(FUZZYBITS_WITH_MC)
+    add_subdirectory(src/runtime)
+  endif()
+  add_subdirectory(targets/fzb)
 endif()
-add_subdirectory(targets/fzb)
 
 if(FUZZYBITS_WITH_MC)
-  add_subdirectory(targets/scram)
+  if(NOT SKBUILD)
+    add_subdirectory(targets/scram)
+  endif()
   if(BUILD_PYTHON_BINDINGS)
     add_subdirectory(targets/python)
   endif()

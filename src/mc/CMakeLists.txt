@@ -157,12 +157,28 @@ add_sycl_to_target(TARGET mc SOURCES ${MC_SRC})
 # Additional includes specific to this sub-module can be added here if needed.
 
 # Install the library next to the main SCRAM library so that downstream
-# consumers can find it in the same prefix.
-install(
-  TARGETS mc
-  COMPONENT scram
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mc
-)
+# consumers can find it in the same prefix. Wheels drop headers and place
+# libmc next to the Python extension.
+if(SKBUILD)
+  set_target_properties(mc PROPERTIES
+    INSTALL_RPATH "$ORIGIN:$ORIGIN/lib"
+    BUILD_WITH_INSTALL_RPATH ON
+    INSTALL_RPATH_USE_LINK_PATH FALSE
+  )
+  install(
+    TARGETS mc
+    COMPONENT scram
+    LIBRARY DESTINATION fuzzybits
+    ARCHIVE DESTINATION fuzzybits
+    RUNTIME DESTINATION fuzzybits
+  )
+else()
+  install(
+    TARGETS mc
+    COMPONENT scram
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mc
+  )
+endif()

@@ -4,6 +4,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <sycl/sycl.hpp>
+
 #include "initializer.h"
 #include "mc/core/direct_eval.h"
 #include "mc/queue/layer_manager.h"
@@ -854,6 +856,73 @@ std::unique_ptr<CompiledPdag> run_compile(const std::vector<std::string> &input_
     return compiled;
 }
 
+const char *sycl_device_type_name(sycl::info::device_type type) {
+    switch (type) {
+        case sycl::info::device_type::cpu:
+            return "cpu";
+        case sycl::info::device_type::gpu:
+            return "gpu";
+        case sycl::info::device_type::accelerator:
+            return "accelerator";
+        case sycl::info::device_type::custom:
+            return "custom";
+        case sycl::info::device_type::automatic:
+            return "automatic";
+        case sycl::info::device_type::host:
+            return "host";
+        case sycl::info::device_type::all:
+            return "all";
+    }
+    return "unknown";
+}
+
+std::string sycl_backend_name(const sycl::device &dev) {
+    const auto type = dev.get_info<sycl::info::device::device_type>();
+    const auto vendor = dev.get_info<sycl::info::device::vendor>();
+    const auto name = dev.get_info<sycl::info::device::name>();
+    const std::string blob = vendor + " " + name;
+    const bool nvidia = blob.find("NVIDIA") != std::string::npos || blob.find("Nvidia") != std::string::npos;
+    if (type == sycl::info::device_type::gpu && nvidia) {
+        return "cuda";
+    }
+    if (type == sycl::info::device_type::cpu || type == sycl::info::device_type::host) {
+        return "omp";
+    }
+    if (type == sycl::info::device_type::gpu) {
+        return "gpu";
+    }
+    return sycl_device_type_name(type);
+}
+
+template <typename Info>
+py::object sycl_info_or_none(const sycl::device &dev) {
+    try {
+        return py::cast(dev.get_info<Info>());
+    } catch (const std::exception &) {
+        return py::none();
+    }
+}
+
+py::list list_sycl_devices() {
+    py::list devices;
+    for (const sycl::device &dev : sycl::device::get_devices()) {
+        py::dict item;
+        item["type"] = sycl_device_type_name(dev.get_info<sycl::info::device::device_type>());
+        item["backend"] = sycl_backend_name(dev);
+        item["name"] = dev.get_info<sycl::info::device::name>();
+        item["vendor"] = dev.get_info<sycl::info::device::vendor>();
+        item["driver_version"] = sycl_info_or_none<sycl::info::device::driver_version>(dev);
+        item["version"] = sycl_info_or_none<sycl::info::device::version>(dev);
+        item["max_compute_units"] = sycl_info_or_none<sycl::info::device::max_compute_units>(dev);
+        item["global_mem_size"] = sycl_info_or_none<sycl::info::device::global_mem_size>(dev);
+        item["max_mem_alloc_size"] = sycl_info_or_none<sycl::info::device::max_mem_alloc_size>(dev);
+        item["max_work_group_size"] = sycl_info_or_none<sycl::info::device::max_work_group_size>(dev);
+        item["max_clock_frequency"] = sycl_info_or_none<sycl::info::device::max_clock_frequency>(dev);
+        devices.append(std::move(item));
+    }
+    return devices;
+}
+
 py::dict run_probability(const std::vector<std::string> &input_files,
                          const py::dict &options,
                          py::object on_progress) {
@@ -886,8 +955,26 @@ py::dict run_probability(const std::vector<std::string> &input_files,
 
 } // namespace
 
-PYBIND11_MODULE(mcscram_native, m) {
-    m.doc() = "Native Python bindings for the mcSCRAM Monte Carlo probability engine";
+#ifndef FUZZYBITS_NATIVE_MODULE
+#define FUZZYBITS_NATIVE_MODULE mcscram_native
+#endif
+
+PYBIND11_MODULE(FUZZYBITS_NATIVE_MODULE, m) {
+    m.doc() = "Native Python bindings for the fuzzybits Monte Carlo probability engine";
+#ifdef FUZZYBITS_NATIVE_MODULE_NAME
+    m.attr("__variant_module__") = FUZZYBITS_NATIVE_MODULE_NAME;
+#endif
+
+    m.def(
+        "list_devices",
+        &list_sycl_devices,
+        R"pbdoc(
+List SYCL devices currently visible to AdaptiveCpp.
+
+Call fuzzybits.init() first so ACPP_VISIBILITY_MASK is applied before the
+runtime initialises. Each entry is a dict with type, backend, name, vendor,
+and memory/compute attributes.
+)pbdoc");
 
     py::class_<PyLayerManager>(m, "LayerManager")
         .def_property_readonly("root_index", [](const PyLayerManager &layer_manager) {
