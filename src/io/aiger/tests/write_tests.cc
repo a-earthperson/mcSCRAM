@@ -1,0 +1,277 @@
+#define CATCH_CONFIG_MAIN
+#include "api/ids.h"
+#include "api/diagnostics.h"
+#include "io/aiger/descriptor.h"
+#include "io/formats.h"
+#include "ir/forms.h"
+#include "ir/pc/builder.h"
+#include "ir/pc/circuit.h"
+#include "ir/pc/edge.h"
+#include "ir/pc/op_code.h"
+
+#include <cstddef>
+#include <ios>
+#include <utility>
+#include <catch2/catch.hpp>
+
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <vector>
+
+namespace {
+
+    [[nodiscard]] auto diagnosticsText(fuzzybits::api::diagnostic_list const &diagnostics) -> std::string {
+        std::ostringstream output;
+        for (auto const &diagnostic : diagnostics.items()) {
+            output << diagnostic.code << ": " << diagnostic.message << '\n';
+        }
+        return output.str();
+    }
+
+    [[nodiscard]] auto checksum(const std::string_view text) -> std::uint64_t {
+        auto value = std::uint64_t{14695981039346656037ULL};
+        for (const auto character : text) {
+            value ^= static_cast<unsigned char>(character);
+            value *= std::uint64_t{1099511628211ULL};
+        }
+        return value;
+    }
+
+    [[nodiscard]] auto hasAigerExtension(std::filesystem::path const &path) -> bool {
+        auto extension = path.extension().string();
+        std::ranges::transform(extension, extension.begin(), [](const unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        return extension == ".aag" || extension == ".aig";
+    }
+
+    [[nodiscard]] auto inputRoot() -> std::filesystem::path {
+        return std::filesystem::path(PROJECT_SOURCE_DIR) / "input";
+    }
+
+    void collectAigerFiles(std::filesystem::path const &root, std::vector<std::filesystem::path> &files) {
+        std::error_code error;
+        auto iterator = std::filesystem::directory_iterator(root, std::filesystem::directory_options::skip_permission_denied, error);
+        if (error) {
+            return;
+        }
+
+        for (const auto end = std::filesystem::directory_iterator{}; iterator != end; iterator.increment(error)) {
+            if (error) {
+                error.clear();
+                continue;
+            }
+
+            auto const &entry = *iterator;
+            if (entry.is_directory(error)) {
+                if (!error) {
+                    collectAigerFiles(entry.path(), files);
+                }
+                error.clear();
+                continue;
+            }
+            if (entry.is_regular_file(error) && hasAigerExtension(entry.path())) {
+                files.push_back(entry.path());
+            }
+            error.clear();
+        }
+    }
+
+    [[nodiscard]] auto aigerCorpusFiles() -> std::vector<std::filesystem::path> {
+        std::vector<std::filesystem::path> files;
+        collectAigerFiles(inputRoot(), files);
+        std::ranges::sort(files, [](auto const &lhs, auto const &rhs) {
+            return lhs.generic_string() < rhs.generic_string();
+        });
+        return files;
+    }
+
+    [[nodiscard]] auto readFile(std::filesystem::path const &path) -> fuzzybits::io::backend::fuzzybits::aiger::aiger_read_result {
+        std::ifstream input(path, std::ios::binary);
+        REQUIRE(input);
+        return fuzzybits::io::backend::fuzzybits::aiger::read(input);
+    }
+
+    [[nodiscard]] auto requirePcModel(fuzzybits::io::backend::fuzzybits::aiger::read_output const &read)
+        -> fuzzybits::ir::pc::circuit const & {
+        auto const *pc = fuzzybits::ir::pc::circuit_from(read.model);
+        REQUIRE(pc != nullptr);
+        REQUIRE(pc->valid());
+        REQUIRE(pc->form_profile().is_aig());
+        REQUIRE(pc->node_count() > 0);
+        REQUIRE_FALSE(pc->targets().empty());
+        return *pc;
+    }
+
+    [[nodiscard]] auto writeOutput(fuzzybits::ir::pc::circuit const &model) -> std::string {
+        std::ostringstream output;
+        const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(model.to_handle(), output);
+        INFO(diagnosticsText(written.diagnostics()));
+        REQUIRE(written);
+        return output.str();
+    }
+
+    [[nodiscard]] auto hasDiagnosticCode(fuzzybits::api::diagnostic_list const &diagnostics, std::string_view code) -> bool {
+        return std::ranges::any_of(diagnostics.items(), [code](fuzzybits::api::diagnostic const &diagnostic) {
+            return diagnostic.code == code;
+        });
+    }
+
+    [[nodiscard]] auto isExpectedUnsupportedCorpusFile(fuzzybits::api::diagnostic_list const &diagnostics) -> bool {
+        return hasDiagnosticCode(diagnostics, "io.aiger.unsupported-latches") ||
+               hasDiagnosticCode(diagnostics, "io.aiger.unsupported-extensions") || hasDiagnosticCode(diagnostics, "io.aiger.empty-circuit");
+    }
+
+    [[nodiscard]] auto makeAigCircuit() -> fuzzybits::ir::pc::circuit {
+        fuzzybits::ir::pc::builder builder;
+        builder.set_form(fuzzybits::ir::forms::aig());
+        const auto xProbability = builder.add_parameter_probability("x");
+        const auto yProbability = builder.add_parameter_probability("y");
+        const auto x = builder.add_basic_event(xProbability);
+        const auto y = builder.add_basic_event(yProbability);
+        const auto gate = builder.add_and({
+            fuzzybits::ir::pc::edge_ref{.source = x},
+            fuzzybits::ir::pc::edge_ref{.source = y, .complement = true},
+        });
+        const auto target = builder.add_target(gate);
+        (void)target;
+
+        auto finalized = std::move(builder).seal();
+        REQUIRE(finalized.ok());
+        return std::move(finalized.output);
+    }
+
+} // namespace
+
+TEST_CASE("AIGER writer descriptor advertises the AIGER format", "[io][aiger]") {
+    const auto descriptor = fuzzybits::io::backend::fuzzybits::aiger::writer_descriptor();
+
+    REQUIRE(descriptor.provider == fuzzybits::api::provider_id("fuzzybits"));
+    REQUIRE(descriptor.endpoint == fuzzybits::io::backend::fuzzybits::aiger::writer_endpoint_id());
+    REQUIRE(descriptor.output_format == fuzzybits::io::formats::aiger());
+}
+
+TEST_CASE("AIGER writer round-trips binary AIGER", "[io][aiger]") {
+    auto model = makeAigCircuit();
+
+    std::ostringstream output;
+    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(model.to_handle(), output);
+    INFO(diagnosticsText(written.diagnostics()));
+    REQUIRE(written);
+    REQUIRE(output.str().starts_with("aig 3 2 0 1 1\n"));
+    REQUIRE(output.str().find("i0 x\n") != std::string::npos);
+    REQUIRE(output.str().find("i1 y\n") != std::string::npos);
+
+    std::istringstream input(output.str());
+    auto read = fuzzybits::io::backend::fuzzybits::aiger::read(input);
+    INFO(diagnosticsText(read.diagnostics()));
+    REQUIRE(read);
+
+    auto const *pc = fuzzybits::ir::pc::circuit_from(read.value().model);
+    REQUIRE(pc != nullptr);
+    REQUIRE(pc->form_profile().is_aig());
+    REQUIRE(pc->targets().size() == 1);
+    REQUIRE(pc->probability_sources().size() == 2);
+    REQUIRE(pc->op_codes()[pc->targets()[0].node.raw()] == fuzzybits::ir::pc::op_code::and_gate);
+    const auto operands = pc->operands(pc->targets()[0].node);
+    REQUIRE(operands.size() == 2);
+    REQUIRE((operands[0].complement || operands[1].complement));
+}
+
+TEST_CASE("AIGER writer rejects PC that is not already marked AIG", "[io][aiger]") {
+    fuzzybits::ir::pc::builder builder;
+    const auto xProbability = builder.add_parameter_probability("x");
+    const auto yProbability = builder.add_parameter_probability("y");
+    const auto x = builder.add_basic_event(xProbability);
+    const auto y = builder.add_basic_event(yProbability);
+    const auto gate = builder.add_and({
+        fuzzybits::ir::pc::edge_ref{.source = x},
+        fuzzybits::ir::pc::edge_ref{.source = y},
+    });
+    const auto target = builder.add_target(gate);
+    (void)target;
+
+    auto finalized = std::move(builder).seal();
+    REQUIRE(finalized.ok());
+
+    std::ostringstream output;
+    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(finalized.output.to_handle(), output);
+
+    REQUIRE_FALSE(written);
+    REQUIRE(written.diagnostics().has_errors());
+}
+
+TEST_CASE("AIGER writer rejects AIG-marked non-AIG opcodes", "[io][aiger]") {
+    fuzzybits::ir::pc::builder builder;
+    builder.set_form(fuzzybits::ir::forms::aig());
+    const auto xProbability = builder.add_parameter_probability("x");
+    const auto yProbability = builder.add_parameter_probability("y");
+    const auto x = builder.add_basic_event(xProbability);
+    const auto y = builder.add_basic_event(yProbability);
+    const auto gate = builder.add_or({
+        fuzzybits::ir::pc::edge_ref{.source = x},
+        fuzzybits::ir::pc::edge_ref{.source = y},
+    });
+    const auto target = builder.add_target(gate);
+    (void)target;
+
+    auto finalized = std::move(builder).seal();
+    REQUIRE(finalized.ok());
+
+    std::ostringstream output;
+    const auto written = fuzzybits::io::backend::fuzzybits::aiger::write(finalized.output.to_handle(), output);
+
+    REQUIRE_FALSE(written);
+    REQUIRE(written.diagnostics().has_errors());
+}
+
+TEST_CASE("AIGER input corpus round-trips through PC to stable write checksums", "[io][aiger][corpus]") {
+    const auto files = aigerCorpusFiles();
+    REQUIRE_FALSE(files.empty());
+
+    auto importableAsciiCount = std::size_t{0};
+    auto importableBinaryCount = std::size_t{0};
+    auto unsupportedCount = std::size_t{0};
+
+    for (auto const &file : files) {
+        INFO("file: " << file.lexically_relative(inputRoot()).generic_string());
+        auto firstRead = readFile(file);
+        INFO(diagnosticsText(firstRead.diagnostics()));
+        if (!firstRead) {
+            REQUIRE(isExpectedUnsupportedCorpusFile(firstRead.diagnostics()));
+            ++unsupportedCount;
+            continue;
+        }
+
+        if (file.extension() == ".aag") {
+            ++importableAsciiCount;
+        } else if (file.extension() == ".aig") {
+            ++importableBinaryCount;
+        }
+
+        auto const &firstPc = requirePcModel(firstRead.value());
+        const auto firstOutput = writeOutput(firstPc);
+        std::istringstream reparsedInput(firstOutput);
+        auto secondRead = fuzzybits::io::backend::fuzzybits::aiger::read(reparsedInput);
+        INFO(diagnosticsText(secondRead.diagnostics()));
+        REQUIRE(secondRead);
+
+        auto const &secondPc = requirePcModel(secondRead.value());
+        const auto secondOutput = writeOutput(secondPc);
+        INFO("first checksum: " << checksum(firstOutput));
+        INFO("second checksum: " << checksum(secondOutput));
+        REQUIRE(firstOutput.size() == secondOutput.size());
+        REQUIRE(checksum(firstOutput) == checksum(secondOutput));
+    }
+
+    REQUIRE(importableAsciiCount > 0);
+    INFO("importable binary .aig corpus files: " << importableBinaryCount);
+    REQUIRE(unsupportedCount > 0);
+}
