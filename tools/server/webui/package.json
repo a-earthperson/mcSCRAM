@@ -39,7 +39,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@radix-ui/react-tooltip": "^1.2.8",
     "express": "^5.1.0",
