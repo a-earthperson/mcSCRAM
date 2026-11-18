@@ -35,13 +35,35 @@
 #   --build-arg ACPP_EXPERIMENTAL_LLVM=ON
 # Default ACPP_REF remains the newest release.
 #
-# Example:
+# BLOCKED: do not use this file for production. clang 21 cannot parse CUDA 13.5
+# headers; clang 22 needs AdaptiveCpp LLVM 22 support (upstream PR #1986).
+# CUDA 13 also dropped offline compilation for sm_70. Builds fail fast unless
+# --build-arg EXPERIMENTAL=1 is passed. Use Dockerfile.cuda12.8 instead.
+#
+# Example (will fail unless EXPERIMENTAL=1):
 #   docker --context xerxes build -f Dockerfile.cuda \
 #     --build-arg ACPP_TARGETS=cuda:sm_86 --target scramruntime \
 #     -t mcscram:cuda-sm86 .
 
 ARG CUDA_DEVEL_IMAGE=nvidia/cuda:13.5.0-devel-ubuntu24.04
 ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:13.5.0-runtime-ubuntu24.04
+
+# Fail before LLVM/AdaptiveCpp unless the caller opts into the blocked CUDA 13
+# toolchain. Independent of `base` so the error is cheap to reproduce:
+#   docker build -f Dockerfile.cuda --target experimental-gate .
+FROM alpine:3.20 AS experimental-gate
+ARG EXPERIMENTAL=0
+RUN if [ "${EXPERIMENTAL}" != "1" ]; then \
+      printf '%s\n' \
+        "error: Dockerfile.cuda (CUDA 13.5) is blocked." \
+        "  clang 21 cannot parse CUDA 13.5 headers (missing texture_fetch_functions.h;" \
+        "  rsqrt specifier parse error). clang 22 requires AdaptiveCpp LLVM 22 support" \
+        "  (AdaptiveCpp PR #1986); v25.10.0 stops at LLVM 20/21 + ACPP_EXPERIMENTAL_LLVM." \
+        "  CUDA 13 also removed offline compilation for sm_50–sm_72 (no sm_70)." \
+        "  Use Dockerfile.cuda12.8 for production images." \
+        "  To attempt this file anyway: --build-arg EXPERIMENTAL=1" >&2; \
+      exit 1; \
+    fi && echo ok > /ok
 
 # Fail before LLVM/AdaptiveCpp if the requested arch cannot be compiled offline
 # with CUDA 13. Independent of `base` so ACPP_TARGETS changes do not bust the
@@ -188,6 +210,7 @@ ENV ACPP_TARGETS=${ACPP_TARGETS} \
     ACPP_COMPILER_FEATURE_PROFILE=${ACPP_COMPILER_FEATURE_PROFILE} \
     REJECT_VOLTA_OFFLINE=1
 COPY . /app
+COPY --from=experimental-gate /ok /usr/local/share/cuda13-experimental-ok
 WORKDIR /app/build
 # CUDA 13.x dropped offline compilation for sm_50–sm_72 (Volta). Fail fast.
 # CUDA_EMBED_PTX: none | highest (default) | all | ptx-only  — see docker/acpp-cuda-config.py
@@ -316,9 +339,12 @@ COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=builder /usr/local/share/acpp-targets /usr/local/share/acpp-targets
 COPY --from=builder /usr/local/share/cuda-embed-ptx /usr/local/share/cuda-embed-ptx
-COPY docker/inputs/das9201.xml docker/inputs/chinese.xml /app/input/
+COPY docker/inputs/das9201.xml docker/inputs/chinese.xml docker/inputs/baobab1.xml /app/input/
+COPY docker/smoke.sh /usr/local/bin/mcscram-smoke
 COPY --from=reject-volta /ok /usr/local/share/cuda13-arch-ok
-RUN ldconfig && \
+COPY --from=experimental-gate /ok /usr/local/share/cuda13-experimental-ok
+RUN chmod 0755 /usr/local/bin/mcscram-smoke && \
+    ldconfig && \
     chown -R ${USER}:${USER} /app
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4
 USER ${USER}

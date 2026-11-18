@@ -119,7 +119,7 @@ for (auto i = 0; i < num_inputs; ++i) {
 
 ### Container-based Development (Recommended)
 
-The project provides multi-stage Docker builds for different phases. 
+The project provides multi-stage Docker builds for different phases. Architecture-specific CUDA 12.8 images, build args, and Nsight notes: [docs/cuda-builds.md](docs/cuda-builds.md). 
 
 - For CUDA runtime support, install the [NVIDIA Container Toolkit](https://github.com/NVIDIA/nvidia-container-toolkit).
 - For AMD/ROCm runtime support, install the [AMD Container Toolkit](https://instinct.docs.amd.com/projects/container-toolkit/en/latest/container-runtime/docker-compose.html).

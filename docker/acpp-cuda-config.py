@@ -21,6 +21,12 @@ import re
 import sys
 
 
+def normalize_targets(targets: str) -> str:
+    """Accept comma-separated ACPP_TARGETS (Docker ARG cannot easily pass ';')."""
+    parts = [p.strip() for p in targets.replace(",", ";").split(";")]
+    return ";".join(p for p in parts if p)
+
+
 def sm_archs(targets: str) -> list[int]:
     return [int(x) for x in re.findall(r"sm_([0-9]+)", targets)]
 
@@ -63,7 +69,7 @@ def ptx_flags(mode: str, targets: str) -> str:
 
 def main() -> None:
     mode = os.environ.get("CUDA_EMBED_PTX", "highest")
-    targets = os.environ.get("ACPP_TARGETS", "cuda:sm_86")
+    targets = normalize_targets(os.environ.get("ACPP_TARGETS", "cuda:sm_86"))
     profile = os.environ.get("ACPP_COMPILER_FEATURE_PROFILE", "minimal")
     reject_volta = os.environ.get("REJECT_VOLTA_OFFLINE", "0") == "1"
 
@@ -77,7 +83,7 @@ def main() -> None:
             "Dockerfile.cuda. Use Dockerfile.cuda12.8 (CUDA 12.8) for sm_70."
         )
 
-    if re.search(r"(^|;|,)generic([;,]|$)", targets) and profile != "full":
+    if re.search(r"(^|;)generic(;|$)", targets) and profile != "full":
         raise SystemExit(
             "error: ACPP_TARGETS contains 'generic' (SSCP) but AdaptiveCpp was "
             f"built with ACPP_COMPILER_FEATURE_PROFILE={profile}. Rebuild with "
