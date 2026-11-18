@@ -1,0 +1,37 @@
+# Load toolchain.env into FUZZYBITS_PIN_<KEY>.
+# Readable by CMake, shell (`set -a && . ./toolchain.env`), and CI --build-args.
+
+set(_fuzzybits_pins_file "${CMAKE_SOURCE_DIR}/toolchain.env")
+if(NOT EXISTS "${_fuzzybits_pins_file}")
+  message(FATAL_ERROR "Missing toolchain pins file: ${_fuzzybits_pins_file}")
+endif()
+
+file(STRINGS "${_fuzzybits_pins_file}" _fuzzybits_pin_lines)
+foreach(_line IN LISTS _fuzzybits_pin_lines)
+  if(_line MATCHES "^[ \t]*#" OR _line MATCHES "^[ \t]*$")
+    continue()
+  endif()
+  # Allow optional `export ` so the file stays sourceable.
+  if(_line MATCHES "^[ \t]*(export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+    set(_pin_key "${CMAKE_MATCH_2}")
+    set(_pin_val "${CMAKE_MATCH_3}")
+    string(REGEX REPLACE "\r$" "" _pin_val "${_pin_val}")
+    if(_pin_val MATCHES "^\"(.*)\"$" OR _pin_val MATCHES "^'(.*)'$")
+      set(_pin_val "${CMAKE_MATCH_1}")
+    endif()
+    set(FUZZYBITS_PIN_${_pin_key} "${_pin_val}")
+  endif()
+endforeach()
+unset(_line)
+unset(_pin_key)
+unset(_pin_val)
+unset(_fuzzybits_pin_lines)
+
+message(STATUS "Toolchain pins (${_fuzzybits_pins_file})")
+message(STATUS "  AdaptiveCpp     : ${FUZZYBITS_PIN_ACPP_REF} (${FUZZYBITS_PIN_ACPP_COMMIT})")
+message(STATUS "  LLVM/clang      : ${FUZZYBITS_PIN_CLANG_VERSION}")
+message(STATUS "  CUDA            : ${FUZZYBITS_PIN_CUDA_VERSION} (${FUZZYBITS_PIN_CUDA_DEVEL_IMAGE})")
+message(STATUS "  Boost           : ${FUZZYBITS_PIN_BOOST_VERSION} (min ${FUZZYBITS_PIN_BOOST_MIN_VERSION})")
+message(STATUS "  metal-cpp       : ${FUZZYBITS_PIN_METAL_CPP_VERSION} (${FUZZYBITS_PIN_METAL_CPP_ISSUE})")
+message(STATUS "  AdaptiveCpp metal ref : ${FUZZYBITS_PIN_ACPP_REF_METAL}")
+unset(_fuzzybits_pins_file)

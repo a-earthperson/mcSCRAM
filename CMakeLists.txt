@@ -11,6 +11,7 @@ include(GNUInstallDirs)
 # Find and configure LLVM toolchain BEFORE project() call
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 message(${CMAKE_MODULE_PATH})
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ToolchainPins.cmake")
 
 # CMake 3.27 - Address CMP0144 policy warning
 # @link https://cmake.org/cmake/help/latest/policy/CMP0167.html#policy:CMP0144
@@ -33,14 +34,26 @@ endif()
 
 ####################### Begin Options ################### {{{
 
-# Memory allocator
+# Memory allocator. Default is malloc: tcmalloc/jemalloc typically need
+# LD_PRELOAD before process start, which cannot work for a pip-installed
+# Python module (the interpreter is already running). CLI containers may
+# still pass -DMALLOC_TYPE=tcmalloc and set LD_PRELOAD on the entrypoint.
+# See docs/build-variants.md.
 set(ALLOWED_MALLOC_TYPES "tcmalloc" "jemalloc" "malloc" CACHE STRING "Allowed memory allocator types: tcmalloc, jemalloc, malloc")
 set(MALLOC_TYPE "malloc" CACHE STRING "Select the memory allocator type (tcmalloc, jemalloc, malloc)")
 option(WITH_COVERAGE "Instrument for coverage analysis" OFF)
 option(WITH_PROFILE "Instrument for performance profiling" OFF)
-option(BUILD_TESTS "Build the tests" ON)  # Influences CTest.
+option(BUILD_TESTS "Build the tests" ON)  # Suite currently commented out; #31 re-enables it.
 option(OPTIMIZE_FOR_NATIVE "Build with -march=native" ON)
 option(BUILD_PYTHON_BINDINGS "Build the native Python extension module" ON)
+
+if(BUILD_PYTHON_BINDINGS AND MALLOC_TYPE STREQUAL "tcmalloc")
+  message(WARNING
+    "MALLOC_TYPE=tcmalloc cannot apply to a pip-installed Python module: "
+    "tcmalloc must be LD_PRELOAD'd before the interpreter starts. "
+    "Use MALLOC_TYPE=malloc (the default) for library/Python builds. "
+    "tcmalloc remains valid for scram-cli containers that set LD_PRELOAD.")
+endif()
 
 ####################### End Options ##################### }}}
 
