@@ -1,0 +1,91 @@
+# syntax=docker/dockerfile:1.10.0
+#
+# `fzb compile` verification.
+#
+# Host-only (no AdaptiveCpp / no GPU):
+#   docker --context xerxes build -f Dockerfile.fzb \
+#     --build-context pcfb=/path/to/pcfb \
+#     --target verify -t fzb-compile:verify .
+#
+# Default MC-on (AdaptiveCpp generic SSCP, no GPU needed):
+#   docker --context xerxes build -f Dockerfile.fzb \
+#     --build-arg BASE_IMAGE=fuzzybits-acpp:full \
+#     --build-arg FUZZYBITS_WITH_MC=ON \
+#     --build-context pcfb=/path/to/pcfb \
+#     --target verify -t fzb-compile:verify-mc .
+#
+# pcfb is public, so FetchContent of the pinned tag works anonymously.
+# FUZZYBITS_PCFB_SOURCE_DIR / --build-context pcfb=… remains for local and
+# offline builds. Do not bake GitHub credentials into the image.
+
+ARG BASE_IMAGE=mcscram:llvm-clang
+FROM ${BASE_IMAGE} AS build
+
+COPY --from=pcfb . /deps/pcfb
+COPY . /app
+WORKDIR /app
+
+ARG CMAKE_BUILD_TYPE=Release
+ARG FUZZYBITS_WITH_MC=OFF
+ENV CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+    ACPP_TARGETS=generic \
+    FUZZYBITS_WITH_MC=${FUZZYBITS_WITH_MC}
+
+RUN set -eu; \
+    extra="-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+           -DFUZZYBITS_PCFB_SOURCE_DIR=/deps/pcfb \
+           -DFUZZYBITS_WITH_MC=${FUZZYBITS_WITH_MC} \
+           -DBUILD_PYTHON_BINDINGS=OFF \
+           -DOPTIMIZE_FOR_NATIVE=OFF \
+           -DBUILD_TESTING=ON \
+           -DMALLOC_TYPE=malloc \
+           -DCMAKE_CXX_SCAN_FOR_MODULES=OFF"; \
+    if [ "${FUZZYBITS_WITH_MC}" = "ON" ]; then \
+      cmake --preset generic ${extra} && \
+      cmake --build --preset generic --target fzb scram-cli fzb_compile_tests -j "$(nproc)" && \
+      echo /app/build/generic > /app/.fzb-build-dir; \
+    else \
+      cmake -S /app -B /app/build-fzb -G Ninja ${extra} && \
+      cmake --build /app/build-fzb --target fzb fzb_compile_tests -j "$(nproc)" && \
+      echo /app/build-fzb > /app/.fzb-build-dir; \
+    fi
+
+FROM build AS verify
+ARG FUZZYBITS_WITH_MC=OFF
+WORKDIR /tmp/fzb-out
+# Compile + inspect + validate the models named in fuzzybits#43.
+RUN BD="$(cat /app/.fzb-build-dir)" && \
+    "${BD}/targets/fzb/fzb" compile /app/input/Aralia/chinese.xml -o chinese.pcfb && \
+    "${BD}/targets/fzb/fzb" inspect chinese.pcfb --validate --exact && \
+    "${BD}/targets/fzb/fzb" compile /app/input/Aralia/das9201.xml -o das9201.pcfb && \
+    "${BD}/targets/fzb/fzb" inspect das9201.pcfb --validate && \
+    "${BD}/targets/fzb/fzb" compile /app/input/Aralia/baobab2.xml -o baobab2.pcfb && \
+    "${BD}/targets/fzb/fzb" inspect baobab2.pcfb --validate
+RUN BD="$(cat /app/.fzb-build-dir)" && \
+    ctest --test-dir "${BD}" --output-on-failure -R fzb_compile_tests
+# Link-wiring check: WITH_MC=ON must not define DirectEval stubs in fzb
+# (they would interpose libmc and break fzb run, #44). WITH_MC=OFF must.
+# DirectEval U refs live in libscram.so and are resolved from libmc at load
+# time; fzb itself may have none if it never calls those methods.
+RUN set -eu; \
+    BD="$(cat /app/.fzb-build-dir)"; \
+    FZB="${BD}/targets/fzb/fzb"; \
+    echo "=== nm -C fzb | ProbabilityAnalyzer<scram::mc::DirectEval> ==="; \
+    nm -C "${FZB}" | grep 'ProbabilityAnalyzer<scram::mc::DirectEval>' || true; \
+    echo "=== ldd fzb ==="; \
+    ldd "${FZB}"; \
+    defs="$(nm -C "${FZB}" | grep 'ProbabilityAnalyzer<scram::mc::DirectEval>' | grep -E ' [TtWwVv] ' || true)"; \
+    if [ "${FUZZYBITS_WITH_MC}" = "ON" ]; then \
+      if [ -n "${defs}" ]; then echo "ERROR: DirectEval definitions in fzb (WITH_MC=ON):"; echo "${defs}"; exit 1; fi; \
+      echo "=== nm -C libscram.so (undefined DirectEval) ==="; \
+      nm -C "${BD}/src/libscram.so" | grep 'ProbabilityAnalyzer<scram::mc::DirectEval>' | grep ' U ' | head; \
+      echo "=== nm -C libmc.so (defined DirectEval) ==="; \
+      nm -C "${BD}/src/mc/libmc.so" | grep 'ProbabilityAnalyzer<scram::mc::DirectEval>' | grep -E ' [TtWwVv] ' | head; \
+      ldd "${FZB}" | grep libmc; \
+      test -x "${BD}/targets/scram/scram-cli"; \
+      echo "WITH_MC=ON: fzb has no DirectEval defs, ldd shows libmc, scram-cli built"; \
+    else \
+      test -n "${defs}"; \
+      if ldd "${FZB}" | grep libmc; then echo "ERROR: libmc linked with WITH_MC=OFF"; exit 1; fi; \
+      echo "WITH_MC=OFF: fzb defines DirectEval stubs, no libmc"; \
+    fi
