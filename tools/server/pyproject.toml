@@ -3,6 +3,7 @@ name = "mcscram-server"
 version = "0.1.0"
 description = "Small service wrapper around the native mcSCRAM Python extension."
 requires-python = ">=3.12"
+license = {text = "AGPL-3.0-or-later"}
 dependencies = [
     "fastapi>=0.115",
     "numpy>=2.4.6",
