@@ -1,0 +1,11 @@
+**CHAR32
+TOP + LEFT RIGHT
+LEFT * A B
+RIGHT + C D
+         1.000000E-01 A
+         2.000000E-01 B
+         3.000000E-01 C
+         4.000000E-01 D
+LIMIT    1.000000E-08
+**FTITLE:
+*XEQ

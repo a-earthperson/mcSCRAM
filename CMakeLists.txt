@@ -295,6 +295,12 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateEmbeddedSchemas.cmake")
 
 add_subdirectory(src)
 
+# ir::pc + FTP/AIGER IO imported from fuzzybits-reset-2026 (#42).
+# Header-only IR and the IO static libs are SYCL-free.
+add_subdirectory(src/api)
+add_subdirectory(src/ir)
+add_subdirectory(src/io)
+
 add_subdirectory(targets/scram)
 
 if(BUILD_PYTHON_BINDINGS)
