@@ -44,7 +44,7 @@ def test_probability_tiny(tiny_xml: Path):
     # TwoTrains: P = 0.76 * 0.85 = 0.646. A few 10^5 trials is enough for a
     # smoke check that the estimate is in (0, 1) and the Wald interval covers
     # the analytic value.
-    result = fuzzybits.probability(tiny_xml, trials=1 << 16, seed=1, pdag_c=2, no_kn=True, policy="wald")
+    result = fuzzybits.probability(tiny_xml, trials=1 << 16, pdag_c=2, no_kn=True, policy="wald")
     assert 0.0 < result.estimate < 1.0
     lo, hi = result.ci
     assert lo <= result.estimate <= hi
@@ -52,6 +52,11 @@ def test_probability_tiny(tiny_xml: Path):
     analytic = 0.646
     z = 2.576  # 99% — keep the unit test loose; GPU acceptance uses z·σ̂
     assert abs(result.estimate - analytic) <= z * max(result.std_err, 1e-6)
+
+
+def test_seed_is_not_implemented(tiny_xml: Path):
+    with pytest.raises(NotImplementedError, match="deterministic"):
+        fuzzybits.probability(tiny_xml, trials=1024, seed=1)
 
 
 def test_run_pcfb_is_extension_point():

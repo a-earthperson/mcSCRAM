@@ -50,13 +50,16 @@ print(fuzzybits.list_devices())
 result = fuzzybits.probability(
     "model.xml",
     trials=1e7,
-    seed=1,
     pdag_c=2,
     no_kn=True,
     policy="wald",
 )
 print(result.estimate, result.ci, result.std_err)
 ```
+
+Results are deterministic for a given model and trial count (Philox
+counters). `seed=` raises `NotImplementedError`; seeded runs are tracked
+with `fzb run --seed` ([#44](https://github.com/fuzzybit-org/fuzzybits/issues/44)).
 
 `fuzzybits.run("model.pcfb")` is an extension point for
 [#44](https://github.com/fuzzybit-org/fuzzybits/issues/44) and raises

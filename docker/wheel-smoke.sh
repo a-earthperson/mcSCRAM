@@ -6,7 +6,6 @@ set -euo pipefail
 backend="${FUZZYBITS_BACKEND:-cuda}"
 xml_dir="${FUZZYBITS_XML_DIR:-/models}"
 trials="${FUZZYBITS_TRIALS:-10000000}"
-seed="${FUZZYBITS_SEED:-1}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -42,14 +41,14 @@ for name_ref in "das9201:1.34237e-2" "chinese:1.17058e-3"; do
     echo "SKIP ${name}: missing ${path}"
     continue
   fi
-  if ! timeout 60 python3 - "${path}" "${name}" "${ref}" "${trials}" "${seed}" "${Z}" <<'PY'
+  if ! timeout 60 python3 - "${path}" "${name}" "${ref}" "${trials}" "${Z}" <<'PY'
 import os, sys
 os.environ.setdefault("FUZZYBITS_BACKEND", os.environ.get("FUZZYBITS_BACKEND", "cuda"))
 import fuzzybits
-path, name, ref_s, trials_s, seed_s, z_s = sys.argv[1:]
+path, name, ref_s, trials_s, z_s = sys.argv[1:]
 ref = float(ref_s)
 result = fuzzybits.probability(
-    path, trials=float(trials_s), seed=int(seed_s), pdag_c=2, no_kn=True, policy="wald",
+    path, trials=float(trials_s), pdag_c=2, no_kn=True, policy="wald",
 )
 delta = abs(result.estimate - ref)
 bound = float(z_s) * result.std_err

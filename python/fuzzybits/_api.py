@@ -54,7 +54,9 @@ def probability(
 
     Wraps ``mcscram_native.run_probability`` (the existing engine). Extra
     keyword arguments are forwarded as CLI-like options (``delta``,
-    ``early_stop``, ``compilation_level``, …).
+    ``early_stop``, ``compilation_level``, …). Results are deterministic for
+    a given model and trial count (Philox counters); ``seed`` is not
+    implemented.
 
     Parameters
     ----------
@@ -64,7 +66,7 @@ def probability(
         Bernoulli trial count (``num_trials``). ``None`` uses the engine
         default (auto / early-stop).
     seed:
-        PRNG seed.
+        Unused. Passing a value raises :class:`NotImplementedError`.
     pdag_c:
         PDAG compilation level (``-c`` / ``compilation_level``).
     no_kn:
@@ -72,6 +74,12 @@ def probability(
     policy:
         Convergence interval policy (``"wald"`` or ``"bayes"``).
     """
+    if seed is not None or "seed" in options:
+        raise NotImplementedError(
+            "fuzzybits.probability() does not accept seed: Monte Carlo results "
+            "are deterministic for a given model and trial count (Philox "
+            "counters). Seeded runs are tracked with fzb run --seed (#44)."
+        )
     native = _runtime.native()
     if isinstance(model_xml, (str, Path)):
         input_files = [str(model_xml)]
@@ -88,8 +96,6 @@ def probability(
     if trials is not None:
         opts["num_trials"] = float(trials)
         opts.setdefault("early_stop", False)
-    if seed is not None:
-        opts["seed"] = int(seed)
     opts.update(options)
 
     last_progress: dict[str, Any] = {}
