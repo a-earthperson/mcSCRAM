@@ -1,5 +1,4 @@
-#define CATCH_CONFIG_MAIN
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include "api/diagnostics.h"
 #include "io/ftp/descriptor.h"
@@ -11,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -48,8 +48,24 @@ namespace {
         return extension == ".ftp";
     }
 
-    [[nodiscard]] auto inputRoot() -> std::filesystem::path {
-        return std::filesystem::path(PROJECT_SOURCE_DIR) / "input";
+    [[nodiscard]] auto projectRoot() -> std::filesystem::path {
+        return std::filesystem::path(PROJECT_SOURCE_DIR);
+    }
+
+    // Public corpus: generated trees under input/ftp/synthetic/ plus the
+    // hand-written snippets in tests/testdata/. Vendor CAFTA/MHTGR/G-PWR FTP
+    // models are not in this public tree (#38). Point
+    // FUZZYBITS_PRIVATE_FIXTURES_DIR at a local checkout of those files to
+    // include them in the round-trip corpus.
+    [[nodiscard]] auto ftpCorpusRoots() -> std::vector<std::filesystem::path> {
+        std::vector<std::filesystem::path> roots{
+            projectRoot() / "input" / "ftp" / "synthetic",
+            projectRoot() / "src" / "io" / "ftp" / "tests" / "testdata",
+        };
+        if (const char *privateDir = std::getenv("FUZZYBITS_PRIVATE_FIXTURES_DIR"); privateDir != nullptr && privateDir[0] != '\0') {
+            roots.emplace_back(privateDir);
+        }
+        return roots;
     }
 
     void collectFtpFiles(std::filesystem::path const &root, std::vector<std::filesystem::path> &files) {
@@ -82,7 +98,9 @@ namespace {
 
     [[nodiscard]] auto ftpCorpusFiles() -> std::vector<std::filesystem::path> {
         std::vector<std::filesystem::path> files;
-        collectFtpFiles(inputRoot(), files);
+        for (auto const &root : ftpCorpusRoots()) {
+            collectFtpFiles(root, files);
+        }
         std::ranges::sort(files, [](auto const &lhs, auto const &rhs) {
             return lhs.generic_string() < rhs.generic_string();
         });
@@ -169,10 +187,12 @@ TEST_CASE("FTP writer round-trips the writable PC subset", "[io][ftp]") {
 
 TEST_CASE("FTP input corpus round-trips to stable write checksums", "[io][ftp][corpus]") {
     const auto files = ftpCorpusFiles();
-    REQUIRE_FALSE(files.empty());
+    if (files.empty()) {
+        SKIP("No public FTP fixtures; set FUZZYBITS_PRIVATE_FIXTURES_DIR to a directory of .ftp files");
+    }
 
     for (auto const &file : files) {
-        DYNAMIC_SECTION(file.lexically_relative(inputRoot()).generic_string()) {
+        DYNAMIC_SECTION(file.lexically_relative(projectRoot()).generic_string()) {
             auto firstRead = readFile(file);
             INFO(diagnosticsText(firstRead.diagnostics()));
             REQUIRE(firstRead);

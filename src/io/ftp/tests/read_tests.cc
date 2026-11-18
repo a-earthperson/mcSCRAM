@@ -1,4 +1,4 @@
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include "io/ftp/descriptor.h"
 #include "io/formats.h"
@@ -43,6 +43,30 @@ LIMIT    1.000000E-05
     REQUIRE(pc->probability_sources().size() == 3);
     REQUIRE(pc->probability_sources()[0].kind == fuzzybits::ir::pc::probability_source_kind::literal);
     REQUIRE(pc->op_codes()[pc->targets()[0].node.raw()] == fuzzybits::ir::pc::op_code::or_gate);
+}
+
+TEST_CASE("FTP reader imports a k-of-n gate", "[io][ftp]") {
+    std::istringstream input(R"ftp(**CHAR32
+TOP 2 A B C
+         1.000000E-01 A
+         2.000000E-01 B
+         3.000000E-01 C
+LIMIT    1.000000E-05
+**FTITLE:
+*XEQ
+)ftp");
+
+    auto result = fuzzybits::io::backend::fuzzybits::ftp::read(input);
+
+    REQUIRE(result);
+    auto const *pc = fuzzybits::ir::pc::circuit_from(result.value().model);
+    REQUIRE(pc != nullptr);
+    REQUIRE(pc->targets().size() == 1);
+    const auto top = pc->targets()[0].node;
+    REQUIRE(pc->op_codes()[top.raw()] == fuzzybits::ir::pc::op_code::cardinality);
+    REQUIRE(pc->operands(top).size() == 3);
+    REQUIRE(pc->cardinality_low()[top.raw()] == 2);
+    REQUIRE(pc->cardinality_high()[top.raw()] == 3);
 }
 
 TEST_CASE("FTP reader preserves complemented child references", "[io][ftp]") {

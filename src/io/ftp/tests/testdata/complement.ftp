@@ -1,0 +1,7 @@
+**CHAR32
+TOP * A -B
+         1.000000E-01 A
+         2.000000E-01 B
+LIMIT    1.000000E-06
+**FTITLE:
+*XEQ
