@@ -1,5 +1,11 @@
 # mcSCRAM: Monte Carlo SCRAM
 
+> **Status:** partial — verified 2026-11-18 manually (`scram-cli --monte-carlo --probability --pdag` on the Aralia models against BDD references on V100S, RTX 3070 and RTX 5060 Ti; no CI yet).
+> **Fate:** stays — the fuzzybits monorepo (formerly mcSCRAM): compiler, runtime, CLI, Python and server.
+> **What works today:** OpenPSA MEF → PDAG preprocessing and Monte Carlo probability estimation on GPU/CPU through `scram-cli` and the `mcscram_native` Python module; no `.pcfb` I/O yet (#43, #44).
+
+The repository was renamed from mcSCRAM to fuzzybits on 2026-11-18; the binary is still `scram-cli`.
+
 **mcSCRAM** is a fork of @rakhimov Olzhas Rakhimov's [SCRAM](https://github.com/rakhimov/scram) that extends the original probabilistic risk assessment tool with multicore CPU, GPU-accelerated Monte Carlo simulation capabilities using AdaptiveCpp's SYCL backend.
 
 > [!CAUTION]
