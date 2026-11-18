@@ -1,7 +1,8 @@
 # Load toolchain.env into FUZZYBITS_PIN_<KEY>.
 # Readable by CMake, shell (`set -a && . ./toolchain.env`), and CI --build-args.
 
-set(_fuzzybits_pins_file "${CMAKE_SOURCE_DIR}/toolchain.env")
+set(_fuzzybits_pins_file "${CMAKE_CURRENT_LIST_DIR}/../toolchain.env")
+cmake_path(NORMAL_PATH _fuzzybits_pins_file)
 if(NOT EXISTS "${_fuzzybits_pins_file}")
   message(FATAL_ERROR "Missing toolchain pins file: ${_fuzzybits_pins_file}")
 endif()
