@@ -6,6 +6,13 @@ set(MC_SRC
         core/importance_analysis.cc
 )
 
+# Host-only sources: Boost.Math statistics.  Must NOT be listed in
+# add_sycl_to_target — AdaptiveCpp CUDA SMCP compiles those TUs as CUDA.
+set(MC_HOST_SRC
+        scheduler/convergence_policy.cc
+        stats/info_gain.cc
+)
+
 # Optionally collect public headers for installation
 set(MC_HEADERS
         #
@@ -53,6 +60,49 @@ set(MC_HEADERS
         stats/tally.h
 )
 
+# Host-only Boost.Math statistics as a regular (non-SYCL) static library.
+# add_sycl_to_target applies the AdaptiveCpp launcher to every source of the
+# named target, not only the SOURCES list, so these TUs must live elsewhere.
+add_library(mc_host_stats STATIC ${MC_HOST_SRC})
+set_target_properties(mc_host_stats PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(mc_host_stats
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
+    $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
+)
+target_link_libraries(mc_host_stats PUBLIC Boost::math)
+
+# Standalone Catch2 target for the host-only convergence statistic.  The
+# global suite in tests/ is still disabled (#31); do not re-enable it here.
+# Placed before the Apple early-return so the target is available on all hosts.
+if(BUILD_TESTING)
+  include(FetchContent)
+  if(NOT TARGET Catch2::Catch2WithMain)
+    set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+    set(CATCH_INSTALL_EXTRAS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+      Catch2
+      URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.8.1.tar.gz
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(Catch2)
+  endif()
+
+  add_executable(convergence_stats_tests
+    "${PROJECT_SOURCE_DIR}/tests/convergence_stats_tests.cc"
+  )
+  target_include_directories(convergence_stats_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+  )
+  target_link_libraries(convergence_stats_tests PRIVATE
+    Catch2::Catch2WithMain
+    mc_host_stats
+  )
+  target_compile_features(convergence_stats_tests PRIVATE cxx_std_23)
+endif()
+
 if(APPLE)
   add_library(mc INTERFACE)
   target_include_directories(mc
@@ -90,6 +140,7 @@ target_link_libraries(mc
   PUBLIC
     scram
     ${LIBS}
+    mc_host_stats
 )
 
 # Enable AdaptiveCpp device compilation for the library sources

@@ -76,22 +76,10 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(boost)
 
-# AdaptiveCpp CUDA SMCP compiles TUs with clang -x cuda, so __CUDACC__ is set
-# and Boost.Math marks iround(..., Policy) as __host__ __device__ in the
-# declaration but the definition is host-only. Align the definition.
-if(DEFINED boost_SOURCE_DIR)
-  set(_bm_round "${boost_SOURCE_DIR}/libs/math/include/boost/math/special_functions/round.hpp")
-  if(EXISTS "${_bm_round}")
-    file(READ "${_bm_round}" _bm_round_src)
-    string(REPLACE
-      "inline int iround(const T& v, const Policy& pol)"
-      "BOOST_MATH_GPU_ENABLED inline int iround(const T& v, const Policy& pol)"
-      _bm_round_src "${_bm_round_src}")
-    file(WRITE "${_bm_round}" "${_bm_round_src}")
-    unset(_bm_round_src)
-  endif()
-  unset(_bm_round)
-endif()
+# Boost.Math must not be included from translation units passed to
+# add_sycl_to_target (AdaptiveCpp CUDA SMCP sets __CUDACC__ and Boost 1.87+
+# then enables broken GPU overloads of iround). Host-only statistics live in
+# src/mc/scheduler/convergence_policy.cc and src/mc/stats/info_gain.cc.
 
 # Restore BUILD_SHARED_LIBS if it was changed
 if(DEFINED _boost_build_shared_libs_backup)

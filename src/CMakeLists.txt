@@ -63,6 +63,11 @@ if(APPLE)
   # library self-contained and avoid a scram <-> mc shared-library cycle.
   find_package(_adaptivecpp)
   list(APPEND SCRAM_CORE_SRC ${SCRAM_MC_SRC})
+  # Host-only MC statistics (Boost.Math) — not passed to add_sycl_to_target.
+  list(APPEND SCRAM_CORE_SRC
+    mc/scheduler/convergence_policy.cc
+    mc/stats/info_gain.cc
+  )
 endif()
 
 # Build scram as shared library explicitly (dependencies are static)
