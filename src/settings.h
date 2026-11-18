@@ -155,11 +155,12 @@ class Settings {
 
   /// Sets the number of trials for Monte Carlo simulations.
   ///
-  /// @param[in] n  A natural number for the number of trials.
+  /// @param[in] n  A non-negative number of trials.  0 is unbounded
+  ///               (early-stop on convergence).
   ///
   /// @returns Reference to this object.
   ///
-  /// @throws SettingsError  The number is less than 1.
+  /// @throws SettingsError  The number is negative.
   Settings& num_trials(std::double_t n);
 
   /// @returns The batch size for Monte-Carlo simulations.

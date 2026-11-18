@@ -22,7 +22,7 @@
 #include <set>
 #include <vector>
 
-#include <catch2/catch.hpp>
+#include "catch2_compat.hpp"
 
 #include <boost/range/algorithm.hpp>
 

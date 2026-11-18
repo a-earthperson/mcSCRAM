@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1
+#
+# Verification image for #31: compile fuzzybits with BUILD_TESTING=ON against
+# an AdaptiveCpp `full` (SSCP) install. Intended for xerxes; FROM is a local
+# tag (`fuzzybits-acpp:full`) that already has clang-20 + AdaptiveCpp v25.10.
+#
+#   docker --context xerxes build -f tests/docker/Dockerfile.ctest \
+#     -t fuzzybits:ctest-generic .
+
+FROM fuzzybits-acpp:full
+
+ENV CC=/usr/bin/clang-20 \
+    CXX=/usr/bin/clang++-20 \
+    CMAKE_C_COMPILER=/usr/bin/clang-20 \
+    CMAKE_CXX_COMPILER=/usr/bin/clang++-20 \
+    ACPP_TARGETS=generic \
+    ACPP_DEBUG_LEVEL=0 \
+    ACPP_PERSISTENT_RUNTIME=1
+
+COPY . /app
+WORKDIR /app
+
+RUN cmake --preset generic \
+          -DBUILD_TESTING=ON \
+          -DBUILD_TESTS=ON \
+          -DBUILD_PYTHON_BINDINGS=OFF \
+          -DCMAKE_C_COMPILER=/usr/bin/clang-20 \
+          -DCMAKE_CXX_COMPILER=/usr/bin/clang++-20 \
+ && cmake --build --preset generic -j "$(nproc)"
+
+WORKDIR /app
+ENTRYPOINT ["ctest"]
+CMD ["--preset", "generic", "--output-on-failure"]

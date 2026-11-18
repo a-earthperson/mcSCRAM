@@ -13,7 +13,6 @@
 
 namespace scram::mc::stats {
 namespace detail {
-namespace {
 
 using math_policy = boost::math::policies::policy<
     boost::math::policies::domain_error<boost::math::policies::errno_on_error>,
@@ -25,6 +24,8 @@ using math_policy = boost::math::policies::policy<
 
 using beta_dist = boost::math::beta_distribution<double, math_policy>;
 using normal_dist = boost::math::normal_distribution<double, math_policy>;
+
+namespace {
 
 void mark_not_converged(mc::stats::tally &t, const double rel_margin_error)
 {
@@ -72,10 +73,15 @@ void store_bayes_interval(mc::stats::tally &t,
     t.log10.target_trials = std::max<std::size_t>(N_req_log10, t.total_bits);
 }
 
-/// Quantile of Beta(1/2, β).  Gamma(1/2) has CDF erf(√x), so the inverse is
-/// [erf⁻¹(p)]²; for large β the Beta is Gamma(1/2) / (Gamma(1/2) + β).
-/// β = 1/2 recovers the arcsine law exactly via the trigonometric form.
-double beta_half_quantile(const double p, const double beta)
+} // namespace
+
+// Boost's incomplete-beta series is stable for moderate β; above this the
+// series can fail to converge and the O(1/√β) approximation is used instead.
+// n = 1e6 → β = n + 1/2 still converges in Boost; the series starts failing
+// for β ≳ 2e6 in the far tails under errno_on_error.
+constexpr double kBoostStableBetaMax = 2.0e6;
+
+double beta_half_quantile_approx(const double p, const double beta)
 {
     const double u = std::clamp(p, 0.0, 1.0);
     if (u <= 0.0) {
@@ -94,6 +100,35 @@ double beta_half_quantile(const double p, const double beta)
     }
     return g / (g + beta);
 }
+
+double beta_half_quantile(const double p, const double beta)
+{
+    const double u = std::clamp(p, 0.0, 1.0);
+    if (u <= 0.0) {
+        return 0.0;
+    }
+    if (u >= 1.0) {
+        return 1.0;
+    }
+    if (beta <= 0.5 + 1.0e-15) {
+        const double s = std::sin(0.5 * std::numbers::pi * u);
+        return s * s;
+    }
+    if (beta <= kBoostStableBetaMax) {
+        try {
+            const beta_dist dist(0.5, beta);
+            const double q = boost::math::quantile(dist, u);
+            if (std::isfinite(q)) {
+                return std::clamp(q, 0.0, 1.0);
+            }
+        } catch (const boost::math::evaluation_error &) {
+        } catch (const std::exception &) {
+        }
+    }
+    return beta_half_quantile_approx(p, beta);
+}
+
+namespace {
 
 bool closed_form_boundary_interval(const std::size_t successes,
                                    const std::size_t n,
@@ -184,7 +219,7 @@ void update_bayes(mc::stats::tally &t, const double rel_margin_error, const doub
     bool have_interval = false;
 
     // Zero / all-one hit counts: incomplete-beta series diverge for large n.
-    // Use the Gamma(1/2) / erf closed form of Beta(1/2, n+1/2) instead.
+    // Use beta_half_quantile (Boost for moderate n, O(1/√n) erf/mean approx above).
     if (successes == 0 || successes == n) {
         have_interval = closed_form_boundary_interval(successes, n, tail, lower, upper);
     }

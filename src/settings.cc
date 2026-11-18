@@ -104,7 +104,12 @@ Settings& Settings::cut_off(double prob) {
 }
 
 Settings& Settings::num_trials(const std::double_t n) {
-  const std::size_t nt = static_cast<std::size_t>(std::round(std::max(0.0, n)));
+  if (n < 0)
+    SCRAM_THROW(SettingsError(
+        "The number of trials cannot be negative (0 = unbounded)."))
+        << errinfo_value(std::to_string(n));
+
+  const std::size_t nt = static_cast<std::size_t>(std::round(n));
   if (!nt) {
     early_stop_ = true;
   }
