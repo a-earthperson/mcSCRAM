@@ -3,8 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <algorithm>
-
-#include "mc/event/node.h"
+#include <limits>
 
 namespace scram::mc::stats {
 

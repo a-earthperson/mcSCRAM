@@ -167,7 +167,10 @@ class convergence_controller {
         //const auto log_target_eps10 = interval_.target.half_width_epsilon_log10;
 
         // Keep a pointer to the tally that currently sets the worst ε so that we
-        // can expose it via current_tally_.
+        // can expose it via current_tally_.  Always keep at least the first
+        // tally: when p̂ = 0 the Wald half-width is 0, so a strict `eps > max_eps`
+        // comparison would never select a representative and the trial counter
+        // would freeze (run never hits TOTAL_ITERATIONS).
         const stats::tally *worst_tally_ptr = nullptr;
 
         for (auto [idx, t] : tally_node_map.tallies()) {
@@ -188,7 +191,7 @@ class convergence_controller {
             const std::size_t N1  = t.linear.target_trials;
             const std::size_t N2  = t.log10.target_trials;
 
-            if (eps > max_eps) {
+            if (!worst_tally_ptr || eps > max_eps) {
                 max_eps = eps;
                 worst_tally_ptr = &t;
             }
@@ -265,17 +268,14 @@ class convergence_controller {
             return false;
         }
 
-        // out of iterations, return that we didn't take a step.
-        // evals to false if max_iterations_ is 0, which means keep going.
-        if (!fixed_iteration_limited_reached_ && iteration_limit_reached()) {
-            fixed_iteration_limited_reached_ = true;
-            progress_.mark_fixed_iterations_complete(*this);
+        if (halt_for_iteration_cap()) {
             return false;
         }
 
         // still have iterations remaining
         // get the tally
         process_tally(manager_.single_pass_and_tally(event_id));
+        ++passes_completed_;
 
         // for now, this is our convergence criteria
         // if converged now, set convergence_ sticky to true
@@ -302,17 +302,14 @@ class convergence_controller {
             return false;
         }
 
-        // out of iterations, return that we didn't take a step.
-        // evals to false if max_iterations_ is 0, which means keep going.
-        if (!fixed_iteration_limited_reached_ && iteration_limit_reached()) {
-            fixed_iteration_limited_reached_ = true;
-            progress_.mark_fixed_iterations_complete(*this);
+        if (halt_for_iteration_cap()) {
             return false;
         }
 
         // still have iterations remaining
         // get the tally
         process_tallies(manager_.pass_wait_collect(tally_node_map));
+        ++passes_completed_;
 
         // for now, this is our convergence criteria
         // if converged now, set convergence_ sticky to true
@@ -338,6 +335,10 @@ class convergence_controller {
      */
     [[nodiscard]] bool burn_in_step(const index_t_ event_id) {
 
+        if (halt_for_iteration_cap()) {
+            return false;
+        }
+
         // iteration_ now shows that enough tasks have been queued on device such that by the time they finish,
         // burn-in trials would be complete. So, don't queue up any additional work, just return saying you're done taking
         // burn-in steps.
@@ -347,12 +348,17 @@ class convergence_controller {
         }
 
         process_tally(manager_.single_pass_and_tally(event_id));
+        ++passes_completed_;
 
         // since we did step, update the iteration count
         return true;
     }
 
     [[nodiscard]] bool burn_in_step(stats::TallyNodeMap &tally_node_map) {
+
+        if (halt_for_iteration_cap()) {
+            return false;
+        }
 
         // iteration_ now shows that enough tasks have been queued on device such that by the time they finish,
         // burn-in trials would be complete. So, don't queue up any additional work, just return saying you're done taking
@@ -363,6 +369,7 @@ class convergence_controller {
         }
 
         process_tallies(manager_.pass_wait_collect(tally_node_map));
+        ++passes_completed_;
 
         // since we did step, update the iteration count
         return true;
@@ -419,6 +426,7 @@ private:
     bool epsilon_log10_converged_ = false;
     bool epsilon_converged_ = false;
     bool fixed_iteration_limited_reached_ = false;
+    std::size_t passes_completed_ = 0;
     progress<policy_t_, bitpack_t_, prob_t_, size_t_> progress_;
 
 public:
@@ -487,7 +495,26 @@ public:
 
     [[nodiscard]] bool iteration_limit_reached() const {
         const std::size_t max_iterations = manager_.shaper().TOTAL_ITERATIONS;
-        return max_iterations && current_steps().iterations() >= max_iterations;
+        if (max_iterations == 0) {
+            return false;
+        }
+        // Pass counter is independent of the tally (which can stay at 0 bits
+        // when p̂ = 0 and no representative node is selected).  Also honour the
+        // trial-derived iteration count when the host tally *does* advance.
+        return passes_completed_ >= max_iterations ||
+               current_steps().iterations() >= max_iterations;
+    }
+
+    [[nodiscard]] bool halt_for_iteration_cap() {
+        if (fixed_iteration_limited_reached_) {
+            return true;
+        }
+        if (!iteration_limit_reached()) {
+            return false;
+        }
+        fixed_iteration_limited_reached_ = true;
+        progress_.mark_fixed_iterations_complete(*this);
+        return true;
     }
 
     [[nodiscard]] bool burn_in_complete() const {

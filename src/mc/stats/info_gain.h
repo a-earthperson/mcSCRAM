@@ -17,10 +17,8 @@
  *
  *     I  =  H(Beta(α_prev, β_prev)) − H(Beta(α_new, β_new)) [bits].
  *
- * This header provides:
- *   • beta_entropy_*       – Shannon entropy of a Beta distribution (nats/bits)
- *   • information_gain_*   – entropy reduction between two Beta states
- *   • info_gain_per_second – convenience wrapper to normalise by wall-time
+ * Boost.Math (digamma) is used only in the host-only .cc so that this header
+ * is safe to include from device-compiled translation units.
  *
  * References
  * ----------
@@ -28,82 +26,39 @@
  *   where  ψ  is the digamma function and  B  the Beta function.
  */
 
-#include <boost/math/special_functions/digamma.hpp>
-#include <cmath>
+#include <cstddef>
 
 namespace scram::mc::stats {
-
-// -----------------------------------------------------------------------------
-//  Internal helpers
-// -----------------------------------------------------------------------------
-namespace detail {
-    // Natural-log Beta:  ln B(a,b) = lgamma(a)+lgamma(b)−lgamma(a+b)
-    [[nodiscard]] inline double ln_beta(const double a, const double b)
-    {
-        return std::lgamma(a) + std::lgamma(b) - std::lgamma(a + b);
-    }
-} // namespace detail
-
-// -----------------------------------------------------------------------------
-//  Entropy of Beta(α,β)
-// -----------------------------------------------------------------------------
 
 /**
  * Shannon entropy H[Beta(α,β)] in natural units (nats).
  * Preconditions: α>0, β>0.
  */
-[[nodiscard]] inline double beta_entropy_nats(const double alpha, const double beta)
-{
-    using boost::math::digamma;
-    const double lnB = detail::ln_beta(alpha, beta);
-    const double term1 = (alpha - 1.0) * digamma(alpha);
-    const double term2 = (beta  - 1.0) * digamma(beta);
-    const double term3 = (alpha + beta - 2.0) * digamma(alpha + beta);
-    return lnB - term1 - term2 + term3;
-}
+[[nodiscard]] double beta_entropy_nats(double alpha, double beta);
 
 /**
  * Shannon entropy of Beta(α,β) in bits.
  */
-[[nodiscard]] inline double beta_entropy_bits(const double alpha, const double beta)
-{
-    static constexpr double LN2 = 0.693147180559945309417232121458176568; // ln 2
-    return beta_entropy_nats(alpha, beta) / LN2;
-}
-
-// -----------------------------------------------------------------------------
-//  Information gain between two Beta states
-// -----------------------------------------------------------------------------
+[[nodiscard]] double beta_entropy_bits(double alpha, double beta);
 
 /**
  * Expected information gained (bits) when moving from (α_prev,β_prev) to
  * (α_new,β_new).
  */
-[[nodiscard]] inline double information_gain_bits(const double alpha_prev,
-                                                  const double beta_prev,
-                                                  const double alpha_new,
-                                                  const double beta_new)
-{
-    return beta_entropy_bits(alpha_prev, beta_prev) - beta_entropy_bits(alpha_new, beta_new);
-}
+[[nodiscard]] double information_gain_bits(double alpha_prev,
+                                           double beta_prev,
+                                           double alpha_new,
+                                           double beta_new);
 
 /**
  * Information-gain rate (bits per second).
  * @param seconds  Wall-clock time elapsed.  Values ≤0 return NaN.
  */
-[[nodiscard]] inline double info_gain_bits_per_second(const double alpha_prev,
-                                                      const double beta_prev,
-                                                      const double alpha_new,
-                                                      const double beta_new,
-                                                      const double seconds)
-{
-    const double ig = information_gain_bits(alpha_prev, beta_prev, alpha_new, beta_new);
-    return (seconds > 0.0) ? ig / seconds : std::numeric_limits<double>::quiet_NaN();
-}
-
-// -----------------------------------------------------------------------------
-//  Convenience RAII tracker ----------------------------------------------------
-// -----------------------------------------------------------------------------
+[[nodiscard]] double info_gain_bits_per_second(double alpha_prev,
+                                               double beta_prev,
+                                               double alpha_new,
+                                               double beta_new,
+                                               double seconds);
 
 /**
  * Simple accumulator that tracks the Beta parameters
@@ -117,18 +72,7 @@ public:
      * Register a batch of Bernoulli results and return the information gained
      * for this batch **in bits** (time-agnostic).
      */
-    [[nodiscard]] double add_batch(const std::size_t successes, const std::size_t failures)
-    {
-        const double alpha_prev = alpha_;
-        const double beta_prev  = beta_;
-
-        alpha_ += static_cast<double>(successes);
-        beta_  += static_cast<double>(failures);
-
-        last_bits_ = information_gain_bits(alpha_prev, beta_prev, alpha_, beta_);
-        cumulative_bits_ += last_bits_;
-        return last_bits_;
-    }
+    [[nodiscard]] double add_batch(std::size_t successes, std::size_t failures);
 
     [[nodiscard]] double alpha() const { return alpha_; }
     [[nodiscard]] double beta()  const { return beta_;  }
@@ -142,4 +86,4 @@ private:
     double last_bits_ = 0.0;
 };
 
-} // namespace scram::mc::stats 
+} // namespace scram::mc::stats
