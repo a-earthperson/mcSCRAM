@@ -196,4 +196,5 @@ So:
   `CUDA_EMBED_PTX=ptx-only` concern, not a CMake preset.
 
 Gate-kernel times and register counts are in #26; they do not change the
-preset split.
+preset split. Docker images, Nsight, and `mcscram-smoke`:
+[docs/cuda-builds.md](cuda-builds.md).

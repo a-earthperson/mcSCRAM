@@ -191,10 +191,15 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     apt-fast update && \
     apt-fast install -y --no-install-recommends $ROCM_PACKAGES
 
-## Install AdaptiveCpp
+## Install AdaptiveCpp (pin must match Dockerfile.cuda12.8 / issue #29).
+## generic SSCP requires ACPP_COMPILER_FEATURE_PROFILE=full. Do not use
+## WITH_CUDA_NVCXX_ONLY (deprecated; that path returned 0 on sm_70, #24).
 WORKDIR /build
 FROM llvm-clang AS adaptivecpp-clang
 ARG CMAKE_BUILD_TYPE="Release"
+ARG ACPP_REPO=https://github.com/AdaptiveCpp/AdaptiveCpp.git
+ARG ACPP_REF=v25.10.0
+ARG ACPP_COMPILER_FEATURE_PROFILE=full
 ENV CMAKE_C_COMPILER="/usr/bin/clang-$CLANG_VERSION"
 ENV CC="$CMAKE_C_COMPILER"
 ENV CMAKE_CXX_COMPILER="/usr/bin/clang++-$CLANG_VERSION"
@@ -203,29 +208,29 @@ ENV ADAPTIVE_CPP_INSTALL_DIR="/usr/local"
 ENV CLANG_EXECUTABLE_PATH="/usr/bin/clang++-$CLANG_VERSION"
 ENV LLVM_DIR="/usr/lib/llvm-$CLANG_VERSION/cmake"
 ENV CUDA_TOOLKIT_ROOT_DIR="/usr/local/cuda"
-ENV NVCXX_COMPILER="/usr/local/cuda/bin/nvcc"
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
-    git clone https://github.com/AdaptiveCpp/AdaptiveCpp && \
-    mkdir -p AdaptiveCpp/build && cd AdaptiveCpp/build && \
-    cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
+    git clone --filter=blob:none --depth 1 --branch "${ACPP_REF}" "${ACPP_REPO}" AdaptiveCpp || \
+    (git clone --filter=blob:none "${ACPP_REPO}" AdaptiveCpp && git -C AdaptiveCpp fetch --depth 1 origin "${ACPP_REF}" && git -C AdaptiveCpp checkout FETCH_HEAD) && \
+    git -C AdaptiveCpp rev-parse HEAD | tee /usr/local/share/acpp-commit && \
+    git -C AdaptiveCpp describe --always --tags --dirty | tee /usr/local/share/acpp-describe && \
+    cmake -S AdaptiveCpp -B AdaptiveCpp/build \
+          -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
           -DCMAKE_INSTALL_PREFIX=$ADAPTIVE_CPP_INSTALL_DIR \
           -DCMAKE_C_COMPILER=$CMAKE_C_COMPILER \
           -DCMAKE_CXX_COMPILER=$CMAKE_CXX_COMPILER \
           -DCLANG_EXECUTABLE_PATH=$CLANG_EXECUTABLE_PATH \
           -DLLVM_DIR=$LLVM_DIR \
-          -DNVCXX_COMPILER=$NVCXX_COMPILER \
           -DCUDA_TOOLKIT_ROOT_DIR=$CUDA_TOOLKIT_ROOT_DIR \
           -DWITH_CUDA_BACKEND=ON \
-          -DWITH_CUDA_NVCXX_ONLY=ON \
           -DWITH_OPENCL_BACKEND=OFF \
           -DWITH_ROCM_BACKEND=OFF \
-          -DWITH_LEVEL_ZERO_BACKEND=OFF  \
-          -DACPP_USE_ACCELERATED_CPU=OFF  .. && \
-        #   -DACPP_COMPILER_FEATURE_PROFILE="full"
-    make -j && \
-    make install
+          -DWITH_LEVEL_ZERO_BACKEND=OFF \
+          -DACPP_COMPILER_FEATURE_PROFILE=${ACPP_COMPILER_FEATURE_PROFILE} && \
+    cmake --build AdaptiveCpp/build -j "$(nproc)" && \
+    cmake --install AdaptiveCpp/build && \
+    rm -rf AdaptiveCpp
 
 FROM adaptivecpp-clang AS generic_backend
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
@@ -239,12 +244,20 @@ FROM generic_backend AS builder
 COPY . /app
 WORKDIR /app/build
 ARG APP_MALLOC_TYPE="tcmalloc"
+ARG ACPP_TARGETS="generic"
 RUN cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
           -DMALLOC_TYPE=$APP_MALLOC_TYPE \
           -DCMAKE_C_COMPILER=$CMAKE_C_COMPILER \
           -DCMAKE_CXX_COMPILER=$CMAKE_CXX_COMPILER \
           -DCLANG_EXECUTABLE_PATH=$CLANG_EXECUTABLE_PATH \
-          -DLLVM_DIR=$LLVM_DIR .. && \
+          -DLLVM_DIR=$LLVM_DIR \
+          -DACPP_TARGETS="${ACPP_TARGETS}" \
+          -DACPP_USE_ACCELERATED_CPU=OFF \
+          -DACPP_STDPAR=OFF \
+          -DCMAKE_CXX_SCAN_FOR_MODULES=OFF \
+          -DOPTIMIZE_FOR_NATIVE=OFF \
+          -DBUILD_TESTS=OFF \
+          .. && \
      make -j && \
      make install
 
@@ -325,10 +338,12 @@ COPY --from=builder /app/build/src/libscram.so /usr/local/lib/
 COPY --from=builder /app/build/src/mc/libmc.so /usr/local/lib/
 COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
+COPY docker/inputs/das9201.xml docker/inputs/chinese.xml docker/inputs/baobab1.xml /app/input/
+COPY docker/smoke.sh /usr/local/bin/mcscram-smoke
 
 USER root
 # Update library cache
-RUN ldconfig
+RUN chmod 0755 /usr/local/bin/mcscram-smoke && ldconfig
 
 USER ${USER}
 WORKDIR /app

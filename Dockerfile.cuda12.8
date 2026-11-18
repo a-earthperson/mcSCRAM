@@ -18,10 +18,17 @@
 # here is minimal (SMCP only) to keep the AdaptiveCpp install and runtime slim.
 #
 # Nsight / CUPTI: the tool's CUDA version must not exceed the host driver.
-# Nsight 2026.x / CUDA 13.2 tools fail on driver 580 (= CUDA 13.0) with
-# CUPTI_ERROR_NOT_INITIALIZED. Nsight Compute 2025.2.1 / Systems 2025.x work.
-# Nsight Compute >= 2025.3 dropped Volta (sm_70). Defaults below are 2025.2.1 /
-# 2025.3.2 (still 2025.x). Override NSIGHT_COMPUTE_PKG / NSIGHT_SYSTEMS_PKG.
+# Nsight Systems 2025.3.2 does not record CUDA kernel rows on Volta (V100S).
+# Default NSIGHT_SYSTEMS_PKG is therefore 2025.2.1 (fetched from NVIDIA; the
+# CUDA 12.8 Ubuntu 24.04 apt repo jumps 2025.1.3 → 2025.3.2).
+# Nsight Compute 2025.2.1 is the last release with Volta; >= 2025.3 drops it.
+# Nsight >= 2026.x needs driver >= 595 (CUDA 13.2); on driver 580 it fails
+# with CUPTI_ERROR_NOT_INITIALIZED. See docs/cuda-builds.md.
+#
+# ARG defaults match toolchain.env (#29 / #59): AdaptiveCpp v25.10.0, clang 20,
+# CUDA 12.8.1. cuda-sm70 uses ACPP_COMPILER_FEATURE_PROFILE_CUDA_SM70=minimal.
+# Source toolchain.env and pass --build-arg ACPP_REF / CLANG_VERSION / CUDA_*
+# rather than forking those versions here.
 #
 # Example:
 #   docker --context xerxes build -f Dockerfile.cuda12.8 \
@@ -286,8 +293,10 @@ COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=builder /usr/local/share/acpp-targets /usr/local/share/acpp-targets
 COPY --from=builder /usr/local/share/cuda-embed-ptx /usr/local/share/cuda-embed-ptx
-COPY docker/inputs/das9201.xml docker/inputs/chinese.xml /app/input/
-RUN ldconfig && \
+COPY docker/inputs/das9201.xml docker/inputs/chinese.xml docker/inputs/baobab1.xml /app/input/
+COPY docker/smoke.sh /usr/local/bin/mcscram-smoke
+RUN chmod 0755 /usr/local/bin/mcscram-smoke && \
+    ldconfig && \
     chown -R ${USER}:${USER} /app
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4
 USER ${USER}
@@ -296,22 +305,72 @@ ENTRYPOINT ["/usr/local/bin/scram-cli"]
 CMD ["--help"]
 
 # Nsight CLIs on top of the slim runtime. Versions MUST be ≤ host driver CUDA.
-# sm_70: keep Nsight Compute 2025.2.x (2025.3 dropped Volta).
+# sm_70: Nsight Compute 2025.2.x (2025.3 dropped Volta) and Nsight Systems
+# 2025.2.x (2025.3.2 captured .qdstrm but no CUDA kernel rows on the V100S).
+# QdstrmImporter needs X11/GLX/NSS even headless; without them nsys profile
+# leaves a .qdstrm and never writes an importable .nsys-rep.
 FROM scramruntime AS profiler
 USER root
 ARG NSIGHT_COMPUTE_PKG=nsight-compute-2025.2.1
-ARG NSIGHT_SYSTEMS_PKG=nsight-systems-2025.3.2
-ENV DEBIAN_FRONTEND=noninteractive
+ARG NSIGHT_SYSTEMS_PKG=nsight-systems-2025.2.1
+ARG NSIGHT_SYSTEMS_DEB_URL=https://developer.download.nvidia.com/devtools/nsight-systems/nsight-systems-2025.2.1_2025.2.1.130-1_amd64.deb
+ENV DEBIAN_FRONTEND=noninteractive \
+    QT_QPA_PLATFORM=offscreen
+# GLX/xcb/NSS: QdstrmImporter (Qt6) dlopens these; ldd on the binary is clean.
+ENV NSIGHT_QDSTRM_PACKAGES="libglx0 \
+    libgl1 \
+    libopengl0 \
+    libegl1 \
+    libnss3 \
+    libnspr4 \
+    libasound2t64 \
+    libglib2.0-0t64 \
+    libdbus-1-3 \
+    libxcb-cursor0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-randr0 \
+    libxcb-render-util0 \
+    libxcb-shape0 \
+    libxcb-xinerama0 \
+    libxcb-xinput0 \
+    libxkbcommon-x11-0 \
+    libfontconfig1 \
+    libfreetype6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxext6 \
+    libxrender1 \
+    libxi6 \
+    libsm6 \
+    libice6 \
+    libsqlite3-0 \
+    libdrm2 \
+    libgbm1 \
+    fonts-dejavu-core \
+    wget \
+    ca-certificates"
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    --mount=type=cache,target=/var/cache/mcscram-nsys,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
       ${NSIGHT_COMPUTE_PKG} \
-      ${NSIGHT_SYSTEMS_PKG} && \
+      ${NSIGHT_QDSTRM_PACKAGES} && \
+    if apt-cache show "${NSIGHT_SYSTEMS_PKG}" >/dev/null 2>&1; then \
+      apt-get install -y --no-install-recommends "${NSIGHT_SYSTEMS_PKG}"; \
+    else \
+      echo "apt has no ${NSIGHT_SYSTEMS_PKG}; fetching ${NSIGHT_SYSTEMS_DEB_URL}" && \
+      wget -q -O /var/cache/mcscram-nsys/nsys.deb "${NSIGHT_SYSTEMS_DEB_URL}" && \
+      apt-get install -y --no-install-recommends /var/cache/mcscram-nsys/nsys.deb; \
+    fi && \
     ln -sf /opt/nvidia/nsight-compute/*/ncu /usr/local/bin/ncu && \
-    ln -sf /opt/nvidia/nsight-systems/*/bin/nsys /usr/local/bin/nsys || \
-    ln -sf /opt/nvidia/nsight-systems/*/nsys /usr/local/bin/nsys
+    nsys_bin="$(find /opt/nvidia/nsight-systems -type f -name nsys | head -n 1)" && \
+    test -n "${nsys_bin}" && ln -sf "${nsys_bin}" /usr/local/bin/nsys && \
+    qdstrm="$(find /opt/nvidia/nsight-systems -type f -name QdstrmImporter | head -n 1)" && \
+    test -x "${qdstrm}"
 COPY --from=base /usr/local/cuda/bin/cuobjdump /usr/local/bin/cuobjdump
 COPY --from=base /usr/local/cuda/bin/nvdisasm /usr/local/bin/nvdisasm
 ARG USER=coder
