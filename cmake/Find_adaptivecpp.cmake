@@ -4,7 +4,7 @@ cmake_policy(SET CMP0005 NEW)
 set(ACPP_COMPILER_FEATURE_PROFILE "full" CACHE STRING "AdaptiveCpp feature profile")
 set(ACPP_STDPAR "on" CACHE STRING "enables SYCL offloading of C++ standard parallel algorithms")
 set(ACPP_USE_ACCELERATED_CPU "on" CACHE STRING "enables SYCL offloading of C++ standard parallel algorithms")
-set(ACPP_TARGETS "generic" CACHE STRING "enables SYCL offloading of C++ standard parallel algorithms")
+set(ACPP_TARGETS "generic" CACHE STRING "AdaptiveCpp compilation targets (e.g. generic, cuda:sm_86). Honour -DACPP_TARGETS from the command line; default remains generic.")
 
 find_package(AdaptiveCpp CONFIG REQUIRED)
 
@@ -47,7 +47,7 @@ endif()
 add_definitions(-DACPP_COMPILER_FEATURE_PROFILE=full)
 add_definitions(-DACPP_STDPAR=on)
 add_definitions(-DACPP_USE_ACCELERATED_CPU=on)
-add_definitions(-DACPP_TARGETS=generic)
+add_definitions(-DACPP_TARGETS=${ACPP_TARGETS})
 
 # ──────────────────────────────────────────────────────────────────────────
 # Make AdaptiveCpp targets available to the project

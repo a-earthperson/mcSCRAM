@@ -63,16 +63,35 @@ if(NOT BUILD_SHARED_LIBS)
     set(Boost_USE_STATIC_RUNTIME ON CACHE BOOL "Use static runtime" FORCE)
 endif()
 
-# Use Boost 1.88.0 which is the first release to ship an official CMake build
-# tarball.
+# Boost 1.87/1.88 incorrectly enable GPU/SYCL code paths in Boost.Math, which
+# breaks AdaptiveCpp CUDA SMCP (clang -x cuda):
+#   error: __host__ function 'iround' cannot overload __host__ __device__ function
+# AdaptiveCpp docs: use Boost < 1.87 or >= 1.89. 1.89 also ships the CMake tarball.
 FetchContent_Declare(
     boost
-    URL      https://github.com/boostorg/boost/releases/download/boost-1.88.0/boost-1.88.0-cmake.tar.gz
-    URL_HASH SHA256=dcea50f40ba1ecfc448fdf886c0165cf3e525fef2c9e3e080b9804e8117b9694
+    URL      https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-cmake.tar.gz
+    URL_HASH SHA256=954a01219bf818c7fb850fa610c2c8c71a4fa28fa32a1900056bcb6ff58cf908
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 
 FetchContent_MakeAvailable(boost)
+
+# AdaptiveCpp CUDA SMCP compiles TUs with clang -x cuda, so __CUDACC__ is set
+# and Boost.Math marks iround(..., Policy) as __host__ __device__ in the
+# declaration but the definition is host-only. Align the definition.
+if(DEFINED boost_SOURCE_DIR)
+  set(_bm_round "${boost_SOURCE_DIR}/libs/math/include/boost/math/special_functions/round.hpp")
+  if(EXISTS "${_bm_round}")
+    file(READ "${_bm_round}" _bm_round_src)
+    string(REPLACE
+      "inline int iround(const T& v, const Policy& pol)"
+      "BOOST_MATH_GPU_ENABLED inline int iround(const T& v, const Policy& pol)"
+      _bm_round_src "${_bm_round_src}")
+    file(WRITE "${_bm_round}" "${_bm_round_src}")
+    unset(_bm_round_src)
+  endif()
+  unset(_bm_round)
+endif()
 
 # Restore BUILD_SHARED_LIBS if it was changed
 if(DEFINED _boost_build_shared_libs_backup)

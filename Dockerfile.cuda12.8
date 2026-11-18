@@ -1,0 +1,323 @@
+# syntax=docker/dockerfile:1.10.0
+#
+# CUDA-only AdaptiveCpp SMCP (clang CUDA) build of mcSCRAM.
+# Ahead-of-time SASS + optional embedded PTX, selectable per architecture.
+#
+# AdaptiveCpp CUDA SMCP (v25.10 / develop) does NOT expose --cuda-include-ptx.
+# The clang CUDA driver is invoked as `--cuda-gpu-arch=sm_XX` (integrated-multipass)
+# or `--cuda-device-only --cuda-gpu-arch=sm_XX -S` (explicit-multipass, PTX text).
+# PTX embedding for integrated-multipass is forwarded to clang via
+# ACPP_EXTRA_COMPILE_OPTIONS / --cuda-include-ptx= / --no-cuda-include-ptx=.
+# Clang does not accept compute_XX as --offload-arch; true PTX-only fatbins are
+# not supported. CUDA_EMBED_PTX=ptx-only therefore switches the AdaptiveCpp
+# target to cuda.explicit-multipass, which emits PTX and relies on driver JIT.
+#
+# generic SSCP + CUDA SMCP: AdaptiveCpp accepts ACPP_TARGETS="generic;cuda:sm_XX"
+# (generic only conflicts with cuda-nvcxx). That requires
+# ACPP_COMPILER_FEATURE_PROFILE=full so the SSCP compiler is built. Default
+# here is minimal (SMCP only) to keep the AdaptiveCpp install and runtime slim.
+#
+# Nsight / CUPTI: the tool's CUDA version must not exceed the host driver.
+# Nsight 2026.x / CUDA 13.2 tools fail on driver 580 (= CUDA 13.0) with
+# CUPTI_ERROR_NOT_INITIALIZED. Nsight Compute 2025.2.1 / Systems 2025.x work.
+# Nsight Compute >= 2025.3 dropped Volta (sm_70). Defaults below are 2025.2.1 /
+# 2025.3.2 (still 2025.x). Override NSIGHT_COMPUTE_PKG / NSIGHT_SYSTEMS_PKG.
+#
+# Example:
+#   docker --context xerxes build -f Dockerfile.cuda12.8 \
+#     --build-arg ACPP_TARGETS=cuda:sm_86 --target scramruntime \
+#     -t mcscram:cuda12.8-sm86 .
+
+ARG CUDA_DEVEL_IMAGE=nvidia/cuda:12.8.1-devel-ubuntu24.04
+ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.8.1-runtime-ubuntu24.04
+
+FROM ${CUDA_DEVEL_IMAGE} AS base
+
+ENV CODENAME="noble" \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:apt-fast/stable && \
+    apt-get install -y --no-install-recommends apt-fast && \
+    apt-fast upgrade -y --no-install-recommends && \
+    apt-fast -y autoremove
+
+# CUDA-only: no OpenCL ICD, intel-gpu-tools, oneAPI, Level Zero, or ROCm.
+ENV BUILD_PACKAGES="ca-certificates \
+    curl \
+    git \
+    gnupg \
+    lsb-release \
+    python3 \
+    python3-dev \
+    sudo \
+    wget"
+
+ENV SRC_BUILD_PACKAGES="cmake \
+    libboost-all-dev \
+    libedit-dev \
+    libhwloc-dev \
+    libnuma-dev \
+    libxml2-dev \
+    libzstd-dev \
+    ninja-build \
+    pkg-config"
+
+ENV SCRAM_BUILD_PACKAGES="g++ \
+    libgoogle-perftools-dev \
+    libjemalloc-dev \
+    libomp-dev \
+    make"
+
+ENV SCRAM_RUNTIME_PACKAGES="libxml2 \
+    libtcmalloc-minimal4 \
+    libjemalloc2 \
+    python3"
+
+FROM base AS minimal
+WORKDIR /build
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-fast install -y --no-install-recommends \
+    $BUILD_PACKAGES \
+    $SRC_BUILD_PACKAGES \
+    $SCRAM_BUILD_PACKAGES \
+    $SCRAM_RUNTIME_PACKAGES && \
+    update-ca-certificates
+
+# clang 20: CUDA 12.8 is the last officially supported toolkit (warns on 12.9).
+# AdaptiveCpp supports official LLVM releases 15–21; 20 is the CUDA-12.8 match.
+FROM minimal AS llvm-clang
+WORKDIR /build
+ARG CLANG_VERSION=20
+ENV CLANG_VERSION=${CLANG_VERSION}
+ENV LLVM_PACKAGES="libclang-${CLANG_VERSION}-dev \
+    clang-tools-${CLANG_VERSION} \
+    libclang-rt-${CLANG_VERSION}-dev \
+    libomp-${CLANG_VERSION}-dev \
+    llvm-${CLANG_VERSION}-dev \
+    lld-${CLANG_VERSION}"
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    wget -q https://apt.llvm.org/llvm.sh && \
+    chmod +x llvm.sh && \
+    ./llvm.sh ${CLANG_VERSION} && \
+    apt-fast update && \
+    apt-fast install -y --no-install-recommends $LLVM_PACKAGES
+
+# AdaptiveCpp CUDA SMCP (clang CUDA). Do NOT pass -DWITH_CUDA_NVCXX_ONLY=*
+# (deprecated; forces ACPP_COMPILER_FEATURE_PROFILE=custom-deprecated).
+# `minimal` still builds the clang CUDA plugin; it disables SSCP/generic JIT.
+FROM llvm-clang AS adaptivecpp-clang
+ARG CMAKE_BUILD_TYPE=Release
+ARG ACPP_REPO=https://github.com/AdaptiveCpp/AdaptiveCpp.git
+ARG ACPP_REF=v25.10.0
+ARG ACPP_COMPILER_FEATURE_PROFILE=minimal
+ENV CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+    CMAKE_C_COMPILER=/usr/bin/clang-${CLANG_VERSION} \
+    CC=/usr/bin/clang-${CLANG_VERSION} \
+    CMAKE_CXX_COMPILER=/usr/bin/clang++-${CLANG_VERSION} \
+    CXX=/usr/bin/clang++-${CLANG_VERSION} \
+    ADAPTIVE_CPP_INSTALL_DIR=/usr/local \
+    CLANG_EXECUTABLE_PATH=/usr/bin/clang++-${CLANG_VERSION} \
+    LLVM_DIR=/usr/lib/llvm-${CLANG_VERSION}/cmake \
+    CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda
+WORKDIR /build
+RUN git clone --filter=blob:none --depth 1 --branch "${ACPP_REF}" "${ACPP_REPO}" AdaptiveCpp || \
+    (git clone --filter=blob:none "${ACPP_REPO}" AdaptiveCpp && git -C AdaptiveCpp fetch --depth 1 origin "${ACPP_REF}" && git -C AdaptiveCpp checkout FETCH_HEAD) && \
+    git -C AdaptiveCpp rev-parse HEAD | tee /usr/local/share/acpp-commit && \
+    git -C AdaptiveCpp describe --always --tags --dirty | tee /usr/local/share/acpp-describe && \
+    cmake -S AdaptiveCpp -B AdaptiveCpp/build -G Ninja \
+          -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+          -DCMAKE_INSTALL_PREFIX=${ADAPTIVE_CPP_INSTALL_DIR} \
+          -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} \
+          -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER} \
+          -DCLANG_EXECUTABLE_PATH=${CLANG_EXECUTABLE_PATH} \
+          -DLLVM_DIR=${LLVM_DIR} \
+          -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR} \
+          -DWITH_CUDA_BACKEND=ON \
+          -DWITH_OPENCL_BACKEND=OFF \
+          -DWITH_ROCM_BACKEND=OFF \
+          -DWITH_LEVEL_ZERO_BACKEND=OFF \
+          -DACPP_COMPILER_FEATURE_PROFILE=${ACPP_COMPILER_FEATURE_PROFILE} && \
+    cmake --build AdaptiveCpp/build -j "$(nproc)" && \
+    cmake --install AdaptiveCpp/build && \
+    rm -rf AdaptiveCpp
+
+FROM adaptivecpp-clang AS builder
+ARG CMAKE_BUILD_TYPE=Release
+ARG APP_MALLOC_TYPE=tcmalloc
+ARG ACPP_TARGETS="cuda:sm_86"
+ARG CUDA_EMBED_PTX=highest
+ARG ACPP_COMPILER_FEATURE_PROFILE=minimal
+ARG ACPP_REF=v25.10.0
+ENV ACPP_TARGETS=${ACPP_TARGETS} \
+    CUDA_EMBED_PTX=${CUDA_EMBED_PTX} \
+    ACPP_COMPILER_FEATURE_PROFILE=${ACPP_COMPILER_FEATURE_PROFILE}
+COPY . /app
+WORKDIR /app/build
+# CUDA 12.8 still compiles Volta (sm_70). sm_120 is first supported in 12.8.
+# CUDA_EMBED_PTX: none | highest (default) | all | ptx-only  — see docker/acpp-cuda-config.py
+RUN python3 /app/docker/acpp-cuda-config.py /usr/local/share && \
+    targets="$(cat /usr/local/share/acpp-targets)" && \
+    ptx_flags="$(cat /usr/local/share/cuda-ptx-flags)" && \
+    cmake -S /app -B /app/build -G Ninja \
+          -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+          -DMALLOC_TYPE=${APP_MALLOC_TYPE} \
+          -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} \
+          -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER} \
+          -DCLANG_EXECUTABLE_PATH=${CLANG_EXECUTABLE_PATH} \
+          -DLLVM_DIR=${LLVM_DIR} \
+          -DACPP_TARGETS="${targets}" \
+          -DACPP_USE_ACCELERATED_CPU=OFF \
+          -DACPP_STDPAR=OFF \
+          -DACPP_EXTRA_COMPILE_OPTIONS="${ptx_flags}" \
+          -DCMAKE_CXX_SCAN_FOR_MODULES=OFF \
+          -DOPTIMIZE_FOR_NATIVE=OFF \
+          -DBUILD_TESTS=OFF && \
+    cmake --build /app/build -j "$(nproc)" && \
+    cmake --install /app/build
+
+FROM adaptivecpp-clang AS devimage
+ARG USER=coder
+ARG UID=1000
+ARG GID=1000
+RUN if getent passwd ${UID}; then userdel -f "$(getent passwd ${UID} | cut -d: -f1)"; fi && \
+    if getent group ${GID}; then groupdel "$(getent group ${GID} | cut -d: -f1)"; fi && \
+    groupadd -g ${GID} ${USER} && \
+    useradd --uid ${UID} --gid ${GID} --groups sudo --create-home --shell /bin/bash ${USER} && \
+    echo "${USER} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/${USER} && \
+    chmod 0440 /etc/sudoers.d/${USER} && \
+    mkdir -p /home/${USER}/projects /root/.ssh && \
+    chmod 700 /root/.ssh && \
+    chown -R ${USER}:${USER} /home/${USER} && \
+    echo "${USER}:${USER}" | chpasswd
+USER ${USER}
+WORKDIR /home/${USER}/projects
+ENTRYPOINT ["/bin/bash"]
+
+FROM devimage AS ssh-devimage
+USER root
+WORKDIR /root/.ssh
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-fast update && \
+    apt-fast install -y --no-install-recommends openssh-server && \
+    apt-fast -y autoremove && \
+    mkdir -p /var/run/sshd /root/.ssh && \
+    chmod 700 /root/.ssh && \
+    echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
+    echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
+    echo "root:root" | chpasswd
+EXPOSE 22
+ENTRYPOINT ["/usr/sbin/sshd", "-D"]
+
+# Slim runtime: CUDA runtime base, no LLVM / AdaptiveCpp compiler / cmake.
+FROM ${CUDA_RUNTIME_IMAGE} AS scramruntime
+ARG USER=coder
+ARG UID=1000
+ARG GID=1000
+ARG ACPP_REF=v25.10.0
+ARG ACPP_TARGETS="cuda:sm_86"
+ARG CUDA_EMBED_PTX=highest
+ARG CLANG_VERSION=20
+ARG CMAKE_BUILD_TYPE=Release
+ENV DEBIAN_FRONTEND=noninteractive \
+    ACPP_VISIBILITY_MASK=cuda \
+    ACPP_DEBUG_LEVEL=2 \
+    ACPP_ADAPTIVITY_LEVEL=2 \
+    ACPP_ALLOCATION_TRACKING=1 \
+    ACPP_PERSISTENT_RUNTIME=1
+LABEL org.adaptivecpp.ref="${ACPP_REF}" \
+      org.mcscram.acpp_targets="${ACPP_TARGETS}" \
+      org.mcscram.cuda_embed_ptx="${CUDA_EMBED_PTX}" \
+      org.mcscram.clang_version="${CLANG_VERSION}" \
+      org.mcscram.cuda_series="12.8"
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      libxml2 \
+      libtcmalloc-minimal4 \
+      libjemalloc2 \
+      python3 \
+      libatomic1 \
+      libstdc++6 \
+      libc6 \
+      libgcc-s1 \
+      liblzma5 \
+      zlib1g \
+      libhwloc15 \
+      libnuma1 \
+      libedit2 \
+      ca-certificates && \
+    if getent passwd ${UID}; then userdel -f "$(getent passwd ${UID} | cut -d: -f1)"; fi && \
+    if getent group ${GID}; then groupdel "$(getent group ${GID} | cut -d: -f1)"; fi && \
+    groupadd -g ${GID} ${USER} && \
+    useradd --uid ${UID} --gid ${GID} --groups sudo --create-home --shell /bin/bash ${USER} && \
+    mkdir -p /app/input /usr/local/etc
+# AdaptiveCpp always loads the OMP CPU backend even with ACPP_VISIBILITY_MASK=cuda.
+# CUDA runtime images lack universe, so copy LLVM's libomp rather than apt libomp5t64.
+COPY --from=llvm-clang /usr/lib/llvm-${CLANG_VERSION}/lib/libomp.so.5 /usr/lib/x86_64-linux-gnu/libomp.so.5
+# Generic SSCP CUDA/OMP backends dlopen llvm-to-backend which needs libLLVM.
+COPY --from=llvm-clang /usr/lib/llvm-${CLANG_VERSION}/lib/libLLVM.so.${CLANG_VERSION}.1 /usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1
+# llvm-to-ptx links libdevice for SSCP JIT (CUDA runtime image omits nvvm/).
+COPY --from=base /usr/local/cuda/nvvm/libdevice/libdevice.10.bc /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
+# LLVMToPtx forks /usr/lib/llvm-20/bin/{opt,llc} (see getOptPath/getLLCPath).
+COPY --from=llvm-clang /usr/lib/llvm-${CLANG_VERSION}/bin/opt /usr/lib/llvm-${CLANG_VERSION}/bin/opt
+COPY --from=llvm-clang /usr/lib/llvm-${CLANG_VERSION}/bin/llc /usr/lib/llvm-${CLANG_VERSION}/bin/llc
+COPY --from=adaptivecpp-clang /usr/local/bin/ /usr/local/bin/
+COPY --from=adaptivecpp-clang /usr/local/lib/ /usr/local/lib/
+COPY --from=adaptivecpp-clang /usr/local/etc/AdaptiveCpp /usr/local/etc/AdaptiveCpp
+COPY --from=adaptivecpp-clang /usr/local/share/acpp-commit /usr/local/share/acpp-commit
+COPY --from=adaptivecpp-clang /usr/local/share/acpp-describe /usr/local/share/acpp-describe
+COPY --from=builder /app/build/targets/scram/scram-cli /usr/local/bin/
+COPY --from=builder /app/build/src/libscram.so /usr/local/lib/
+COPY --from=builder /app/build/src/mc/libmc.so /usr/local/lib/
+COPY --from=builder /app/build/_deps/libxml2-build/libxml2.so.16 /usr/local/lib/
+COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
+COPY --from=builder /usr/local/share/acpp-targets /usr/local/share/acpp-targets
+COPY --from=builder /usr/local/share/cuda-embed-ptx /usr/local/share/cuda-embed-ptx
+COPY docker/inputs/das9201.xml docker/inputs/chinese.xml /app/input/
+RUN ldconfig && \
+    chown -R ${USER}:${USER} /app
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4
+USER ${USER}
+WORKDIR /app
+ENTRYPOINT ["/usr/local/bin/scram-cli"]
+CMD ["--help"]
+
+# Nsight CLIs on top of the slim runtime. Versions MUST be ≤ host driver CUDA.
+# sm_70: keep Nsight Compute 2025.2.x (2025.3 dropped Volta).
+FROM scramruntime AS profiler
+USER root
+ARG NSIGHT_COMPUTE_PKG=nsight-compute-2025.2.1
+ARG NSIGHT_SYSTEMS_PKG=nsight-systems-2025.3.2
+ENV DEBIAN_FRONTEND=noninteractive
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ${NSIGHT_COMPUTE_PKG} \
+      ${NSIGHT_SYSTEMS_PKG} && \
+    ln -sf /opt/nvidia/nsight-compute/*/ncu /usr/local/bin/ncu && \
+    ln -sf /opt/nvidia/nsight-systems/*/bin/nsys /usr/local/bin/nsys || \
+    ln -sf /opt/nvidia/nsight-systems/*/nsys /usr/local/bin/nsys
+COPY --from=base /usr/local/cuda/bin/cuobjdump /usr/local/bin/cuobjdump
+COPY --from=base /usr/local/cuda/bin/nvdisasm /usr/local/bin/nvdisasm
+ARG USER=coder
+USER ${USER}
+WORKDIR /app
+ENTRYPOINT ["/bin/bash"]
+CMD ["-lc", "ncu --version && nsys --version && cuobjdump --version"]
+
+FROM profiler AS scramruntime-prof
