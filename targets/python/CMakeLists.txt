@@ -5,6 +5,9 @@ set(MCSCRAM_PYTHON_INSTALL_DIR "${Python3_SITEARCH}" CACHE PATH
 
 pybind11_add_module(mcscram_native MODULE bindings.cpp)
 
+find_package(_adaptivecpp)
+add_sycl_to_target(TARGET mcscram_native SOURCES bindings.cpp)
+
 target_link_libraries(mcscram_native
   PRIVATE
     scram

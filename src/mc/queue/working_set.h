@@ -471,18 +471,18 @@ namespace scram::mc {
 
         /**
          * @brief Computes optimal 3D local range for CPU devices
-         * 
+         *
          * @details Calculates the optimal local work-group size for CPU devices
          * in 3D kernels, considering data type alignment and memory access patterns.
          * CPU devices typically benefit from smaller work-groups that align with
          * cache lines and SIMD instruction widths.
-         * 
+         *
          * The CPU optimization strategy:
          * - Sets X and Y dimensions to 1 for simplicity
          * - Computes Z dimension based on data type size and alignment
          * - Considers 8-byte alignment for optimal memory access
          * - Respects device work-item size limits
-         * 
+         *
          * @param limits Optional constraints on each dimension (0 = no limit)
          * @return Optimal 3D local range for CPU execution
          */
@@ -553,8 +553,8 @@ namespace scram::mc {
             sycl::range<3> local_range;
             switch (device_type) {
                 case sycl::info::device_type::cpu:
-                    local_range = compute_optimal_local_range_3d_for_cpu(limits);
-                    break;
+                    //local_range = compute_optimal_local_range_3d_for_cpu(limits);
+                    //break;
                 case sycl::info::device_type::gpu:
                 case sycl::info::device_type::accelerator:
                 case sycl::info::device_type::custom:

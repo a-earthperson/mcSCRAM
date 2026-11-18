@@ -32,12 +32,16 @@ void CustomPreprocessor<mc::DirectEval>::Run() {
          *  - only normalize NOT/NULL, KofN, XOR, if requested
          *------------------------------------------------------------*/
         {
+            if (!settings_->keep_null_gates()) {
+                pdag::Transform(graph_, [this](Pdag *) { remove_null_gates(); });
+            }
+
             if (settings_->expand_atleast_gates()) {
-                pdag::Transform(graph_,[this](Pdag *) { if (!graph_->normal()) NormalizeGates(ATLEAST); });
+                pdag::Transform(graph_,[this](Pdag *) { NormalizeGates(ATLEAST); });
             }
 
             if (settings_->expand_xor_gates()) {
-                pdag::Transform(graph_,[this](Pdag *) { if (!graph_->normal()) NormalizeGates(XOR); });
+                pdag::Transform(graph_,[this](Pdag *) { NormalizeGates(XOR); });
             }
 
             // do nothing
@@ -133,7 +137,7 @@ void CustomPreprocessor<mc::DirectEval>::Run() {
          *          - Run PhaseTwo Again
          *          - Coalesce Common/Shared Gates
          *  - We will stagger these stages based on compilation level.
-         *  - You get to NNF at compilation level 8, if --no-kn, --no-xor were not set.
+         *  - You get to NNF at compilation level 8, regardless of whether --no-kn, --no-xor were set.
          *------------------------------------------------------------*/
         {
             pdag::Transform(
@@ -159,9 +163,9 @@ void CustomPreprocessor<mc::DirectEval>::Run() {
                      * Compilation Level 6+
                      *----------------------*/
                     if (compilation_target >= 6) {
-                        if (!graph_->normal() && (settings_->expand_atleast_gates() || settings_->expand_xor_gates())) {
-                            RunPhaseThree();
-                        }
+                        settings_->expand_atleast_gates(true);
+                        settings_->expand_xor_gates(true);
+                        RunPhaseThree();
                     }
                 },
                 [this, &compilation_target](Pdag *) {
@@ -169,10 +173,9 @@ void CustomPreprocessor<mc::DirectEval>::Run() {
                      * Compilation Level 7+
                      *----------------------*/
                     if (compilation_target >= 7) {
-                        if (!graph_->coherent() && (settings_->expand_atleast_gates() || settings_->expand_xor_gates()))
-                            RunPhaseFour();
-                        }
-                    },
+                        RunPhaseFour();
+                    }
+                },
                 [this, &compilation_target](Pdag *) {
                     /*-----------------------*
                      * Compilation Level 8+
@@ -231,7 +234,7 @@ void CustomPreprocessor<mc::DirectEval>::Run() {
     }
 }
 
-auto core::CustomPreprocessor<mc::DirectEval>::remove_null_gates() const {
+void core::CustomPreprocessor<mc::DirectEval>::remove_null_gates() const {
     if (graph_->HasNullGates()) {
         TIMER(DEBUG3, "NULL gates found");
         graph_->Log();

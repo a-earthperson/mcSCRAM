@@ -1,9 +1,29 @@
 /**
  * @file sample_shaper.h
- * @brief SYCL-based MC-scheduling helper for the compute graph layers.
+ * @brief Chooses the per-pass sampling geometry for the Monte-Carlo engine.
  * @author Arjun Earthperson
  * @date 2025
  *
+ * @details
+ * The sample shaper decides how many Bernoulli trials each node samples per
+ * device pass (an "iteration").  The result is a 1-D @ref event::sample_shape
+ * with @c batch_size == 1 and @c bitpacks_per_batch == B, where each work-item
+ * processes one bit-pack (e.g. 64 trials for @c uint64_t).
+ *
+ * The single free variable is
+ *
+ *     B  :=  bitpacks_per_batch   (bit-packs sampled, per node, per pass)
+ *
+ * which is chosen by @ref sample_shaper::solve_bitpacks_per_pass subject to a
+ * small set of inequalities (device memory, total-work, optimistic throughput,
+ * cache-line alignment, and power-of-2 sizing).  See that method for the full
+ * derivation.
+ *
+ * Historically a fuzzy @c overhead_ratio knob inflated the per-node memory
+ * footprint as a proxy for "use less device memory".  It had no precise meaning
+ * and was abused to indirectly tune throughput.  It has been removed in favour
+ * of an explicit, semantically meaningful @c requested_trials_per_pass target
+ * (optimistic: the realized value may be smaller after constraints are applied).
  *
  * @copyright Copyright (C) 2025 Arjun Earthperson
  * This program is free software; you can redistribute it and/or modify
@@ -29,6 +49,8 @@
 
 #include <sycl/sycl.hpp>
 #include <algorithm>
+#include <bit>
+#include <cstddef>
 #include <limits>
 #include <string>
 #include <vector>
@@ -46,125 +68,143 @@ namespace scram::log::sample_shaper {
     csv_pairs(const scram::mc::queue::sample_shaper<bitpack_t_>&);
 }
 
+/// Hard ceiling on a single device allocation we are willing to request, in bytes.
+/// The realized budget is min(this, device max_mem_alloc_size).
+static constexpr std::size_t MAX_ALLOCATABLE_DEVICE_BYTES = 256ULL * 1024ULL * 1024ULL;
 
 namespace scram::mc::queue {
 template<typename bitpack_t_>
 struct sample_shaper {
 
+    /// Number of device passes required to reach the requested total (0 → unbounded).
     std::size_t TOTAL_ITERATIONS = 0;
+    /// The chosen per-pass geometry (batch_size == 1, bitpacks_per_batch == B).
     event::sample_shape<std::size_t> SAMPLE_SHAPE{};
 
-    explicit sample_shaper()= default;
+    /// Default per-node trial budget assumed when the run is unbounded
+    /// (requested_num_trials == 0) purely so the per-pass geometry can be sized.
+    static constexpr std::size_t DEFAULT_UNBOUNDED_TRIALS = 64ull * 1024 * 1024;
 
-    sample_shaper(const sycl::queue &queue, const std::size_t requested_num_trials, const std::size_t num_nodes, const std::double_t overhead_ratio)
-        : requested_num_trials_(requested_num_trials), num_nodes_(num_nodes) {
+    struct description {
+        std::size_t requested_num_trials = 0;
+        std::size_t rounded_num_trials = 0;
+        std::size_t total_bits_to_sample = 0;
+        std::size_t target_bits_per_iteration = 0;   ///< per-node memory budget, in bits
+        std::size_t bits_per_iteration = 0;          ///< realized trials per node per pass
+        std::size_t total_iterations = 0;
+        std::size_t bits_per_bitpack = 0;
+        std::size_t requested_trials_per_pass = 0;   ///< optimistic target (0 = auto)
+        std::size_t realized_trials_per_pass = 0;    ///< == bits_per_iteration
+        std::size_t memory_budget_bitpacks_per_node = 0;
+        std::size_t num_nodes = 0;
+        std::size_t max_device_bytes = 0;
+        std::size_t max_device_bits = 0;
+        std::size_t cache_line_bitpacks = 0;
+        bool unlimited_iterations = false;
+        std::string shape_strategy = "uninitialized";
+        event::sample_shape<std::size_t> sample_shape{};
+    };
+
+    explicit sample_shaper() = default;
+
+    /**
+     * @param queue                     SYCL queue whose device drives the limits.
+     * @param requested_num_trials      Total trials to sample per node (0 → unbounded).
+     * @param num_nodes                 Number of nodes sharing the device memory.
+     * @param requested_trials_per_pass Optimistic per-node trials-per-pass target
+     *                                  (0 → automatic: fill the memory budget).
+     */
+    sample_shaper(const sycl::queue &queue,
+                  const std::size_t requested_num_trials,
+                  const std::size_t num_nodes,
+                  const std::size_t requested_trials_per_pass)
+        : requested_num_trials_(requested_num_trials),
+          num_nodes_(num_nodes),
+          requested_trials_per_pass_(requested_trials_per_pass) {
 
         const sycl::device device = queue.get_device();
-        max_device_bytes_ = device.get_info<sycl::info::device::max_mem_alloc_size>();
-        max_device_bits_ = max_device_bytes_ * static_cast<std::size_t>(8);
 
-        const bool no_limits_on_iterations = !requested_num_trials_;
+        // ---- 1) device budget -------------------------------------------------
+        const device_budget budget = query_device_budget(device);
+        max_device_bytes_    = budget.max_alloc_bytes;
+        max_device_bits_     = max_device_bytes_ * static_cast<std::size_t>(8);
+        cache_line_bitpacks_ = budget.cache_line_bitpacks;
 
-        // still set a bound to compute the sample shape appropriately
-        if (no_limits_on_iterations) {
-            requested_num_trials_ = 64 * 1024 * 1024;
-        }
-
-        // round number of sampled bits to nearest multiple of bits in bitpack_t_
-        const std::size_t remainder = requested_num_trials_ % bits_in_bitpack_;
-        if (remainder == 0) {
-            num_trials_ = requested_num_trials_;
-        } else if (remainder <= bits_in_bitpack_ / 2) {
-            // Round down
-            num_trials_ = requested_num_trials_ - remainder;
-        } else {
-            // Round up
-            num_trials_ = requested_num_trials_ + bits_in_bitpack_ - remainder;
-        }
-
-        // num_trials is now the number of bits to sample, over all iterations, for each node.
+        // ---- 2) total work, rounded up to whole bit-packs ---------------------
+        //  An unbounded run (requested == 0) is still given a finite figure so the
+        //  per-pass geometry can be sized; TOTAL_ITERATIONS stays 0 (run forever).
+        unlimited_iterations_ = (requested_num_trials_ == 0);
+        const std::size_t effective_request =
+            unlimited_iterations_ ? DEFAULT_UNBOUNDED_TRIALS : requested_num_trials_;
+        num_trials_           = round_up_to_multiple(effective_request, bits_in_bitpack_);
         total_bits_to_sample_ = num_trials_;
 
-        // but the resident memory will need to be split between each node's outputs
-        target_bits_per_iteration_ = static_cast<std::size_t>(std::floor(max_device_bits_ / static_cast<std::double_t>(num_nodes_)));
+        // per-node memory budget (informational + the (C1) bound below)
+        memory_budget_bitpacks_per_node_ = memory_budget_bitpacks(max_device_bytes_, num_nodes_);
+        target_bits_per_iteration_       = memory_budget_bitpacks_per_node_ * bits_in_bitpack_;
 
-        // ------------------------------------------------------------------
-        //  pick a sample shape that is as close as possible to the
-        //  *requested* number of trials (rounded to a whole bit-pack)
-        //  while *also* respecting the per-iteration memory budget.
-        //
-        //  Rationale: the previous heuristic always maximized utilisation of
-        //  the available device memory which could lead to *massive* over-sampling
-        //  for small --num-trials values (e.g. requesting 1024
-        //  trials resulted in > 67 M sampled bits).  This updated logic preserves
-        //  the "num-trials is a *minimum*" guarantee but tries to converge on
-        //  the exact request so we neither under- nor grossly over-sample.
-        // ------------------------------------------------------------------
+        // ---- 3) solve for B = bitpacks-per-pass under all constraints ----------
+        const std::size_t bitpacks_per_pass = solve_bitpacks_per_pass(
+            requested_trials_per_pass_,
+            num_nodes_,
+            total_bits_to_sample_,
+            unlimited_iterations_,
+            max_device_bytes_,
+            cache_line_bitpacks_);
 
-        const std::size_t per_iteration_target_bits = std::min(total_bits_to_sample_, target_bits_per_iteration_);
-        event::sample_shape<std::size_t> sample_shape = compute_closest_sample_shape_for_bits(device,
-                                                                                              per_iteration_target_bits,
-                                                                                              target_bits_per_iteration_);
+        SAMPLE_SHAPE    = event::sample_shape<std::size_t>{/*batch_size=*/1, bitpacks_per_pass};
+        shape_strategy_ = build_strategy_label(requested_trials_per_pass_, cache_line_bitpacks_);
 
-        // move all the work to the last dimension
-        if (sample_shape.bitpacks_per_batch) {
-            sample_shape.bitpacks_per_batch *= sample_shape.batch_size;
-            sample_shape.batch_size = 1;
-        }
+        // ---- 4) iteration accounting -----------------------------------------
+        bits_per_iteration_ = SAMPLE_SHAPE.num_bitpacks() * bits_in_bitpack_;
+        num_iterations_     = ceil_div(total_bits_to_sample_, bits_per_iteration_);
+        TOTAL_ITERATIONS    = unlimited_iterations_ ? 0 : num_iterations_;
 
-        //const auto cu = device.get_info<sycl::info::device::max_compute_units>(); // thread count
-        //const auto cf = device.get_info<sycl::info::device::max_clock_frequency>();
+        LOG(DEBUG2) << working_set<std::size_t, bitpack_t_>(queue, num_nodes_, SAMPLE_SHAPE);
+    }
 
-        // nvidia backend is exceptional at maximizing block-level throughput, all we need to do is be greedy
-        // about the work we want to assign -- perform a max allocation
-        if (device.has(sycl::aspect::gpu) && device.get_info<sycl::info::device::vendor>() == "NVIDIA") {
-            const std::double_t max_device_bitpacks = static_cast<std::double_t>(max_device_bytes_) / static_cast<std::double_t>(sizeof(bitpack_t_));
-            // Allow a 5 % allocator overhead per node so we don't exceed the device limit
-            // once buffers are rounded-up internally.
-            const auto num_nodes_d = static_cast<std::double_t>(num_nodes);
-            const std::double_t effective_nodes = num_nodes_d * (1.0 + std::clamp(overhead_ratio, 0.0, 1e6));
-            const auto bitpacks = static_cast<std::size_t>(std::floor(max_device_bitpacks / effective_nodes));
-            const auto cache_line_bytes = static_cast<std::double_t>(device.get_info<sycl::info::device::global_mem_cache_line_size>());
-            const auto cache_line_bitpacks = static_cast<std::size_t>(cache_line_bytes / static_cast<std::double_t>(sizeof(bitpack_t_)));
-            const std::size_t bitpacks_aligned = bitpacks - (bitpacks % cache_line_bitpacks);
-            if (sample_shape.bitpacks_per_batch) {
-                sample_shape.bitpacks_per_batch = bitpacks_aligned;
-                sample_shape.batch_size = 1;
-            }
-        }
-
-        // Log working_set configuration
-        LOG(DEBUG2) << working_set<std::size_t, bitpack_t_>(queue, num_nodes, sample_shape);
-
-        // the actual number of bits per sample shape per iteration
-        bits_per_iteration_ = sample_shape.num_bitpacks() * bits_in_bitpack_;
-
-        // so, it will take these many iterations to collect the total samples
-        num_iterations_ = static_cast<std::size_t>(std::ceil(total_bits_to_sample_ / static_cast<std::double_t>(bits_per_iteration_)));
-
-        TOTAL_ITERATIONS = no_limits_on_iterations ? 0 : num_iterations_;
-        SAMPLE_SHAPE = sample_shape;
+    [[nodiscard]] description describe() const {
+        return {
+            .requested_num_trials = requested_num_trials_,
+            .rounded_num_trials = num_trials_,
+            .total_bits_to_sample = total_bits_to_sample_,
+            .target_bits_per_iteration = target_bits_per_iteration_,
+            .bits_per_iteration = bits_per_iteration_,
+            .total_iterations = TOTAL_ITERATIONS,
+            .bits_per_bitpack = bits_in_bitpack_,
+            .requested_trials_per_pass = requested_trials_per_pass_,
+            .realized_trials_per_pass = bits_per_iteration_,
+            .memory_budget_bitpacks_per_node = memory_budget_bitpacks_per_node_,
+            .num_nodes = num_nodes_,
+            .max_device_bytes = max_device_bytes_,
+            .max_device_bits = max_device_bits_,
+            .cache_line_bitpacks = cache_line_bitpacks_,
+            .unlimited_iterations = unlimited_iterations_,
+            .shape_strategy = shape_strategy_,
+            .sample_shape = SAMPLE_SHAPE,
+        };
     }
 
     /**
-     * @brief Formatted output operator for scheduler configuration
-     * @param os Output stream for formatted output
-     * @param sched Scheduler instance to format
-     * @return Reference to the output stream for chaining
+     * @brief Formatted output operator for the chosen sampling geometry.
      */
     friend std::ostream &operator<<(std::ostream &os, const sample_shaper &sched) {
         os << "requested_num_trials: " << sched.requested_num_trials_ << std::endl
+           << "requested_trials_per_pass: " << sched.requested_trials_per_pass_ << std::endl
            << "num_nodes: " << sched.num_nodes_ << std::endl
            << "------------------------------------------------" << std::endl
            << "max_device_bytes: " << sched.max_device_bytes_ << std::endl
            << "max_device_bits: " << sched.max_device_bits_ << std::endl
            << "bits_in_bitpack: " << sched.bits_in_bitpack_ << std::endl
+           << "cache_line_bitpacks: " << sched.cache_line_bitpacks_ << std::endl
+           << "memory_budget_bitpacks_per_node: " << sched.memory_budget_bitpacks_per_node_ << std::endl
            << "------------------------------------------------" << std::endl
            << "num_trials (rounded): " << sched.num_trials_ << std::endl
            << "total_bits_to_sample: " << sched.total_bits_to_sample_ << std::endl
            << "target_bits_per_iteration: " << sched.target_bits_per_iteration_ << std::endl
-           << "bits_per_iteration: " << sched.bits_per_iteration_ << std::endl
+           << "bits_per_iteration (realized trials/pass): " << sched.bits_per_iteration_ << std::endl
            << "num_iterations: " << sched.num_iterations_ << std::endl
+           << "shape_strategy: " << sched.shape_strategy_ << std::endl
            << "------------------------------------------------" << std::endl
            << "SAMPLE_SHAPE.batch_size: " << sched.SAMPLE_SHAPE.batch_size << std::endl
            << "SAMPLE_SHAPE.bitpacks_per_batch: " << sched.SAMPLE_SHAPE.bitpacks_per_batch << std::endl
@@ -177,194 +217,149 @@ struct sample_shaper {
     template<typename U>
     friend std::vector<std::pair<std::string, std::string>> scram::log::sample_shaper::csv_pairs(const sample_shaper<U>&);
 
-    static event::sample_shape<std::size_t> compute_optimal_sample_shape_for_bitpacks(const sycl::device &device,
-                                                                                      const std::size_t bitpack_count) {
-        // Heuristic search balancing Y (batch_size) and Z (bitpacks_per_batch)
-        // while respecting device limits and maximizing utilized bitpacks.
-        event::sample_shape<std::size_t> shape{1, 1};
+    // =======================================================================
+    //  Constraint model
+    // =======================================================================
 
-        // ---------------------------------------------------------------------
-        // 1) Query hardware limits that constrain the split
-        // ---------------------------------------------------------------------
-        const auto max_sizes = device.get_info<sycl::info::device::max_work_item_sizes<3>>();
-        const std::size_t limit_y = max_sizes[1]; // Y-dimension (batch_size)
-        const std::size_t limit_z = max_sizes[2]; // Z-dimension (bitpacks_per_batch)
+    /// Device-derived bounds relevant to per-pass sizing.
+    struct device_budget {
+        std::size_t max_alloc_bytes = 0;     ///< min(MAX_ALLOCATABLE_DEVICE_BYTES, device limit)
+        std::size_t cache_line_bitpacks = 0; ///< cache line size expressed in bit-packs (0 ⇒ unknown)
+    };
 
-        // Largest available sub-group (warp/wavefront) size – may be empty on CPUs.
-        std::vector<std::size_t> sg_sizes;
-        if (device.has(sycl::aspect::gpu)) {
-            sg_sizes = device.get_info<sycl::info::device::sub_group_sizes>();
-        }
-        const std::size_t subgroup = sg_sizes.empty() ? 1 : *std::max_element(sg_sizes.begin(), sg_sizes.end());
-
-        // ---------------------------------------------------------------------
-        // 2) Helper: highest power-of-two ≤ v  (0 → 0)
-        // ---------------------------------------------------------------------
-        const auto highest_pow2_le = [](std::size_t v) -> std::size_t {
-            if (v == 0)
-                return 0;
-            std::size_t p = 1;
-            while ((p << 1) <= v)
-                p <<= 1;
-            return p;
-        };
-
-        // ---------------------------------------------------------------------
-        // 3) Enumerate candidate batch sizes (powers of two, multiples of subgroup)
-        // ---------------------------------------------------------------------
-        std::size_t best_bs = 1;
-        std::size_t best_ss = 1;
-        std::size_t best_product = 0;
-
-        const std::size_t max_bs_start = std::min(limit_y, bitpack_count);
-        std::size_t bs = subgroup ? subgroup : 1;
-        if ((bs & (bs - 1)) != 0) { // round up to next power of two if needed
-            bs = highest_pow2_le(bs) << 1;
-        }
-
-        for (; bs && bs <= max_bs_start; bs <<= 1) {
-            if (bs % subgroup)
-                continue; // honour SIMD alignment
-
-            const std::size_t max_ss = std::min(limit_z, bitpack_count / bs);
-            const std::size_t ss = highest_pow2_le(max_ss);
-            if (ss == 0)
-                continue;
-
-            const std::size_t product = bs * ss;
-            if (product > best_product) {
-                best_product = product;
-                best_bs = bs;
-                best_ss = ss;
-                if (product == bitpack_count)
-                    break; // perfect utilization
-            }
-        }
-
-        // ---------------------------------------------------------------------
-        // 4) Fallback for very small totals (or pathological limits)
-        // ---------------------------------------------------------------------
-        if (best_product == 0) {
-            best_bs = std::min<std::size_t>(subgroup, limit_y);
-            best_ss = highest_pow2_le(std::min(limit_z, bitpack_count / best_bs));
-            best_ss = std::max<std::size_t>(best_ss, 1);
-        }
-
-        shape.batch_size = best_bs;
-        shape.bitpacks_per_batch = best_ss;
-
-        // Sanity: never exceed requested capacity
-        assert(shape.num_bitpacks() <= bitpack_count);
-        return shape;
+    [[nodiscard]] static device_budget query_device_budget(const sycl::device &device) {
+        device_budget budget;
+        budget.max_alloc_bytes = std::min<std::size_t>(
+            MAX_ALLOCATABLE_DEVICE_BYTES,
+            static_cast<std::size_t>(device.get_info<sycl::info::device::max_mem_alloc_size>()));
+        const auto cache_line_bytes =
+            static_cast<std::size_t>(device.get_info<sycl::info::device::global_mem_cache_line_size>());
+        budget.cache_line_bitpacks = cache_line_bytes / sizeof(bitpack_t_); // 0 if device reports 0
+        return budget;
     }
 
-    static event::sample_shape<std::size_t> compute_optimal_sample_shape_for_bits(const sycl::device &device, const std::size_t bit_count) {
-        constexpr std::size_t bits_in_bitpack = sizeof(bitpack_t_) * static_cast<std::size_t>(8);
-        const std::size_t rounded_bit_count = bit_count + bits_in_bitpack - (bit_count % bits_in_bitpack);
-        const std::size_t rounded_bitpack_count = rounded_bit_count / bits_in_bitpack;
-        return compute_optimal_sample_shape_for_bitpacks(device, rounded_bitpack_count);
+    /// (C1) per-node memory budget, in bit-packs:
+    ///      B_mem = floor(max_alloc_bytes / (num_nodes · sizeof(bitpack))), floored at 1.
+    [[nodiscard]] static std::size_t memory_budget_bitpacks(const std::size_t max_alloc_bytes,
+                                                            const std::size_t num_nodes) {
+        const std::size_t nodes = num_nodes ? num_nodes : 1;
+        const std::size_t budget = max_alloc_bytes / (nodes * sizeof(bitpack_t_));
+        return std::max<std::size_t>(budget, 1);
     }
 
-    /* ---------------------------------------------------------------------
-     *  NEW: "closest-fit" search – minimize |product − target| instead of
-     *       maximizing utilization.  The search space and constraints are
-     *       identical to the original heuristic so this is strictly a
-     *       refinement, not a behavior change elsewhere in the code.
-     * -------------------------------------------------------------------*/
-    static event::sample_shape<std::size_t> compute_closest_sample_shape_for_bitpacks(const sycl::device &device,
-                                                                                      const std::size_t target_bitpack_count,
-                                                                                      const std::size_t max_bitpack_capacity) {
-        event::sample_shape<std::size_t> shape{1, 1};
+    /**
+     * @brief Solve for @c B (bit-packs per node per pass) under the constraints.
+     *
+     * Let @c P = bits_in_bitpack_ (bits per work-item).  We choose a single
+     * integer @c B ≥ 1 that is as close as possible to an optimistic target
+     * while respecting hard device/limit bounds:
+     *
+     *   (C1) Memory budget (hard upper bound):
+     *          num_nodes · B · sizeof(bitpack) ≤ max_alloc_bytes
+     *        ⇒ B ≤ B_mem = floor(max_alloc_bytes / (num_nodes · sizeof(bitpack)))
+     *
+     *   (C2) Total-work cap (only when the run is bounded): a single pass should
+     *        never sample more than the whole requested budget.
+     *          B ≤ B_total = ceil(total_bits_to_sample / P)
+     *        (inactive — treated as +∞ — when @p unlimited).
+     *
+     *   (C3) Optimistic throughput target (the objective):
+     *          B_req = (requested_trials_per_pass > 0)
+     *                    ? ceil(requested_trials_per_pass / P)   // honour the request
+     *                    : B_mem                                 // 0 ⇒ "auto": fill memory
+     *
+     *   (C4) Cache-line alignment (memory coalescing), applied only when it does
+     *        not force over-sampling (i.e. when B ≥ one cache line):
+     *          B ← B − (B mod C),   C = cache-line size in bit-packs
+     *
+     *   (C5) Positivity:  B ≥ 1.
+     *
+     *   (C6) Power-of-2 work sizing (GPU-friendly local ranges):
+     *          B ← largest power of 2 ≤ B
+     *
+     * Objective:  B = floor_pow2( clamp_align( min(B_req, B_mem, B_total) ) ).
+     * Because of (C4) and (C6) the realized trials-per-pass (B · P) may be
+     * < requested_trials_per_pass — hence the request is *optimistic*.
+     */
+    [[nodiscard]] static std::size_t solve_bitpacks_per_pass(const std::size_t requested_trials_per_pass,
+                                                            const std::size_t num_nodes,
+                                                            const std::size_t total_bits_to_sample,
+                                                            const bool unlimited,
+                                                            const std::size_t max_alloc_bytes,
+                                                            const std::size_t cache_line_bitpacks) {
+        // (C1)
+        const std::size_t b_mem = memory_budget_bitpacks(max_alloc_bytes, num_nodes);
+        // (C2)
+        const std::size_t b_total = unlimited
+            ? std::numeric_limits<std::size_t>::max()
+            : std::max<std::size_t>(ceil_div(total_bits_to_sample, bits_in_bitpack_), 1);
+        // (C3)
+        const std::size_t b_req = (requested_trials_per_pass > 0)
+            ? std::max<std::size_t>(ceil_div(requested_trials_per_pass, bits_in_bitpack_), 1)
+            : b_mem;
 
-        const auto max_sizes = device.get_info<sycl::info::device::max_work_item_sizes<3>>();
-        const std::size_t limit_y = max_sizes[1];                      // Y-dimension (batch_size)
-        const std::size_t limit_z = max_sizes[2];                      // Z-dimension (bitpacks_per_batch)
+        // optimistic target, clamped by the hard upper bounds (C1) and (C2)
+        std::size_t b = std::min(b_req, std::min(b_mem, b_total));
+        b = std::max<std::size_t>(b, 1); // (C5)
 
-        std::vector<std::size_t> sg_sizes;
-        if (device.has(sycl::aspect::gpu)) {
-            sg_sizes = device.get_info<sycl::info::device::sub_group_sizes>();
+        // (C4) round DOWN to a whole cache line, but never below one cache line and
+        //      never to zero (skip when the target is already sub-cache-line).
+        if (cache_line_bitpacks > 0 && b >= cache_line_bitpacks) {
+            b -= (b % cache_line_bitpacks);
         }
-        const std::size_t subgroup = sg_sizes.empty() ? 1 : *std::max_element(sg_sizes.begin(), sg_sizes.end());
 
-        const auto highest_pow2_le = [](std::size_t v) -> std::size_t {
-            if (v == 0) return 0;
-            std::size_t p = 1; while ((p << 1) <= v) p <<= 1; return p;
-        };
-
-        std::size_t best_bs = 1;
-        std::size_t best_ss = 1;
-        std::size_t best_diff = std::numeric_limits<std::size_t>::max();
-
-        // Enumerate powers-of-two up to the HW limits and capacity.
-        for (std::size_t bs = 1; bs <= limit_y && bs <= max_bitpack_capacity; bs <<= 1) {
-            // Honour SIMD alignment if possible but relax for very small counts.
-            if (bs >= subgroup && bs % subgroup) continue;
-
-            const std::size_t max_ss_for_bs = std::min(limit_z, max_bitpack_capacity / bs);
-            for (std::size_t ss = 1; ss <= max_ss_for_bs; ss <<= 1) {
-                const std::size_t product = bs * ss;
-                if (product == 0) continue; // overflow guard (should never happen)
-
-                const std::size_t diff = (product > target_bitpack_count)
-                                            ? product - target_bitpack_count
-                                            : target_bitpack_count - product;
-
-                if (diff < best_diff || (diff == best_diff && product < best_bs * best_ss)) {
-                    best_diff = diff;
-                    best_bs   = bs;
-                    best_ss   = ss;
-                    if (best_diff == 0) break; // perfect match
-                }
-            }
-            if (best_diff == 0) break;
-        }
-
-        // Fallback: in pathological cases pick the smallest legal shape.
-        if (best_diff == std::numeric_limits<std::size_t>::max()) {
-            best_bs = std::clamp<std::size_t>(subgroup, 1, limit_y);
-            best_ss = 1;
-        }
-
-        shape.batch_size = best_bs;
-        shape.bitpacks_per_batch = best_ss;
-
-        // Never exceed per-iteration capacity.
-        assert(shape.num_bitpacks() <= max_bitpack_capacity);
-        return shape;
+        // (C6) round DOWN to a power of 2 (1 when b == 1).
+        b = floor_power_of_2(b);
+        return std::max<std::size_t>(b, 1); // (C5)
     }
 
-    static event::sample_shape<std::size_t> compute_closest_sample_shape_for_bits(const sycl::device &device,
-                                                                                  const std::size_t target_bit_count,
-                                                                                  const std::size_t max_bit_count) {
-        constexpr std::size_t bits_in_bitpack = sizeof(bitpack_t_) * static_cast<std::size_t>(8);
-
-        // Round target up to whole bit-packs for simplicity.
-        const std::size_t rounded_target_bits = (target_bit_count + (bits_in_bitpack - 1)) & ~(bits_in_bitpack - 1);
-        const std::size_t target_bitpacks     = rounded_target_bits / bits_in_bitpack;
-
-        const std::size_t max_bitpacks = max_bit_count / bits_in_bitpack;
-
-        return compute_closest_sample_shape_for_bitpacks(device, target_bitpacks, max_bitpacks);
+    // =======================================================================
+    //  Small integer helpers
+    // =======================================================================
+    /// Largest power of 2 not exceeding @p n (returns 1 for @p n ≤ 1).
+    [[nodiscard]] static std::size_t floor_power_of_2(const std::size_t n) {
+        return n <= 1 ? 1 : std::bit_floor(n);
     }
-    
+
+    [[nodiscard]] static std::size_t ceil_div(const std::size_t numerator, const std::size_t denominator) {
+        return denominator ? (numerator + denominator - 1) / denominator : 0;
+    }
+
+    [[nodiscard]] static std::size_t round_up_to_multiple(const std::size_t value, const std::size_t multiple) {
+        return multiple ? ceil_div(value, multiple) * multiple : value;
+    }
+
+    [[nodiscard]] static std::string build_strategy_label(const std::size_t requested_trials_per_pass,
+                                                          const std::size_t cache_line_bitpacks) {
+        std::string label = requested_trials_per_pass ? "requested_trials_per_pass" : "auto_memory_budget";
+        if (cache_line_bitpacks > 0) {
+            label += "_cacheline_aligned";
+        }
+        return label;
+    }
+
 protected:
     // Input parameters
     std::size_t requested_num_trials_ = 0;
     std::size_t num_nodes_ = 0;
-    
+    std::size_t requested_trials_per_pass_ = 0;
+
     // Device capabilities
     std::size_t max_device_bytes_ = 0;
     std::size_t max_device_bits_ = 0;
-    
+
     // Computed constants
     static constexpr std::size_t bits_in_bitpack_ = sizeof(bitpack_t_) * static_cast<std::size_t>(8);
-    
+
     // Intermediate calculations
     std::size_t num_trials_ = 0;
     std::size_t total_bits_to_sample_ = 0;
     std::size_t target_bits_per_iteration_ = 0;
     std::size_t bits_per_iteration_ = 0;
     std::size_t num_iterations_ = 0;
+    std::size_t cache_line_bitpacks_ = 0;
+    std::size_t memory_budget_bitpacks_per_node_ = 0;
+    bool unlimited_iterations_ = false;
+    std::string shape_strategy_ = "uninitialized";
 };
 }
-

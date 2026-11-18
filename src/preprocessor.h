@@ -1154,7 +1154,7 @@ class CustomPreprocessor<mc::DirectEval> : public Preprocessor {
   private:
     void Run()  override;
     void InvertOrder() ;
-    [[nodiscard]] auto remove_null_gates() const;
+    void remove_null_gates() const;
   };
 
 }  // namespace scram::core

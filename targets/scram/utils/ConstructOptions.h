@@ -41,7 +41,7 @@ inline po::options_description ConstructOptions() {
         ("early-stop", "stop on convergence (implied if N=0)")
         ("seed", OPT_VALUE(int)->default_value(372), "PRNG seed")
         ("num-trials,N", OPT_VALUE(double)->default_value(0), "bernoulli trials [N ∈ ℕ, 0=auto]")
-        ("overhead-ratio,r", OPT_VALUE(double),"allocator overhead per node [0.05]")
+        ("trials-per-pass,r", OPT_VALUE(double),"optimistic trials/node/pass [0=auto: fill device memory]")
         ("delta,d", OPT_VALUE(double)->default_value(0.001),"compute as ε=δ·p̂ [δ > 0]")
         ("burn-in,b", OPT_VALUE(double)->default_value(1<<20), "trials before convergence check [0=off]")
         ("confidence,a", OPT_VALUE(double), "two-sided conf. lvl [0.99]")

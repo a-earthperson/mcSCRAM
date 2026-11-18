@@ -142,7 +142,8 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::gather_layer_nodes(
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 void layer_manager<bitpack_t_, prob_t_, size_t_>::build_kernels_for_layer(
-    const std::vector<std::shared_ptr<core::Node>> &layer_nodes) {
+    const std::vector<std::shared_ptr<core::Node>> &layer_nodes,
+    const std::size_t layer_index) {
     // Step (1): Partition layer_nodes into Variables and gates_by_type
     std::vector<std::shared_ptr<core::Variable>> variables;
     std::unordered_map<core::Connective, std::vector<std::shared_ptr<core::Gate>>> gates_by_type;
@@ -150,14 +151,25 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::build_kernels_for_layer(
 
     // Step (2): Build a single kernel for all variables in this layer (if any)
     auto be_kernel = build_kernel_for_variables<index_t_, prob_t_, bitpack_t_, size_t_>(
-        variables, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, device_basic_event_blocks_);
+        variables,
+        queue_,
+        sample_shape_,
+        queueables_,
+        queueables_by_index_,
+        allocated_basic_events_by_index_,
+        device_basic_event_blocks_,
+        execution_partitions_,
+        execution_dependency_edges_,
+        partition_ids_by_queueable_,
+        layer_index);
     // We could store or log “be_kernel” if we want direct reference, or just rely
     // on the global queueables_ list.
 
     // Step (3): Build one kernel per gate->type() in this layer
     auto gate_kernels = build_kernels_for_gates<index_t_, prob_t_, bitpack_t_, size_t_>(
         gates_by_type, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_,
-        allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_);
+        allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_,
+        execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index);
 
     // Optionally do something with (be_kernel) and the (gate_kernels) vector.
     // The queueables_ container is updated in each subfunction, so
@@ -167,9 +179,9 @@ void layer_manager<bitpack_t_, prob_t_, size_t_>::build_kernels_for_layer(
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 void layer_manager<bitpack_t_, prob_t_, size_t_>::map_nodes_by_layer(
     const std::vector<std::vector<std::shared_ptr<core::Node>>> &nodes_by_layer) {
-    for (const auto &nodes_in_layer : nodes_by_layer) {
+    for (std::size_t layer_index = 0; layer_index < nodes_by_layer.size(); ++layer_index) {
         // build kernels for nodes in this layer
-        build_kernels_for_layer(nodes_in_layer);
+        build_kernels_for_layer(nodes_by_layer[layer_index], layer_index);
     }
 }
 
@@ -222,6 +234,91 @@ inline std::string kernel_dag_connective_name(const core::Connective type) {
             return "null";
     }
     return "unknown";
+}
+
+inline std::string device_type_name(const sycl::info::device_type type) {
+    switch (type) {
+        case sycl::info::device_type::cpu:
+            return "cpu";
+        case sycl::info::device_type::gpu:
+            return "gpu";
+        case sycl::info::device_type::accelerator:
+            return "accelerator";
+        case sycl::info::device_type::custom:
+            return "custom";
+        case sycl::info::device_type::automatic:
+            return "automatic";
+        case sycl::info::device_type::host:
+            return "host";
+        case sycl::info::device_type::all:
+            return "all";
+    }
+    return "unknown";
+}
+
+inline std::string global_mem_cache_type_name(const sycl::info::global_mem_cache_type type) {
+    switch (type) {
+        case sycl::info::global_mem_cache_type::none:
+            return "none";
+        case sycl::info::global_mem_cache_type::read_only:
+            return "read_only";
+        case sycl::info::global_mem_cache_type::read_write:
+            return "read_write";
+    }
+    return "unknown";
+}
+
+inline std::string local_mem_type_name(const sycl::info::local_mem_type type) {
+    switch (type) {
+        case sycl::info::local_mem_type::none:
+            return "none";
+        case sycl::info::local_mem_type::local:
+            return "local";
+        case sycl::info::local_mem_type::global:
+            return "global";
+    }
+    return "unknown";
+}
+
+template <typename size_t__, typename bitpack_t__>
+device_description describe_device(const working_set<size_t__, bitpack_t__> &ws) {
+    std::vector<int> aspects;
+    aspects.reserve(ws.aspects.size());
+    for (const auto aspect : ws.aspects) {
+        aspects.push_back(static_cast<int>(aspect));
+    }
+
+    return {
+        .type = device_type_name(ws.device_type),
+        .name = ws.name,
+        .vendor_id = static_cast<std::uint32_t>(ws.vendor_id),
+        .vendor = ws.vendor,
+        .driver_version = ws.driver_version,
+        .profile = ws.profile,
+        .version = ws.version,
+        .opencl_c_version = ws.opencl_c_version,
+        .aspects = aspects,
+        .extensions = ws.extensions,
+        .max_compute_units = static_cast<std::uint32_t>(ws.max_compute_units),
+        .max_clock_frequency = static_cast<std::uint32_t>(ws.max_clock_frequency),
+        .max_work_item_dimensions = static_cast<std::uint32_t>(ws.max_work_item_dimensions),
+        .max_work_item_sizes_1d = {.x = ws.max_work_item_sizes_1d[0], .y = 1, .z = 1},
+        .max_work_item_sizes_2d = {.x = ws.max_work_item_sizes_2d[0], .y = ws.max_work_item_sizes_2d[1], .z = 1},
+        .max_work_item_sizes_3d = {.x = ws.max_work_item_sizes_3d[0], .y = ws.max_work_item_sizes_3d[1], .z = ws.max_work_item_sizes_3d[2]},
+        .work_item_independent_forward_progress = ws.work_item_independent_forward_progress,
+        .max_work_group_size = ws.max_work_group_size,
+        .max_num_sub_groups = static_cast<std::uint32_t>(ws.max_num_sub_groups),
+        .sub_group_independent_forward_progress = ws.sub_group_independent_forward_progress,
+        .sub_group_sizes = ws.sub_group_sizes,
+        .preferred_vector_width_char = static_cast<std::uint32_t>(ws.preferred_vector_width_char),
+        .max_mem_alloc_size = static_cast<std::uint64_t>(ws.max_mem_alloc_size),
+        .global_mem_size = static_cast<std::uint64_t>(ws.global_mem_size),
+        .global_mem_cache_size = static_cast<std::uint64_t>(ws.global_mem_cache_size),
+        .global_mem_cache_line_size = static_cast<std::uint32_t>(ws.global_mem_cache_line_size),
+        .global_mem_cache_type = global_mem_cache_type_name(ws.global_mem_cache_type),
+        .local_mem_type = local_mem_type_name(ws.local_mem_type),
+        .local_mem_size = static_cast<std::uint64_t>(ws.local_mem_size),
+    };
 }
 
 } // namespace
@@ -297,6 +394,73 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::describe_kernel_dag() const {
     }
 
     return description;
+}
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+typename layer_manager<bitpack_t_, prob_t_, size_t_>::execution_plan_description
+layer_manager<bitpack_t_, prob_t_, size_t_>::describe_execution_plan() const {
+    std::unordered_map<index_t_, std::size_t> producing_partition_by_node;
+    for (const auto &partition : execution_partitions_) {
+        if (partition.kind == "tally") {
+            continue;
+        }
+        for (const auto index : partition.node_indices) {
+            producing_partition_by_node[index] = partition.id;
+        }
+    }
+
+    std::vector<execution_node_description> nodes;
+    nodes.reserve(pdag_nodes_.size());
+    for (const auto &node : pdag_nodes_) {
+        execution_node_description item;
+        item.index = node->index();
+        item.layer = node->order();
+        item.partition = producing_partition_by_node.contains(item.index) ? producing_partition_by_node[item.index] : 0;
+
+        if (auto variable = std::dynamic_pointer_cast<core::Variable>(node)) {
+            item.kind = "basic_event";
+            item.connective = "sample";
+        } else if (auto gate = std::dynamic_pointer_cast<core::Gate>(node)) {
+            item.kind = "gate";
+            item.connective = kernel_dag_connective_name(gate->type());
+            item.atleast_min = gate->type() == core::kAtleast ? gate->min_number() : 0;
+            item.module = gate->module();
+            for (const auto &arg : gate->args<core::Variable>()) {
+                if (arg.first < 0) {
+                    ++item.negated_input_count;
+                } else {
+                    ++item.positive_input_count;
+                }
+            }
+            for (const auto &arg : gate->args<core::Gate>()) {
+                if (arg.first < 0) {
+                    ++item.negated_input_count;
+                } else {
+                    ++item.positive_input_count;
+                }
+            }
+            item.fan_in = item.positive_input_count + item.negated_input_count;
+        } else {
+            item.kind = "unknown";
+            item.connective = "unknown";
+        }
+        nodes.push_back(std::move(item));
+    }
+
+    const auto sample_description = sample_shaper_.describe();
+    const auto ws = working_set<size_t_, bitpack_t_>(queue_, node_count(), sample_shape_);
+
+    return {
+        .schema = "mcscram.execution_plan.v1",
+        .bitpack_type = sizeof(bitpack_t_) == sizeof(std::uint64_t) ? "uint64" : "uint32",
+        .bits_per_bitpack = sizeof(bitpack_t_) * 8,
+        .node_count = node_count(),
+        .device = describe_device(ws),
+        .sample_shaper = sample_description,
+        .partitions = execution_partitions_,
+        .dependency_edges = execution_dependency_edges_,
+        .nodes = nodes,
+    };
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
@@ -442,10 +606,10 @@ const scram::mef::Event *scram::mc::queue::layer_manager<bitpack_t_, prob_t_, si
 }
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
-layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials, const stats::TallyNodeMap &to_tally, const std::double_t overhead_ratio) {
+layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, const size_t_ num_trials, const stats::TallyNodeMap &to_tally, const std::size_t requested_trials_per_pass) {
     // create and sort layers
     layered_toposort(pdag, pdag_nodes_, pdag_nodes_by_index_, pdag_nodes_by_layer_);
-    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, node_count(), overhead_ratio);
+    sample_shaper_ = sample_shaper<bitpack_t_>(queue_, num_trials, node_count(), requested_trials_per_pass);
     sample_shape_ = sample_shaper_.SAMPLE_SHAPE;
 
     // create kernels for all basic-events, gates.
@@ -468,7 +632,11 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, con
         allocated_basic_events_by_index_,
         allocated_gates_by_index_,
         allocated_tally_events_by_index_,
-        device_tally_blocks_);
+        device_tally_blocks_,
+        execution_partitions_,
+        execution_dependency_edges_,
+        partition_ids_by_queueable_,
+        pdag_nodes_by_layer_.size());
 
     // Log sample_shaper configuration
     LOG(DEBUG2) << sample_shaper_;
