@@ -337,10 +337,26 @@ jobs:
           export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
           start=$(date +%s)
           # Per-test TIMEOUT 60 is set in tests/mc/CMakeLists.txt.
-          # Device-code failures (double, 64-bit atomics) belong to #30.
+          # Device-code failures (double, 64-bit group reduction) belong to #30.
           ctest --preset metal -L mc --output-on-failure --no-tests=error \
             | tee metal-ctest.log
           echo "metal_ctest_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+
+      - name: ctest Metal removal canaries (WILL_FAIL)
+        if: ${{ always() && steps.probe.outputs.metal_device == 'yes' && steps.product.outcome == 'success' }}
+        timeout-minutes: 5
+        env:
+          ACPP_VISIBILITY_MASK: metal
+          ACPP_DEBUG_LEVEL: "0"
+          ACPP_PERSISTENT_RUNTIME: "1"
+        run: |
+          set -euo pipefail
+          export PATH="${ACPP_PREFIX}/bin:${PATH}"
+          export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+          # Native 64-bit reduce_over_group and device double. WILL_FAIL in
+          # CMake on Apple (xfail-strict): when AdaptiveCpp lowers them, this
+          # step fails and src/mc/compat/metal.h is deleted.
+          ctest --test-dir build/metal -R '^mc.metal_canary' --output-on-failure --no-tests=error
 
       - name: Record timings
         if: always()

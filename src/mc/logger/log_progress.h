@@ -70,13 +70,13 @@ csv_pairs(const scram::mc::scheduler::convergence_controller<policy_t_, bitpack_
 
 
     // Point estimate and error
-    kv.emplace_back("std_err",           csv_string(c.current_tally().std_err));
+    kv.emplace_back("std_err",           csv_string(c.current_tally().fp().std_err));
     // Confidence interval percentiles
-    kv.emplace_back("p01",               csv_string(c.current_tally().ci[2]));
-    kv.emplace_back("p05",               csv_string(c.current_tally().ci[0]));
-    kv.emplace_back("mean",              csv_string(c.current_tally().mean));
-    kv.emplace_back("p95",               csv_string(c.current_tally().ci[1]));
-    kv.emplace_back("p99",               csv_string(c.current_tally().ci[3]));
+    kv.emplace_back("p01",               csv_string(c.current_tally().fp().ci[2]));
+    kv.emplace_back("p05",               csv_string(c.current_tally().fp().ci[0]));
+    kv.emplace_back("mean",              csv_string(c.current_tally().fp().mean));
+    kv.emplace_back("p95",               csv_string(c.current_tally().fp().ci[1]));
+    kv.emplace_back("p99",               csv_string(c.current_tally().fp().ci[3]));
 
     // Information-gain metrics
     kv.emplace_back("info_bits_last",    csv_string(c.info_gain_last_iteration()));

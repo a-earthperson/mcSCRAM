@@ -77,3 +77,24 @@ set_tests_properties(mc.device_selection PROPERTIES
   LABELS "mc"
   TIMEOUT ${MC_TEST_TIMEOUT}
 )
+
+# Removal canaries for src/mc/compat/metal.h. Not labelled `mc`. Default
+# presets exclude `metal-canary`. macos-metal runs them with WILL_FAIL.
+add_executable(mc_metal_canary_tests metal_canary_tests.cc)
+target_link_libraries(mc_metal_canary_tests PRIVATE Catch2::Catch2WithMain mc)
+target_include_directories(mc_metal_canary_tests PRIVATE
+  "${PROJECT_SOURCE_DIR}/src"
+  "${PROJECT_SOURCE_DIR}/tests"
+)
+add_sycl_to_target(TARGET mc_metal_canary_tests SOURCES metal_canary_tests.cc)
+add_test(NAME mc.metal_canary.reduce64 COMMAND mc_metal_canary_tests "[reduce64]")
+add_test(NAME mc.metal_canary.double COMMAND mc_metal_canary_tests "[double]")
+set_tests_properties(mc.metal_canary.reduce64 mc.metal_canary.double PROPERTIES
+  LABELS "metal-canary"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)
+if(APPLE)
+  set_tests_properties(mc.metal_canary.reduce64 mc.metal_canary.double PROPERTIES
+    WILL_FAIL TRUE
+  )
+endif()

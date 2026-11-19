@@ -209,7 +209,11 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
     // We complete the statistics on the host so that the device kernel does
     // no redundant work (especially when several work-groups process the
     // same tally).
-    stats::populate_point_estimates(to_tally);
+    auto host = to_tally.view();
+    stats::populate_point_estimates(host);
+    to_tally.fp().mean = host.mean;
+    to_tally.fp().std_err = host.std_err;
+    to_tally.fp().ci = host.ci;
     return std::move(to_tally);
 }
 

@@ -24,6 +24,7 @@ set(MC_HEADERS
         kernel/basic_event.h
         kernel/gate.h
         kernel/tally.h
+        compat/metal.h
         #
         logger/log_benchmark.h
         logger/log_build.h
