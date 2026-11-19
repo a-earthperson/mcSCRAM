@@ -24,7 +24,6 @@ jobs:
     timeout-minutes: 120
     env:
       ACPP_PREFIX: ${{ github.workspace }}/.cache/acpp-prefix
-      BOOST_PREFIX: ${{ github.workspace }}/.cache/boost-prefix
       SCCACHE_GHA_ENABLED: "true"
     steps:
       - name: Checkout
@@ -48,13 +47,9 @@ jobs:
             echo "LLVM_VERSION=${LLVM_VERSION}"
             echo "CLANG_VERSION=${CLANG_VERSION}"
             echo "CUDA_VERSION=${CUDA_VERSION}"
-            echo "BOOST_VERSION=${BOOST_VERSION}"
-            echo "BOOST_URL=${BOOST_URL}"
-            echo "BOOST_SHA256=${BOOST_SHA256}"
             echo "NINJA_VERSION_WINDOWS=${NINJA_VERSION_WINDOWS}"
             echo "NINJA_SHA256_WINDOWS=${NINJA_SHA256_WINDOWS}"
             echo "ACPP_COMPILER_FEATURE_PROFILE=${ACPP_COMPILER_FEATURE_PROFILE}"
-            echo "BOOST_INCLUDE_LIBRARIES=program_options;filesystem;system;random;range;exception;multi_index;accumulators;multiprecision;icl;math;dll;regex;test"
           } >> "${GITHUB_ENV}"
           test "${ACPP_REF_WINDOWS}" != "TBD"
           test "${LLVM_REF_WINDOWS}" != "TBD"
@@ -110,49 +105,6 @@ jobs:
         with:
           path: ${{ env.ACPP_PREFIX }}
           key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}
-
-      - name: Cache Boost 1.89 install
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
-        id: boost-cache
-        with:
-          path: ${{ env.BOOST_PREFIX }}
-          key: boost-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.BOOST_VERSION }}-${{ env.BOOST_SHA256 }}-clangcl
-
-      - name: Build Boost 1.89
-        if: steps.boost-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $start = Get-Date
-          $tmp = Join-Path $env:RUNNER_TEMP 'boost'
-          New-Item -ItemType Directory -Force -Path $tmp, $env:BOOST_PREFIX | Out-Null
-          $tarball = Join-Path $tmp 'boost.tar.gz'
-          Invoke-WebRequest -Uri $env:BOOST_URL -OutFile $tarball -UseBasicParsing
-          $got = (Get-FileHash -Algorithm SHA256 $tarball).Hash.ToLowerInvariant()
-          if ($got -ne $env:BOOST_SHA256.ToLowerInvariant()) { throw "boost sha256 mismatch: $got" }
-          $src = Join-Path $tmp 'src'
-          New-Item -ItemType Directory -Force -Path $src | Out-Null
-          tar -xzf $tarball -C $src --strip-components=1
-          $env:CC = 'clang-cl'
-          $env:CXX = 'clang-cl'
-          cmake -S $src -B (Join-Path $tmp 'build') -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_INSTALL_PREFIX="$env:BOOST_PREFIX" `
-            -DCMAKE_C_COMPILER=clang-cl `
-            -DCMAKE_CXX_COMPILER=clang-cl `
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
-            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
-            -DBUILD_SHARED_LIBS=OFF `
-            -DBOOST_INCLUDE_LIBRARIES="$env:BOOST_INCLUDE_LIBRARIES"
-          cmake --build (Join-Path $tmp 'build')
-          cmake --install (Join-Path $tmp 'build')
-          $inc = Join-Path $env:BOOST_PREFIX 'include/boost'
-          New-Item -ItemType Directory -Force -Path $inc | Out-Null
-          Copy-Item (Join-Path $src 'libs/dll/include/boost/dll.hpp') (Join-Path $inc 'dll.hpp') -Force
-          Copy-Item (Join-Path $src 'libs/dll/include/boost/dll') (Join-Path $inc 'dll') -Recurse -Force
-          Remove-Item -Recurse -Force $tmp
-          $secs = [int]((Get-Date) - $start).TotalSeconds
-          "boost_build_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build AdaptiveCpp into LLVM (CUDA + OpenMP SSCP)
         id: acpp-build
@@ -211,8 +163,7 @@ jobs:
             -DWITH_LEVEL_ZERO_BACKEND=OFF `
             -DWITH_CUDA_BACKEND=ON `
             -DACPP_COMPILER_FEATURE_PROFILE=full `
-            -DCUDA_TOOLKIT_ROOT_DIR="$cuda" `
-            -DCMAKE_PREFIX_PATH="$env:BOOST_PREFIX"
+            -DCUDA_TOOLKIT_ROOT_DIR="$cuda"
           cmake --build $build --target install
           Remove-Item -Recurse -Force $tmp
           $secs = [int]((Get-Date) - $start).TotalSeconds
@@ -250,9 +201,8 @@ jobs:
           $env:CC = $clang
           $env:CXX = $clang
           $env:AdaptiveCpp_DIR = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
-          $prefix = "$env:ACPP_PREFIX;$env:BOOST_PREFIX"
           cmake --preset windows-generic `
-            -DCMAKE_PREFIX_PATH="$prefix" `
+            -DCMAKE_PREFIX_PATH="$env:ACPP_PREFIX" `
             -DAdaptiveCpp_DIR="$env:AdaptiveCpp_DIR" `
             -DCMAKE_C_COMPILER="$clang" `
             -DCMAKE_CXX_COMPILER="$clang" `
@@ -301,7 +251,7 @@ jobs:
           $env:CC = $clang
           $env:CXX = $clang
           $env:AdaptiveCpp_DIR = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
-          $env:CMAKE_PREFIX_PATH = "$env:ACPP_PREFIX;$env:BOOST_PREFIX"
+          $env:CMAKE_PREFIX_PATH = "$env:ACPP_PREFIX"
           python -m pip install -U pip
           python -m pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build delvewheel
           New-Item -ItemType Directory -Force -Path wheelhouse, dist | Out-Null
@@ -368,7 +318,7 @@ jobs:
             '## windows-generic timings',
             "- AdaptiveCpp cache: ${{ steps.acpp-build.outputs.cache || 'n/a' }}",
             "- AdaptiveCpp+LLVM build seconds: $($env:acpp_build_seconds)",
-            "- Boost build seconds: $($env:boost_build_seconds)",
+            "- Boost: FetchContent during fuzzybits configure (no separate install)",
             "- fuzzybits build seconds: $($env:fuzzybits_build_seconds)",
             "- CPU ctest seconds: $($env:cpu_ctest_seconds)",
             "- wheel build seconds: $($env:wheel_build_seconds)",
