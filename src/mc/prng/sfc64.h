@@ -58,6 +58,12 @@ static void generate(const prng::state128 *seeds,
     }
 }
 
+[[gnu::noinline]] [[gnu::cold]]
+static void generate_tie_low(const prng::state128 *seeds, prng::state128 *results,
+                             const std::uint8_t generation) {
+    generate(seeds, results, generation);
+}
+
 // ------------------------------------------------------------------
 //  sample – four Bernoulli draws packed into bitpack_t_
 // ------------------------------------------------------------------
@@ -71,8 +77,8 @@ static bitpack_t_ sample(const prng::state128 *seeds,
     generate(seeds, &hi, static_cast<std::uint8_t>(generation));
 
     prng::state128 lo{};
-    if (any_high_word_tie(hi, threshold)) {
-        generate(seeds, &lo, static_cast<std::uint8_t>(generation + kLowWordGenerationBase));
+    if (any_high_word_tie(hi, threshold)) [[unlikely]] {
+        generate_tie_low(seeds, &lo, static_cast<std::uint8_t>(generation + kLowWordGenerationBase));
     }
 
     constexpr std::uint32_t BITS_PER_GEN = 4;
@@ -90,11 +96,31 @@ static bitpack_t_ pack_bernoulli_draws(const prng::state128 &seed_base,
                                        const bernoulli_threshold &p_threshold) {
     constexpr std::uint8_t BITS_PER_GEN = 4;
     constexpr std::uint8_t NUM_GEN = sizeof(bitpack_t_) * 8 / BITS_PER_GEN;
+    using tie_check_ = tie_stream_independence<bitpack_t_>;
+    static_assert(tie_check_::num_generations == static_cast<std::uint32_t>(NUM_GEN));
 
     bitpack_t_ packed = bitpack_t_(0);
-    #pragma unroll
+    std::uint32_t tie_mask = 0;
+#pragma unroll
     for (std::uint32_t i = 0; i < NUM_GEN; ++i) {
-        packed |= sample<bitpack_t_>(&seed_base, p_threshold, i);
+        prng::state128 hi{};
+        generate(&seed_base, &hi, static_cast<std::uint8_t>(i));
+        packed |= pack_four_bits_hi<bitpack_t_>(hi, p_threshold, i * BITS_PER_GEN);
+        if (any_high_word_tie(hi, p_threshold)) {
+            tie_mask |= (1u << i);
+        }
+    }
+    if (tie_mask != 0) [[unlikely]] {
+        for (std::uint32_t i = 0; i < NUM_GEN; ++i) {
+            if ((tie_mask & (1u << i)) == 0) {
+                continue;
+            }
+            prng::state128 hi{};
+            prng::state128 lo{};
+            generate(&seed_base, &hi, static_cast<std::uint8_t>(i));
+            generate(&seed_base, &lo, static_cast<std::uint8_t>(i + kLowWordGenerationBase));
+            packed |= pack_four_bits<bitpack_t_>(hi, lo, p_threshold, i * BITS_PER_GEN);
+        }
     }
     return packed;
 }

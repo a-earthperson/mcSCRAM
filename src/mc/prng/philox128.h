@@ -54,6 +54,13 @@ namespace scram::mc::prng::philox {
     *results = counters;
 }
 
+/// Out-of-line so the inlined high-word Philox does not pay the second
+/// 10-round generate's registers on the ~1−2^-32 taken path.
+[[gnu::noinline]] [[gnu::cold]]
+static void generate_tie_low(const state128 *seeds, state128 *results, const uint8_t generation) {
+    generate(seeds, results, generation);
+}
+
 /**
  * @brief Bernoulli-sample four bits using the Philox 4x32-10 counter-based PRNG.
  *
@@ -68,8 +75,8 @@ template <typename bitpack_t_>
     prng::philox::generate(seeds, &hi, static_cast<uint8_t>(generation));
 
     prng::state128 lo{};
-    if (any_high_word_tie(hi, threshold)) {
-        prng::philox::generate(seeds, &lo, static_cast<uint8_t>(generation + kLowWordGenerationBase));
+    if (any_high_word_tie(hi, threshold)) [[unlikely]] {
+        generate_tie_low(seeds, &lo, static_cast<uint8_t>(generation + kLowWordGenerationBase));
     }
 
     static constexpr std::uint32_t bernoulli_bits_per_generation = 4;
@@ -82,12 +89,36 @@ template <typename bitpack_t_>
                                                              const bernoulli_threshold &p_threshold) {
     static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
     static constexpr std::uint8_t num_generations = sizeof(bitpack_t_) * 8 / bernoulli_bits_per_generation;
+    using tie_check_ = tie_stream_independence<bitpack_t_>;
+    static_assert(tie_check_::num_generations == static_cast<std::uint32_t>(num_generations));
 
+    // Fast path is unrolled and hi-word-only — the same shape as the old
+    // 32-bit sampler (`T_hi == floor(p·2^32)`). The lo-word generate lives
+    // in a second, rolled loop so it does not inflate the unrolled live
+    // range (a noinline call here doubled kernel time; inlining it into the
+    // unrolled loop hit 128 regs).
     bitpack_t_ bitpacked_sample = bitpack_t_(0);
-    #pragma unroll
+    std::uint32_t tie_mask = 0;
+#pragma unroll
     for (std::uint32_t i = 0; i < num_generations; ++i) {
-        const bitpack_t_ four_bits = prng::philox::sample<bitpack_t_>(&seed_base, p_threshold, i);
-        bitpacked_sample |= four_bits;
+        prng::state128 hi{};
+        generate(&seed_base, &hi, static_cast<uint8_t>(i));
+        bitpacked_sample |= pack_four_bits_hi<bitpack_t_>(hi, p_threshold, i * bernoulli_bits_per_generation);
+        if (any_high_word_tie(hi, p_threshold)) {
+            tie_mask |= (1u << i);
+        }
+    }
+    if (tie_mask != 0) [[unlikely]] {
+        for (std::uint32_t i = 0; i < num_generations; ++i) {
+            if ((tie_mask & (1u << i)) == 0) {
+                continue;
+            }
+            prng::state128 hi{};
+            prng::state128 lo{};
+            generate(&seed_base, &hi, static_cast<uint8_t>(i));
+            generate(&seed_base, &lo, static_cast<uint8_t>(i + kLowWordGenerationBase));
+            bitpacked_sample |= pack_four_bits<bitpack_t_>(hi, lo, p_threshold, i * bernoulli_bits_per_generation);
+        }
     }
     return bitpacked_sample;
 }
