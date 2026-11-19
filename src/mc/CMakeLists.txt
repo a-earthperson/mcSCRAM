@@ -105,7 +105,7 @@ if(APPLE)
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
       $<INSTALL_INTERFACE:include/mc>
   )
-  target_link_libraries(mc INTERFACE scram AdaptiveCpp::acpp-rt)
+  target_link_libraries(mc INTERFACE scram AdaptiveCpp::acpp-rt Boost::headers)
   return()
 endif()
 
