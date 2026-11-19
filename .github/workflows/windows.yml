@@ -355,7 +355,7 @@ jobs:
           $env:AdaptiveCpp_DIR = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
           $env:CMAKE_PREFIX_PATH = "$env:ACPP_PREFIX"
           python -m pip install -U pip
-          python -m pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build delvewheel
+          python -m pip install 'scikit-build-core>=0.10' 'pybind11>=3.1' ninja cmake build delvewheel
           New-Item -ItemType Directory -Force -Path wheelhouse, dist | Out-Null
           $env:CMAKE_GENERATOR = 'Ninja'
           python -m pip wheel . -w wheelhouse --no-deps `

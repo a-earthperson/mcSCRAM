@@ -78,7 +78,7 @@ RUN python3 -m venv /opt/wheel-venv && \
     /opt/wheel-venv/bin/pip install -U pip && \
     /opt/wheel-venv/bin/pip install \
       'scikit-build-core>=0.10' \
-      'pybind11>=2.13' \
+      'pybind11>=3.1' \
       ninja \
       cmake \
       auditwheel \
@@ -106,7 +106,7 @@ ARG ACPP_TARGETS=generic
 ARG CUDA_EMBED_PTX=n/a
 ARG CUDA_VERSION=12.8.1
 ARG FUZZYBITS_REVISION=unknown
-ARG FUZZYBITS_VERSION=0.17.0
+ARG FUZZYBITS_VERSION=0.17.1
 ARG INCLUDE_SSCP_JIT=1
 ARG CMAKE_PRESET=generic
 

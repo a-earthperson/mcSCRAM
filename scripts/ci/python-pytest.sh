@@ -8,9 +8,19 @@ apt-get update -qq
 apt-get install -y --no-install-recommends \
   python3 python3-venv python3-pip libgomp1 libstdc++6 libatomic1 libomp5 >/dev/null
 shopt -s nullglob
-whls=(dist/fuzzybits-*.whl)
+# PR CI and the release 3.12 job leave one cp312 wheel; a multi-version dist/
+# must still pick cp312 so ubuntu:24.04's system Python can import it.
+whls=(dist/fuzzybits-*-cp312-*.whl)
+if [[ ${#whls[@]} -eq 0 ]]; then
+  whls=(dist/fuzzybits-*.whl)
+fi
 if [[ ${#whls[@]} -eq 0 ]]; then
   echo "error: no wheel in dist/" >&2
+  exit 1
+fi
+if [[ ${#whls[@]} -gt 1 ]]; then
+  echo "error: expected one cp312 wheel in dist/, got ${#whls[@]}" >&2
+  ls -la dist >&2
   exit 1
 fi
 whl="${whls[0]}"

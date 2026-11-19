@@ -1,6 +1,7 @@
-# GitHub-hosted macOS Apple Silicon (macos-26 = arm64). Public repo: macos
-# minutes are free. Never self-hosted. AdaptiveCpp is built from
-# ACPP_REF_METAL (v25.10.0 has no Metal backend) and cached.
+# GitHub-hosted macOS. Public repo: macos minutes are free. Never self-hosted.
+# Apple Silicon (macos-26): AdaptiveCpp from ACPP_REF_METAL with Metal+OpenMP.
+# Intel (macos-15-intel, release only): OpenMP + generic SSCP, no Metal.
+# PR CI builds the arm64 cp312 wheel only; release.yml passes 3.12–3.15 + Intel.
 name: macOS
 
 on:
@@ -8,7 +9,24 @@ on:
   push:
     branches: [develop, "ci/**"]
   workflow_dispatch:
-  # release.yml builds the macOS wheel through this workflow.
+    inputs:
+      version_override:
+        description: Rewrite package versions before building (TestPyPI rehearsals).
+        type: string
+        default: ""
+      wheel_only:
+        description: Skip macos-metal and build only the wheel.
+        type: boolean
+        default: false
+      python_versions:
+        description: Space-separated CPython versions to build wheels for.
+        type: string
+        default: "3.12"
+      include_intel:
+        description: Also build macosx_x86_64 wheels on macos-15-intel.
+        type: boolean
+        default: false
+  # release.yml builds the macOS wheels through this workflow.
   workflow_call:
     inputs:
       version_override:
@@ -17,6 +35,14 @@ on:
         default: ""
       wheel_only:
         description: Skip macos-metal and build only the wheel.
+        type: boolean
+        default: false
+      python_versions:
+        description: Space-separated CPython versions to build wheels for.
+        type: string
+        default: "3.12"
+      include_intel:
+        description: Also build macosx_x86_64 wheels on macos-15-intel.
         type: boolean
         default: false
 
@@ -335,11 +361,12 @@ jobs:
           ccache -s || true
           df -h /
 
-  # Artifact-only cp312 macosx arm64 wheel. Not a required check; publishing is #36.
+  # Artifact-only macosx arm64 wheels. PR CI: cp312. Release: PYTHON_VERSIONS.
+  # Not a required check; publishing is #36.
   macos-wheel:
     name: macos-wheel
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       ACPP_PREFIX: ${{ github.workspace }}/.cache/acpp-prefix
       BOOST_PREFIX: ${{ github.workspace }}/.cache/boost-prefix
@@ -350,6 +377,7 @@ jobs:
       CCACHE_COMPILERTYPE: clang
       CCACHE_NOHASHDIR: 1
       MACOSX_DEPLOYMENT_TARGET: "26.0"
+      PYTHON_VERSIONS: ${{ inputs.python_versions || '3.12' }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -419,10 +447,8 @@ jobs:
           ccache -z || true
           df -h /
 
-      - name: Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.12"
+      - name: uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
 
       - name: Cache AdaptiveCpp install
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
@@ -543,60 +569,282 @@ jobs:
           echo "acpp_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
           df -h /
 
-      - name: Build cp312 arm64 wheel
+      - name: Build wheels
         id: wheel
-        timeout-minutes: 40
+        timeout-minutes: 90
         run: |
           set -euo pipefail
           start=$(date +%s)
-          python -m pip install -U pip
-          python -m pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build 'delocate>=0.13'
-          chmod +x scripts/ci/macos-wheel-build.sh scripts/ci/macos-delocate.sh
-          scripts/ci/macos-wheel-build.sh dist wheelhouse
+          chmod +x scripts/ci/macos-wheel-build.sh scripts/ci/macos-delocate.sh \
+            scripts/ci/macos-wheel-versions.sh scripts/ci/macos-smoke.py
+          scripts/ci/macos-wheel-versions.sh build
           echo "wheel_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
           df -h /
           ccache -s || true
 
-      - name: Upload wheel
+      - name: Upload cp312 wheel
         if: always() && steps.wheel.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fuzzybits-cp312-macosx_arm64
-          path: dist/fuzzybits-*.whl
+          path: dist/fuzzybits-*-cp312-*.whl
           if-no-files-found: error
           retention-days: 14
 
-      - name: Smoke in a clean venv
+      - name: Upload cp313 wheel
         if: always() && steps.wheel.outcome == 'success'
-        timeout-minutes: 20
-        run: |
-          set -euo pipefail
-          start=$(date +%s)
-          shopt -s nullglob
-          whls=(dist/fuzzybits-*.whl)
-          test "${#whls[@]}" -gt 0
-          python -m venv "${RUNNER_TEMP}/fb-venv"
-          "${RUNNER_TEMP}/fb-venv/bin/python" -m pip install -U pip
-          "${RUNNER_TEMP}/fb-venv/bin/python" -m pip install "${whls[0]}" pytest
-          "${RUNNER_TEMP}/fb-venv/bin/python" scripts/ci/macos-smoke.py \
-            --wheel "${whls[0]}" \
-            --repo "${GITHUB_WORKSPACE}"
-          echo "smoke_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp313-macosx_arm64
+          path: dist/fuzzybits-*-cp313-*.whl
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload cp314 wheel
+        if: always() && steps.wheel.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp314-macosx_arm64
+          path: dist/fuzzybits-*-cp314-*.whl
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload cp315 wheel
+        if: always() && steps.wheel.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp315-macosx_arm64
+          path: dist/fuzzybits-*-cp315-*.whl
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Smoke wheels
+        if: always() && steps.wheel.outcome == 'success'
+        timeout-minutes: 40
+        run: scripts/ci/macos-wheel-versions.sh smoke
 
       - name: Record timings
         if: always()
         run: |
           set -euo pipefail
           {
-            echo "## macos-wheel timings"
+            echo "## macos-wheel timings (arm64)"
+            echo "- PYTHON_VERSIONS: ${PYTHON_VERSIONS}"
             echo "- AdaptiveCpp cache: ${{ steps.acpp-build.outputs.cache || 'n/a' }}"
             echo "- AdaptiveCpp build seconds: ${acpp_build_seconds:-n/a}"
             echo "- Boost build seconds: ${boost_build_seconds:-n/a (cache)}"
-            echo "- wheel build seconds: ${wheel_build_seconds:-n/a}"
-            echo "- smoke seconds: ${smoke_seconds:-n/a}"
+            echo "- wheel+smoke seconds: ${wheel_build_seconds:-n/a}"
+            echo "- wheel_cp312_seconds: ${wheel_cp312_seconds:-n/a}"
+            echo "- wheel_cp313_seconds: ${wheel_cp313_seconds:-n/a}"
+            echo "- wheel_cp314_seconds: ${wheel_cp314_seconds:-n/a}"
+            echo "- wheel_cp315_seconds: ${wheel_cp315_seconds:-n/a}"
+            echo "- smoke_cp312_seconds: ${smoke_cp312_seconds:-n/a}"
+            echo "- smoke_cp313_seconds: ${smoke_cp313_seconds:-n/a}"
+            echo "- smoke_cp314_seconds: ${smoke_cp314_seconds:-n/a}"
+            echo "- smoke_cp315_seconds: ${smoke_cp315_seconds:-n/a}"
             echo "- ACPP_REF_METAL: ${ACPP_REF_METAL}"
             echo "- METAL_CPP_VERSION: ${METAL_CPP_VERSION}"
             echo "- MACOSX_DEPLOYMENT_TARGET: ${MACOSX_DEPLOYMENT_TARGET}"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
+          ls -lah dist || true
+          ccache -s || true
+          df -h /
+
+  # Intel macOS wheels (OpenMP + generic SSCP, no Metal). Release-only:
+  # PR CI stays arm64 cp312. macos-15-intel is GitHub's x86_64 image; the
+  # 15.0 deployment target installs on Intel Macs running macOS 15+, including 26.
+  macos-wheel-intel:
+    name: macos-wheel-intel
+    if: ${{ inputs.include_intel }}
+    runs-on: macos-15-intel
+    timeout-minutes: 180
+    env:
+      ACPP_PREFIX: ${{ github.workspace }}/.cache/acpp-prefix
+      BOOST_PREFIX: ${{ github.workspace }}/.cache/boost-prefix
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPILERCHECK: content
+      CCACHE_COMPILERTYPE: clang
+      CCACHE_NOHASHDIR: 1
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+      WITH_METAL_BACKEND: "OFF"
+      PYTHON_VERSIONS: ${{ inputs.python_versions || '3.12' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Apply version override
+        if: ${{ inputs.version_override }}
+        env:
+          VERSION: ${{ inputs.version_override }}
+        run: bash scripts/ci/release-version.sh apply "${VERSION}"
+
+      - name: Require x86_64
+        run: |
+          set -euo pipefail
+          echo "uname -m=$(uname -m) ImageOS=${ImageOS:-} ImageVersion=${ImageVersion:-}"
+          test "$(uname -m)" = "x86_64"
+          sw_vers
+          df -h /
+
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          {
+            echo "ACPP_REPO=${ACPP_REPO}"
+            echo "ACPP_REF_METAL=${ACPP_REF_METAL}"
+            echo "LLVM_VERSION=${LLVM_VERSION}"
+            echo "BOOST_VERSION=${BOOST_VERSION}"
+            echo "BOOST_URL=${BOOST_URL}"
+            echo "BOOST_SHA256=${BOOST_SHA256}"
+            echo "BOOST_INCLUDE_LIBRARIES=program_options;filesystem;system;random;range;exception;multi_index;accumulators;multiprecision;icl;math;dll;regex;test"
+            echo "ACPP_REF_TO_BUILD=${ACPP_REF_METAL}"
+          } >> "${GITHUB_ENV}"
+          test "${ACPP_REF_METAL}" != "TBD"
+
+      - name: Install Homebrew deps
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
+        run: bash scripts/ci/macos-brew-deps.sh
+
+      - name: uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+
+      - name: Cache AdaptiveCpp install
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        id: acpp-cache
+        with:
+          path: ${{ env.ACPP_PREFIX }}
+          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-nometal
+          restore-keys: |
+            acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-nometal
+
+      - name: Cache Boost 1.89 install
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        id: boost-cache
+        with:
+          path: ${{ env.BOOST_PREFIX }}
+          key: boost-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.BOOST_VERSION }}-${{ env.BOOST_SHA256 }}
+
+      - name: Cache ccache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-macos-intel-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-macos-intel-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-
+            ccache-macos-intel-
+
+      - name: Build Boost 1.89
+        if: steps.boost-cache.outputs.cache-hit != 'true'
+        run: bash scripts/ci/macos-boost-build.sh
+
+      - name: Build AdaptiveCpp (OpenMP SSCP, no Metal)
+        id: acpp-build
+        run: bash scripts/ci/macos-acpp-build.sh
+
+      - name: Probe AdaptiveCpp devices
+        run: |
+          set -euo pipefail
+          export PATH="${ACPP_PREFIX}/bin:${PATH}"
+          export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+          echo "## acpp-info (intel, no Metal)" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          acpp-info -l | tee acpp-info.txt | tee -a "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          if grep -qiE 'metal' acpp-info.txt; then
+            echo "::error::Metal backend visible on Intel AdaptiveCpp build"
+            exit 1
+          fi
+          if ! grep -qiE 'omp|openmp|cpu' acpp-info.txt; then
+            echo "::warning::acpp-info did not mention omp/cpu; continuing to smoke"
+          fi
+
+      - name: Build wheels
+        id: wheel
+        timeout-minutes: 120
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          chmod +x scripts/ci/macos-wheel-build.sh scripts/ci/macos-delocate.sh \
+            scripts/ci/macos-wheel-versions.sh scripts/ci/macos-smoke.py
+          scripts/ci/macos-wheel-versions.sh build
+          echo "wheel_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+          df -h /
+          ccache -s || true
+
+      - name: Upload cp312 wheel
+        if: always() && steps.wheel.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp312-macosx_x86_64
+          path: dist/fuzzybits-*-cp312-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload cp313 wheel
+        if: always() && steps.wheel.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp313-macosx_x86_64
+          path: dist/fuzzybits-*-cp313-*.whl
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload cp314 wheel
+        if: always() && steps.wheel.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp314-macosx_x86_64
+          path: dist/fuzzybits-*-cp314-*.whl
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload cp315 wheel
+        if: always() && steps.wheel.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp315-macosx_x86_64
+          path: dist/fuzzybits-*-cp315-*.whl
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Smoke wheels
+        if: always() && steps.wheel.outcome == 'success'
+        timeout-minutes: 50
+        run: scripts/ci/macos-wheel-versions.sh smoke
+
+      - name: Record timings
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## macos-wheel-intel timings (x86_64)"
+            echo "- PYTHON_VERSIONS: ${PYTHON_VERSIONS}"
+            echo "- AdaptiveCpp cache: ${{ steps.acpp-build.outputs.cache || 'n/a' }}"
+            echo "- AdaptiveCpp build seconds: ${acpp_build_seconds:-n/a}"
+            echo "- Boost build seconds: ${boost_build_seconds:-n/a (cache)}"
+            echo "- wheel+smoke seconds: ${wheel_build_seconds:-n/a}"
+            echo "- wheel_cp312_seconds: ${wheel_cp312_seconds:-n/a}"
+            echo "- wheel_cp313_seconds: ${wheel_cp313_seconds:-n/a}"
+            echo "- wheel_cp314_seconds: ${wheel_cp314_seconds:-n/a}"
+            echo "- wheel_cp315_seconds: ${wheel_cp315_seconds:-n/a}"
+            echo "- smoke_cp312_seconds: ${smoke_cp312_seconds:-n/a}"
+            echo "- smoke_cp313_seconds: ${smoke_cp313_seconds:-n/a}"
+            echo "- smoke_cp314_seconds: ${smoke_cp314_seconds:-n/a}"
+            echo "- smoke_cp315_seconds: ${smoke_cp315_seconds:-n/a}"
+            echo "- ACPP_REF_METAL: ${ACPP_REF_METAL}"
+            echo "- MACOSX_DEPLOYMENT_TARGET: ${MACOSX_DEPLOYMENT_TARGET}"
+            echo "- Homebrew llvm: ${LLVM_PREFIX:-}"
+            echo "- limitation: Metal is Apple Silicon only; this wheel is OpenMP CPU"
           } | tee -a "${GITHUB_STEP_SUMMARY}"
           ls -lah dist || true
           ccache -s || true

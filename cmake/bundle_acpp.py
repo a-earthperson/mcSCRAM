@@ -14,13 +14,17 @@ Layout (AdaptiveCpp v25.10 plugin discovery):
       <dest>/hipSYCL/ext/llvm/bin/{opt,llc,ld.lld}
       <dest>/hipSYCL/ext/bitcode/ptx/libdevice.10.bc
 
-    Darwin (Metal + OpenMP SSCP):
+    Darwin arm64 (Metal + OpenMP SSCP):
       <dest>/libacpp-rt.dylib
       <dest>/hipSYCL/librt-backend-{metal,omp}.dylib
       <dest>/hipSYCL/llvm-to-backend/libllvm-to-{backend,host,metal}.dylib
       <dest>/hipSYCL/ext/llvm/bin/{opt,llc,ld.lld,ld64.lld}
       <dest>/libLLVM.dylib
       <dest>/libomp.dylib
+
+    Darwin x86_64 (OpenMP + generic SSCP host JIT; no Metal):
+      same as arm64 but librt-backend-metal / libllvm-to-metal are omitted.
+      Homebrew prefixes are /usr/local/opt/{llvm@20,libomp,lld@20}.
 
     Windows (AdaptiveCpp linked into LLVM; DLLs live in prefix/bin):
       <dest>/acpp-rt.dll
@@ -34,6 +38,7 @@ Layout (AdaptiveCpp v25.10 plugin discovery):
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import sys
 from pathlib import Path
@@ -122,10 +127,15 @@ def _homebrew_prefix(formula: str) -> Path | None:
     return prefix if prefix.is_dir() else None
 
 
+def _darwin_is_arm64() -> bool:
+    return platform.machine().lower() in ("arm64", "aarch64")
+
+
 def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
-    """Darwin AdaptiveCpp (Metal + OpenMP, Homebrew llvm@20)."""
+    """Darwin AdaptiveCpp (OpenMP SSCP; Metal required only on arm64)."""
     lib = acpp_prefix / "lib"
     copied: list[str] = []
+    arm64 = _darwin_is_arm64()
 
     def record(src: Path, dest_dir: Path) -> None:
         out = _copy_file(src, dest_dir)
@@ -156,7 +166,11 @@ def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
 
     llvm_prefix = Path(os.environ.get("LLVM_PREFIX") or "")
     if not llvm_prefix.is_dir():
-        llvm_prefix = _homebrew_prefix("llvm@20") or Path("/opt/homebrew/opt/llvm@20")
+        brew_llvm = _homebrew_prefix("llvm@20")
+        default_llvm = (
+            Path("/opt/homebrew/opt/llvm@20") if arm64 else Path("/usr/local/opt/llvm@20")
+        )
+        llvm_prefix = brew_llvm or default_llvm
 
     llvm_bin_dst = dest / "hipSYCL" / "ext" / "llvm" / "bin"
     llvm_bin = llvm_prefix / "bin"
@@ -207,7 +221,9 @@ def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
 
     omp_prefix = Path(os.environ.get("OMP_PREFIX") or "")
     if not omp_prefix.is_dir():
-        omp_prefix = _homebrew_prefix("libomp") or Path("/opt/homebrew/opt/libomp")
+        brew_omp = _homebrew_prefix("libomp")
+        default_omp = Path("/opt/homebrew/opt/libomp") if arm64 else Path("/usr/local/opt/libomp")
+        omp_prefix = brew_omp or default_omp
     omp = _first_existing(
         [
             omp_prefix / "lib" / "libomp.dylib",
@@ -228,6 +244,7 @@ def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
 
     metal = dest / "hipSYCL" / "librt-backend-metal.dylib"
     omp_be = dest / "hipSYCL" / "librt-backend-omp.dylib"
+    host_jit = dest / "hipSYCL" / "llvm-to-backend" / "libllvm-to-host.dylib"
     rt = dest / "libacpp-rt.dylib"
     lld_ok = (llvm_bin_dst / "ld64.lld").is_file() or (llvm_bin_dst / "ld.lld").is_file()
     lld_libs_ok = any(dest.glob("liblld*.dylib"))
@@ -235,8 +252,12 @@ def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
         raise SystemExit(f"bundle failed: {rt} missing")
     if not omp_be.is_file():
         raise SystemExit(f"bundle failed: {omp_be} missing")
-    if not metal.is_file():
+    if arm64 and not metal.is_file():
         raise SystemExit(f"bundle failed: {metal} missing")
+    if not arm64 and not metal.is_file():
+        print(f"ok: Metal backend omitted on {platform.machine()}")
+    if not host_jit.is_file():
+        raise SystemExit(f"bundle failed: {host_jit} missing (generic SSCP host JIT)")
     if not lld_ok:
         raise SystemExit(f"bundle failed: {llvm_bin_dst}/ld.lld missing")
     if not lld_libs_ok:

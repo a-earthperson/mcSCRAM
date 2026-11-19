@@ -153,9 +153,10 @@ upstream `94e1749`; no Metal-capable tagged release yet),
 `METAL_CPP_VERSION=release/metal-cpp_macOS26_iOS26` (AdaptiveCpp's metal-cpp
 FetchContent `GIT_TAG` when `Metal/Metal.hpp` is absent). Hosted CI lives in
 [`.github/workflows/macos.yml`](../.github/workflows/macos.yml) (`macos-26`
-arm64): `macos-metal` (native ctest) and `macos-wheel` (cp312 `macosx_*_arm64`
-wheel, artifact-only). Device-code gaps (no `double`, emulated 64-bit atomics)
-stay on [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30). The wheel
+arm64): `macos-metal` (native ctest) and `macos-wheel` (`macosx_*_arm64`
+wheels, artifact-only; CPython 3.12 on PRs, 3.12–3.15 from release.yml).
+Device-code gaps (no `double`, emulated 64-bit atomics) stay on
+[#30](https://github.com/fuzzybit-org/fuzzybits/issues/30). The wheel
 job is **not** a required check; publishing is [#36](https://github.com/fuzzybit-org/fuzzybits/issues/36).
 
 ```bash
@@ -197,17 +198,19 @@ Metal device tests: `ctest --preset metal` (or `ctest -L mc` with
 
 ### macOS arm64 wheel
 
-`macos-wheel` in [macos.yml](../.github/workflows/macos.yml) builds a
-`cp312-macosx_*_arm64` wheel with scikit-build-core against the same cached
-AdaptiveCpp prefix as `macos-metal`. `cmake/bundle_acpp.py` copies
+`macos-wheel` in [macos.yml](../.github/workflows/macos.yml) builds
+`cp3XX-macosx_*_arm64` wheels with scikit-build-core against the same cached
+AdaptiveCpp prefix as `macos-metal`. PR CI builds CPython 3.12 only; the
+release dry-run/tag builds 3.12–3.15 with uv-managed interpreters.
+`cmake/bundle_acpp.py` copies
 `libacpp-rt.dylib` / `libacpp-common.dylib`, `hipSYCL/librt-backend-{metal,omp}.dylib`,
 `llvm-to-{backend,host,metal}` plus the SSCP redistributable
 (`hipSYCL/ext/llvm/bin/{opt,llc,ld.lld,ld64.lld}`, `libLLVM.dylib`, Homebrew
 `lld@20` `liblld*.dylib`, `libomp.dylib`). `relocate_wheel_rpath.py` rewrites
 install names to `@loader_path`; `delocate-wheel --lib-sdir lib
 --no-sanitize-rpaths` copies leftover non-system deps next to `libacpp-rt`
-without flattening `hipSYCL/`. There is no `libmc.dylib`. Artifact name:
-`fuzzybits-cp312-macosx_arm64`. Do not publish from this job
+without flattening `hipSYCL/`. There is no `libmc.dylib`. Artifact names:
+`fuzzybits-cp3XX-macosx_arm64`. Do not publish from this job
 ([#36](https://github.com/fuzzybit-org/fuzzybits/issues/36)).
 
 Smoke (clean venv on the hosted runner): `import fuzzybits`;
@@ -216,6 +219,18 @@ Smoke (clean venv on the hosted runner): `import fuzzybits`;
 `trials=2**20` is within 4σ of `1.17058e-3`; `backend="metal"` raises a
 Python exception until #17/#30 (JIT: "Double type is not supported on Metal
 GPU"). CPU pytest: `pytest tests/python -m "not gpu"`.
+
+### macOS x86_64 wheel
+
+`macos-wheel-intel` (release.yml via `include_intel`, GitHub-hosted
+`macos-15-intel`) builds AdaptiveCpp from `ACPP_REF_METAL` with
+`WITH_METAL_BACKEND=OFF`, OpenMP, and the generic SSCP host JIT
+(`libllvm-to-host`). Homebrew is Intel-prefix `/usr/local/opt/{llvm@20,libomp,lld@20}`.
+`bundle_acpp.py` requires `librt-backend-metal.dylib` only on arm64; on
+x86_64 it requires `librt-backend-omp.dylib` and `libllvm-to-host.dylib`.
+`MACOSX_DEPLOYMENT_TARGET=15.0`, so pip on an Intel Mac running macOS 26
+accepts `macosx_15_0_x86_64`. Smoke is OpenMP-only (no Metal). Artifact
+names: `fuzzybits-cp3XX-macosx_x86_64`. Metal remains Apple Silicon only.
 
 ### `windows-generic`
 

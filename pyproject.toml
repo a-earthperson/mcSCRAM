@@ -1,18 +1,18 @@
 [build-system]
 requires = [
     "scikit-build-core>=0.10",
-    "pybind11>=2.13",
+    "pybind11>=3.1",
     "setuptools>=68",
 ]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "fuzzybits"
-version = "0.17.0"
+version = "0.17.1"
 description = "Monte Carlo probability engine for OpenPSA MEF fault trees (AdaptiveCpp/SYCL)"
 readme = "docs/python.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.16"
 authors = [{ name = "fuzzybit-org" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -22,10 +22,10 @@ classifiers = [
     "Operating System :: MacOS",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = []

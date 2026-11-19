@@ -22,7 +22,7 @@ if(WIN32)
   unset(_fb_win_override)
 endif()
 
-project(SCRAM VERSION 0.17.0 LANGUAGES C CXX)
+project(SCRAM VERSION 0.17.1 LANGUAGES C CXX)
 include(GNUInstallDirs)
 
 # Find and configure LLVM toolchain BEFORE project() call
@@ -393,13 +393,18 @@ include_directories(${indicators_SOURCE_DIR}/include)
 
 if(BUILD_PYTHON_BINDINGS)
   find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
-  FetchContent_Declare(
-    pybind11
-    GIT_REPOSITORY https://github.com/pybind/pybind11.git
-    GIT_TAG        v2.13.6
-    GIT_SHALLOW    TRUE
-  )
-  FetchContent_MakeAvailable(pybind11)
+  # Wheel builds (scikit-build-core) inject the pip-installed pybind11 into
+  # CMAKE_PREFIX_PATH. CPython 3.14/3.15 need pybind11 3.x; 3.12 still builds.
+  find_package(pybind11 CONFIG QUIET)
+  if(NOT pybind11_FOUND)
+    FetchContent_Declare(
+      pybind11
+      GIT_REPOSITORY https://github.com/pybind/pybind11.git
+      GIT_TAG        v3.1.0
+      GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(pybind11)
+  endif()
 endif()
 
 include_directories("${CMAKE_SOURCE_DIR}")  # Include the core headers via "src".

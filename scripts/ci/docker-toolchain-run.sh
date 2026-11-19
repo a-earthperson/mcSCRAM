@@ -95,6 +95,7 @@ run_args=(
   -e SPINE_TIMEOUT="${SPINE_TIMEOUT:-}"
   -e SPINE_Z_MAX="${SPINE_Z_MAX:-}"
   -e SPINE_INPUT_DIR="${SPINE_INPUT_DIR:-}"
+  -e PYTHON_VERSIONS="${PYTHON_VERSIONS:-3.12}"
   --entrypoint bash
 )
 if [[ -n "${gpus}" ]]; then

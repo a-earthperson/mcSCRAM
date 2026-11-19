@@ -11,10 +11,15 @@ apt-get install -y --no-install-recommends \
   python3 python3-venv python3-pip libgomp1 libstdc++6 libatomic1 libomp5 >/dev/null
 
 shopt -s nullglob
-engine=(wheels/fuzzybits-*manylinux*.whl)
+# ubuntu:24.04 system Python is 3.12; pick that manylinux wheel even when
+# the release produced cp313–cp315 artefacts too.
+engine=(wheels/fuzzybits-*-cp312-*-manylinux*.whl)
+if [[ ${#engine[@]} -eq 0 ]]; then
+  engine=(wheels/fuzzybits-*manylinux*.whl)
+fi
 server=(wheels/fuzzybits_server-*.whl)
 if [[ ${#engine[@]} -ne 1 || ${#server[@]} -ne 1 ]]; then
-  echo "error: expected one engine and one server wheel in wheels/" >&2
+  echo "error: expected one cp312 engine and one server wheel in wheels/" >&2
   ls -la wheels >&2
   exit 1
 fi
