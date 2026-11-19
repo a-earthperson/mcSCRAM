@@ -19,7 +19,7 @@ Install
 
     pip install fuzzybits fuzzybits-server
 
-Needs CPython 3.12–3.15 on Linux x86_64 (glibc 2.39 or newer, for
+Needs CPython 3.12 to 3.15 on Linux x86_64 (glibc 2.39 or newer, for
 example Ubuntu 24.04), macOS 15+ on Intel (CPU only), or macOS 26+ on
 Apple Silicon. To use an NVIDIA GPU, install the NVIDIA driver; nothing
 else is needed.

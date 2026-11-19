@@ -34,8 +34,8 @@ ARG RUNTIME_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic
 ARG RUNTIME_DIGEST=unknown
 ARG VARIANT=generic
 ARG FUZZYBITS_REVISION=unknown
-ARG FUZZYBITS_VERSION=0.17.0
-ARG SERVER_VERSION=0.17.0
+ARG FUZZYBITS_VERSION=0.17.1
+ARG SERVER_VERSION=0.17.1
 
 LABEL org.opencontainers.image.source="https://github.com/fuzzybit-org/fuzzybits" \
       org.opencontainers.image.revision="${FUZZYBITS_REVISION}" \
