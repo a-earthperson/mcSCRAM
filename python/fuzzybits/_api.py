@@ -272,12 +272,13 @@ def compile(  # noqa: A001 - public API name
     watch: Any = None,
     **options: Any,
 ) -> bytes:
-    """Compile OpenPSA/MEF XML to a pcfb 1.1 buffer.
+    """Compile OpenPSA/MEF XML or nombrilo.circuit to a pcfb 1.1 buffer.
 
     Parameters
     ----------
     model_xml:
-        Path to a MEF XML file, or a sequence of input files.
+        Path to a MEF XML file, a nombrilo.circuit safetensors file, or a
+        sequence of MEF input files. Format is detected from the file header.
     pdag_c:
         PDAG compilation level (``-c`` / ``compilation_level``).
     no_kn:
@@ -302,6 +303,39 @@ def compile(  # noqa: A001 - public API name
     if names:
         opts["watch"] = names
     return bytes(native.compile_pcfb(_as_input_files(model_xml), opts))
+
+
+def nombrilo_to_pcfb(
+    path: str | os.PathLike[str],
+    *,
+    target: str | None = None,
+    weights: str | os.PathLike[str] | None = None,
+) -> bytes:
+    """Translate a nombrilo.circuit safetensors file into a pcfb 1.1 buffer."""
+    native = _runtime.native()
+    opts: dict[str, Any] = {}
+    if target:
+        opts["target"] = target
+    if weights is not None:
+        opts["weights"] = os.fspath(weights)
+    return bytes(native.nombrilo_to_pcfb_path(os.fspath(path), opts))
+
+
+def pcfb_to_nombrilo(
+    pcfb: bytes | str | os.PathLike[str],
+    *,
+    extras: bool = True,
+) -> bytes:
+    """Translate a ``.pcfb`` (bytes or path) into a nombrilo.circuit buffer.
+
+    ``extras=True`` stores pcfb-only fields under ``fuzzybits.pcfb.*`` in the
+    safetensors ``__metadata__`` so a later :func:`nombrilo_to_pcfb` can restore
+    them. ``extras=False`` writes strict plain nombrilo.
+    """
+    native = _runtime.native()
+    if isinstance(pcfb, (bytes, bytearray, memoryview)):
+        return bytes(native.pcfb_to_nombrilo_bytes(bytes(pcfb), bool(extras)))
+    return bytes(native.pcfb_to_nombrilo_path(os.fspath(pcfb), bool(extras)))
 
 
 def compile_file(
@@ -499,6 +533,8 @@ __all__ = [
     "exact",
     "inspect",
     "list_devices",
+    "nombrilo_to_pcfb",
+    "pcfb_to_nombrilo",
     "probability",
     "run",
 ]

@@ -79,6 +79,7 @@ def test_fzb_help_and_version():
     assert help_proc.returncode == 0, help_proc.stderr
     assert "Usage: fzb" in help_proc.stdout
     assert "compile" in help_proc.stdout
+    assert "export" in help_proc.stdout
     assert "inspect" in help_proc.stdout
     assert "run" in help_proc.stdout
 

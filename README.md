@@ -31,6 +31,8 @@ Command line
 Compile the model once, then sample it:
 
     fzb compile model.xml -o model.pcfb
+    fzb compile model.safetensors -o model.pcfb   # nombrilo.circuit, detected from the header
+    fzb export --to nombrilo model.pcfb -o model.safetensors
     fzb run model.pcfb --trials 1e8
 
 The result is one line per query: name, estimate, 95% confidence
@@ -70,6 +72,7 @@ More
 ----
 
 - Building from source and developer notes: docs/
+- nombrilo.circuit ↔ pcfb: docs/nombrilo.md
 - Questions and bug reports: https://github.com/fuzzybit-org/fuzzybits/issues
 - License: AGPL-3.0 (see LICENSE). fuzzybits is derived from SCRAM by
   Olzhas Rakhimov (https://github.com/rakhimov/scram).

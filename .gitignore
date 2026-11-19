@@ -4,6 +4,9 @@ CMakeLists.txt.user
 # Build directories
 build/
 
+# Owner-local nombrilo dataset (#129). Tests use FUZZYBITS_NOMBRILO_DIR.
+input/aralia-nombrilo/
+
 # Compiled Object files
 *.slo
 *.lo

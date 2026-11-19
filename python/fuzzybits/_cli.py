@@ -12,12 +12,13 @@ from typing import Any, TextIO
 
 from . import __version__
 from ._api import compile as compile_pcfb
-from ._api import exact, inspect, run
+from ._api import exact, inspect, pcfb_to_nombrilo, run
 
 ROOT_USAGE = (
     "Usage: fzb <command> [options]\n\n"
     "Commands:\n"
-    "  compile   OpenPSA/MEF XML → preprocessed PDAG → .pcfb\n"
+    "  compile   OpenPSA/MEF XML or nombrilo.circuit → .pcfb\n"
+    "  export    .pcfb → nombrilo.circuit (.safetensors)\n"
     "  inspect   Summarise, validate, or exactly evaluate a .pcfb\n"
     "  run       Monte Carlo a .pcfb (estimate and CI per query)\n"
 )
@@ -58,7 +59,7 @@ def _print_root_usage(out: TextIO) -> None:
 
 def _cli_error(command: str, exc: BaseException) -> int:
     msg = str(exc)
-    for prefix in (f"{command}: ", "compile: ", "inspect: ", "run: "):
+    for prefix in (f"{command}: ", "compile: ", "export: ", "inspect: ", "run: "):
         if msg.startswith(prefix):
             msg = msg[len(prefix) :]
             break
@@ -79,7 +80,7 @@ def _parse_trials(text: str) -> int:
 def cmd_compile(argv: Sequence[str]) -> int:
     parser = _Parser(
         prog="fzb compile",
-        usage="fzb compile model.xml [-c N] [--no-kn] [-o model.pcfb]",
+        usage="fzb compile model.xml|model.safetensors [-c N] [--no-kn] [--target NAME] [--weights FILE] [-o model.pcfb]",
         description="fzb compile options",
         add_help=False,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -110,14 +111,15 @@ def cmd_compile(argv: Sequence[str]) -> int:
     parser.add_argument("--keep-null", action="store_true", help="keep NULL/pass-through gates")
     parser.add_argument("--ccf", action="store_true", help="expand common-cause failure groups")
     parser.add_argument("--allow-extern", action="store_true", help="**UNSAFE** allow external libraries")
-    parser.add_argument("--target", help="top-event / gate id")
+    parser.add_argument("--target", help="top-event / gate / nombrilo name")
+    parser.add_argument("--weights", help="nombrilo variant weights file")
     parser.add_argument(
         "--watch",
         action="append",
         default=[],
         help="extra MEF names / PDAG indices as additional queries (repeatable)",
     )
-    parser.add_argument("input_file", nargs="*", help="MEF input files")
+    parser.add_argument("input_file", nargs="*", help="MEF XML or nombrilo.circuit file")
     args = parser.parse_args(list(argv))
     if not args.input_file:
         print("fzb compile: missing input file\n", file=sys.stderr)
@@ -140,6 +142,8 @@ def cmd_compile(argv: Sequence[str]) -> int:
         options["recognize_xor_groups"] = True
     if args.target:
         options["target"] = args.target
+    if args.weights:
+        options["weights"] = args.weights
     watch = [part for item in args.watch for part in str(item).replace(";", ",").split(",") if part.strip()]
     if watch:
         options["watch"] = watch
@@ -178,6 +182,48 @@ def cmd_compile(argv: Sequence[str]) -> int:
         f"wrote {out_path} ({len(blob)} bytes) model={model} top={top}",
         file=sys.stderr,
     )
+    return 0
+
+
+def cmd_export(argv: Sequence[str]) -> int:
+    parser = _Parser(
+        prog="fzb export",
+        usage="fzb export --to nombrilo model.pcfb -o out.safetensors [--strict]",
+        description="fzb export options",
+        add_help=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("-h", "--help", action="help", help="display this help message")
+    parser.add_argument("--to", help="target format (nombrilo)")
+    parser.add_argument("-o", "--output", help="output path")
+    parser.add_argument("--strict", action="store_true", help="omit fuzzybits.pcfb.* extras")
+    parser.add_argument("input_file", nargs="?", help=".pcfb file")
+    args = parser.parse_args(list(argv))
+    if not args.input_file:
+        print("fzb export: missing .pcfb file\n", file=sys.stderr)
+        parser.print_help(sys.stderr)
+        return 1
+    if args.to not in {"nombrilo", "nombrilo.circuit"}:
+        print("fzb export: --to nombrilo is required\n", file=sys.stderr)
+        parser.print_help(sys.stderr)
+        return 1
+
+    try:
+        blob = pcfb_to_nombrilo(args.input_file, extras=not args.strict)
+    except Exception as exc:
+        return _cli_error("export", exc)
+
+    if args.output:
+        out_path = Path(args.output)
+    else:
+        out_path = Path(Path(args.input_file).stem + ".safetensors")
+    try:
+        out_path.write_bytes(blob)
+    except OSError as exc:
+        print(f"fzb export: cannot write {out_path}", file=sys.stderr)
+        print(f"fzb export: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {out_path} ({len(blob)} bytes)", file=sys.stderr)
     return 0
 
 
@@ -370,6 +416,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if cmd == "compile":
         return cmd_compile(args[1:])
+    if cmd == "export":
+        return cmd_export(args[1:])
     if cmd == "inspect":
         return cmd_inspect(args[1:])
     if cmd == "run":

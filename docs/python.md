@@ -103,8 +103,10 @@ with fuzzybits.Session(pcfb, backend="auto") as session:
             break                        # early stop; Session.close() on __exit__
 ```
 
-`compile` / `compile_file` lower OpenPSA/MEF to a pcfb 1.1 buffer (the same
-host path as `fzb compile`). `inspect` always runs `pcfb::validate` and
+`compile` / `compile_file` lower OpenPSA/MEF **or** nombrilo.circuit
+(safetensors, detected from the header) to a pcfb 1.1 buffer (the same host
+path as `fzb compile`). `nombrilo_to_pcfb` / `pcfb_to_nombrilo` are the
+explicit converters; see [`nombrilo.md`](nombrilo.md). `inspect` always runs `pcfb::validate` and
 returns its diagnostics (empty iff the circuit is core-1.1 conforming).
 `run` is the one-shot `fzb run` equivalent: `list[QueryResult(name, estimate,
 ci_low, ci_high, n, hits)]`. `Session` reconstructs the PDAG and streams
@@ -131,6 +133,8 @@ to override.
 
 ```bash
 fzb compile model.xml [more.xml ...] [-c N] [--no-kn] [-o model.pcfb]
+fzb compile model.safetensors [--target NAME] [--weights FILE] [-o model.pcfb]
+fzb export --to nombrilo model.pcfb -o model.safetensors [--strict]
 fzb inspect model.pcfb [--validate] [--json] [--exact]
 fzb run model.pcfb --trials N [--seed S] [--backend auto|cuda|omp|metal] [--json]
 fzb --help

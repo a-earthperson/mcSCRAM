@@ -1,5 +1,6 @@
 #include "compile/pcfb_writer.h"
 
+#include "compile/nombrilo.h"
 #include "compile/sha256.h"
 
 #include <libxml/parser.h>
@@ -723,6 +724,15 @@ pcfb::Result<CompiledGraph> compile_to_graph(const std::vector<std::string> &inp
 }
 
 pcfb::Result<Compiled> compile_files(const std::vector<std::string> &input_files, const Options &options) {
+  if (!input_files.empty() && looks_like_nombrilo_file(input_files.front())) {
+    if (input_files.size() != 1) {
+      return std::unexpected(compile_error("nombrilo.circuit input must be a single file"));
+    }
+    NombriloCompileOptions nopt;
+    nopt.target = options.target;
+    nopt.weights_file = options.weights_file;
+    return compile_nombrilo_file(input_files.front(), nopt);
+  }
   auto graph = compile_to_graph(input_files, options);
   if (!graph) {
     return std::unexpected(graph.error());

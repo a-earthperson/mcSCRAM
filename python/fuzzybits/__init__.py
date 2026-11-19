@@ -7,6 +7,7 @@ Public surface:
 - :func:`list_devices`
 - :func:`probability`
 - :func:`compile` / :func:`compile_file` / :func:`inspect` / :func:`exact` / :func:`run`
+- :func:`nombrilo_to_pcfb` / :func:`pcfb_to_nombrilo`
 - :class:`Session` (streaming per-pass popcounts over a ``.pcfb``)
 
 The native SYCL extension is selected at import: ``_native_cuda_sm70`` if that
@@ -28,6 +29,8 @@ from ._api import (
     exact,
     inspect,
     list_devices,
+    nombrilo_to_pcfb,
+    pcfb_to_nombrilo,
     probability,
     run,
 )
@@ -62,6 +65,8 @@ __all__ = [
     "inspect",
     "list_devices",
     "native",
+    "nombrilo_to_pcfb",
+    "pcfb_to_nombrilo",
     "probability",
     "run",
 ]

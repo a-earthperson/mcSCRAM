@@ -37,6 +37,8 @@ struct Options {
   /// `PROBABILITY` queries. Identified the same way the server resolves
   /// `MCSCRAM_WATCH` / `watch` node lists: id, name, full_path, or decimal index.
   std::vector<std::string> watch;
+  /// Nombrilo variant weights file. Ignored for MEF inputs.
+  std::optional<std::string> weights_file;
 
   /// Reconstruct the effective CLI fragment written to `compile.options`.
   [[nodiscard]] std::string to_cli_string() const;
