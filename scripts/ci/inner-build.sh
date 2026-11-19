@@ -42,6 +42,7 @@ cmake_launcher_flags=(
   -DCMAKE_CXX_COMPILER=clang++-20
   -DCMAKE_C_COMPILER_LAUNCHER=ccache
   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+  -DOPTIMIZE_FOR_NATIVE=OFF
 )
 
 case "${cmd}" in
