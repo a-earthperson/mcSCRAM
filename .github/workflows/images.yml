@@ -1,0 +1,369 @@
+# Slim runtime images → GHCR. Public repo.
+#
+# Publish: GitHub-hosted ubuntu-24.04 only (packages:write).
+# Smoke: self-hosted GPUs, trusted triggers only, public image pull, no login.
+# Never pull_request / pull_request_target / workflow_run — self-hosted jobs
+# in this file must not be reachable from PR code (#34).
+name: Runtime images
+
+on:
+  schedule:
+    # Offset from gpu.yml (17 6) so nightly smoke does not queue behind GPU tests.
+    - cron: "47 7 * * *"
+  workflow_dispatch:
+  push:
+    branches: [develop, "ci/**"]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/fuzzybit-org/fuzzybits-runtime
+  TOOLCHAIN_REPO: ghcr.io/fuzzybit-org/fuzzybits-toolchain
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      proceed: ${{ steps.decide.outputs.proceed }}
+    steps:
+      - name: Checkout
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Decide
+        id: decide
+        run: |
+          set -euo pipefail
+          proceed=true
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            before="${{ github.event.before }}"
+            if [[ -n "${before}" && ! "${before}" =~ ^0+$ ]] && git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              files="$(git diff --name-only "${before}" "${{ github.sha }}")"
+            else
+              files="$(git diff --name-only HEAD^ HEAD || true)"
+            fi
+            echo "changed files:"
+            printf '%s\n' "${files}"
+            if printf '%s\n' "${files}" | grep -Eq '^(src/|python/|targets/|cmake/|share/|CMakeLists\.txt|CMakePresets\.json|toolchain\.env|pyproject\.toml|Dockerfile|Dockerfile\.cuda|Dockerfile\.cuda12\.8|Dockerfile\.fzb|docker/|\.github/workflows/images\.yml)'; then
+              proceed=true
+            else
+              proceed=false
+            fi
+          fi
+          echo "proceed=${proceed}" >> "${GITHUB_OUTPUT}"
+
+  publish:
+    name: publish-${{ matrix.variant }}
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: generic
+            cmake_preset: generic
+            fuzzybits_variant: generic
+            acpp_targets: generic
+            cuda_embed_ptx: n/a
+            include_sscp: "1"
+          - variant: cuda12.8-sm70
+            cmake_preset: cuda-sm70
+            fuzzybits_variant: cuda-sm70
+            acpp_targets: "cuda:sm_70"
+            cuda_embed_ptx: highest
+            include_sscp: "0"
+    env:
+      VARIANT: ${{ matrix.variant }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      # ubuntu-24.04 starts with ~20–30 GB free. The toolchain image is ~12.5 GB
+      # uncompressed plus two C++ compiles; drop unused hosted-image trees.
+      - name: Free disk
+        run: |
+          set -eux
+          echo "== disk before =="
+          df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/share/powershell \
+            /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Python \
+            /opt/hostedtoolcache/PyPy \
+            /opt/hostedtoolcache/Ruby \
+            /opt/hostedtoolcache/node \
+            /usr/lib/jvm \
+            /usr/local/.ghcup \
+            /opt/microsoft \
+            /usr/share/miniconda || true
+          sudo docker system prune -af || true
+          echo "== disk after =="
+          df -h /
+
+      - name: Load pins from toolchain.env
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "ACPP_REPO=${ACPP_REPO}"
+            echo "ACPP_COMMIT=${ACPP_COMMIT}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "CUDA_VERSION=${CUDA_VERSION}"
+            echo "CUDA_DEVEL_IMAGE=${CUDA_DEVEL_IMAGE}"
+            echo "CUDA_RUNTIME_IMAGE=${CUDA_RUNTIME_IMAGE}"
+            echo "ACPP_COMPILER_FEATURE_PROFILE=${ACPP_COMPILER_FEATURE_PROFILE}"
+            echo "BOOST_VERSION=${BOOST_VERSION}"
+            echo "BOOST_URL=${BOOST_URL}"
+            echo "BOOST_SHA256=${BOOST_SHA256}"
+            echo "TOOLCHAIN_SHA=$(sha256sum toolchain.env | cut -c1-12)"
+            echo "FUZZYBITS_VERSION=${version}"
+            echo "SHA12=${GITHUB_SHA:0:12}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Compute tags
+        id: meta
+        run: |
+          set -euo pipefail
+          IMAGE="${IMAGE}"
+          VARIANT="${VARIANT}"
+          SHA12="${SHA12}"
+          tags=()
+          if [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
+            primary="ci-${SHA12}-${VARIANT}"
+            tags+=("${IMAGE}:${primary}")
+          elif [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            version="${GITHUB_REF_NAME}"
+            primary="${version}-${VARIANT}"
+            tags+=("${IMAGE}:${primary}")
+            if [[ "${VARIANT}" == generic ]]; then
+              tags+=("${IMAGE}:${version}")
+              tags+=("${IMAGE}:latest")
+            fi
+          else
+            # develop, schedule, workflow_dispatch on develop (or other trusted refs)
+            primary="sha-${SHA12}-${VARIANT}"
+            tags+=("${IMAGE}:nightly-${VARIANT}")
+            tags+=("${IMAGE}:${primary}")
+          fi
+          {
+            echo "primary=${primary}"
+            echo "tags<<EOF"
+            printf '%s\n' "${tags[@]}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+          echo "primary tag: ${primary}"
+          printf 'tags:\n'
+          printf '  %s\n' "${tags[@]}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      # Inspect only (no layer pull). Buildx pulls the toolchain once into the
+      # builder; a docker-engine pull here would double the 12.5 GB on disk.
+      - name: Resolve toolchain image
+        run: |
+          set -euo pipefail
+          immutable="${TOOLCHAIN_REPO}:${ACPP_REF}-generic-${TOOLCHAIN_SHA}"
+          moving="${TOOLCHAIN_REPO}:${ACPP_REF}-generic"
+          if docker buildx imagetools inspect "${immutable}" >/dev/null; then
+            echo "TOOLCHAIN_IMAGE=${immutable}" >> "${GITHUB_ENV}"
+            echo "using ${immutable}"
+          else
+            echo "immutable toolchain tag missing; falling back to ${moving}"
+            docker buildx imagetools inspect "${moving}" >/dev/null
+            echo "TOOLCHAIN_IMAGE=${moving}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: docker/runtime.Dockerfile
+          target: runtime
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            TOOLCHAIN_IMAGE=${{ env.TOOLCHAIN_IMAGE }}
+            CMAKE_PRESET=${{ matrix.cmake_preset }}
+            FUZZYBITS_VARIANT=${{ matrix.fuzzybits_variant }}
+            INCLUDE_SSCP_JIT=${{ matrix.include_sscp }}
+            ACPP_TARGETS=${{ matrix.acpp_targets }}
+            CUDA_EMBED_PTX=${{ matrix.cuda_embed_ptx }}
+            CLANG_VERSION=${{ env.CLANG_VERSION }}
+            ACPP_REF=${{ env.ACPP_REF }}
+            ACPP_COMMIT=${{ env.ACPP_COMMIT }}
+            CUDA_VERSION=${{ env.CUDA_VERSION }}
+            CUDA_DEVEL_IMAGE=${{ env.CUDA_DEVEL_IMAGE }}
+            CUDA_RUNTIME_IMAGE=${{ env.CUDA_RUNTIME_IMAGE }}
+            ACPP_COMPILER_FEATURE_PROFILE=${{ env.ACPP_COMPILER_FEATURE_PROFILE }}
+            BOOST_VERSION=${{ env.BOOST_VERSION }}
+            BOOST_URL=${{ env.BOOST_URL }}
+            BOOST_SHA256=${{ env.BOOST_SHA256 }}
+            FUZZYBITS_REVISION=${{ github.sha }}
+            FUZZYBITS_VERSION=${{ env.FUZZYBITS_VERSION }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/fuzzybit-org/fuzzybits
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.FUZZYBITS_VERSION }}
+            org.opencontainers.image.title=fuzzybits-runtime
+            dev.fuzzybits.acpp.ref=${{ env.ACPP_REF }}
+            dev.fuzzybits.acpp.commit=${{ env.ACPP_COMMIT }}
+            dev.fuzzybits.acpp.targets=${{ matrix.acpp_targets }}
+            dev.fuzzybits.cuda.embed_ptx=${{ matrix.cuda_embed_ptx }}
+            dev.fuzzybits.cuda.version=${{ env.CUDA_VERSION }}
+            dev.fuzzybits.variant=${{ matrix.variant }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.variant }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.variant }},mode=max
+
+      - name: Inspect published image
+        run: |
+          set -euo pipefail
+          tag="${IMAGE}:${{ steps.meta.outputs.primary }}"
+          echo "## ${{ matrix.variant }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- primary: \`${tag}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- toolchain: \`${TOOLCHAIN_IMAGE}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- digest: \`${{ steps.build.outputs.digest }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          docker buildx imagetools inspect "${tag}" | tee /tmp/inspect.txt
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          head -n 40 /tmp/inspect.txt >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Set GHCR package public
+        if: matrix.variant == 'generic'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api --method PUT \
+            -H "Accept: application/vnd.github+json" \
+            /orgs/fuzzybit-org/packages/container/fuzzybits-runtime/visibility \
+            -f visibility=public
+
+  smoke:
+    name: smoke-${{ matrix.name }}
+    needs: publish
+    if: needs.publish.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # xerxes Docker: physical GPU 0 = Tesla V100S (shared by sm_70 runners).
+          - name: sm70-generic
+            variant: generic
+            runs_on: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
+            concurrency_group: gpu-xerxes-v100s
+            docker_gpus: device=0
+          - name: sm70-cuda12.8-sm70
+            variant: cuda12.8-sm70
+            runs_on: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
+            concurrency_group: gpu-xerxes-v100s
+            docker_gpus: device=0
+          # physical GPU 1 = RTX 3070
+          - name: sm86-generic
+            variant: generic
+            runs_on: [self-hosted, Linux, X64, nvidia, sm_86, rtx_3070]
+            concurrency_group: gpu-xerxes-3070
+            docker_gpus: device=1
+          - name: sm120-generic
+            variant: generic
+            runs_on: [self-hosted, Linux, X64, nvidia, fast, sm_120, rtx_5060ti_8gb]
+            concurrency_group: gpu-shelly-5060ti
+            docker_gpus: device=0
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 30
+    concurrency:
+      group: ${{ matrix.concurrency_group }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      DOCKER_GPUS: ${{ matrix.docker_gpus }}
+      VARIANT: ${{ matrix.variant }}
+      SMOKE_NAME: fuzzybits-runtime-smoke-${{ github.run_id }}-${{ matrix.name }}-${{ github.run_attempt }}
+    steps:
+      - name: Resolve public image tag
+        run: |
+          set -euo pipefail
+          SHA12="${GITHUB_SHA:0:12}"
+          VARIANT="${VARIANT}"
+          if [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
+            TAG="ci-${SHA12}-${VARIANT}"
+          elif [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            TAG="${GITHUB_REF_NAME}-${VARIANT}"
+          else
+            TAG="sha-${SHA12}-${VARIANT}"
+          fi
+          echo "RUNTIME_IMAGE=${IMAGE}:${TAG}" >> "${GITHUB_ENV}"
+          echo "RUNTIME_IMAGE=${IMAGE}:${TAG}"
+
+      - name: GPU mapping probe
+        run: |
+          set -euo pipefail
+          echo "runner=${RUNNER_NAME:-} docker_gpus=${DOCKER_GPUS}"
+          echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES-UNSET}"
+          echo "NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES-UNSET}"
+          nvidia-smi -L || true
+          docker run --rm --gpus "${DOCKER_GPUS}" --entrypoint bash \
+            nvidia/cuda:12.8.1-base-ubuntu24.04 -lc 'nvidia-smi -L'
+
+      - name: Pull public runtime image
+        run: |
+          set -euo pipefail
+          docker pull "${RUNTIME_IMAGE}"
+          docker image inspect "${RUNTIME_IMAGE}" --format '{{.Id}} {{.Size}}' \
+            | awk '{printf "id=%s uncompressed_bytes=%s uncompressed_GiB=%.2f\n", $1, $2, $2/1024/1024/1024}'
+
+      - name: Image smoke (mcscram-smoke + fzb compile/run)
+        run: |
+          set -euo pipefail
+          docker run --rm --name "${SMOKE_NAME}" --gpus "${DOCKER_GPUS}" \
+            --entrypoint fuzzybits-image-smoke \
+            "${RUNTIME_IMAGE}"
+
+      - name: Drop this job's container
+        if: always()
+        run: docker rm -f "${SMOKE_NAME}" || true
+
+      - name: Remove pulled runtime image
+        if: always()
+        run: docker rmi "${RUNTIME_IMAGE}" || true

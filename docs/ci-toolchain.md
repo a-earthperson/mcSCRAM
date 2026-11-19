@@ -186,3 +186,12 @@ present (the toolchain image) and FetchContent 1.89.0 otherwise.
    add it to the `BOOST_INCLUDE_LIBRARIES` ARG in `docker/toolchain.Dockerfile`
    as well (or CI will CONFIG-find Boost and then fail linking the new
    component).
+
+## Runtime images
+
+Published runtime images (`ghcr.io/fuzzybit-org/fuzzybits-runtime`) are a
+separate workflow: [`.github/workflows/images.yml`](../.github/workflows/images.yml),
+documented in [`docs/images.md`](images.md). Hosted publish jobs pull this
+toolchain image (private, `GITHUB_TOKEN`) and build `docker/runtime.Dockerfile`
+on top of it so LLVM/AdaptiveCpp are not rebuilt. The runtime package itself
+is public.
