@@ -50,7 +50,7 @@
     {
       "name": "metal",
       "displayName": "metal (macOS generic + Metal)",
-      "description": "macOS 26 Apple Silicon. ACPP_TARGETS=generic against AdaptiveCpp built with WITH_METAL_BACKEND=ON and METAL_INCLUDE_DIR (metal-cpp pin TBD, #30). Not verifiable on Intel Macs.",
+      "description": "macOS 26 Apple Silicon. ACPP_TARGETS=generic against AdaptiveCpp built with WITH_METAL_BACKEND=ON, ACPP_COMPILER_FEATURE_PROFILE=full, ACPP_REF_METAL (post-94e1749) and METAL_CPP_VERSION=release/metal-cpp_macOS26_iOS26. Intel Darwin can configure; Metal runtime needs arm64.",
       "inherits": "base",
       "condition": {
         "type": "equals",
@@ -141,6 +141,24 @@
       },
       "environment": {
         "ACPP_VISIBILITY_MASK": "metal",
+        "ACPP_DEBUG_LEVEL": "0",
+        "ACPP_PERSISTENT_RUNTIME": "1",
+        "CTEST_NO_TESTS_ACTION": "ignore"
+      }
+    },
+    {
+      "name": "metal-cpu",
+      "configurePreset": "metal",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "exclude": {
+          "label": "quarantine"
+        }
+      },
+      "environment": {
+        "ACPP_VISIBILITY_MASK": "omp",
         "ACPP_DEBUG_LEVEL": "0",
         "ACPP_PERSISTENT_RUNTIME": "1",
         "CTEST_NO_TESTS_ACTION": "ignore"

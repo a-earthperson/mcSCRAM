@@ -125,8 +125,10 @@ void apply_backend_mask(const std::string &backend) {
     mask = "cuda";
   } else if (backend == "omp") {
     mask = "omp";
+  } else if (backend == "metal") {
+    mask = "metal";
   } else {
-    throw RuntimeError("unknown backend '" + backend + "' (expected cuda or omp)");
+    throw RuntimeError("unknown backend '" + backend + "' (expected cuda, omp, or metal)");
   }
   if (setenv("ACPP_VISIBILITY_MASK", mask, 1) != 0) {
     throw RuntimeError("failed to set ACPP_VISIBILITY_MASK=" + std::string(mask));
