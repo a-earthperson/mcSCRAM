@@ -240,6 +240,7 @@ jobs:
           fi
 
       - name: Configure and build fuzzybits (metal preset)
+        id: product
         run: |
           set -euo pipefail
           start=$(date +%s)
@@ -285,7 +286,7 @@ jobs:
           echo "cpu_ctest_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
 
       - name: ctest Metal (label mc)
-        if: steps.probe.outputs.metal_device == 'yes'
+        if: ${{ always() && steps.probe.outputs.metal_device == 'yes' && steps.product.outcome == 'success' }}
         timeout-minutes: 15
         continue-on-error: true
         env:
