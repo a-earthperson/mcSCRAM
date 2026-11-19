@@ -1,0 +1,13 @@
+# NVIDIA GPU override (needs the NVIDIA Container Toolkit):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# NVIDIA_VISIBLE_DEVICES picks the GPU(s), e.g. NVIDIA_VISIBLE_DEVICES=1.
+
+services:
+  server:
+    environment:
+      ACPP_VISIBILITY_MASK: cuda
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    runtime: nvidia
