@@ -53,14 +53,19 @@ foreach(_case n65536 n2p24 seed smalltree bscu)
 endforeach()
 
 add_executable(mc_bitpack_identity_tests bitpack_identity_tests.cc)
-target_link_libraries(mc_bitpack_identity_tests PRIVATE Catch2::Catch2WithMain mc)
+target_link_libraries(mc_bitpack_identity_tests PRIVATE Catch2::Catch2WithMain mc pcfb)
 target_include_directories(mc_bitpack_identity_tests PRIVATE
   "${PROJECT_SOURCE_DIR}/src"
   "${PROJECT_SOURCE_DIR}/tests"
 )
 add_sycl_to_target(TARGET mc_bitpack_identity_tests SOURCES bitpack_identity_tests.cc)
-add_test(NAME mc.bitpack_identity COMMAND mc_bitpack_identity_tests)
+add_test(NAME mc.bitpack_identity COMMAND mc_bitpack_identity_tests "[bit-identity]")
 set_tests_properties(mc.bitpack_identity PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)
+add_test(NAME mc.rare_event COMMAND mc_bitpack_identity_tests "[rare]")
+set_tests_properties(mc.rare_event PROPERTIES
   LABELS "mc"
   TIMEOUT ${MC_TEST_TIMEOUT}
 )

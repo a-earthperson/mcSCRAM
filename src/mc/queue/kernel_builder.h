@@ -60,6 +60,7 @@
 
 #pragma once
 
+#include "mc/event/host_threshold.h"
 #include "mc/event/node.h"
 #include "working_set.h"
 
@@ -283,9 +284,9 @@ namespace scram::mc::queue {
             return nullptr;
         }
 
-        // 1) Gather each Variable's index and probability from the BasicEvent data
-        std::vector<std::pair<index_t_, prob_t_>> indexed_probabilities;
-        indexed_probabilities.reserve(variables_.size());
+        // 1) Gather each Variable's index and host-computed 64-bit threshold.
+        std::vector<std::pair<index_t_, prng::bernoulli_threshold>> indexed_thresholds;
+        indexed_thresholds.reserve(variables_.size());
 
         for (const auto& variable : variables_) {
             const auto var_unique_index = variable->index();
@@ -306,32 +307,54 @@ namespace scram::mc::queue {
                                          " point probability is not in [0, 1]");
             }
 
-            indexed_probabilities.push_back(std::pair<index_t_, prob_t_>{var_unique_index, static_cast<prob_t_>(p)});
+            indexed_thresholds.push_back({var_unique_index, prng::threshold_from_probability(p)});
         }
 
-        if (indexed_probabilities.empty()) {
+        if (indexed_thresholds.empty()) {
             return nullptr;
         }
 
-        const auto num_events_in_kernel = indexed_probabilities.size();
+        const auto num_events_in_kernel = indexed_thresholds.size();
         std::vector<std::int32_t> node_indices;
-        node_indices.reserve(indexed_probabilities.size());
-        for (const auto &[index, _] : indexed_probabilities) {
+        node_indices.reserve(indexed_thresholds.size());
+        for (const auto &[index, _] : indexed_thresholds) {
             node_indices.push_back(static_cast<std::int32_t>(index));
         }
 
         // 2) Create a contiguous block of basic_events
         using block_type = event::basic_event_block<prob_t_, bitpack_t_>;
-        block_type event_block = event::create_basic_event_block<prob_t_, bitpack_t_>(queue_, indexed_probabilities, sample_shape_.num_bitpacks());
+        block_type event_block = event::create_basic_event_block<prob_t_, bitpack_t_>(queue_, indexed_thresholds, sample_shape_.num_bitpacks());
 
-        // 3) Build the basic_event kernel using the block wrapper
+        // 3) Compute the ND-range, then build the high-word-only sampler and
+        //    its tie fix-up over the same launch shape.
         using kernel_type = kernel::basic_event<prob_t_, bitpack_t_, size_t_>;
-        kernel_type be_kernel(event_block, sample_shape_);
+        using fixup_type = kernel::basic_event_tie_fixup<prob_t_, bitpack_t_, size_t_>;
+        auto local_range = working_set<size_t_, bitpack_t_>(queue_, num_events_in_kernel, sample_shape_).compute_optimal_local_range_3d();
+        // SSCP basic_event sits at the 64-register cap of a 1024-thread group.
+        // Recording the tie flag spills there; 256-thread groups stay in
+        // registers (80 on sm_70). CPU sub-groups are size 1, so the cap
+        // applies only to GPU/accelerator devices.
+        {
+            const auto sg_sizes = queue_.get_device().template get_info<sycl::info::device::sub_group_sizes>();
+            const std::size_t max_sg = sg_sizes.empty() ? 1 : *std::max_element(sg_sizes.begin(), sg_sizes.end());
+            constexpr std::size_t kGpuSamplerWorkGroupCap = 256;
+            if (max_sg > 1) {
+                while (local_range.size() > kGpuSamplerWorkGroupCap) {
+                    const int d = local_range[2] >= local_range[0] ? 2 : 0;
+                    local_range[d] = std::max<std::size_t>(1, local_range[d] / 2);
+                }
+            }
+        }
+        const auto nd_range = kernel_type::get_range(num_events_in_kernel, local_range, sample_shape_);
+        const kernel::tie_slot_layout tie_slots = kernel_type::allocate_tie_slots(queue_, nd_range);
+        event_block.tie_slots = tie_slots.data;
+        kernel_type be_kernel(event_block, sample_shape_, tie_slots);
+        fixup_type be_fixup(event_block, sample_shape_, tie_slots, nd_range);
+        const auto fixup_range = fixup_type::get_range(
+            tie_slots, queue_.get_device().get_info<sycl::info::device::max_work_group_size>());
 
-        // 4) Compute the ND-range and create a queueable partition
-        const auto local_range = working_set<size_t_, bitpack_t_>(queue_, num_events_in_kernel, sample_shape_).compute_optimal_local_range_3d();
-        const auto nd_range = be_kernel.get_range(num_events_in_kernel, local_range, sample_shape_);
-        iterable_queueable<kernel_type, 3> be_partition(queue_, be_kernel, nd_range);
+        // 4) Create a queueable partition: sampler, then fix-up, same iteration
+        iterable_queueable_with_followup<kernel_type, fixup_type, 3> be_partition(queue_, be_kernel, nd_range, be_fixup, fixup_range);
         auto queueable_partition = std::make_shared<decltype(be_partition)>(be_partition);
         register_kernel_partition(
             queueable_partition,
@@ -350,7 +373,7 @@ namespace scram::mc::queue {
 
         // 5) Update allocated objects and queueables in the global maps
         for (auto i = 0; i < num_events_in_kernel; ++i) {
-            const auto event_index_in_pdag = indexed_probabilities[i].first;
+            const auto event_index_in_pdag = indexed_thresholds[i].first;
             // allocated_basic_events_by_index_[event_index_in_pdag] = event_block.data + i;
             allocated_basic_events_by_index_[event_index_in_pdag] = &event_block[i];
             queueables_by_index_[event_index_in_pdag] = queueable_partition;
@@ -913,7 +936,7 @@ namespace scram::mc::queue {
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
         const std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
-        std::unordered_map<index_t_, event::tally<bitpack_t_> *> &allocated_tally_events_by_index_,
+        std::unordered_map<index_t_, event::tally_device<bitpack_t_> *> &allocated_tally_events_by_index_,
         std::vector<event::tally_block<bitpack_t_>> &device_tally_blocks_,
         std::vector<kernel_partition_description> &execution_partitions_,
         std::vector<kernel_dependency_edge> &execution_dependency_edges_,

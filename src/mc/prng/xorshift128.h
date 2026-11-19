@@ -1,4 +1,5 @@
 #pragma once
+#include "mc/prng/bernoulli.h"
 #include "mc/prng/state128.h"
 
 #include <cstdint>
@@ -55,6 +56,11 @@ static inline uint32_t next(state128 &s)
     results->x[3] = prng::xorshift::next(local);
 }
 
+[[gnu::noinline]] [[gnu::cold]]
+static void generate_tie_low(const state128 *seeds, state128 *results, const uint8_t generation) {
+    generate(seeds, results, generation);
+}
+
 /**
  * @brief Bernoulli-sample four bits using the lightweight xorshift128 PRNG.
  *
@@ -63,34 +69,52 @@ static inline uint32_t next(state128 &s)
  * to switch RNGs simply by choosing which seed type to pass.
  */
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ sample(const state128 *seeds, const std::uint64_t threshold,
+[[gnu::always_inline]] static bitpack_t_ sample(const state128 *seeds, const bernoulli_threshold &threshold,
                                                 const std::uint32_t generation) {
-    prng::state128 results;
-    prng::xorshift::generate(seeds, &results, static_cast<uint8_t>(generation));
+    prng::state128 hi{};
+    prng::xorshift::generate(seeds, &hi, static_cast<uint8_t>(generation));
+
+    prng::state128 lo{};
+    if (any_high_word_tie(hi, threshold)) [[unlikely]] {
+        generate_tie_low(seeds, &lo, static_cast<uint8_t>(generation + kLowWordGenerationBase));
+    }
 
     static constexpr std::uint32_t bernoulli_bits_per_generation = 4;
     const std::uint32_t bernoulli_bits_offset = bernoulli_bits_per_generation * generation;
-
-    using b = bitpack_t_;
-    bitpack_t_ out_bits = b(0);
-    out_bits |= (static_cast<std::uint64_t>(results.x[0]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 0);
-    out_bits |= (static_cast<std::uint64_t>(results.x[1]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 1);
-    out_bits |= (static_cast<std::uint64_t>(results.x[2]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 2);
-    out_bits |= (static_cast<std::uint64_t>(results.x[3]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 3);
-
-    return out_bits;
+    return pack_four_bits<bitpack_t_>(hi, lo, threshold, bernoulli_bits_offset);
 }
 
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base, const std::uint64_t p_threshold) {
+[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base,
+                                                             const bernoulli_threshold &p_threshold) {
     static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
     static constexpr std::uint8_t num_generations = sizeof(bitpack_t_) * 8 / bernoulli_bits_per_generation;
+    using tie_check_ = tie_stream_independence<bitpack_t_>;
+    static_assert(tie_check_::num_generations == static_cast<std::uint32_t>(num_generations));
 
     bitpack_t_ bitpacked_sample = bitpack_t_(0);
-    #pragma unroll
+    std::uint32_t tie_mask = 0;
+#pragma unroll
     for (std::uint32_t i = 0; i < num_generations; ++i) {
-        const bitpack_t_ four_bits = prng::xorshift::sample<bitpack_t_>(&seed_base, p_threshold, i);
-        bitpacked_sample |= four_bits;
+        prng::state128 hi{};
+        generate(&seed_base, &hi, static_cast<uint8_t>(i));
+        bitpacked_sample |= pack_four_bits_hi<bitpack_t_>(hi, high_word_threshold(p_threshold),
+                                                          i * bernoulli_bits_per_generation);
+        if (any_high_word_tie(hi, p_threshold)) {
+            tie_mask |= (1u << i);
+        }
+    }
+    if (tie_mask != 0) [[unlikely]] {
+        for (std::uint32_t i = 0; i < num_generations; ++i) {
+            if ((tie_mask & (1u << i)) == 0) {
+                continue;
+            }
+            prng::state128 hi{};
+            prng::state128 lo{};
+            generate(&seed_base, &hi, static_cast<uint8_t>(i));
+            generate(&seed_base, &lo, static_cast<uint8_t>(i + kLowWordGenerationBase));
+            bitpacked_sample |= pack_four_bits<bitpack_t_>(hi, lo, p_threshold, i * bernoulli_bits_per_generation);
+        }
     }
     return bitpacked_sample;
 }
