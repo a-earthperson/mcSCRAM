@@ -34,9 +34,16 @@ env:
 jobs:
   webui:
     name: webui
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -58,9 +65,16 @@ jobs:
 
   pytest:
     name: pytest
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -72,10 +86,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: tools/server/uv.lock
 
-      - name: Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.12"
+      - name: Python 3.12 (uv-managed)
+        run: |
+          uv python install 3.12
+          echo "UV_PYTHON=3.12" >> "${GITHUB_ENV}"
 
       - name: Test
         working-directory: tools/server
@@ -85,9 +99,16 @@ jobs:
 
   native:
     name: pytest-native
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
     timeout-minutes: 20
     steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -100,9 +121,10 @@ jobs:
           set -euo pipefail
           docker pull "${RUNTIME_IMAGE}"
           docker pull ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
-          docker create --name uvbin ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
-          docker cp uvbin:/uv "${RUNNER_TEMP}/uv"
-          docker rm uvbin
+          # Container ID, not a fixed name: self-hosted runners share one Docker daemon.
+          uvbin="$(docker create ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142)"
+          docker cp "${uvbin}:/uv" "${RUNNER_TEMP}/uv"
+          docker rm -f "${uvbin}" >/dev/null || true
           chmod +x "${RUNNER_TEMP}/uv"
           # docker run (not a GHA container job): LLVM JIT SIGILL'd under the
           # Actions container runtime on some hosted SKUs; E2E uses this path.
@@ -135,9 +157,16 @@ jobs:
 
   wheel:
     name: wheel-smoke
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
     timeout-minutes: 25
     steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -162,10 +191,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: tools/server/uv.lock
 
-      - name: Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.12"
+      - name: Python 3.12 (uv-managed)
+        run: |
+          uv python install 3.12
+          echo "UV_PYTHON=3.12" >> "${GITHUB_ENV}"
 
       - name: Build fuzzybits-server wheel
         env:
@@ -200,9 +229,10 @@ jobs:
           set -euo pipefail
           docker pull "${RUNTIME_IMAGE}"
           docker pull ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
-          docker create --name uvbin ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
-          docker cp uvbin:/uv "${RUNNER_TEMP}/uv"
-          docker rm uvbin
+          # Container ID, not a fixed name: self-hosted runners share one Docker daemon.
+          uvbin="$(docker create ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142)"
+          docker cp "${uvbin}:/uv" "${RUNNER_TEMP}/uv"
+          docker rm -f "${uvbin}" >/dev/null || true
           chmod +x "${RUNNER_TEMP}/uv"
           docker run --rm -i \
             --user root \

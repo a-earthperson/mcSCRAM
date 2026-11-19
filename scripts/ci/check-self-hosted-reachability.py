@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Fail if a self-hosted job can run on pull_request / pull_request_target.
+"""Fail if a self-hosted job can run on pull_request in an unapproved way.
 
-Public repo + org self-hosted runners (including shelly) means PR code must
-never reach those machines. gpu.yml is push/workflow_dispatch/schedule only.
+Public repo + org self-hosted runners. In PR-triggered workflows the only
+allowed self-hosted runs-on is APPROVED_PR_RUNS_ON: the `fuzzybits-ci` group
+(this repository only) for same-repo, non-Dependabot PRs, with GitHub-hosted
+ubuntu-24.04 for fork and Dependabot PRs. Fork PR runs also need maintainer
+approval (repository setting). GPU runners and every other group stay
+push/workflow_dispatch/schedule only (gpu.yml, images.yml).
 """
 from __future__ import annotations
 
@@ -32,6 +36,18 @@ SELF_HOSTED_MARKERS = (
     "fzb-xerxes",
     "shelly-1",
     "gpu-runners",
+    "public-ci",
+    "fuzzybits-ci",
+    "fuzzybits-bench",
+    "fzb-bench",
+)
+
+# The one self-hosted runs-on allowed in PR-triggered workflows. Changing it
+# must change this guard too.
+APPROVED_PR_RUNS_ON = (
+    "${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository"
+    " && github.event.pull_request.user.login != 'dependabot[bot]'))"
+    " && fromJSON('{\"group\":\"fuzzybits-ci\",\"labels\":[\"self-hosted\",\"Linux\",\"X64\"]}') || 'ubuntu-24.04' }}"
 )
 
 FORBIDDEN_TRIGGERS = ("pull_request_target", "workflow_run")
@@ -110,7 +126,8 @@ def main() -> int:
         if not isinstance(data, dict):
             errors.append(f"{path.name}: not a mapping")
             continue
-        on_keys = _on_keys(data.get("on"))
+        # PyYAML (YAML 1.1) parses the key `on` as the boolean True.
+        on_keys = _on_keys(data.get("on", data.get(True)))
         rel = f".github/workflows/{path.name}"
 
         for forbidden in FORBIDDEN_TRIGGERS:
@@ -123,12 +140,18 @@ def main() -> int:
         jobs = data.get("jobs") or {}
         if not isinstance(jobs, dict):
             continue
-        self_hosted_jobs = [name for name, job in jobs.items() if _job_is_self_hosted(job)]
+        self_hosted_jobs = [
+            name for name, job in jobs.items()
+            if _job_is_self_hosted(job)
+            and not (isinstance(job, dict) and job.get("runs-on") == APPROVED_PR_RUNS_ON
+                     and not _strings((job.get("strategy") or {}).get("matrix")
+                                      if isinstance(job.get("strategy"), dict) else None))
+        ]
         if self_hosted_jobs and (on_keys & set(PR_TRIGGERS)):
             errors.append(
                 f"{rel}: self-hosted job(s) {self_hosted_jobs} are reachable "
                 f"from {sorted(on_keys & set(PR_TRIGGERS))} — split them into "
-                "a push/workflow_dispatch/schedule workflow"
+                "a push/workflow_dispatch/schedule workflow, or use APPROVED_PR_RUNS_ON"
             )
 
     if errors:
@@ -137,7 +160,7 @@ def main() -> int:
             sys.stderr.write(f"  - {e}\n")
         return 1
 
-    print(f"ok: {len(files)} workflow file(s), no self-hosted job reachable from pull_request")
+    print(f"ok: {len(files)} workflow file(s); PR-reachable self-hosted jobs use only the approved fuzzybits-ci routing")
     return 0
 
 
