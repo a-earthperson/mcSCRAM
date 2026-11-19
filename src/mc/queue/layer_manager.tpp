@@ -488,7 +488,8 @@ sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::pass(const size_t count
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::single_pass_and_tally(const index_t_ evt_idx) {
-    single_pass().wait_and_throw();
+    single_pass();
+    wait_sycl_queue(queue_);
     const event::tally<bitpack_t_> computed_tally = fetch_tally_for_event_with_index(evt_idx);
     return computed_tally;
 }
@@ -524,10 +525,12 @@ stats::TallyNodeMap &layer_manager<bitpack_t_, prob_t_, size_t_>::pass_wait_coll
         const auto batch_size = std::min(interval, passes_remaining);
 
         // Enqueue `batch_size` passes without blocking.
-        auto queue = pass(batch_size);
+        pass(batch_size);
 
         // Flush the device so we do not let the queue grow without bound.
-        queue.wait_and_throw();
+        // Do not wait_and_throw: AdaptiveCpp's handler + ~queue double-throw
+        // terminates. wait_sycl_queue records async errors and rethrows once.
+        wait_sycl_queue(queue_);
 
         passes_remaining -= batch_size;
     }
@@ -551,23 +554,27 @@ stats::TallyNodeMap &layer_manager<bitpack_t_, prob_t_, size_t_>::collect_tallie
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
-
-    // Free allocated basic events
-    for (auto &block : device_basic_event_blocks_) {
-        event::destroy_basic_event_block(queue_, block);
-    }
-
-    // Free allocated gates
-    for (auto &block : device_gate_blocks_) {
-        event::destroy_gate_block(queue_, block);
-    }
-
-    for (auto &block : device_atleast_gate_blocks_) {
-        event::destroy_atleast_gate_block(queue_, block);
-    }
-
-    for (auto &block : device_tally_blocks_) {
-        event::destroy_tally_block(queue_, block);
+    try {
+        for (auto &block : device_basic_event_blocks_) {
+            event::destroy_basic_event_block(queue_, block);
+        }
+        for (auto &block : device_gate_blocks_) {
+            event::destroy_gate_block(queue_, block);
+        }
+        for (auto &block : device_atleast_gate_blocks_) {
+            event::destroy_atleast_gate_block(queue_, block);
+        }
+        for (auto &block : device_tally_blocks_) {
+            event::destroy_tally_block(queue_, block);
+        }
+        device_basic_event_blocks_.clear();
+        device_gate_blocks_.clear();
+        device_atleast_gate_blocks_.clear();
+        device_tally_blocks_.clear();
+        queue_.throw_asynchronous();
+        sycl_async_error_slot().clear();
+    } catch (...) {
+        sycl_async_error_slot().clear();
     }
 }
 
