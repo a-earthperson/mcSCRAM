@@ -194,7 +194,16 @@ RUN python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
     if [ -n "${missing}" ]; then echo "${missing}" >&2; exit 1; fi && \
     ACPP_VISIBILITY_MASK=omp acpp-info -l && \
     scram-cli --help >/dev/null && \
-    fzb --help >/dev/null
+    fzb --help >/dev/null && \
+    if [ "${INCLUDE_SSCP_JIT}" = "1" ]; then \
+      test -x /usr/lib/llvm-${CLANG_VERSION}/bin/ld.lld; \
+      test -x /usr/local/lib/hipSYCL/ext/llvm/bin/ld.lld; \
+      mkdir -p /tmp/acpp-appdb; \
+      ACPP_VISIBILITY_MASK=omp ACPP_APPDB_DIR=/tmp/acpp-appdb \
+        fzb compile /app/input/chinese.xml -c 2 --no-kn -o /tmp/chinese.pcfb; \
+      ACPP_VISIBILITY_MASK=omp ACPP_APPDB_DIR=/tmp/acpp-appdb \
+        fzb run /tmp/chinese.pcfb --backend omp --trials 1e5 --json; \
+    fi
 
 USER ${USER}
 WORKDIR /app

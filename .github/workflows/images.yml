@@ -362,8 +362,14 @@ jobs:
             tag="${RUNTIME_IMAGE##*:}"
             name="${SMOKE_PREFIX}-${tag}"
             echo "::group::smoke ${RUNTIME_IMAGE}"
+            omp=1
+            if [[ "${RUNTIME_IMAGE}" == *cuda12.8-sm70 ]]; then
+              omp=0
+            fi
             docker run --rm --name "${name}" --gpus "${DOCKER_GPUS}" \
               --entrypoint fuzzybits-image-smoke \
+              -e SMOKE_FZB_OMP="${omp}" \
+              -e FZB_OMP_TRIALS=1e6 \
               "${RUNTIME_IMAGE}"
             echo "::endgroup::"
           done
@@ -382,3 +388,42 @@ jobs:
             docker rmi "${RUNTIME_IMAGE}" || true
           done
 
+
+  smoke-cpu:
+    name: smoke-cpu-omp
+    needs: publish
+    if: needs.publish.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VARIANT: generic
+    steps:
+      - name: Resolve image tag
+        run: |
+          set -euo pipefail
+          SHA12="${GITHUB_SHA:0:12}"
+          if [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
+            TAG="ci-${SHA12}-${VARIANT}"
+          elif [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            TAG="${GITHUB_REF_NAME}-${VARIANT}"
+          else
+            TAG="sha-${SHA12}-${VARIANT}"
+          fi
+          echo "RUNTIME_IMAGE=${IMAGE}:${TAG}" >> "${GITHUB_ENV}"
+          echo "RUNTIME_IMAGE=${IMAGE}:${TAG}"
+
+      - name: Pull runtime image
+        run: |
+          set -euo pipefail
+          docker pull "${RUNTIME_IMAGE}"
+
+      - name: Hosted CPU omp smoke (fzb compile/run chinese)
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint fuzzybits-image-smoke \
+            -e ACPP_VISIBILITY_MASK=omp \
+            -e SMOKE_MC=0 \
+            -e SMOKE_FZB_CUDA=0 \
+            -e SMOKE_FZB_OMP=1 \
+            -e FZB_OMP_TRIALS=1e6 \
+            "${RUNTIME_IMAGE}"

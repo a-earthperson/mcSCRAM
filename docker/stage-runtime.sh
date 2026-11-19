@@ -139,6 +139,11 @@ for omp in \
 done
 
 # --- SSCP JIT bitcode / clang tools (generic only) --------------------------
+# LLVMToHost/LLVMToPtx (Utils.cpp get{Opt,LLC,LLD}Path) look first at
+# dirname(libacpp-common)/hipSYCL/ext/llvm/bin/{opt,llc,ld.lld}, then fall
+# back to the baked ACPP_*_PATH (`/usr/lib/llvm-20/bin/...`). Missing
+# ld.lld makes host JIT abort: "LLVMToHost: lld invocation failed with
+# exit code -1".
 if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
   echo "including SSCP JIT bitcode and clang tools"
   if [[ -d /usr/local/lib/hipSYCL/bitcode ]]; then
@@ -147,9 +152,50 @@ if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
   if [[ -d /usr/local/lib/hipSYCL/ext ]]; then
     cp -a /usr/local/lib/hipSYCL/ext "${DEST}/usr/local/lib/hipSYCL/ext"
   fi
-  stage "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
-  stage "/usr/lib/llvm-${CLANG_VERSION}/bin/llc"
+  llvm_bin=""
+  for d in "/usr/lib/llvm-${CLANG_VERSION}/bin" /usr/bin; do
+    if [[ -e "${d}/opt" && -e "${d}/llc" ]]; then
+      llvm_bin="${d}"
+      break
+    fi
+  done
+  if [[ -z "${llvm_bin}" ]]; then
+    echo "error: could not find LLVM opt/llc" >&2
+    exit 1
+  fi
+  lld_src=""
+  for c in \
+    "${llvm_bin}/ld.lld" \
+    "/usr/lib/llvm-${CLANG_VERSION}/bin/ld.lld" \
+    /usr/bin/ld.lld \
+    "/usr/lib/llvm-${CLANG_VERSION}/bin/lld"; do
+    if [[ -e "${c}" ]]; then
+      lld_src="${c}"
+      break
+    fi
+  done
+  if [[ -z "${lld_src}" ]]; then
+    echo "error: ld.lld not found (LLVMToHost SSCP JIT)" >&2
+    exit 1
+  fi
+  stage "${llvm_bin}/opt" "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
+  stage "${llvm_bin}/llc" "/usr/lib/llvm-${CLANG_VERSION}/bin/llc"
+  stage "${lld_src}" "/usr/lib/llvm-${CLANG_VERSION}/bin/ld.lld"
+  mkdir -p "${DEST}/usr/local/lib/hipSYCL/ext/llvm/bin" \
+           "${DEST}/usr/local/lib/hipSYCL/ext/bitcode/ptx"
+  stage "${llvm_bin}/opt" /usr/local/lib/hipSYCL/ext/llvm/bin/opt
+  stage "${llvm_bin}/llc" /usr/local/lib/hipSYCL/ext/llvm/bin/llc
+  stage "${lld_src}" /usr/local/lib/hipSYCL/ext/llvm/bin/ld.lld
+  chmod 0755 \
+    "${DEST}/usr/lib/llvm-${CLANG_VERSION}/bin/opt" \
+    "${DEST}/usr/lib/llvm-${CLANG_VERSION}/bin/llc" \
+    "${DEST}/usr/lib/llvm-${CLANG_VERSION}/bin/ld.lld" \
+    "${DEST}/usr/local/lib/hipSYCL/ext/llvm/bin/opt" \
+    "${DEST}/usr/local/lib/hipSYCL/ext/llvm/bin/llc" \
+    "${DEST}/usr/local/lib/hipSYCL/ext/llvm/bin/ld.lld"
   stage /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
+  stage /usr/local/cuda/nvvm/libdevice/libdevice.10.bc \
+    /usr/local/lib/hipSYCL/ext/bitcode/ptx/libdevice.10.bc
 else
   echo "omitting SSCP JIT bitcode (SMCP AOT runtime; llvm-to-backend still staged)"
 fi
@@ -214,6 +260,9 @@ require_staged "/usr/local/lib/libLLVM.so.${CLANG_VERSION}.1" \
   "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
 if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
   require_staged "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
+  require_staged "/usr/lib/llvm-${CLANG_VERSION}/bin/llc"
+  require_staged "/usr/lib/llvm-${CLANG_VERSION}/bin/ld.lld"
+  require_staged /usr/local/lib/hipSYCL/ext/llvm/bin/ld.lld
   require_staged /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
 fi
 echo "required libs present"
