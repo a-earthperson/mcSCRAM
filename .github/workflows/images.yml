@@ -16,6 +16,13 @@ on:
     branches: [develop, "ci/**"]
     tags: ["v*"]
 
+# ci/** branches keep one pending run per branch (a newer push replaces a
+# waiting run; running jobs are never cancelled). develop, tags and the
+# schedule get a unique group per run, so no commit's coverage is dropped.
+concurrency:
+  group: ${{ github.workflow }}-${{ startsWith(github.ref, 'refs/heads/ci/') && github.ref || github.run_id }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

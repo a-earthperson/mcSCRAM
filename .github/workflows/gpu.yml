@@ -1,6 +1,8 @@
 # Self-hosted GPU tests. Never on pull_request / pull_request_target /
 # workflow_run. Pre-merge coverage is a same-repo push to ci/** (only
-# collaborators can push branches here).
+# collaborators can push branches here). The public-ci runner group serves
+# only this repository and has no workflow restriction (it cannot list
+# ci/** refs); fork PR runs need maintainer approval.
 #
 # Binaries are built on the runner inside the toolchain container rather than
 # downloaded as hosted artifacts: generic SSCP needs the AdaptiveCpp JIT
@@ -12,7 +14,8 @@
 # job (sequential presets). No job-level concurrency groups: the public-ci
 # runner group has exactly one runner per physical GPU, so the runner
 # serialises jobs, whereas a shared concurrency group keeps only one pending
-# job and silently cancels the rest.
+# job and silently cancels the rest. The workflow-level group below only
+# deduplicates pending runs on ci/** branches.
 #
 # sm_75 / fzb-xerxes-4 (GTX 1660 Super) is excluded: the runner never
 # picked up jobs (likely no Docker GPU device). Optional coverage can
@@ -28,6 +31,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 6 * * *"
+
+# ci/** branches keep one pending run per branch (a newer push replaces a
+# waiting run; running jobs are never cancelled). develop, tags and the
+# schedule get a unique group per run, so no commit's coverage is dropped.
+concurrency:
+  group: ${{ github.workflow }}-${{ startsWith(github.ref, 'refs/heads/ci/') && github.ref || github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
