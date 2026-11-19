@@ -261,16 +261,21 @@ namespace scram::mc::kernel {
             const size_t batch_idx = item.get_global_id(1);
             const size_t bitpack_id = item.get_global_id(2);
 
-            // Bounds check
-            if (tally_idx >= tallies_block_.count ||
-                batch_idx >= sample_shape_.batch_size ||
-                bitpack_id >= sample_shape_.bitpacks_per_batch) {
+            // Bounds check. Metal must still join the group reduction (simd_sum
+            // is undefined under divergent return). Native keeps the early return.
+            const bool in_bounds = tally_idx < tallies_block_.count &&
+                                   batch_idx < sample_shape_.batch_size &&
+                                   bitpack_id < sample_shape_.bitpacks_per_batch;
+            if (!compat::join_group_sum(in_bounds)) {
                 return;
             }
 
-            // Each work-item processes exactly one bitpack for this tally
+            // Each work-item processes exactly one bitpack for this tally.
+            // OOB Metal lanes contribute 0 and do not load.
             const std::size_t idx = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_id;
-            const std::size_t local_sum = sycl::popcount(tallies_block_.data[tally_idx].buffer[idx]);
+            const std::size_t local_sum =
+                in_bounds ? static_cast<std::size_t>(sycl::popcount(tallies_block_.data[tally_idx].buffer[idx]))
+                          : 0;
 
             // Intra-group reduction: Metal uint32 (compat::group_sum), native size_t.
             const std::size_t group_sum = compat::group_sum(item.get_group(), local_sum);

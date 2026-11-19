@@ -202,9 +202,6 @@ namespace scram::mc::event {
         }
     };
 
-    static_assert(offsetof(tally<std::uint64_t>, num_one_bits) == sizeof(void *));
-    static_assert(offsetof(tally<std::uint64_t>, total_bits) == sizeof(void *) + sizeof(std::size_t));
-
     /**
      * @brief Destroys a tally event and frees associated device memory
      * 

@@ -342,7 +342,7 @@ jobs:
             | tee metal-ctest.log
           echo "metal_ctest_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
 
-      - name: ctest Metal removal canaries (WILL_FAIL)
+      - name: ctest Metal removal canaries (xfail-strict)
         if: ${{ always() && steps.probe.outputs.metal_device == 'yes' && steps.product.outcome == 'success' }}
         timeout-minutes: 5
         env:
@@ -353,9 +353,10 @@ jobs:
           set -euo pipefail
           export PATH="${ACPP_PREFIX}/bin:${PATH}"
           export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
-          # Native 64-bit reduce_over_group and device double. WILL_FAIL in
-          # CMake on Apple (xfail-strict): when AdaptiveCpp lowers them, this
-          # step fails and src/mc/compat/metal.h is deleted.
+          # Native 64-bit reduce_over_group, device double, 64-bit fetch_add.
+          # Apple wraps them in metal_canary_xfail.cmake (SIGABRT is not a
+          # CTest WILL_FAIL). When AdaptiveCpp lowers a construct the wrapper
+          # fails and the matching shim in src/mc/compat/metal.h is deleted.
           ctest --test-dir build/metal -R '^mc.metal_canary' --output-on-failure --no-tests=error
 
       - name: Record timings

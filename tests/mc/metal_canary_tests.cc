@@ -4,10 +4,11 @@
 #include <sycl/sycl.hpp>
 
 // Removal canaries for src/mc/compat/metal.h. On Metal these exercise the
-// native constructs the shims paper over. macos-metal registers them
-// WILL_FAIL (xfail-strict): when AdaptiveCpp lowers the construct, CI flips
-// and the shim is deleted. Do not label these `mc`; default presets exclude
-// `metal-canary`. Compiles on v25.10.0 (no sycl::backend::metal enumerator).
+// native constructs the shims paper over. macos-metal wraps them with
+// tests/mc/metal_canary_xfail.cmake (xfail-strict): AdaptiveCpp abort or a
+// wrong result is a pass; a clean pass fails CI so the shim is deleted.
+// Do not label these `mc`; default presets exclude `metal-canary`. Compiles
+// on v25.10.0 (no sycl::backend::metal enumerator).
 
 TEST_CASE("native 64-bit reduce_over_group on Metal", "[metal-canary][reduce64]") {
     sycl::queue queue;
@@ -41,5 +42,27 @@ TEST_CASE("native double in a Metal kernel", "[metal-canary][double]") {
     });
     queue.wait_and_throw();
     REQUIRE(*out == 0.25);
+    sycl::free(out, queue);
+}
+
+TEST_CASE("native 64-bit fetch_add on Metal", "[metal-canary][atomic64]") {
+    sycl::queue queue;
+    auto *out = sycl::malloc_shared<std::size_t>(1, queue);
+    REQUIRE(out != nullptr);
+    *out = 0;
+    constexpr std::size_t groups = 8;
+    constexpr std::size_t local = 32;
+    queue.submit([&](sycl::handler &cgh) {
+        cgh.parallel_for(sycl::nd_range<1>(groups * local, local), [=](sycl::nd_item<1> item) {
+            if (item.get_local_linear_id() == 0) {
+                auto atomic_out =
+                    sycl::atomic_ref<std::size_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                                     sycl::access::address_space::global_space>(*out);
+                atomic_out.fetch_add(1);
+            }
+        });
+    });
+    queue.wait_and_throw();
+    REQUIRE(*out == groups);
     sycl::free(out, queue);
 }

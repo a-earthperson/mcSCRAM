@@ -79,7 +79,9 @@ set_tests_properties(mc.device_selection PROPERTIES
 )
 
 # Removal canaries for src/mc/compat/metal.h. Not labelled `mc`. Default
-# presets exclude `metal-canary`. macos-metal runs them with WILL_FAIL.
+# presets exclude `metal-canary`. On Apple, AdaptiveCpp aborts (SIGABRT);
+# CTest WILL_FAIL does not treat that as an expected failure, so macos-metal
+# uses metal_canary_xfail.cmake (xfail-strict).
 add_executable(mc_metal_canary_tests metal_canary_tests.cc)
 target_link_libraries(mc_metal_canary_tests PRIVATE Catch2::Catch2WithMain mc)
 target_include_directories(mc_metal_canary_tests PRIVATE
@@ -87,14 +89,20 @@ target_include_directories(mc_metal_canary_tests PRIVATE
   "${PROJECT_SOURCE_DIR}/tests"
 )
 add_sycl_to_target(TARGET mc_metal_canary_tests SOURCES metal_canary_tests.cc)
-add_test(NAME mc.metal_canary.reduce64 COMMAND mc_metal_canary_tests "[reduce64]")
-add_test(NAME mc.metal_canary.double COMMAND mc_metal_canary_tests "[double]")
-set_tests_properties(mc.metal_canary.reduce64 mc.metal_canary.double PROPERTIES
-  LABELS "metal-canary"
-  TIMEOUT ${MC_TEST_TIMEOUT}
-)
-if(APPLE)
-  set_tests_properties(mc.metal_canary.reduce64 mc.metal_canary.double PROPERTIES
-    WILL_FAIL TRUE
+
+set(_metal_canaries reduce64 double atomic64)
+foreach(_canary IN LISTS _metal_canaries)
+  if(APPLE)
+    add_test(NAME mc.metal_canary.${_canary}
+      COMMAND ${CMAKE_COMMAND}
+        "-DCANARY_COMMAND=$<TARGET_FILE:mc_metal_canary_tests>"
+        "-DCANARY_FILTER=[${_canary}]"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/metal_canary_xfail.cmake")
+  else()
+    add_test(NAME mc.metal_canary.${_canary} COMMAND mc_metal_canary_tests "[${_canary}]")
+  endif()
+  set_tests_properties(mc.metal_canary.${_canary} PROPERTIES
+    LABELS "metal-canary"
+    TIMEOUT ${MC_TEST_TIMEOUT}
   )
-endif()
+endforeach()
