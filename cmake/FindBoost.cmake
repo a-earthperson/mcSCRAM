@@ -138,14 +138,15 @@ FetchContent_Declare(
 )
 
 if(WIN32)
-  # Boost's add_subdirectory(project()) does not inherit directory
-  # add_compile_definitions from this module. Force the STL Clang-version
-  # escape hatch onto CMAKE_CXX_FLAGS before the Boost targets are created.
-  add_definitions(-D_ALLOW_COMPILER_VERSION_MISMATCH)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH"
+  # Boost's nested project() drops directory compile definitions. Force-include
+  # the STL Clang-version escape hatch so it is defined before yvals_core.h.
+  set(_fb_stl_h "${CMAKE_CURRENT_LIST_DIR}/windows_stl_mismatch.h")
+  add_compile_options("SHELL:-include \"${_fb_stl_h}\"")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include \"${_fb_stl_h}\""
       CACHE STRING "C++ flags" FORCE)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH"
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -include \"${_fb_stl_h}\""
       CACHE STRING "C flags" FORCE)
+  unset(_fb_stl_h)
 endif()
 
 FetchContent_MakeAvailable(boost)

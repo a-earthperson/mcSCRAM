@@ -56,6 +56,10 @@ jobs:
 
       - name: MSVC developer command prompt
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          # LLVM 20 AdaptiveCpp clang cannot use MSVC 14.52 STL (STL1000 wants
+          # Clang 22). Pin the 14.51 toolset still shipped on windows-2025.
+          toolset: "14.51"
 
       - name: Bootstrap LLVM 20 (clang-cl)
         uses: KyleMayes/install-llvm-action@a7a1a882e2d06ebe05d5bb97c3e1f8c984ae96fc # v2.0.7
