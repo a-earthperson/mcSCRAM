@@ -16,6 +16,7 @@
         "MALLOC_TYPE": "malloc",
         "BUILD_PYTHON_BINDINGS": "ON",
         "OPTIMIZE_FOR_NATIVE": "OFF",
+        "FUZZYBITS_X86_ARCH": "x86-64-v2",
         "WITH_PROFILE": "OFF",
         "WITH_COVERAGE": "OFF",
         "CMAKE_CXX_SCAN_FOR_MODULES": "OFF"
@@ -24,7 +25,7 @@
     {
       "name": "generic",
       "displayName": "generic (SSCP JIT)",
-      "description": "Default Linux variant. ACPP_TARGETS=generic (SSCP), MALLOC_TYPE=malloc, Release, Python module on. Requires AdaptiveCpp built with ACPP_COMPILER_FEATURE_PROFILE=full, WITH_CUDA_BACKEND=ON, OpenMP. See docs/build-variants.md.",
+      "description": "Default Linux variant. ACPP_TARGETS=generic (SSCP), MALLOC_TYPE=malloc, Release, Python module on, -march=x86-64-v2 (Ivy Bridge). Requires AdaptiveCpp built with ACPP_COMPILER_FEATURE_PROFILE=full, WITH_CUDA_BACKEND=ON, OpenMP. See docs/build-variants.md.",
       "inherits": "base",
       "cacheVariables": {
         "ACPP_TARGETS": "generic"

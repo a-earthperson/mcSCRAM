@@ -151,11 +151,30 @@ if(WITH_PROFILE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg -fno-omit-frame-pointer")
 endif()
 
+# Portable x86 floor is x86-64-v2 (SSE4.2+POPCNT): Ivy Bridge / Xeon E5 v2
+# (xerxes). Do not emit AVX2/FMA/BMI — those SIGILL there. pcfb's own
+# cmake/common-flags.cmake still injects -march=native; FuzzybitsPcfb.cmake
+# overrides that after FetchContent. OPTIMIZE_FOR_NATIVE (debug preset) wins.
+set(FUZZYBITS_X86_ARCH "x86-64-v2" CACHE STRING
+  "x86 -march for portable builds. Ignored when OPTIMIZE_FOR_NATIVE=ON.")
 if(OPTIMIZE_FOR_NATIVE)
   include(CheckCXXCompilerFlag)
   CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
   if(COMPILER_SUPPORTS_MARCH_NATIVE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+  endif()
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  include(CheckCXXCompilerFlag)
+  CHECK_CXX_COMPILER_FLAG("-march=${FUZZYBITS_X86_ARCH}" COMPILER_SUPPORTS_FUZZYBITS_X86_ARCH)
+  if(COMPILER_SUPPORTS_FUZZYBITS_X86_ARCH)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${FUZZYBITS_X86_ARCH}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${FUZZYBITS_X86_ARCH}")
+    add_compile_options("-march=${FUZZYBITS_X86_ARCH}")
+    message(STATUS "Portable x86 baseline: -march=${FUZZYBITS_X86_ARCH}")
+  else()
+    message(WARNING
+      "Compiler does not support -march=${FUZZYBITS_X86_ARCH}; leaving the "
+      "default target (may not run on Ivy Bridge)")
   endif()
 endif()
 

@@ -136,6 +136,8 @@ RUN git clone --filter=blob:none --depth 1 --branch "${ACPP_REF}" "${ACPP_REPO}"
           -DCMAKE_INSTALL_PREFIX=${ADAPTIVE_CPP_INSTALL_DIR} \
           -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} \
           -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER} \
+          -DCMAKE_C_FLAGS="-march=x86-64-v2" \
+          -DCMAKE_CXX_FLAGS="-march=x86-64-v2" \
           -DCLANG_EXECUTABLE_PATH=${CLANG_EXECUTABLE_PATH} \
           -DLLVM_DIR=${LLVM_DIR} \
           -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR} \
@@ -170,6 +172,8 @@ RUN wget -q -O boost.tar.gz "${BOOST_URL}" && \
     cmake -S src -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=/usr/local \
+          -DCMAKE_C_FLAGS="-march=x86-64-v2" \
+          -DCMAKE_CXX_FLAGS="-march=x86-64-v2" \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_SHARED_LIBS=OFF \
           -DBOOST_INCLUDE_LIBRARIES="${BOOST_INCLUDE_LIBRARIES}" && \

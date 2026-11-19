@@ -65,6 +65,23 @@ function(fuzzybits_add_pcfb)
   if(NOT TARGET pcfb::pcfb)
     add_library(pcfb::pcfb ALIAS pcfb)
   endif()
+
+  # pcfb cmake/common-flags.cmake does add_compile_options(-march=native).
+  # That is directory-scoped and wins over the project baseline, baking the
+  # builder CPU (GitHub-hosted: BMI2) into the static lib. fzb / libmc /
+  # _native_*.so then SIGILL on Ivy Bridge (bzhi in pcfb::builder::add_sample).
+  # target_compile_options is last on the compiler command line, so it wins.
+  if(NOT OPTIMIZE_FOR_NATIVE AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    if(NOT DEFINED FUZZYBITS_X86_ARCH OR FUZZYBITS_X86_ARCH STREQUAL "")
+      set(FUZZYBITS_X86_ARCH "x86-64-v2")
+    endif()
+    foreach(_t pcfb flatbuffers flatc)
+      if(TARGET ${_t})
+        target_compile_options(${_t} PRIVATE "-march=${FUZZYBITS_X86_ARCH}")
+      endif()
+    endforeach()
+    unset(_t)
+  endif()
 endfunction()
 
 fuzzybits_add_pcfb()

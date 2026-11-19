@@ -90,8 +90,10 @@ RUN python3 -m venv /opt/wheel-venv && \
     PATH="/opt/wheel-venv/bin:${PATH}" /src/docker/auditwheel-repair.sh /out/wheelhouse /out/dist && \
     ls -lah /out/dist
 
-RUN chmod +x /src/docker/stage-runtime.sh /src/docker/image-smoke.sh /src/docker/smoke.sh && \
-    DEST=/opt/runtime-root /src/docker/stage-runtime.sh
+RUN chmod +x /src/docker/stage-runtime.sh /src/docker/image-smoke.sh \
+      /src/docker/smoke.sh /src/docker/isa-baseline-check.sh && \
+    DEST=/opt/runtime-root /src/docker/stage-runtime.sh && \
+    /src/docker/isa-baseline-check.sh /opt/runtime-root /out/dist
 
 # -----------------------------------------------------------------------------
 FROM ubuntu:24.04 AS runtime
@@ -158,6 +160,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
       python3 \
       python3-pip \
       python3-venv && \
+    apt-mark manual libxml2 && \
     if getent passwd ${UID}; then userdel -f "$(getent passwd ${UID} | cut -d: -f1)"; fi && \
     if getent group ${GID}; then groupdel "$(getent group ${GID} | cut -d: -f1)"; fi && \
     groupadd -g ${GID} ${USER} && \
@@ -175,6 +178,8 @@ RUN python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
     rm -rf /tmp/wheels && \
     apt-get purge -y python3-pip python3-venv && \
     apt-get autoremove -y && \
+    apt-get install -y --no-install-recommends libxml2 && \
+    apt-mark manual libxml2 && \
     printf '%s\n' /usr/local/lib /usr/local/cuda/lib64 > /etc/ld.so.conf.d/fuzzybits.conf && \
     ldconfig && \
     mkdir -p /home/${USER}/.cache/fuzzybits/acpp && \
@@ -187,6 +192,7 @@ RUN python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
     python3 -c "import fuzzybits, importlib.util; assert importlib.util.find_spec('mcscram_native')" && \
     test -z "${PYTHONPATH:-}" && \
     test -z "${LD_PRELOAD:-}" && \
+    test -e /lib/x86_64-linux-gnu/libxml2.so.2 && \
     missing="$(ldd /usr/local/lib/hipSYCL/librt-backend-omp.so \
                    /usr/local/lib/hipSYCL/librt-backend-cuda.so \
                    /usr/local/lib/hipSYCL/llvm-to-backend/*.so \

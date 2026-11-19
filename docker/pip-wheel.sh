@@ -11,6 +11,7 @@ cfg=(
   --config-settings=cmake.define.FUZZYBITS_WITH_MC=ON
   --config-settings=cmake.define.BUILD_TESTING=OFF
   --config-settings=cmake.define.OPTIMIZE_FOR_NATIVE=OFF
+  --config-settings=cmake.define.FUZZYBITS_X86_ARCH=x86-64-v2
   --config-settings=cmake.define.WITH_PROFILE=OFF
   --config-settings=cmake.define.WITH_COVERAGE=OFF
 )
