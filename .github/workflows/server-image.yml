@@ -4,8 +4,7 @@
 # Registry pushes never run on pull_request; this workflow is not triggered
 # by pull_request / pull_request_target / workflow_run (#34).
 #
-# Image: ghcr.io/fuzzybit-org/fuzzybits-server  (created private on first
-# push; owner flips visibility in the UI — same as fuzzybits-runtime).
+# Image: ghcr.io/fuzzybit-org/fuzzybits-server  (public; same as fuzzybits-runtime).
 #
 # Runtime base tag:
 #   - workflow_dispatch input `runtime_tag` wins (stem or full tag).
@@ -43,8 +42,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/fuzzybit-org/fuzzybits-server
   RUNTIME_REPO: ghcr.io/fuzzybit-org/fuzzybits-runtime
-  # TODO(#35): set to "false" once fuzzybits-runtime (and this package) are public.
-  GHCR_PULL_AUTH: "true"
+  GHCR_PULL_AUTH: "false"
 
 jobs:
   publish:

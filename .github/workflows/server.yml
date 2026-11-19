@@ -5,8 +5,9 @@
 # @pytest.mark.native and skipped when the wheel is absent.
 #
 # native: same suite with -m native inside the published runtime image so
-# import mcscram_native works. Skipped for fork PRs (private GHCR). Pin
-# FUZZYBITS_RUNTIME_IMAGE; after #70 merge this can move to nightly-generic.
+# import mcscram_native works. GHCR packages are public: no login, fork PRs
+# pull anonymously. Pin FUZZYBITS_RUNTIME_IMAGE; after #70 merge this can
+# move to nightly-generic.
 name: Server
 
 on:
@@ -56,24 +57,13 @@ jobs:
 
   native:
     name: pytest-native
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    permissions:
-      contents: read
-      packages: read
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-
-      - name: Log in to GHCR
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Native tests
         env:
