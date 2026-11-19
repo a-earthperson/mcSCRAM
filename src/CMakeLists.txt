@@ -94,17 +94,20 @@ set_source_files_properties(
 
 # Install the library to standard system directories respecting CMAKE_INSTALL_PREFIX.
 # Wheels co-locate libscram next to the Python extension so RPATH $ORIGIN works.
+# On Windows the DLL is the RUNTIME artefact; keep it next to the .pyd.
 if(SKBUILD)
   set(_scram_lib_dest "fuzzybits")
+  set(_scram_runtime_dest "fuzzybits")
 else()
   set(_scram_lib_dest ${CMAKE_INSTALL_LIBDIR})
+  set(_scram_runtime_dest ${CMAKE_INSTALL_BINDIR})
 endif()
 install(
         TARGETS scram
         COMPONENT scram
         LIBRARY DESTINATION ${_scram_lib_dest}
         ARCHIVE DESTINATION ${_scram_lib_dest}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        RUNTIME DESTINATION ${_scram_runtime_dest}
 )
 if(SKBUILD)
   set_target_properties(scram PROPERTIES

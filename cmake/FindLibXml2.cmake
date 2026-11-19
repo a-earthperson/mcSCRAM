@@ -42,6 +42,13 @@ if(NOT LibXml2_FOUND)
     set(LIBXML2_WITH_ICONV ON CACHE BOOL "" FORCE)
     set(LIBXML2_WITH_ZLIB ${ZLIB_FOUND} CACHE BOOL "" FORCE)
     set(LIBXML2_WITH_PROGRAMS ON CACHE BOOL "" FORCE)
+    if(WIN32)
+      # Hosted Windows has no iconv/lzma; UTF-8 MEF input does not need them.
+      set(LIBXML2_WITH_ICONV OFF CACHE BOOL "" FORCE)
+      set(LIBXML2_WITH_LZMA OFF CACHE BOOL "" FORCE)
+      set(LIBXML2_WITH_ZLIB OFF CACHE BOOL "" FORCE)
+      set(LIBXML2_WITH_PROGRAMS OFF CACHE BOOL "" FORCE)
+    endif()
 
     FetchContent_MakeAvailable(libxml2)
 
