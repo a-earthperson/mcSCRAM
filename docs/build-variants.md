@@ -208,7 +208,12 @@ Pins:
 [`.github/workflows/windows.yml`](../.github/workflows/windows.yml)
 (`windows-2025`). GPU execution is untested: GitHub-hosted runners have no
 NVIDIA device. CUDA kernels need an NVIDIA driver at run time (`nvcuda.dll`
-is **not** bundled).
+is **not** bundled). Hosted `windows-2025` images flap between MSVC 14.51
+and 14.52; LLVM 20 clang-cl + the 14.52 STL hits `STL1000` (Clang 22
+required), so CI pins the 14.51 toolset and force-includes
+`_ALLOW_COMPILER_VERSION_MISMATCH`. Native `ctest --preset windows-generic`
+still has known failures (CLI `std::system` ACCESS_VIOLATION, aiger corpus
+diagnostic, BSCU mean/sigma); the Python wheel smoke is the #76 gate.
 
 ```powershell
 # Host compiler: LLVM 20 clang-cl (MSVC ABI + GNU __atomic_* builtins).

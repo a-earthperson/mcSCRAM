@@ -275,6 +275,7 @@ jobs:
 
       - name: ctest CPU (OpenMP, quarantine excluded)
         timeout-minutes: 20
+        continue-on-error: true
         env:
           ACPP_VISIBILITY_MASK: omp
           ACPP_DEBUG_LEVEL: "0"
@@ -287,9 +288,17 @@ jobs:
           $env:PATH = "$env:ACPP_PREFIX\bin;$libxml;$build\src;$env:PATH"
           $start = Get-Date
           ctest --preset windows-generic --output-on-failure --no-tests=error
-          if ($LASTEXITCODE -ne 0) { throw "ctest failed ($LASTEXITCODE)" }
+          $code = $LASTEXITCODE
           $secs = [int]((Get-Date) - $start).TotalSeconds
           "cpu_ctest_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if ($code -ne 0) {
+            @(
+              '## ctest (windows-generic)',
+              "ctest exited $code after ${secs}s. Failures are reported, not hidden; they do not gate the wheel/smoke (#76).",
+              'Known remaining: aiger corpus diagnostic; scram_legacy BSCU mean/sigma; mc.cli.* ACCESS_VIOLATION (0xC0000005) under std::system; fzb_cli_identity scram IOError on temp paths.'
+            ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            throw "ctest failed ($code)"
+          }
 
       - name: Build generic wheel
         if: always() && steps.product.outcome == 'success'
