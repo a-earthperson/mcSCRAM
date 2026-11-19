@@ -986,6 +986,38 @@ fuzzybits::compile::Options compile_options_from_py(const py::dict &options) {
     set_option<bool>(options, {"allow_extern", "allow-extern"}, [&](bool value) { out.allow_extern = value; });
     set_option<std::string>(options, {"target", "target_gate", "target-gate", "top", "top_event", "top-event"},
                             [&](const std::string &value) { out.target = value; });
+    if (auto value = get_option(options, {"watch", "watch_nodes", "watch-nodes"})) {
+        py::object obj = *value;
+        if (py::isinstance<py::bool_>(obj)) {
+            // Boolean `watch` is watch_mode for run_probability; ignore here.
+        } else if (py::isinstance<py::str>(obj)) {
+            const auto raw = obj.cast<std::string>();
+            std::string cur;
+            for (char c : raw) {
+                if (c == ',' || c == ';' || c == ':') {
+                    if (!cur.empty()) {
+                        out.watch.push_back(cur);
+                        cur.clear();
+                    }
+                } else if (!std::isspace(static_cast<unsigned char>(c))) {
+                    cur.push_back(c);
+                }
+            }
+            if (!cur.empty()) {
+                out.watch.push_back(cur);
+            }
+        } else if (py::isinstance<py::sequence>(obj) && !py::isinstance<py::bytes>(obj)) {
+            for (auto item : obj.cast<py::sequence>()) {
+                if (py::isinstance<py::bool_>(item)) {
+                    continue;
+                }
+                auto name = py::str(item).cast<std::string>();
+                if (!name.empty()) {
+                    out.watch.push_back(std::move(name));
+                }
+            }
+        }
+    }
     return out;
 }
 
@@ -1269,67 +1301,9 @@ py::list run_pcfb_bytes(const py::bytes &data, std::uint64_t trials, const std::
     return query_results_to_py(results);
 }
 
-struct PyPcfbSession {
-    std::vector<std::byte> owned_bytes;
-    fuzzybits::runtime::ReconstructedPdag reconstructed;
-    std::unique_ptr<PyLayerManager> manager;
-    std::uint64_t pass_index = 0;
-    bool closed = false;
-    std::string target_name;
-    std::string model_name;
-
-    explicit PyPcfbSession(const py::bytes &data, const std::string &backend,
-                           std::optional<std::uint64_t> trials_per_pass) {
-        owned_bytes = bytes_from_py(data);
-        auto circuit = pcfb::io::from_bytes(owned_bytes);
-        if (!circuit) {
-            throw std::runtime_error("Session: " + circuit.error().message);
-        }
-        const auto diags = pcfb::validate(*circuit);
-        if (!diags.empty()) {
-            throw std::runtime_error("Session: pcfb validation failed (" + std::to_string(diags.size()) +
-                                     " diagnostics)");
-        }
-        fuzzybits::runtime::apply_backend_mask(backend);
-        reconstructed = fuzzybits::runtime::pdag_from_circuit(*circuit);
-        std::vector<PyLayerIndex> ids;
-        for (const auto &q : reconstructed.queries) {
-            ids.push_back(static_cast<PyLayerIndex>(q.node_index));
-            if (target_name.empty()) {
-                target_name = q.name;
-            }
-        }
-        if (model_name.empty()) {
-            model_name = target_name;
-        }
-        manager = std::make_unique<PyLayerManager>(
-            reconstructed.graph.get(), /*num_trials=*/0, ids,
-            static_cast<std::size_t>(trials_per_pass.value_or(0)));
-    }
-
-    void close() {
-        manager.reset();
-        closed = true;
-    }
-
-    py::dict sample_shape() const {
-        if (!manager || !manager->manager) {
-            throw std::runtime_error("Session: closed");
-        }
-        return sample_shape_dict(*manager->manager);
-    }
-
-    py::dict graph() const {
-        if (!reconstructed.graph) {
-            throw std::runtime_error("Session: closed");
-        }
-        py::list nodes;
-        py::list edges;
-        std::unordered_set<int> seen_nodes;
-        std::unordered_set<int> expanded_gates;
-        collect_pdag_graph(*reconstructed.graph, reconstructed.graph->root_ptr(), nodes, edges, seen_nodes,
-                           expanded_gates);
-        py::dict compilation;
+py::dict compilation_from_meta(const fuzzybits::runtime::GraphMeta &meta) {
+    py::dict compilation;
+    if (!meta.has_compilation) {
         compilation["level"] = py::none();
         compilation["ccf"] = false;
         compilation["expand_atleast_gates"] = py::none();
@@ -1337,19 +1311,169 @@ struct PyPcfbSession {
         compilation["recognize_atleast_groups"] = py::none();
         compilation["recognize_xor_groups"] = py::none();
         compilation["keep_null_gates"] = py::none();
+        return compilation;
+    }
+    compilation["level"] = meta.compilation_level;
+    compilation["ccf"] = meta.ccf;
+    compilation["expand_atleast_gates"] = meta.expand_atleast_gates;
+    compilation["expand_xor_gates"] = meta.expand_xor_gates;
+    compilation["recognize_atleast_groups"] = meta.recognize_atleast_groups;
+    compilation["recognize_xor_groups"] = meta.recognize_xor_groups;
+    compilation["keep_null_gates"] = meta.keep_null_gates;
+    return compilation;
+}
+
+py::dict annotate_kernel_graph(py::dict result, PyLayerManager &layer_manager) {
+    const auto kernel_dag = layer_manager.manager->describe_kernel_dag();
+    result["graph_kind"] = "kernel_dag";
+
+    std::unordered_map<PyLayerIndex, const PyLayerManagerNative::kernel_dag_node *> kernel_node_by_index;
+    for (const auto &node : kernel_dag.nodes) {
+        kernel_node_by_index[node.index] = &node;
+    }
+
+    py::list graph_nodes = result["nodes"].cast<py::list>();
+    for (py::handle item : graph_nodes) {
+        py::dict node = py::reinterpret_borrow<py::dict>(item);
+        const PyLayerIndex index = node["index"].cast<PyLayerIndex>();
+        auto kernel_node = kernel_node_by_index.find(index);
+        if (kernel_node == kernel_node_by_index.end()) {
+            continue;
+        }
+        node["layer"] = kernel_node->second->layer;
+        node["partition"] = kernel_node->second->partition;
+        node["kernel_kind"] = kernel_node->second->kind;
+        node["kernel_connective"] = kernel_node->second->connective;
+    }
+
+    py::list partitions;
+    for (const auto &partition : kernel_dag.partitions) {
+        py::dict item;
+        item["id"] = partition.id;
+        item["layer"] = partition.layer;
+        item["kind"] = partition.kind;
+        item["connective"] = partition.connective;
+        item["node_indices"] = partition.node_indices;
+        item["node_count"] = partition.node_indices.size();
+        partitions.append(std::move(item));
+    }
+
+    py::dict sample_shape;
+    sample_shape["batch_size"] = kernel_dag.batch_size;
+    sample_shape["bitpacks_per_batch"] = kernel_dag.bitpacks_per_batch;
+    sample_shape["bits_per_bitpack"] = sizeof(PyLayerBitpack) * 8;
+    sample_shape["trials_per_pass"] = kernel_dag.batch_size * kernel_dag.bitpacks_per_batch * sizeof(PyLayerBitpack) * 8;
+    sample_shape["total_iterations"] = kernel_dag.total_iterations;
+
+    py::dict kernel;
+    kernel["partitions"] = partitions;
+    kernel["partition_count"] = kernel_dag.partitions.size();
+    kernel["sample_shape"] = sample_shape;
+    result["kernel"] = kernel;
+    return result;
+}
+
+struct PyPcfbSession {
+    std::vector<std::byte> owned_bytes;
+    fuzzybits::runtime::ReconstructedPdag reconstructed;
+    std::unique_ptr<PyLayerManager> manager;
+    std::vector<PyLayerIndex> tally_ids;
+    std::size_t n_trials = 0;
+    std::size_t requested_tpp = 0;
+    std::uint64_t pass_index = 0;
+    bool closed = false;
+    std::string target_name;
+    std::string model_name;
+
+    explicit PyPcfbSession(const py::bytes &data, const std::string &backend,
+                           std::optional<std::uint64_t> trials_per_pass,
+                           const std::vector<std::string> &watch = {},
+                           std::optional<std::uint64_t> num_trials = std::nullopt) {
+        owned_bytes = bytes_from_py(data);
+        auto circuit = pcfb::io::from_bytes(owned_bytes);
+        if (!circuit) {
+            throw std::runtime_error("Session: " + circuit.error().message);
+        }
+        const auto diags = pcfb::validate(*circuit);
+        if (!diags.empty()) {
+            std::string msg = "Session: pcfb validation failed (" + std::to_string(diags.size()) +
+                              " diagnostics)";
+            if (!diags.empty()) {
+                msg += ": " + diags.front().message;
+            }
+            throw std::runtime_error(msg);
+        }
+        fuzzybits::runtime::apply_backend_mask(backend);
+        reconstructed = fuzzybits::runtime::pdag_from_circuit(*circuit);
+        const auto &meta = reconstructed.meta;
+        target_name = meta.target.empty() ? (reconstructed.queries.empty() ? std::string()
+                                                                           : reconstructed.queries.front().name)
+                                          : meta.target;
+        model_name = meta.model_name.empty() ? target_name : meta.model_name;
+        n_trials = static_cast<std::size_t>(num_trials.value_or(0));
+        requested_tpp = static_cast<std::size_t>(trials_per_pass.value_or(0));
+        for (const auto &q : reconstructed.queries) {
+            tally_ids.push_back(static_cast<PyLayerIndex>(q.node_index));
+        }
+        if (!watch.empty()) {
+            for (int index : fuzzybits::runtime::Session::resolve_watch(reconstructed, watch)) {
+                tally_ids.push_back(static_cast<PyLayerIndex>(index));
+            }
+        }
+        // Layer-manager / SYCL construction is deferred so DAG views
+        // (`graph()`) stay host-only. sample_shape / kernel_graph / step
+        // still build the manager on first use.
+    }
+
+    void ensure_manager() {
+        if (closed) {
+            throw std::runtime_error("Session: closed");
+        }
+        if (manager) {
+            return;
+        }
+        if (!reconstructed.graph) {
+            throw std::runtime_error("Session: closed");
+        }
+        manager = std::make_unique<PyLayerManager>(reconstructed.graph.get(), n_trials, tally_ids,
+                                                   requested_tpp);
+    }
+
+    void close() {
+        manager.reset();
+        closed = true;
+    }
+
+    py::dict sample_shape() {
+        ensure_manager();
+        return sample_shape_dict(*manager->manager);
+    }
+
+    py::dict graph() const {
+        if (!reconstructed.graph) {
+            throw std::runtime_error("Session: closed");
+        }
+        const auto &meta = reconstructed.meta;
+        py::list nodes;
+        py::list edges;
+        std::unordered_set<int> seen_nodes;
+        std::unordered_set<int> expanded_gates;
+        collect_pdag_graph(*reconstructed.graph, reconstructed.graph->root_ptr(), nodes, edges, seen_nodes,
+                           expanded_gates);
 
         py::dict result;
         result["model"] = model_name.empty() ? py::object(py::none()) : py::cast(model_name);
-        result["source"] = py::none();
-        result["input_files"] = py::list();
+        result["source"] = meta.source.empty() ? py::object(py::none()) : py::cast(meta.source);
+        result["input_files"] = meta.input_files;
         result["target"] = target_name;
-        result["target_name"] = target_name;
+        result["target_name"] = meta.target_name.empty() ? target_name : meta.target_name;
         result["top"] = reconstructed.graph->root_ptr() ? py::cast(reconstructed.graph->root_ptr()->index())
                                                         : py::object(py::none());
         result["root_complement"] = reconstructed.graph->complement();
         result["coherent"] = reconstructed.graph->coherent();
         result["normal"] = reconstructed.graph->normal();
-        result["compilation"] = compilation;
+        result["compilation"] = compilation_from_meta(meta);
+        result["graph_kind"] = "compiled_pdag";
         result["nodes"] = nodes;
         result["edges"] = edges;
         py::list queries;
@@ -1363,24 +1487,27 @@ struct PyPcfbSession {
         return result;
     }
 
-    py::dict execution_plan() const {
-        if (!manager) {
-            throw std::runtime_error("Session: closed");
-        }
+    py::dict kernel_graph() {
+        ensure_manager();
+        return annotate_kernel_graph(graph(), *manager);
+    }
+
+    py::dict execution_plan() {
+        ensure_manager();
+        const auto &meta = reconstructed.meta;
         py::dict plan = manager->execution_plan();
         plan["model"] = model_name.empty() ? py::object(py::none()) : py::cast(model_name);
-        plan["source"] = py::none();
-        plan["input_files"] = py::list();
+        plan["source"] = meta.source.empty() ? py::object(py::none()) : py::cast(meta.source);
+        plan["input_files"] = meta.input_files;
         plan["target"] = target_name;
-        plan["target_name"] = target_name;
+        plan["target_name"] = meta.target_name.empty() ? target_name : meta.target_name;
+        plan["compilation"] = compilation_from_meta(meta);
         plan["semantic_graph"] = graph();
         return plan;
     }
 
     py::dict step() {
-        if (!manager) {
-            throw std::runtime_error("Session: closed");
-        }
+        ensure_manager();
         ++pass_index;
         py::dict raw = manager->single_pass_all();
         py::dict nodes;
@@ -1591,10 +1718,13 @@ Releases the GIL while the kernel runs. `backend` is `cuda`, `omp`, or empty
 )pbdoc");
 
     py::class_<PyPcfbSession>(m, "PcfbSession")
-        .def(py::init<const py::bytes &, const std::string &, std::optional<std::uint64_t>>(),
-             py::arg("data"), py::arg("backend") = "", py::arg("trials_per_pass") = py::none())
+        .def(py::init<const py::bytes &, const std::string &, std::optional<std::uint64_t>,
+                      const std::vector<std::string> &, std::optional<std::uint64_t>>(),
+             py::arg("data"), py::arg("backend") = "", py::arg("trials_per_pass") = py::none(),
+             py::arg("watch") = std::vector<std::string>{}, py::arg("num_trials") = py::none())
         .def_property_readonly("sample_shape", &PyPcfbSession::sample_shape)
         .def("graph", &PyPcfbSession::graph)
+        .def("kernel_graph", &PyPcfbSession::kernel_graph)
         .def("execution_plan", &PyPcfbSession::execution_plan)
         .def("step", &PyPcfbSession::step, R"pbdoc(
 Run exactly one device pass and return cumulative tally counters.

@@ -391,27 +391,47 @@ def build_fault_tree_payload(input_files: list[str]) -> dict[str, Any]:
     }
 
 
-def build_dag_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
-    return build_compiled_dag_payload(input_files, options)
-
-
 def build_source_dag_payload(input_files: list[str]) -> dict[str, Any]:
     return _build_source_dag_payload(input_files)
 
 
-def build_compiled_dag_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_compiled_dag_payload(
+    input_files: list[str],
+    options: dict[str, Any] | None = None,
+    *,
+    pcfb_path: str | None = None,
+) -> dict[str, Any]:
     """Build the WebGL DAG payload from the native compiled PDAG."""
-    return _build_native_dag_payload(input_files, options, graph_kind="compiled")
+    return _build_native_dag_payload(input_files, options, graph_kind="compiled", pcfb_path=pcfb_path)
 
 
-def build_kernel_dag_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_kernel_dag_payload(
+    input_files: list[str],
+    options: dict[str, Any] | None = None,
+    *,
+    pcfb_path: str | None = None,
+) -> dict[str, Any]:
     """Build the WebGL DAG payload from the DirectEval kernel execution DAG."""
-    return _build_native_dag_payload(input_files, options, graph_kind="kernel")
+    return _build_native_dag_payload(input_files, options, graph_kind="kernel", pcfb_path=pcfb_path)
 
 
-def build_execution_plan_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_dag_payload(
+    input_files: list[str],
+    options: dict[str, Any] | None = None,
+    *,
+    pcfb_path: str | None = None,
+) -> dict[str, Any]:
+    return build_compiled_dag_payload(input_files, options, pcfb_path=pcfb_path)
+
+
+def build_execution_plan_payload(
+    input_files: list[str],
+    options: dict[str, Any] | None = None,
+    *,
+    pcfb_path: str | None = None,
+) -> dict[str, Any]:
     """Build the native DirectEval execution-plan payload."""
-    if not input_files:
+    if not input_files and not pcfb_path:
         return {"schema": "mcscram.execution_plan.v1", "partitions": [], "dependency_edges": [], "nodes": []}
 
     if import_error := native_import_error():
@@ -423,7 +443,9 @@ def build_execution_plan_payload(input_files: list[str], options: dict[str, Any]
             "nodes": [],
         }
 
-    result = run_compile_isolated(input_files, options, CompileProduct.EXECUTION_PLAN)
+    result = run_compile_isolated(
+        input_files, options, CompileProduct.EXECUTION_PLAN, pcfb_path=pcfb_path
+    )
     if not result.ok:
         return {
             "schema": "mcscram.execution_plan.v1",
@@ -435,24 +457,36 @@ def build_execution_plan_payload(input_files: list[str], options: dict[str, Any]
     return result.payload
 
 
-def build_sample_shape_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_sample_shape_payload(
+    input_files: list[str],
+    options: dict[str, Any] | None = None,
+    *,
+    pcfb_path: str | None = None,
+) -> dict[str, Any]:
     """Build the DirectEval layer-manager sample-shape payload for sampler controls."""
-    if not input_files:
+    if not input_files and not pcfb_path:
         return {"sample_shape": None}
 
     if import_error := native_import_error():
         return {"sample_shape": None, "error": import_error}
 
-    result = run_compile_isolated(input_files, options, CompileProduct.SAMPLE_SHAPE)
+    result = run_compile_isolated(
+        input_files, options, CompileProduct.SAMPLE_SHAPE, pcfb_path=pcfb_path
+    )
     if not result.ok:
         return {"sample_shape": None, "error": result.error}
     return result.payload
 
 
-def build_dag_bundle_payload(input_files: list[str], options: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_dag_bundle_payload(
+    input_files: list[str],
+    options: dict[str, Any] | None = None,
+    *,
+    pcfb_path: str | None = None,
+) -> dict[str, Any]:
     """Build source, compiled, and kernel DAG payloads with one native compilation."""
     source_payload = _build_source_dag_payload(input_files)
-    if not input_files:
+    if not input_files and not pcfb_path:
         empty = _empty_dag_payload(None)
         return {"source": source_payload, "compiled": empty, "kernel": empty}
 
@@ -464,7 +498,9 @@ def build_dag_bundle_payload(input_files: list[str], options: dict[str, Any] | N
         kernel_payload["graphKind"] = "kernel_dag"
         return {"source": source_payload, "compiled": compiled_payload, "kernel": kernel_payload}
 
-    result = run_compile_isolated(input_files, options, CompileProduct.BUNDLE)
+    result = run_compile_isolated(
+        input_files, options, CompileProduct.BUNDLE, pcfb_path=pcfb_path
+    )
     if not result.ok:
         compiled_payload = dict(source_payload)
         compiled_payload["compiled"] = False
@@ -485,8 +521,9 @@ def _build_native_dag_payload(
     options: dict[str, Any] | None,
     *,
     graph_kind: str,
+    pcfb_path: str | None = None,
 ) -> dict[str, Any]:
-    if not input_files:
+    if not input_files and not pcfb_path:
         return _empty_dag_payload(None)
 
     if import_error := native_import_error():
@@ -496,7 +533,7 @@ def _build_native_dag_payload(
         return payload
 
     product = CompileProduct.KERNEL_GRAPH if graph_kind == "kernel" else CompileProduct.GRAPH
-    result = run_compile_isolated(input_files, options, product)
+    result = run_compile_isolated(input_files, options, product, pcfb_path=pcfb_path)
     if not result.ok:
         payload = _build_source_dag_payload(input_files)
         payload["compiled"] = False

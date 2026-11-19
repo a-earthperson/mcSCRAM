@@ -9,14 +9,63 @@ from typing import Any
 # Optional data mount from fuzzybits-bench (CSVs, OpenPSA/Aralia XML).
 # Historical run tables stay in that private repo; this tree never ships them.
 SERVER_DATA_DIR_ENV = "FUZZYBITS_SERVER_DATA_DIR"
+SERVER_ENGINE_ENV = "FUZZYBITS_SERVER_ENGINE"
+SERVER_CACHE_DIR_ENV = "FUZZYBITS_SERVER_CACHE_DIR"
 _LEGACY_DEFAULT_INPUT = Path("/app/input/SmallTree.xml")
+_BOOLEAN_TRUE = {"1", "true", "yes", "on"}
+_BOOLEAN_FALSE = {"0", "false", "no", "off"}
 
 
 def env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return raw.strip().lower() in _BOOLEAN_TRUE
+
+
+def server_engine() -> str:
+    """Compile/sample engine: ``pcfb`` (default) or ``legacy`` in-memory PDAG."""
+    raw = os.getenv(SERVER_ENGINE_ENV, "pcfb").strip().lower()
+    if raw in {"legacy", "memory", "in-memory", "run_compile"}:
+        return "legacy"
+    return "pcfb"
+
+
+def parse_watch_value(raw: Any) -> tuple[bool | None, list[str]]:
+    """Split ``watch`` into (watch_mode, names).
+
+    ``MCSCRAM_WATCH=1`` is the C++ progress-bar flag. Any other non-boolean
+    string is a comma-separated MEF name / PDAG-index list, matching how
+    :mod:`mcscram_server.convergence.sampling` registers extra tally nodes.
+    """
+    if raw is None or raw is False:
+        return None, []
+    if raw is True:
+        return True, []
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return None, [str(int(raw))]
+    if isinstance(raw, (list, tuple, set)):
+        return None, [str(item).strip() for item in raw if str(item).strip()]
+    text = str(raw).strip()
+    if not text:
+        return None, []
+    lowered = text.lower()
+    if lowered in _BOOLEAN_TRUE:
+        return True, []
+    if lowered in _BOOLEAN_FALSE:
+        return False, []
+    return None, [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+
+
+def pcfb_cache_dir() -> Path:
+    raw = os.getenv(SERVER_CACHE_DIR_ENV, "").strip()
+    if raw:
+        path = Path(raw).expanduser()
+    else:
+        data = server_data_dir()
+        path = (data / ".pcfb-cache") if data is not None else Path.home() / ".cache" / "fuzzybits" / "server-pcfb"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def env_float(name: str, default: float) -> float:
@@ -100,7 +149,6 @@ def options_from_env() -> dict[str, Any]:
 
     for env_name, key in (
         ("MCSCRAM_EARLY_STOP", "early_stop"),
-        ("MCSCRAM_WATCH", "watch"),
         ("MCSCRAM_NO_KN", "no_kn"),
         ("MCSCRAM_NO_XOR", "no_xor"),
         ("MCSCRAM_RECOGNIZE_ATLEAST_GROUPS", "recognize_atleast_groups"),
@@ -114,6 +162,18 @@ def options_from_env() -> dict[str, Any]:
     ):
         if raw := os.getenv(env_name):
             options[key] = raw.strip().lower() in {"1", "true", "yes", "on"}
+
+    if watch_raw := os.getenv("MCSCRAM_WATCH"):
+        mode, names = parse_watch_value(watch_raw)
+        if mode is not None:
+            options["watch_mode"] = mode
+        if names:
+            options["watch"] = names
+    if watch_nodes := os.getenv("MCSCRAM_WATCH_NODES"):
+        _, names = parse_watch_value(watch_nodes)
+        if names:
+            existing = [str(item) for item in options.get("watch", [])] if isinstance(options.get("watch"), list) else []
+            options["watch"] = existing + names
 
     if policy := os.getenv("MCSCRAM_POLICY"):
         options["policy"] = policy
@@ -131,6 +191,7 @@ def options_from_env() -> dict[str, Any]:
 class CalculationConfig:
     input_files: list[str]
     options: dict[str, Any]
+    pcfb_path: str | None = None
 
     @classmethod
     def from_env(cls) -> CalculationConfig:
@@ -141,4 +202,8 @@ class CalculationConfig:
             return self
         options = dict(self.options)
         options.update(overrides)
-        return CalculationConfig(input_files=self.input_files, options=options)
+        return CalculationConfig(
+            input_files=self.input_files,
+            options=options,
+            pcfb_path=self.pcfb_path,
+        )

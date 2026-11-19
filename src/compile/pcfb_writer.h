@@ -33,6 +33,10 @@ struct Options {
   bool ccf = false;
   bool allow_extern = false;
   std::optional<std::string> target;
+  /// Extra MEF gate / basic-event names (or PDAG indices) that become additional
+  /// `PROBABILITY` queries. Identified the same way the server resolves
+  /// `MCSCRAM_WATCH` / `watch` node lists: id, name, full_path, or decimal index.
+  std::vector<std::string> watch;
 
   /// Reconstruct the effective CLI fragment written to `compile.options`.
   [[nodiscard]] std::string to_cli_string() const;
@@ -71,8 +75,12 @@ void apply_options(scram::core::Settings &settings, const Options &options);
                                                    const Options &options);
 
 /// Lower an already-preprocessed PDAG. `event_id` of each SAMPLE is the PDAG index.
+/// `source_path` / `input_files` / `target_name` are written to `fuzzybits.*`
+/// metadata so `Session.graph()` can round-trip the server DAG views.
 [[nodiscard]] pcfb::Result<std::vector<std::byte>>
 pdag_to_pcfb(scram::core::Pdag &pdag, const Options &options, std::string_view model_name,
-             std::string_view query_name, std::span<const std::byte> source_sha256);
+             std::string_view query_name, std::span<const std::byte> source_sha256,
+             std::string_view source_path = {}, std::span<const std::string> input_files = {},
+             std::string_view target_name = {});
 
 }  // namespace fuzzybits::compile

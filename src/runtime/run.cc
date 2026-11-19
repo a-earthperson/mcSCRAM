@@ -10,7 +10,9 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace fuzzybits::runtime {
 namespace {
@@ -18,6 +20,19 @@ namespace {
 using bitpack_t = std::uint64_t;
 using prob_t = std::double_t;
 using size_t_ = std::size_t;
+
+void collect_nodes(const std::shared_ptr<scram::core::Gate> &gate,
+                   std::unordered_map<int, std::shared_ptr<scram::core::Node>> &nodes) {
+  if (!gate || !nodes.emplace(gate->index(), gate).second) {
+    return;
+  }
+  for (const auto &arg : gate->args<scram::core::Gate>()) {
+    collect_nodes(arg.second, nodes);
+  }
+  for (const auto &arg : gate->args<scram::core::Variable>()) {
+    nodes.emplace(arg.second->index(), arg.second);
+  }
+}
 
 }  // namespace
 
@@ -134,7 +149,8 @@ struct Session::Impl {
 };
 
 Session::Session(ReconstructedPdag reconstructed, const std::string &backend,
-                 std::size_t requested_trials_per_pass) {
+                 std::size_t requested_trials_per_pass, std::vector<std::string> watch,
+                 std::size_t num_trials) {
   apply_backend_mask(backend);
   auto impl = std::make_unique<Impl>();
   impl->reconstructed = std::move(reconstructed);
@@ -156,7 +172,22 @@ Session::Session(ReconstructedPdag reconstructed, const std::string &backend,
                                                   .node = q.node,
                                               });
   }
-  impl->manager = std::make_unique<Impl::Manager>(impl->reconstructed.graph.get(), /*num_trials=*/0, tallies,
+  if (!watch.empty()) {
+    std::unordered_map<int, std::shared_ptr<scram::core::Node>> nodes;
+    collect_nodes(impl->reconstructed.graph->root_ptr(), nodes);
+    for (int index : resolve_watch(impl->reconstructed, watch)) {
+      auto it = nodes.find(index);
+      if (it == nodes.end()) {
+        throw RuntimeError("session: watched index " + std::to_string(index) + " is not in the PDAG");
+      }
+      tallies.insert_or_assign(index, scram::mc::stats::TallyNode{
+                                          .status = scram::mc::stats::not_tracked,
+                                          .tally_stats = {},
+                                          .node = it->second,
+                                      });
+    }
+  }
+  impl->manager = std::make_unique<Impl::Manager>(impl->reconstructed.graph.get(), num_trials, tallies,
                                                   requested_trials_per_pass);
   impl_ = std::move(impl);
 }
@@ -166,23 +197,26 @@ Session &Session::operator=(Session &&) noexcept = default;
 Session::~Session() = default;
 
 Session Session::from_circuit(const pcfb::ir::Circuit &circuit, const std::string &backend,
-                              std::size_t requested_trials_per_pass) {
+                              std::size_t requested_trials_per_pass, std::vector<std::string> watch,
+                              std::size_t num_trials) {
   const auto diags = pcfb::validate(circuit);
   if (!diags.empty()) {
     throw InvalidPcfbError(
         "session: pcfb validation failed (" + std::to_string(diags.size()) + " diagnostics)", diags);
   }
-  return Session(pdag_from_circuit(circuit), backend, requested_trials_per_pass);
+  return Session(pdag_from_circuit(circuit), backend, requested_trials_per_pass, std::move(watch), num_trials);
 }
 
 Session Session::from_bytes(std::span<const std::byte> bytes, const std::string &backend,
-                            std::size_t requested_trials_per_pass) {
-  return from_circuit(load_pcfb(bytes), backend, requested_trials_per_pass);
+                            std::size_t requested_trials_per_pass, std::vector<std::string> watch,
+                            std::size_t num_trials) {
+  return from_circuit(load_pcfb(bytes), backend, requested_trials_per_pass, std::move(watch), num_trials);
 }
 
 Session Session::from_path(const std::filesystem::path &path, const std::string &backend,
-                           std::size_t requested_trials_per_pass) {
-  return from_circuit(load_pcfb(path), backend, requested_trials_per_pass);
+                           std::size_t requested_trials_per_pass, std::vector<std::string> watch,
+                           std::size_t num_trials) {
+  return from_circuit(load_pcfb(path), backend, requested_trials_per_pass, std::move(watch), num_trials);
 }
 
 scram::core::Pdag &Session::pdag() {
@@ -204,6 +238,13 @@ const std::vector<ReconstructedQuery> &Session::queries() const {
     throw RuntimeError("session: closed");
   }
   return impl_->reconstructed.queries;
+}
+
+const GraphMeta &Session::meta() const {
+  if (!impl_ || impl_->closed) {
+    throw RuntimeError("session: closed");
+  }
+  return impl_->reconstructed.meta;
 }
 
 SampleShape Session::sample_shape() const {

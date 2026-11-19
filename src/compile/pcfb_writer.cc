@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <span>
@@ -165,6 +166,81 @@ std::string generator_version() {
   return v;
 }
 
+std::string json_escape(std::string_view s) {
+  std::string out;
+  out.reserve(s.size());
+  for (unsigned char c : s) {
+    switch (c) {
+      case '"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (c < 0x20) {
+          char buf[8];
+          std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+          out += buf;
+        } else {
+          out += static_cast<char>(c);
+        }
+    }
+  }
+  return out;
+}
+
+std::string join_paths(std::span<const std::string> paths) {
+  std::string out;
+  for (const auto &p : paths) {
+    if (!out.empty()) {
+      out += '\n';
+    }
+    out += p;
+  }
+  return out;
+}
+
+bool name_matches(std::string_view want, const scram::mef::Id &id) {
+  return id.id() == want || id.name() == want || id.full_path() == want;
+}
+
+bool watch_matches_node(std::string_view want, const scram::core::Pdag &pdag,
+                        const std::shared_ptr<scram::core::Node> &node) {
+  if (!node) {
+    return false;
+  }
+  if (std::to_string(node->index()) == want) {
+    return true;
+  }
+  if (auto gate = std::dynamic_pointer_cast<scram::core::Gate>(node)) {
+    if (const scram::mef::Gate *origin = gate->mef_origin_ptr()) {
+      return name_matches(want, *origin);
+    }
+    return ("g" + std::to_string(gate->index())) == want;
+  }
+  if (auto var = std::dynamic_pointer_cast<scram::core::Variable>(node)) {
+    if (const scram::mef::BasicEvent *event = basic_event_for_variable(pdag, var->index())) {
+      return name_matches(want, *event);
+    }
+    return ("x" + std::to_string(var->index())) == want;
+  }
+  return false;
+}
+
+pcfb::Result<void> set_bool_meta(pcfb::builder &b, std::string_view key, bool value) {
+  return b.set(key, static_cast<std::int64_t>(value ? 1 : 0));
+}
+
 }  // namespace
 
 std::string Options::to_cli_string() const {
@@ -203,7 +279,10 @@ void apply_options(scram::core::Settings &settings, const Options &options) {
 
 pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const Options &options,
                                                   std::string_view model_name, std::string_view query_name,
-                                                  std::span<const std::byte> source_sha256) {
+                                                  std::span<const std::byte> source_sha256,
+                                                  std::string_view source_path,
+                                                  std::span<const std::string> input_files,
+                                                  std::string_view target_name) {
   if (!pdag.root_ptr()) {
     return std::unexpected(compile_error("PDAG has no root"));
   }
@@ -235,9 +314,55 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
   if (auto r = b.set("compile.options", options.to_cli_string()); !r) {
     return std::unexpected(r.error());
   }
+  if (auto r = b.set("compile.level", static_cast<std::int64_t>(options.compilation_level)); !r) {
+    return std::unexpected(r.error());
+  }
+  if (auto r = set_bool_meta(b, "compile.ccf", options.ccf); !r) {
+    return std::unexpected(r.error());
+  }
+  if (auto r = set_bool_meta(b, "compile.expand_atleast_gates", options.expand_atleast_gates); !r) {
+    return std::unexpected(r.error());
+  }
+  if (auto r = set_bool_meta(b, "compile.expand_xor_gates", options.expand_xor_gates); !r) {
+    return std::unexpected(r.error());
+  }
+  if (auto r = set_bool_meta(b, "compile.recognize_atleast_groups", options.recognize_atleast_groups); !r) {
+    return std::unexpected(r.error());
+  }
+  if (auto r = set_bool_meta(b, "compile.recognize_xor_groups", options.recognize_xor_groups); !r) {
+    return std::unexpected(r.error());
+  }
+  if (auto r = set_bool_meta(b, "compile.keep_null_gates", options.keep_null_gates); !r) {
+    return std::unexpected(r.error());
+  }
+  if (!source_path.empty()) {
+    if (auto r = b.set("fuzzybits.source", source_path); !r) {
+      return std::unexpected(r.error());
+    }
+  }
+  if (!input_files.empty()) {
+    if (auto r = b.set("fuzzybits.input_files", join_paths(input_files)); !r) {
+      return std::unexpected(r.error());
+    }
+  }
+  if (!query_name.empty()) {
+    if (auto r = b.set("fuzzybits.target", query_name); !r) {
+      return std::unexpected(r.error());
+    }
+  }
+  if (!target_name.empty()) {
+    if (auto r = b.set("fuzzybits.target_name", target_name); !r) {
+      return std::unexpected(r.error());
+    }
+  }
 
   std::unordered_map<int, pcfb::builder::tensor_id> tensor_of;
+  std::unordered_map<pcfb::builder::tensor_id, int> tensor_pdag;
   std::optional<pcfb::builder::tensor_id> true_tensor;
+
+  auto record = [&](pcfb::builder::tensor_id tid, int pdag_index) {
+    tensor_pdag[tid] = pdag_index;
+  };
 
   auto ensure_true = [&]() -> pcfb::Result<pcfb::builder::tensor_id> {
     if (true_tensor) {
@@ -248,6 +373,9 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
       return std::unexpected(t.error());
     }
     true_tensor = *t;
+    if (pdag.constant()) {
+      record(*t, pdag.constant()->index());
+    }
     return *t;
   };
 
@@ -290,6 +418,7 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
           return std::unexpected(t.error());
         }
         tensor_of[var->index()] = *t;
+        record(*t, var->index());
         continue;
       }
 
@@ -325,6 +454,7 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
           return std::unexpected(t.error());
         }
         tensor_of[gate->index()] = *t;
+        record(*t, gate->index());
         continue;
       }
       if (gate->constant() && inputs.size() == 1 && inverted.empty() && true_tensor &&
@@ -335,6 +465,7 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
           return std::unexpected(t.error());
         }
         tensor_of[gate->index()] = *t;
+        record(*t, gate->index());
         continue;
       }
 
@@ -351,6 +482,7 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
           return std::unexpected(t.error());
         }
         tensor_of[gate->index()] = *t;
+        record(*t, gate->index());
         continue;
       }
 
@@ -371,6 +503,7 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
         return std::unexpected(t.error());
       }
       tensor_of[gate->index()] = *t;
+      record(*t, gate->index());
     }
   }
 
@@ -386,10 +519,78 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
       return std::unexpected(neg.error());
     }
     query_target = *neg;
+    record(*neg, pdag.root_ptr()->index());
   }
   const std::string qname = query_name.empty() ? "top" : std::string(query_name);
   if (auto q = b.add_query(query_target, pcfb::QueryKind::PROBABILITY, qname); !q) {
     return std::unexpected(q.error());
+  }
+
+  for (const std::string &want : options.watch) {
+    if (want.empty() || want == qname) {
+      continue;
+    }
+    std::optional<pcfb::builder::tensor_id> found;
+    for (const auto &node : nodes) {
+      if (!watch_matches_node(want, pdag, node)) {
+        continue;
+      }
+      auto it = tensor_of.find(node->index());
+      if (it == tensor_of.end()) {
+        continue;
+      }
+      found = it->second;
+      break;
+    }
+    if (!found) {
+      return std::unexpected(compile_error("watched node not in compiled PDAG: " + want));
+    }
+    if (*found == query_target) {
+      continue;
+    }
+    if (auto q = b.add_query(*found, pcfb::QueryKind::PROBABILITY, want); !q) {
+      return std::unexpected(q.error());
+    }
+  }
+
+  std::ostringstream origins;
+  origins << '[';
+  bool first_origin = true;
+  auto emit_origin = [&](int index, std::string_view kind, const scram::mef::Id *id) {
+    if (!id) {
+      return;
+    }
+    if (!first_origin) {
+      origins << ',';
+    }
+    first_origin = false;
+    origins << "{\"index\":" << index << ",\"kind\":\"" << kind << "\",\"id\":\"" << json_escape(id->id())
+            << "\",\"name\":\"" << json_escape(id->name()) << "\",\"label\":\"" << json_escape(id->label())
+            << "\",\"full_path\":\"" << json_escape(std::string(id->full_path())) << "\"}";
+  };
+  for (const auto &node : nodes) {
+    if (auto gate = std::dynamic_pointer_cast<scram::core::Gate>(node)) {
+      emit_origin(gate->index(), "gate", gate->mef_origin_ptr());
+    } else if (auto var = std::dynamic_pointer_cast<scram::core::Variable>(node)) {
+      emit_origin(var->index(), "basic_event", basic_event_for_variable(pdag, var->index()));
+    }
+  }
+  origins << ']';
+  if (auto r = b.set("fuzzybits.origins", origins.str()); !r) {
+    return std::unexpected(r.error());
+  }
+
+  std::ostringstream map;
+  bool first_map = true;
+  for (const auto &[tid, pdag_index] : tensor_pdag) {
+    if (!first_map) {
+      map << ',';
+    }
+    first_map = false;
+    map << tid << ':' << pdag_index;
+  }
+  if (auto r = b.set("fuzzybits.tensor_pdag", map.str()); !r) {
+    return std::unexpected(r.error());
   }
   return b.finish();
 }
@@ -487,8 +688,10 @@ pcfb::Result<Compiled> compile_files(const std::vector<std::string> &input_files
     sha_bytes[i] = static_cast<std::byte>(digest[i]);
   }
 
+  const std::string source_path = input_files.empty() ? std::string() : input_files.front();
   auto bytes = pdag_to_pcfb(*graph->graph, options, out.model_name, out.target_id,
-                            std::span<const std::byte>{sha_bytes, 32});
+                            std::span<const std::byte>{sha_bytes, 32}, source_path, input_files,
+                            out.target_name);
   if (!bytes) {
     return std::unexpected(bytes.error());
   }

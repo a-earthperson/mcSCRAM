@@ -66,6 +66,12 @@ def test_compile_inspect_run_tiny(tiny_xml: Path, tmp_path: Path):
     assert "schema_version" in summary
     assert "opcodes" in summary
     assert "metadata" in summary
+    meta = summary["metadata"]
+    assert meta.get("general.generator") == "fuzzybits"
+    assert "compile.options" in meta
+    assert "compile.level" in meta
+    assert "fuzzybits.origins" in meta
+    assert "fuzzybits.tensor_pdag" in meta
 
     out = tmp_path / "tiny.pcfb"
     written = fuzzybits.compile_file(tiny_xml, out, pdag_c=2, no_kn=True)
@@ -135,3 +141,52 @@ def test_bit_identity_das9201(das9201_xml: Path):
 def test_compile_seed_rejected(tiny_xml: Path):
     with pytest.raises(NotImplementedError, match="deterministic"):
         fuzzybits.compile(tiny_xml, seed=7)
+
+
+def test_compile_watch_emits_extra_query(tiny_xml: Path):
+    blob = fuzzybits.compile(tiny_xml, pdag_c=2, no_kn=True, watch=["TrainOne"])
+    summary = fuzzybits.inspect(blob)
+    assert summary["diagnostics"] == []
+    assert summary["queries"] >= 2
+    names = [str(n) for n in summary["query_names"]]
+    assert "TrainOne" in names
+
+
+def test_session_graph_roundtrips_names(tiny_xml: Path):
+    blob = fuzzybits.compile(tiny_xml, pdag_c=2, no_kn=True)
+    native = fuzzybits.native()
+    live = native.run_compile([str(tiny_xml)], {"compilation_level": 2, "no_kn": True})
+    live_graph = live.to_graph()
+    with fuzzybits.Session(blob, backend="omp") as session:
+        graph = session.graph()
+    live_names = {
+        node.get("id") or node.get("name")
+        for node in live_graph["nodes"]
+        if node.get("id") or node.get("name")
+    }
+    session_names = {
+        node.get("id") or node.get("name")
+        for node in graph["nodes"]
+        if node.get("id") or node.get("name")
+    }
+    assert live_names
+    assert live_names <= session_names
+    assert graph["compilation"]["level"] == 2
+    assert graph["compilation"]["expand_atleast_gates"] is True
+    assert graph["source"]
+    assert "TopEvent" in {graph.get("target"), graph.get("target_name")}
+
+
+def test_session_watch_tallies_named_gate(tiny_xml: Path):
+    blob = fuzzybits.compile(tiny_xml, pdag_c=2, no_kn=True)
+    with fuzzybits.Session(blob, backend="omp", trials_per_pass=TRIALS_PER_PASS, watch=["TrainOne"]) as session:
+        first = session.step()
+        assert first.target_index in first.nodes
+        named = [
+            int(node["index"])
+            for node in session.graph()["nodes"]
+            if node.get("id") == "TrainOne" or node.get("name") == "TrainOne"
+        ]
+        assert named
+        assert named[0] in first.nodes
+        assert first.nodes[named[0]].total_bits == first.trials_per_pass

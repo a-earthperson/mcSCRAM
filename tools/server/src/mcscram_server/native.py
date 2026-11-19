@@ -8,7 +8,9 @@ concurrent requests do not stampede the GPU allocator.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import multiprocessing as mp
 import os
 import queue
@@ -17,7 +19,10 @@ import time
 import traceback
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable
+
+from mcscram_server.config import parse_watch_value, pcfb_cache_dir, server_engine
 
 
 class CompileProduct(str, Enum):
@@ -35,7 +40,58 @@ class NativeResult:
     error: str | None = None
 
 
+class InvalidPcfbError(ValueError):
+    """Uploaded / loaded `.pcfb` failed `fuzzybits.inspect` / `pcfb::validate`."""
+
+    def __init__(self, message: str, diagnostics: list[Any] | None = None, inspect: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or []
+        self.inspect = inspect or {}
+
+
 _COMPILE_CACHE_MAX = 8
+
+# Host-side keys that run_compile's settings_from_options must not see.
+# `watch` as a name list is not watch_mode; booleans stay as watch_mode.
+_HOST_ONLY_OPTION_KEYS: frozenset[str] = frozenset(
+    {
+        "policy",
+        "P",
+        "early_stop",
+        "max_passes",
+        "emit_min_interval_s",
+        "stream_nodes",
+        "convergence_event_ids",
+        "pcfb_path",
+        "pcfb_id",
+    }
+)
+
+# Options that change the lowered circuit (cache key + compile_pcfb).
+_COMPILE_OPTION_KEYS: frozenset[str] = frozenset(
+    {
+        "compilation_level",
+        "compilation_passes",
+        "pdag_c",
+        "c",
+        "no_kn",
+        "expand_atleast_gates",
+        "expand_kn",
+        "no_xor",
+        "expand_xor_gates",
+        "recognize_atleast_groups",
+        "recognize_xor_groups",
+        "keep_null_gates",
+        "ccf",
+        "allow_extern",
+        "target",
+        "target_gate",
+        "top",
+        "top_event",
+        "watch",
+        "watch_nodes",
+    }
+)
 
 
 def format_native_exception(exc: BaseException) -> str:
@@ -81,6 +137,159 @@ def _compile_cache_key(input_files: list[str], options: dict[str, Any]) -> tuple
     return (tuple(input_files), tuple(sorted(options.items())))
 
 
+def compile_option_subset(options: dict[str, Any] | None) -> dict[str, Any]:
+    if not options:
+        return {}
+    out: dict[str, Any] = {}
+    for key, value in options.items():
+        if key in _COMPILE_OPTION_KEYS:
+            out[key] = value
+    return out
+
+
+def watch_names_from_options(options: dict[str, Any] | None) -> list[str]:
+    if not options:
+        return []
+    _, names = parse_watch_value(options.get("watch"))
+    extra = options.get("watch_nodes")
+    if extra:
+        _, more = parse_watch_value(extra)
+        names = names + more
+    return names
+
+
+def pcfb_cache_digest(input_files: list[str], options: dict[str, Any] | None) -> str:
+    hasher = hashlib.sha256()
+    for path in input_files:
+        payload = Path(path).read_bytes()
+        hasher.update(path.encode())
+        hasher.update(b"\0")
+        hasher.update(payload)
+        hasher.update(b"\0")
+    canon = json.dumps(compile_option_subset(options), sort_keys=True, default=str)
+    hasher.update(canon.encode())
+    return hasher.hexdigest()
+
+
+def cached_pcfb_path(digest: str) -> Path:
+    return pcfb_cache_dir() / f"{digest}.pcfb"
+
+
+def compile_pcfb_to_cache(input_files: list[str], options: dict[str, Any] | None) -> bytes:
+    """Compile MEF to `.pcfb`, keyed by source SHA-256s + compile options."""
+    if not input_files:
+        raise ValueError("compile requires at least one input file")
+    digest = pcfb_cache_digest(input_files, options)
+    path = cached_pcfb_path(digest)
+    if path.is_file():
+        return path.read_bytes()
+    native = import_native()
+    blob = bytes(native.compile_pcfb(input_files, compile_option_subset(options) or {}))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".pcfb.tmp")
+    tmp.write_bytes(blob)
+    tmp.replace(path)
+    return blob
+
+
+def inspect_pcfb_bytes(data: bytes) -> dict[str, Any]:
+    try:
+        import fuzzybits
+
+        return dict(fuzzybits.inspect(data))
+    except ImportError:
+        native = import_native()
+        return dict(native.inspect_pcfb_bytes(data))
+
+
+def uploaded_pcfb_dir() -> Path:
+    path = pcfb_cache_dir() / "uploads"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def resolve_uploaded_pcfb(pcfb_id: str) -> Path:
+    digest = pcfb_id.strip().lower().removeprefix("pcfb:")
+    if not digest or any(c not in "0123456789abcdef" for c in digest):
+        raise ValueError(f"invalid pcfb id: {pcfb_id}")
+    path = uploaded_pcfb_dir() / f"{digest}.pcfb"
+    if not path.is_file():
+        path = cached_pcfb_path(digest)
+    if not path.is_file():
+        raise FileNotFoundError(f"no uploaded .pcfb with id {digest}")
+    return path
+
+
+def store_uploaded_pcfb(data: bytes) -> tuple[str, Path, dict[str, Any]]:
+    if not data:
+        raise InvalidPcfbError("empty pcfb upload")
+    try:
+        summary = inspect_pcfb_bytes(data)
+    except BaseException as exc:
+        raise InvalidPcfbError(f"invalid pcfb: {exc}") from exc
+    diagnostics = list(summary.get("diagnostics") or [])
+    if diagnostics:
+        raise InvalidPcfbError("pcfb validation failed", diagnostics=diagnostics, inspect=summary)
+    digest = hashlib.sha256(data).hexdigest()
+    path = uploaded_pcfb_dir() / f"{digest}.pcfb"
+    if not path.is_file():
+        tmp = path.with_suffix(".pcfb.tmp")
+        tmp.write_bytes(data)
+        tmp.replace(path)
+    return digest, path, summary
+
+
+def _trials_per_pass(options: dict[str, Any] | None) -> int | None:
+    if not options:
+        return None
+    raw = options.get("requested_trials_per_pass", options.get("trials_per_pass"))
+    if raw is None:
+        return None
+    value = int(float(raw))
+    return value if value > 0 else None
+
+
+def _num_trials(options: dict[str, Any] | None) -> int | None:
+    if not options:
+        return None
+    raw = options.get("num_trials")
+    if raw is None:
+        return None
+    value = int(float(raw))
+    return value if value > 0 else None
+
+
+def _session_from_pcfb(native: Any, blob: bytes, options: dict[str, Any] | None) -> Any:
+    return native.PcfbSession(
+        blob,
+        "",
+        _trials_per_pass(options),
+        watch_names_from_options(options),
+        _num_trials(options),
+    )
+
+
+def _payload_from_pcfb_session(session: Any, product: str) -> Any:
+    match product:
+        case CompileProduct.GRAPH.value:
+            return dict(session.graph())
+        case CompileProduct.KERNEL_GRAPH.value:
+            return dict(session.kernel_graph())
+        case CompileProduct.EXECUTION_PLAN.value:
+            return dict(session.execution_plan())
+        case CompileProduct.SAMPLE_SHAPE.value:
+            return {"sample_shape": dict(session.sample_shape)}
+        case CompileProduct.BUNDLE.value:
+            return {
+                "compiled": dict(session.graph()),
+                "kernel": dict(session.kernel_graph()),
+            }
+        case "pcfb":
+            return None
+        case _:
+            raise ValueError(f"unknown compile product: {product}")
+
+
 def _silence_native_stderr() -> None:
     try:
         devnull = os.open(os.devnull, os.O_WRONLY)
@@ -114,6 +323,7 @@ def _persistent_compile_worker(request_queue: mp.Queue, response_queue: mp.Queue
     _silence_native_stderr()
     compile_cache: dict[tuple[Any, ...], Any] = {}
     cache_order: list[tuple[Any, ...]] = []
+    pcfb_cache: dict[str, bytes] = {}
 
     while True:
         request = request_queue.get()
@@ -124,17 +334,49 @@ def _persistent_compile_worker(request_queue: mp.Queue, response_queue: mp.Queue
         input_files: list[str] = request["input_files"]
         options: dict[str, Any] = request["options"]
         product: str = request["product"]
+        engine: str = request.get("engine") or server_engine()
+        pcfb_path: str | None = request.get("pcfb_path")
         cache_key = _compile_cache_key(input_files, options)
 
         try:
-            if cache_key not in compile_cache:
+            if engine == "legacy" and not pcfb_path:
+                if cache_key not in compile_cache:
+                    native = import_native()
+                    compile_opts = {
+                        key: value
+                        for key, value in options.items()
+                        if key not in _HOST_ONLY_OPTION_KEYS and key not in {"watch", "watch_nodes"}
+                    }
+                    mode, _ = parse_watch_value(options.get("watch_mode", options.get("watch")))
+                    if mode is not None:
+                        compile_opts["watch_mode"] = mode
+                    compile_cache[cache_key] = native.run_compile(input_files, compile_opts)
+                    cache_order.append(cache_key)
+                    while len(cache_order) > _COMPILE_CACHE_MAX:
+                        evicted = cache_order.pop(0)
+                        compile_cache.pop(evicted, None)
+                payload = _payload_from_pdag(compile_cache[cache_key], product)
+            else:
                 native = import_native()
-                compile_cache[cache_key] = native.run_compile(input_files, options)
-                cache_order.append(cache_key)
-                while len(cache_order) > _COMPILE_CACHE_MAX:
-                    evicted = cache_order.pop(0)
-                    compile_cache.pop(evicted, None)
-            payload = _payload_from_pdag(compile_cache[cache_key], product)
+                if pcfb_path:
+                    blob = Path(pcfb_path).read_bytes()
+                else:
+                    digest = pcfb_cache_digest(input_files, options)
+                    blob = pcfb_cache.get(digest)
+                    if blob is None:
+                        blob = compile_pcfb_to_cache(input_files, options)
+                        pcfb_cache[digest] = blob
+                        while len(pcfb_cache) > _COMPILE_CACHE_MAX:
+                            pcfb_cache.pop(next(iter(pcfb_cache)))
+                session = _session_from_pcfb(native, blob, options)
+                try:
+                    payload = _payload_from_pcfb_session(session, product)
+                    if product == "pcfb":
+                        payload = blob
+                finally:
+                    close = getattr(session, "close", None)
+                    if close is not None:
+                        close()
             response_queue.put({"request_id": request_id, "ok": True, "payload": payload})
         except BaseException as exc:
             compile_cache.pop(cache_key, None)
@@ -177,6 +419,8 @@ class NativeCompileBroker:
         product: CompileProduct,
         *,
         timeout: float | None = None,
+        engine: str | None = None,
+        pcfb_path: str | None = None,
     ) -> NativeResult:
         timeout_seconds = _native_timeout_seconds() if timeout is None else timeout
         with self._lock:
@@ -192,6 +436,8 @@ class NativeCompileBroker:
                 "input_files": input_files,
                 "options": options or {},
                 "product": product.value,
+                "engine": engine or server_engine(),
+                "pcfb_path": pcfb_path,
             })
 
             deadline = time.monotonic() + timeout_seconds
@@ -265,9 +511,18 @@ def run_compile_isolated(
     product: CompileProduct,
     *,
     timeout: float | None = None,
+    engine: str | None = None,
+    pcfb_path: str | None = None,
 ) -> NativeResult:
     """Compile MEF input in the native worker and return a serializable product."""
-    return _broker.run(input_files, options, product, timeout=timeout)
+    return _broker.run(
+        input_files,
+        options,
+        product,
+        timeout=timeout,
+        engine=engine,
+        pcfb_path=pcfb_path,
+    )
 
 
 def shutdown_native_workers() -> None:

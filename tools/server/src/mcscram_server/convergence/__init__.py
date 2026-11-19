@@ -53,7 +53,7 @@ from .runner import (
     RunResult,
     run_calculation,
 )
-from .sampling import BernoulliSampler, NativeSampler, SampleShape, Sampler
+from .sampling import BernoulliSampler, NativeSampler, PcfbSampler, SampleShape, Sampler, make_sampler
 from .tally import (
     HistoryPoint,
     NodeCounters,
@@ -73,7 +73,9 @@ __all__ = [
     # sampling
     "Sampler",
     "NativeSampler",
+    "PcfbSampler",
     "BernoulliSampler",
+    "make_sampler",
     "SampleShape",
     # state
     "NodeCounters",

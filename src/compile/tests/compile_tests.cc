@@ -103,3 +103,67 @@ TEST_CASE("compile.options records effective -c/--no-kn", "[compile][metadata]")
   }
   REQUIRE(found);
 }
+
+TEST_CASE("compile writes fuzzybits origins and compile.level metadata", "[compile][metadata]") {
+  fuzzybits::compile::Options opt;
+  opt.compilation_level = 2;
+  opt.expand_atleast_gates = true;
+  auto compiled = fuzzybits::compile::compile_files({aralia("chinese.xml")}, opt);
+  REQUIRE(compiled);
+  auto circuit = pcfb::io::from_bytes(compiled->bytes);
+  REQUIRE(circuit);
+  REQUIRE(pcfb::validate(*circuit).empty());
+  const auto *meta = circuit->get()->metadata();
+  REQUIRE(meta);
+  bool saw_origins = false;
+  bool saw_level = false;
+  bool saw_expand = false;
+  for (flatbuffers::uoffset_t i = 0; i < meta->size(); ++i) {
+    const auto *kv = meta->Get(i);
+    if (!kv || !kv->key()) {
+      continue;
+    }
+    const auto key = kv->key()->str();
+    if (key == "fuzzybits.origins") {
+      REQUIRE(kv->value_as_StringValue());
+      const auto *s = kv->value_as_StringValue()->value();
+      REQUIRE(s);
+      const std::string json = s->c_str();
+      REQUIRE(json.find("\"id\":\"") != std::string::npos);
+      saw_origins = true;
+    }
+    if (key == "compile.level") {
+      REQUIRE(kv->value_as_IntValue());
+      REQUIRE(kv->value_as_IntValue()->value() == 2);
+      saw_level = true;
+    }
+    if (key == "compile.expand_atleast_gates") {
+      REQUIRE(kv->value_as_IntValue());
+      REQUIRE(kv->value_as_IntValue()->value() == 1);
+      saw_expand = true;
+    }
+  }
+  REQUIRE(saw_origins);
+  REQUIRE(saw_level);
+  REQUIRE(saw_expand);
+}
+
+TEST_CASE("compile watch emits an extra PROBABILITY query", "[compile][watch]") {
+  fuzzybits::compile::Options opt;
+  opt.compilation_level = 2;
+  opt.expand_atleast_gates = true;
+  opt.watch = {"g1"};
+  auto compiled = fuzzybits::compile::compile_files({aralia("chinese.xml")}, opt);
+  REQUIRE(compiled);
+  auto circuit = pcfb::io::from_bytes(compiled->bytes);
+  REQUIRE(circuit);
+  REQUIRE(pcfb::validate(*circuit).empty());
+  REQUIRE(circuit->subcircuits()->Get(0)->queries()->size() >= 2);
+  bool saw_g1 = false;
+  for (const auto *q : *circuit->subcircuits()->Get(0)->queries()) {
+    if (q && q->name() && q->name()->str() == "g1") {
+      saw_g1 = true;
+    }
+  }
+  REQUIRE(saw_g1);
+}
