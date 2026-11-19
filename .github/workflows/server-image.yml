@@ -147,7 +147,21 @@ jobs:
             tag="${stem}-${VARIANT}"
             echo "runtime tag from workflow_dispatch: ${tag}"
           elif [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
-            echo "listing fuzzybits-runtime tags for newest ci-*-${VARIANT}"
+            # GHCR versions are newest-first, but a newer *timestamp* can still
+            # be a pre-#71 wheel (rebased ci/images SHAs). Skip tags whose
+            # source commit does not define fuzzybits.compile.
+            runtime_has_pcfb_api() {
+              local candidate="$1" sha12=""
+              if [[ "${candidate}" =~ ^ci-([0-9a-f]{12})- ]]; then
+                sha12="${BASH_REMATCH[1]}"
+              else
+                return 0
+              fi
+              local b64
+              b64="$(gh api "repos/fuzzybit-org/fuzzybits/contents/python/fuzzybits/_api.py?ref=${sha12}" --jq .content 2>/dev/null)" || return 1
+              printf '%s' "${b64}" | base64 -d | grep -q 'def compile('
+            }
+            echo "listing fuzzybits-runtime tags for newest ci-*-${VARIANT} with pcfb API (#71)"
             mapfile -t tags < <(
               gh api --paginate \
                 -H "Accept: application/vnd.github+json" \
@@ -156,15 +170,19 @@ jobs:
                 | sed '/^$/d'
             )
             for t in "${tags[@]}"; do
-              if [[ "${t}" == ci-*-"${VARIANT}" ]]; then
+              if [[ "${t}" != ci-*-"${VARIANT}" ]]; then
+                continue
+              fi
+              if runtime_has_pcfb_api "${t}"; then
                 tag="${t}"
-                echo "newest ci tag: ${tag}"
+                echo "newest ci tag with pcfb API: ${tag}"
                 break
               fi
+              echo "skip ${t} (source commit lacks fuzzybits.compile)"
             done
             if [[ -z "${tag}" ]]; then
               tag="nightly-${VARIANT}"
-              echo "no ci-*-${VARIANT} tag; falling back to ${tag}"
+              echo "no ci-*-${VARIANT} tag with pcfb API; falling back to ${tag}"
             fi
           else
             tag="nightly-${VARIANT}"
