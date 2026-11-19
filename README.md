@@ -8,7 +8,7 @@ basic events and gates are evaluated once, for every query at the same
 time. Models are OpenPSA MEF XML files. It runs on the CPU, or on an
 NVIDIA GPU if one is available.
 
-Status: alpha (0.17.0). Every result comes with a 95% confidence
+Status: alpha (0.17.1). Every result comes with a 95% confidence
 interval. In this release the compiled query is the top event of the
 first fault tree in the model; event-tree sequences are next
 (issue #92).
@@ -19,9 +19,10 @@ Install
 
     pip install fuzzybits fuzzybits-server
 
-Needs Python 3.12 on Linux x86_64 (glibc 2.39 or newer, for example
-Ubuntu 24.04) or on macOS 26 with Apple Silicon. To use an NVIDIA GPU,
-install the NVIDIA driver; nothing else is needed.
+Needs CPython 3.12–3.15 on Linux x86_64 (glibc 2.39 or newer, for
+example Ubuntu 24.04), macOS 15+ on Intel (CPU only), or macOS 26+ on
+Apple Silicon. To use an NVIDIA GPU, install the NVIDIA driver; nothing
+else is needed.
 
 
 Command line
@@ -53,7 +54,7 @@ Then open http://localhost:8000, pick a model and start sampling.
 Or run the same server with Docker, no Python needed:
 
     docker run --rm -p 127.0.0.1:8000:8000 -v "$PWD/models:/data:ro" \
-        ghcr.io/fuzzybit-org/fuzzybits-server:v0.17.0
+        ghcr.io/fuzzybit-org/fuzzybits-server:v0.17.1
 
 For an NVIDIA GPU, add --gpus all -e ACPP_VISIBILITY_MASK=cuda (this
 needs the NVIDIA Container Toolkit).

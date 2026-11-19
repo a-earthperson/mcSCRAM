@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# Build a cp312 macosx_*_arm64 wheel against the Metal AdaptiveCpp prefix.
+# Build a macosx_*_{arm64,x86_64} wheel against the AdaptiveCpp prefix.
 set -euo pipefail
+export COPYFILE_DISABLE=1
 
 dest="${1:-dist}"
 wheelhouse="${2:-wheelhouse}"
 mkdir -p "${dest}" "${wheelhouse}"
 
+arch="$(uname -m)"
 test -n "${ACPP_PREFIX:-}"
 test -x "${ACPP_PREFIX}/bin/acpp-info"
-test "$(uname -m)" = "arm64"
 
 export PATH="${ACPP_PREFIX}/bin:${LLVM_PREFIX:-}/bin:${PATH}"
 export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX:-}/lib:${DYLD_LIBRARY_PATH:-}"
 export AdaptiveCpp_DIR="${ACPP_PREFIX}/lib/cmake/AdaptiveCpp"
 export CMAKE_PREFIX_PATH="${ACPP_PREFIX}${BOOST_PREFIX:+;${BOOST_PREFIX}}${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}}"
 export CMAKE_GENERATOR="${CMAKE_GENERATOR:-Ninja}"
-export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-26.0}"
+if [[ "${arch}" == "arm64" ]]; then
+  export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-26.0}"
+else
+  export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-15.0}"
+fi
 export SDKROOT="${SDKROOT:-$(xcrun --show-sdk-path)}"
 
 cfg=(
@@ -31,7 +36,7 @@ cfg=(
   --config-settings=cmake.define.CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}"
   --config-settings=cmake.define.AdaptiveCpp_DIR="${AdaptiveCpp_DIR}"
   --config-settings=cmake.define.CMAKE_OSX_SYSROOT="${SDKROOT}"
-  --config-settings=cmake.define.CMAKE_OSX_ARCHITECTURES=arm64
+  --config-settings=cmake.define.CMAKE_OSX_ARCHITECTURES="${arch}"
   --config-settings=cmake.define.CMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET}"
 )
 
@@ -42,7 +47,7 @@ if command -v ccache >/dev/null 2>&1; then
   )
 fi
 
-echo "pip wheel macos metal generic"
+echo "pip wheel macos generic arch=${arch} macosx=${MACOSX_DEPLOYMENT_TARGET} python=$(python -c 'import sys; print(sys.version.split()[0])')"
 python -m pip wheel . -w "${wheelhouse}" --no-deps "${cfg[@]}"
 
 shopt -s nullglob
@@ -52,5 +57,5 @@ if ((${#raw[@]} == 0)); then
   exit 1
 fi
 
-scripts/ci/macos-delocate.sh "${wheelhouse}" "${dest}"
+scripts/ci/macos-delocate.sh "${wheelhouse}" "${dest}" "${arch}"
 ls -lah "${dest}"

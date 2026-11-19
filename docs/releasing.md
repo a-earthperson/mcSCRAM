@@ -2,7 +2,7 @@
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) builds and publishes two PyPI projects:
 
-- `fuzzybits`: the native engine wheels (Linux x86_64 manylinux, macOS arm64, Windows x86_64; CPython 3.12).
+- `fuzzybits`: the native engine wheels (Linux x86_64 manylinux, macOS arm64, macOS x86_64; CPython 3.12–3.15). Windows x86_64 is opt-in via `RELEASE_INCLUDE_WINDOWS`.
 - `fuzzybits-server`: the FastAPI server with the bundled web UI (`py3-none-any`), pinned to the same `fuzzybits` version. It is built once `tools/server` is the `fuzzybits-server` distribution (#86).
 
 Publishing uses PyPI trusted publishing (OIDC), so there are no API tokens or secrets.
@@ -29,7 +29,7 @@ Publishing uses PyPI trusted publishing (OIDC), so there are no API tokens or se
 
 ## Dry run
 
-Actions → Release → Run workflow (on any branch). Every version string becomes `X.Y.Z.dev<run number>`, and all wheels are built and smoke-tested (including `pip install` of the engine and server wheels). Nothing is uploaded; the wheels are kept as workflow artifacts for 14 days.
+Actions → Release → Run workflow (on any branch). Every version string becomes `X.Y.Z.dev<run number>`, and all wheels are built and smoke-tested (including `pip install` of the engine and server wheels). The `wheels-report` job lists every artefact, applies the per-file size gate, and prints the total MB against PyPI's 10 GB project cap. Nothing is uploaded; the wheels are kept as workflow artifacts for 14 days. CPython 3.12–3.15 × Linux x86_64, macOS arm64, and macOS x86_64.
 
 ## Cut a release
 
@@ -37,6 +37,8 @@ Actions → Release → Run workflow (on any branch). Every version string becom
    ```bash
    scripts/ci/release-version.sh apply 0.18.0
    (cd tools/server && uv lock)
+   # Also bump project(SCRAM VERSION …) in CMakeLists.txt when the CMake
+   # package version should match (CMake VERSION cannot be a .devN override).
    ```
    This updates `pyproject.toml`, `python/fuzzybits/__init__.py` and, for the server, `tools/server/pyproject.toml` (`version` and the `fuzzybits==` pin). `uv lock` refreshes `tools/server/uv.lock`, which records both versions.
 2. Tag that commit and push the tag:
@@ -52,5 +54,5 @@ If an upload fails partway, fix the cause and rerun the failed jobs (`gh run rer
 
 - **File size:** PyPI rejects files over 100 MB by default. The Windows wheel is about 270 MB, so the publish jobs hold back any file over `PYPI_MAX_FILE_MB` (default 100) with a warning. Held-back wheels are attached only to the GitHub Release. Request a higher limit for `fuzzybits` at https://github.com/pypi/support, then set `PYPI_MAX_FILE_MB`. The 10 GB per-project total will also need raising after roughly 30 releases at this size.
 - **cuda-sm70:** not published. It is the same `fuzzybits` distribution with the same Linux platform tag as the generic wheel, so PyPI can hold only one of them.
-- **Python:** wheels are CPython 3.12 only. On other Python versions pip finds no `fuzzybits` wheel. No sdist is published, because building from source needs the AdaptiveCpp toolchain.
-- **Platforms:** the Linux wheel is built on Ubuntu 24.04 and carries the manylinux tag auditwheel assigns for that glibc, which may exclude older distributions. The macOS wheel needs macOS 26 on Apple Silicon.
+- **Python:** wheels are CPython 3.12, 3.13, 3.14 and 3.15 (abi3/stable ABI is not used; pybind11 3.x, no free-threaded `t` builds). On other Python versions pip finds no `fuzzybits` wheel. No sdist is published, because building from source needs the AdaptiveCpp toolchain.
+- **Platforms:** the Linux wheels are built on Ubuntu 24.04 and carry the manylinux tag auditwheel assigns for that glibc (currently `manylinux_2_39`), which may exclude older distributions. macOS arm64 wheels need macOS 26+ on Apple Silicon (Metal + OpenMP). macOS x86_64 wheels are built on GitHub-hosted `macos-15-intel` with deployment target 15.0, so they install on Intel Macs running macOS 15+, including 26; they are OpenMP CPU only (no Metal).

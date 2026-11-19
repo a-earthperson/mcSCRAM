@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""macOS arm64 wheel smoke: import, Metal+OpenMP devices, omp 4σ, metal exception, pytest.
+"""macOS wheel smoke: import, devices, omp 4σ, optional metal exception, pytest.
 
-Intended for a clean venv that has only the wheel (+ pytest) installed.
-Every Monte Carlo invocation is bounded by MC_TIMEOUT in a sibling interpreter:
-AdaptiveCpp cannot switch backends after the first SYCL runtime init.
+Arm64 wheels must ship Metal + OpenMP. x86_64 wheels are OpenMP + generic SSCP
+host JIT (no Metal). Intended for a clean venv that has only the wheel
+(+ pytest) installed. Every Monte Carlo invocation is bounded by MC_TIMEOUT in
+a sibling interpreter: AdaptiveCpp cannot switch backends after the first
+SYCL runtime init.
 """
 
 from __future__ import annotations
@@ -25,12 +27,15 @@ REQUIRED_NAMES = (
     "fuzzybits/libscram.dylib",
     "fuzzybits/lib/libacpp-rt.dylib",
     "fuzzybits/lib/libacpp-common.dylib",
-    "fuzzybits/lib/hipSYCL/librt-backend-metal.dylib",
     "fuzzybits/lib/hipSYCL/librt-backend-omp.dylib",
-    "fuzzybits/lib/hipSYCL/llvm-to-backend/libllvm-to-metal.dylib",
     "fuzzybits/lib/hipSYCL/llvm-to-backend/libllvm-to-host.dylib",
     "fuzzybits/lib/hipSYCL/ext/llvm/bin/opt",
     "fuzzybits/lib/hipSYCL/ext/llvm/bin/llc",
+)
+
+REQUIRED_METAL_NAMES = (
+    "fuzzybits/lib/hipSYCL/librt-backend-metal.dylib",
+    "fuzzybits/lib/hipSYCL/llvm-to-backend/libllvm-to-metal.dylib",
 )
 
 
@@ -39,10 +44,19 @@ def _wheel_names(whl: Path) -> list[str]:
         return [n.replace("\\", "/") for n in zf.namelist()]
 
 
-def check_wheel(whl: Path) -> None:
+def _wheel_has_metal(names: list[str]) -> bool:
+    return any("librt-backend-metal.dylib" in n for n in names)
+
+
+def check_wheel(whl: Path) -> bool:
     names = _wheel_names(whl)
     print(f"wheel={whl.name} bytes={whl.stat().st_size} entries={len(names)}")
-    missing = [want for want in REQUIRED_NAMES if not any(n.startswith(want) for n in names)]
+    want = list(REQUIRED_NAMES)
+    has_metal = _wheel_has_metal(names)
+    is_x86 = "x86_64" in whl.name or "universal2" in whl.name
+    if has_metal or not is_x86:
+        want.extend(REQUIRED_METAL_NAMES)
+    missing = [item for item in want if not any(n.startswith(item) for n in names)]
     lld = [n for n in names if n.endswith("/ld.lld") or n.endswith("/ld64.lld")]
     if not lld:
         missing.append("fuzzybits/lib/hipSYCL/ext/llvm/bin/ld.lld|ld64.lld")
@@ -58,13 +72,16 @@ def check_wheel(whl: Path) -> None:
     libmc = [n for n in names if n.endswith("libmc.dylib") or n.endswith("/libmc.so")]
     if libmc:
         raise SystemExit(f"Darwin wheel must not ship libmc (INTERFACE mc → libscram): {libmc}")
+    if is_x86 and has_metal:
+        raise SystemExit("x86_64 wheel must not ship the Metal backend")
     print("bundled Mach-O / JIT (name only):")
     for n in sorted(names):
         if n.endswith((".dylib", ".so", ".bc")) or "/ext/llvm/bin/" in n or "/llvm-to-backend/" in n:
             print(f"  {n}")
     if missing:
         raise SystemExit(f"wheel missing required AdaptiveCpp artefacts: {missing}")
-    print("wheel layout ok")
+    print(f"wheel layout ok metal={has_metal}")
+    return has_metal
 
 
 def _run_child(script: str, extra_args: list[str], env: dict[str, str], timeout: int) -> subprocess.CompletedProcess[str]:
@@ -78,13 +95,14 @@ def _run_child(script: str, extra_args: list[str], env: dict[str, str], timeout:
     )
 
 
-def smoke_devices() -> None:
+def smoke_devices(*, require_metal: bool) -> None:
     script = r"""
 import os, sys
 os.environ.pop("ACPP_VISIBILITY_MASK", None)
 os.environ.pop("FUZZYBITS_BACKEND", None)
 os.environ.setdefault("ACPP_DEBUG_LEVEL", "2")
 os.environ.setdefault("ACPP_PERSISTENT_RUNTIME", "1")
+require_metal = sys.argv[1] == "1"
 import fuzzybits
 print("version", fuzzybits.__version__)
 print("variant", fuzzybits.active_variant())
@@ -100,8 +118,10 @@ has_metal = "metal" in backends or "paravirtual" in blob or "metal" in blob or "
 print("has_omp", has_omp, "has_metal", has_metal, "backends", sorted(backends))
 if not has_omp:
     raise SystemExit("OpenMP host device missing from list_devices()")
-if not has_metal:
+if require_metal and not has_metal:
     raise SystemExit("Metal device missing from list_devices()")
+if not require_metal and has_metal:
+    print("note: Metal device visible on a CPU-only wheel; ignoring")
 print("import+list_devices ok")
 """
     env = os.environ.copy()
@@ -109,7 +129,7 @@ print("import+list_devices ok")
     env.pop("FUZZYBITS_BACKEND", None)
     env.setdefault("ACPP_DEBUG_LEVEL", "2")
     env.setdefault("ACPP_PERSISTENT_RUNTIME", "1")
-    proc = _run_child(script, [], env, MC_TIMEOUT)
+    proc = _run_child(script, ["1" if require_metal else "0"], env, MC_TIMEOUT)
     sys.stdout.write(proc.stdout)
     sys.stderr.write(proc.stderr)
     if proc.returncode != 0:
@@ -222,7 +242,7 @@ def main() -> int:
     xml = repo / "input" / "Aralia" / "chinese.xml"
     if not xml.is_file():
         raise SystemExit(f"missing {xml}")
-    check_wheel(whl)
+    has_metal = check_wheel(whl)
     fzb = Path(sys.executable).parent / "fzb"
     if not fzb.is_file():
         fzb = Path(sys.executable).resolve().parent / "fzb"
@@ -233,9 +253,12 @@ def main() -> int:
         raise SystemExit(f"fzb --help failed rc={help_proc.returncode}")
     if "Usage: fzb" not in help_proc.stdout:
         raise SystemExit("fzb --help did not print the native-style usage")
-    smoke_devices()
+    smoke_devices(require_metal=has_metal)
     smoke_chinese(xml)
-    smoke_metal(xml)
+    if has_metal:
+        smoke_metal(xml)
+    else:
+        print("skip metal smoke (OpenMP-only wheel)")
     run_pytest(repo)
     print("MACOS SMOKE OK")
     return 0

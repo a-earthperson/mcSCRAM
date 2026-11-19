@@ -8,13 +8,19 @@ distribution name). Wheels are self-contained:
   variant, the SSCP JIT pieces (`llvm-to-backend`, `libLLVM`,
   `libdevice.10.bc`, `opt`/`llc`). NVIDIA **driver** libraries (`libcuda.so*`)
   are not bundled; a CUDA ≥ 12.8 driver is required for GPU runs.
-- **macOS 26 Apple Silicon** (`macosx_*_arm64`): AdaptiveCpp `ACPP_REF_METAL`
+- **macOS 26+ Apple Silicon** (`macosx_*_arm64`): AdaptiveCpp `ACPP_REF_METAL`
   runtime with Metal + OpenMP backends and SSCP JIT (`libllvm-to-metal`,
   `opt`/`llc`/`ld64.lld`, `libLLVM`, Homebrew `liblld`/`libomp`), `delocate`-repaired
   with `@loader_path` rpaths. There is no separate `libmc.dylib` (INTERFACE
   `mc` → `libscram`). Metal kernel JIT currently rejects `double` until
   [#17](https://github.com/fuzzybit-org/fuzzybits/issues/17)/[#30](https://github.com/fuzzybit-org/fuzzybits/issues/30);
   OpenMP CPU is the working backend. Built on GitHub-hosted `macos-26`.
+  CPython 3.12–3.15, one wheel per interpreter (no stable ABI).
+- **macOS 15+ Intel** (`macosx_15_0_x86_64`): AdaptiveCpp OpenMP + generic
+  SSCP host JIT, **no Metal** (Metal is Apple Silicon only). Homebrew
+  prefixes are `/usr/local/opt/{llvm@20,libomp,lld@20}`. Built on
+  GitHub-hosted `macos-15-intel`; the 15.0 deployment target installs on
+  Intel Macs running macOS 15+, including 26. Same CPython 3.12–3.15 matrix.
 
 Wheels are built with `MALLOC_TYPE=malloc` — no `LD_PRELOAD`.
 
@@ -174,13 +180,14 @@ docker --context xerxes build -f docker/wheel.Dockerfile \
 
 `auditwheel repair` on Ubuntu 24.04 tags **`manylinux_2_39`**. A
 `manylinux_2_28` rebuild is a follow-up. Driver libs are passed to
-`--exclude libcuda.so.1`. Approximate wheel sizes (cp312, x86_64):
+`--exclude libcuda.so.1`. Approximate wheel sizes (per CPython, x86_64):
 `generic` and `cuda-sm70` are both ~66 MB, dominated by `libLLVM.so.20.1`
-(~153 MB uncompressed) for SSCP JIT.
+(~153 MB uncompressed) for SSCP JIT. Release builds CPython 3.12–3.15
+inside the toolchain image with uv-managed interpreters (`pybind11>=3.1`).
 
-macOS 26 arm64 (GitHub-hosted `macos-26`; Intel Macs cannot produce this
-wheel). Host compiler is AppleClang; LLVM 20 is AdaptiveCpp's
-`CLANG_EXECUTABLE_PATH`. Override pyproject's Linux `clang-20` compilers:
+macOS 26 arm64 (GitHub-hosted `macos-26`). Host compiler is AppleClang;
+LLVM 20 is AdaptiveCpp's `CLANG_EXECUTABLE_PATH`. Override pyproject's
+Linux `clang-20` compilers:
 
 ```bash
 export MACOSX_DEPLOYMENT_TARGET=26.0
@@ -192,7 +199,24 @@ pip wheel . -w dist --no-deps \
 delocate-wheel --lib-sdir lib --require-archs arm64 -w dist wheelhouse/fuzzybits-*.whl
 ```
 
-Hosted path: `scripts/ci/macos-wheel-build.sh` + `scripts/ci/macos-smoke.py`.
+Hosted path: `scripts/ci/macos-wheel-versions.sh` (uv-managed 3.12–3.15)
++ `scripts/ci/macos-wheel-build.sh` + `scripts/ci/macos-smoke.py`.
+
+macOS 15 Intel (GitHub-hosted `macos-15-intel`; `MACOSX_DEPLOYMENT_TARGET=15.0`):
+
+```bash
+export MACOSX_DEPLOYMENT_TARGET=15.0
+# AdaptiveCpp: WITH_METAL_BACKEND=OFF, Homebrew /usr/local/opt/llvm@20
+pip wheel . -w dist --no-deps \
+  --config-settings=cmake.define.CMAKE_C_COMPILER=/usr/bin/clang \
+  --config-settings=cmake.define.CMAKE_CXX_COMPILER=/usr/bin/clang++ \
+  --config-settings=cmake.define.ACPP_TARGETS=generic \
+  --config-settings=cmake.define.CMAKE_OSX_ARCHITECTURES=x86_64 \
+  --config-settings=cmake.define.AdaptiveCpp_DIR=$ACPP_PREFIX/lib/cmake/AdaptiveCpp
+delocate-wheel --lib-sdir lib --require-archs x86_64 -w dist wheelhouse/fuzzybits-*.whl
+```
+
+`cmake/bundle_acpp.py` requires `librt-backend-metal.dylib` only on arm64.
 
 ## Tests
 

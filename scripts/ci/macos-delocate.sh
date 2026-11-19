@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # delocate repair keeping AdaptiveCpp's hipSYCL/ tree next to libacpp-rt.
 set -euo pipefail
+export COPYFILE_DISABLE=1
 
 src_dir="${1:?wheelhouse}"
 dest_dir="${2:?dest}"
+arch="${3:-$(uname -m)}"
 mkdir -p "${dest_dir}"
 
 # --lib-sdir lib: extra deps (libxml2, Homebrew libc++, …) land next to
@@ -27,10 +29,10 @@ if ((${#wheels[@]} == 0)); then
 fi
 
 for whl in "${wheels[@]}"; do
-  echo "delocate-wheel --lib-sdir lib --require-archs arm64 ${whl}"
+  echo "delocate-wheel --lib-sdir lib --require-archs ${arch} ${whl}"
   delocate-wheel -v \
     --lib-sdir lib \
-    --require-archs arm64 \
+    --require-archs "${arch}" \
     --no-sanitize-rpaths \
     --wheel-dir "${dest_dir}" \
     "${excludes[@]}" \

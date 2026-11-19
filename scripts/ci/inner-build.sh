@@ -150,14 +150,37 @@ case "${cmd}" in
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
     apt-get install -y --no-install-recommends \
-      python3-venv python3-pip python3-dev patchelf libatomic1 >/dev/null
-    python3 -m venv /tmp/wheel-venv
-    /tmp/wheel-venv/bin/pip install -U pip >/dev/null
-    /tmp/wheel-venv/bin/pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build packaging auditwheel
-    mkdir -p /src/dist /tmp/wheelhouse
+      python3-venv python3-pip python3-dev patchelf libatomic1 \
+      curl ca-certificates >/dev/null
+    if ! command -v uv >/dev/null 2>&1; then
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+    fi
+    export PATH="${HOME}/.local/bin:${PATH}"
+    read -r -a pythons <<< "${PYTHON_VERSIONS:-3.12}"
+    if ((${#pythons[@]} == 0)); then
+      echo "error: PYTHON_VERSIONS is empty" >&2
+      exit 2
+    fi
+    echo "wheel CPython versions: ${pythons[*]}"
+    uv python install "${pythons[@]}"
+    mkdir -p /src/dist
     export CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache
-    PATH="/tmp/wheel-venv/bin:${PATH}" FUZZYBITS_VARIANT=generic /src/docker/pip-wheel.sh /tmp/wheelhouse
-    PATH="/tmp/wheel-venv/bin:${PATH}" /src/docker/auditwheel-repair.sh /tmp/wheelhouse /src/dist
+    orig_path="${PATH}"
+    for py in "${pythons[@]}"; do
+      echo "=== wheel CPython ${py} ==="
+      start=$(date +%s)
+      venv="/tmp/wheel-venv-${py}"
+      rm -rf "${venv}"
+      uv venv --python "${py}" "${venv}"
+      "${venv}/bin/pip" install -U pip >/dev/null
+      "${venv}/bin/pip" install 'scikit-build-core>=0.10' 'pybind11>=3.1' ninja cmake build packaging auditwheel
+      wheelhouse="/tmp/wheelhouse-cp${py//./}"
+      rm -rf "${wheelhouse}"
+      mkdir -p "${wheelhouse}"
+      PATH="${venv}/bin:${orig_path}" FUZZYBITS_VARIANT=generic /src/docker/pip-wheel.sh "${wheelhouse}"
+      PATH="${venv}/bin:${orig_path}" /src/docker/auditwheel-repair.sh "${wheelhouse}" /src/dist
+      echo "wheel_python_${py}_seconds=$(( $(date +%s) - start ))"
+    done
     ls -lah /src/dist
     ;;
   trim)

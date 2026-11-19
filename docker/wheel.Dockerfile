@@ -49,7 +49,7 @@ RUN python3 -m venv /opt/wheel-venv && \
     /opt/wheel-venv/bin/pip install -U pip && \
     /opt/wheel-venv/bin/pip install \
       'scikit-build-core>=0.10' \
-      'pybind11>=2.13' \
+      'pybind11>=3.1' \
       ninja \
       cmake \
       auditwheel \

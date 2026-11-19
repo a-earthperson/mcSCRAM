@@ -81,13 +81,14 @@ jobs:
     name: linux-wheel
     needs: version
     runs-on: { group: fuzzybits-ci, labels: [self-hosted, Linux, X64] }
-    timeout-minutes: 90
+    timeout-minutes: 150
     permissions:
       contents: read
       packages: read
     env:
       PRESET: generic
       BUILD_TESTING: "OFF"
+      PYTHON_VERSIONS: "3.12 3.13 3.14 3.15"
     steps:
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
@@ -146,24 +147,66 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build generic wheel (auditwheel-repaired)
+      - name: Build generic wheels (auditwheel-repaired)
+        id: build
         run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic wheel
 
-      - name: pip install + pytest (clean Ubuntu 24.04)
+      - name: Upload cp312 wheel
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp312-manylinux_x86_64
+          path: dist/fuzzybits-*-cp312-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload cp313 wheel
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp313-manylinux_x86_64
+          path: dist/fuzzybits-*-cp313-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload cp314 wheel
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp314-manylinux_x86_64
+          path: dist/fuzzybits-*-cp314-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload cp315 wheel
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp315-manylinux_x86_64
+          path: dist/fuzzybits-*-cp315-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Smoke each wheel (clean Ubuntu 24.04)
+        run: |
+          set -euo pipefail
+          for py in 3.12 3.13 3.14 3.15; do
+            echo "=== linux smoke CPython ${py} ==="
+            docker run --rm \
+              -v "$PWD:/src" \
+              -w /src \
+              -e "PYTHON_VERSION=${py}" \
+              ubuntu:24.04 \
+              bash scripts/ci/linux-wheel-smoke.sh
+          done
+
+      - name: pip install + pytest 3.12 (clean Ubuntu 24.04)
         run: |
           docker run --rm \
             -v "$PWD:/src" \
             -w /src \
             ubuntu:24.04 \
             bash scripts/ci/python-pytest.sh
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: fuzzybits-cp312-manylinux_x86_64
-          path: dist/fuzzybits-*.whl
-          if-no-files-found: error
-          retention-days: 14
 
   macos-wheel:
     name: macos
@@ -172,6 +215,8 @@ jobs:
     with:
       version_override: ${{ needs.version.outputs.override }}
       wheel_only: true
+      python_versions: "3.12 3.13 3.14 3.15"
+      include_intel: true
 
   # Off unless the repository variable RELEASE_INCLUDE_WINDOWS is `true`:
   # windows.yml rebuilds LLVM on a cache miss and fails on MSVC-14.52-only
@@ -266,15 +311,59 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download wheels
+      - name: Download cp312 Linux engine wheel
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: fuzzybits-*
+          pattern: fuzzybits-cp312-manylinux*
+          path: wheels
+          merge-multiple: true
+
+      - name: Download server wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-server-*
           path: wheels
           merge-multiple: true
 
       - name: Install and smoke (clean Ubuntu 24.04)
         run: docker run --rm -v "$PWD:/src" -w /src ubuntu:24.04 bash scripts/ci/release-server-smoke.sh
+
+  # Dry-run and tag: list every wheel, apply the per-file size gate, report
+  # the total against PyPI's 10 GB project cap (#101). Publish still runs
+  # its own copy so a skipped report cannot unblock an upload.
+  wheels-report:
+    name: wheels-report
+    needs: [version, linux-wheel, macos-wheel, windows-wheel, server-wheel]
+    if: >-
+      ${{ !cancelled()
+      && needs.linux-wheel.result == 'success'
+      && needs.macos-wheel.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.windows-wheel.result)
+      && contains(fromJSON('["success", "skipped"]'), needs.server-wheel.result) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Download wheels
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-*
+          path: dist
+          merge-multiple: true
+
+      - name: Size gate and totals
+        env:
+          MAX_MB: ${{ vars.PYPI_MAX_FILE_MB || '100' }}
+        run: |
+          set -euo pipefail
+          ls -lah dist
+          bash scripts/ci/release-size-gate.sh dist oversize "${MAX_MB}"
+          echo "oversize (held back from PyPI, still a GitHub Release asset):"
+          ls -lah oversize || echo "(none)"
 
   publish-pypi:
     name: publish-pypi
