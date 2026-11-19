@@ -99,13 +99,12 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath $dest -Force
           $dest | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Cache AdaptiveCpp+LLVM install
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+      - name: Restore AdaptiveCpp+LLVM install
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         id: acpp-cache
         with:
           path: ${{ env.ACPP_PREFIX }}
           key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}-clangcl20-x86-64
-          save-always: true
 
       - name: Build AdaptiveCpp into LLVM (CUDA + OpenMP SSCP)
         id: acpp-build
@@ -177,6 +176,13 @@ jobs:
           Remove-Item -Recurse -Force $tmp
           $secs = [int]((Get-Date) - $start).TotalSeconds
           "acpp_build_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Save AdaptiveCpp+LLVM install
+        if: always() && steps.acpp-cache.outputs.cache-hit != 'true' && steps.acpp-build.outcome == 'success'
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ${{ env.ACPP_PREFIX }}
+          key: ${{ steps.acpp-cache.outputs.cache-primary-key }}
 
       - name: Probe AdaptiveCpp devices
         id: probe
