@@ -70,12 +70,14 @@ inline constexpr bool group_sum_fits_u32_v =
 namespace detail {
 
 template <typename Group>
-inline std::size_t group_sum_native(const Group &group, const std::size_t local_sum) {
+[[gnu::always_inline]] [[gnu::flatten]] inline std::size_t group_sum_native(const Group &group,
+                                                                            const std::size_t local_sum) {
     return sycl::reduce_over_group(group, local_sum, sycl::plus<>());
 }
 
 template <typename Group>
-inline std::size_t group_sum_metal(const Group &group, const std::size_t local_sum) {
+[[gnu::always_inline]] [[gnu::flatten]] inline std::size_t group_sum_metal(const Group &group,
+                                                                           const std::size_t local_sum) {
     const auto local32 = static_cast<std::uint32_t>(local_sum);
     const auto group32 = sycl::reduce_over_group(group, local32, sycl::plus<>());
     return static_cast<std::size_t>(group32);
@@ -86,7 +88,8 @@ inline std::size_t group_sum_metal(const Group &group, const std::size_t local_s
 /// Intra-group popcount reduction. Metal path: uint32 then widen. Native path:
 /// `reduce_over_group` on `std::size_t` byte-for-byte with pre-shim code.
 template <typename Group>
-inline std::size_t group_sum(const Group &group, const std::size_t local_sum) {
+[[gnu::always_inline]] [[gnu::flatten]] inline std::size_t group_sum(const Group &group,
+                                                                     const std::size_t local_sum) {
     std::size_t result = 0;
     __acpp_if_target_sscp(namespace jit = sycl::AdaptiveCpp_jit;
                           result = jit::compile_if_else(
@@ -99,7 +102,7 @@ inline std::size_t group_sum(const Group &group, const std::size_t local_sum) {
 
 /// Group-leader hit accumulator. Native `atomic_ref<std::size_t>::fetch_add`.
 /// No Metal branch until emulation is measured wrong or fails to lower.
-inline void add_hits(std::size_t &num_one_bits, const std::size_t group_sum) {
+[[gnu::always_inline]] [[gnu::flatten]] inline void add_hits(std::size_t &num_one_bits, const std::size_t group_sum) {
     auto atomic_one_bits = sycl::atomic_ref<std::size_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
                                             sycl::access::address_space::global_space>(num_one_bits);
     atomic_one_bits.fetch_add(group_sum);
