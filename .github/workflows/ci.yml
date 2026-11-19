@@ -153,6 +153,85 @@ jobs:
         if: steps.login.outcome == 'success'
         run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic ccache-stats
 
+  # Distinct required-check name. Rebuilds product with linux-generic's ccache
+  # (warm ~20s) rather than a second artifact download; AdaptiveCpp SSCP still
+  # needs the toolchain image at fzb-run time.
+  spine:
+    name: spine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read
+    env:
+      PRESET: generic
+      BUILD_TESTING: "ON"
+      SPINE_BACKEND: omp
+      SPINE_TRIALS: "4194304"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          sha="$(sha256sum toolchain.env | cut -c1-12)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "TOOLCHAIN_SHA=${sha}"
+            echo "TOOLCHAIN_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}"
+          } >> "${GITHUB_ENV}"
+
+      - name: ccache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: .ccache
+          key: ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-
+
+      - name: Free disk
+        run: |
+          set -eux
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Ruby \
+            /usr/lib/jvm \
+            /usr/share/miniconda || true
+          sudo docker system prune -af || true
+          df -h /
+
+      - name: Log in to GHCR
+        id: login
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build product
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic configure-product
+
+      - name: fzb spine (chinese, das9201, baobab2)
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic spine
+
+      - name: ccache stats
+        if: steps.login.outcome == 'success'
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic ccache-stats
+
   python-generic:
     name: python-generic
     runs-on: ubuntu-24.04

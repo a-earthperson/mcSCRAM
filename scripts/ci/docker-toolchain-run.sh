@@ -90,6 +90,11 @@ run_args=(
   -e ACPP_VISIBILITY_MASK="${ACPP_VISIBILITY_MASK:-}"
   -e ACPP_DEBUG_LEVEL="${ACPP_DEBUG_LEVEL:-0}"
   -e ACPP_PERSISTENT_RUNTIME="${ACPP_PERSISTENT_RUNTIME:-1}"
+  -e SPINE_BACKEND="${SPINE_BACKEND:-}"
+  -e SPINE_TRIALS="${SPINE_TRIALS:-}"
+  -e SPINE_TIMEOUT="${SPINE_TIMEOUT:-}"
+  -e SPINE_Z_MAX="${SPINE_Z_MAX:-}"
+  -e SPINE_INPUT_DIR="${SPINE_INPUT_DIR:-}"
   --entrypoint bash
 )
 if [[ -n "${gpus}" ]]; then
@@ -98,5 +103,6 @@ if [[ -n "${gpus}" ]]; then
 fi
 
 # --rm so a job timeout does not leave a GPU-resident container. Inner MC
-# runs still use `timeout 60` (CTest TIMEOUT / smoke.sh) inside the container.
+# runs still use `timeout 60` (CTest TIMEOUT / smoke.sh / spine.sh) inside
+# the container.
 docker run "${run_args[@]}" "${image}" "$@"
