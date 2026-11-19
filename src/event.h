@@ -182,11 +182,11 @@ class Gate : public Event, public NodeMark {
   /// @param[in] formula  The new Boolean formula of this gate.
   ///
   /// @returns The old formula.
-  std::unique_ptr<Formula> formula(std::unique_ptr<Formula> formula) {
-    assert(formula && "Cannot unset formula.");
-    formula_.swap(formula);
-    return formula;
-  }
+  ///
+  /// Out of line: MSVC's unique_ptr destructor is instantiated at a by-value
+  /// parameter, which requires Formula to be complete. libstdc++/libc++ delay
+  /// that instantiation, so the previous inline definition compiled there.
+  std::unique_ptr<Formula> formula(std::unique_ptr<Formula> formula);
 
  private:
   std::unique_ptr<Formula> formula_;  ///< Boolean formula of this gate.

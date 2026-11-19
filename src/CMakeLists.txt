@@ -56,11 +56,11 @@ set(SCRAM_MC_SRC
   mc/core/importance_analysis.cc
 )
 
-if(APPLE)
-  # Darwin does not allow libscram.dylib to retain the DirectEval symbols that
-  # risk_analysis.cc now references and resolve them later from libmc.dylib.
-  # Build the DirectEval implementation into scram on Apple to keep the dynamic
-  # library self-contained and avoid a scram <-> mc shared-library cycle.
+if(APPLE OR WIN32)
+  # Darwin dylibs and Windows DLLs cannot leave DirectEval symbols undefined
+  # in libscram and resolve them later from libmc. Build the DirectEval
+  # implementation into scram so the shared library is self-contained and
+  # there is no scram <-> mc shared-library cycle.
   find_package(_adaptivecpp)
   # Runtime SYCL entrypoint: AdaptiveCpp::acpp-rt is directory-scoped here, so
   # add_sycl_to_target from src/runtime/ cannot see it. pcfb is linked later.
@@ -74,12 +74,20 @@ if(APPLE)
   )
 endif()
 
-# Build scram as shared library explicitly (dependencies are static)
-add_library(scram SHARED ${SCRAM_CORE_SRC})
+# Linux: shared libscram.so. Darwin/Windows: static into the consumer
+# (scram-cli, .pyd). Windows CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS does not
+# export private static data (Logger::report_level_), so a scram.dll
+# leaves scram-cli.exe with unresolved data symbols.
+if(WIN32)
+  add_library(scram STATIC ${SCRAM_CORE_SRC})
+  set_target_properties(scram PROPERTIES POSITION_INDEPENDENT_CODE ON)
+else()
+  add_library(scram SHARED ${SCRAM_CORE_SRC})
+endif()
 target_link_libraries(scram PRIVATE ${LIBS})
 target_compile_options(scram PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
 
-if(APPLE)
+if(APPLE OR WIN32)
   add_sycl_to_target(TARGET scram SOURCES ${SCRAM_MC_SRC})
   target_include_directories(scram PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/mc")
 endif()
@@ -94,17 +102,20 @@ set_source_files_properties(
 
 # Install the library to standard system directories respecting CMAKE_INSTALL_PREFIX.
 # Wheels co-locate libscram next to the Python extension so RPATH $ORIGIN works.
+# On Windows the DLL is the RUNTIME artefact; keep it next to the .pyd.
 if(SKBUILD)
   set(_scram_lib_dest "fuzzybits")
+  set(_scram_runtime_dest "fuzzybits")
 else()
   set(_scram_lib_dest ${CMAKE_INSTALL_LIBDIR})
+  set(_scram_runtime_dest ${CMAKE_INSTALL_BINDIR})
 endif()
 install(
         TARGETS scram
         COMPONENT scram
         LIBRARY DESTINATION ${_scram_lib_dest}
         ARCHIVE DESTINATION ${_scram_lib_dest}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        RUNTIME DESTINATION ${_scram_runtime_dest}
 )
 if(SKBUILD)
   set_target_properties(scram PROPERTIES

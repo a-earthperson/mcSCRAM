@@ -55,6 +55,10 @@ function(fuzzybits_add_pcfb)
       GIT_TAG        ${FUZZYBITS_PCFB_GIT_TAG}
     )
     FetchContent_MakeAvailable(pcfb)
+    if(WIN32)
+      include("${CMAKE_CURRENT_LIST_DIR}/patches/pcfb_windows_mmap.cmake")
+      fuzzybits_pcfb_apply_windows_mmap("${pcfb_SOURCE_DIR}")
+    endif()
   endif()
 
   set(BUILD_TESTING "${_fuzzybits_saved_testing}" CACHE BOOL "Build the testing tree" FORCE)

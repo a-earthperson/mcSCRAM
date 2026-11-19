@@ -26,7 +26,21 @@ struct HitsN {
 };
 
 int run_cmd(const std::string &cmd) {
+#ifdef _WIN32
+  // MSVC std::system is cmd.exe /C; a command that starts with a quote is
+  // parsed as the executable name. /S /C "..." takes the whole string.
+  return std::system(("cmd /S /C \"" + cmd + "\"").c_str());
+#else
   return std::system(cmd.c_str());
+#endif
+}
+
+std::string shell_quote(const std::string &s) {
+#ifdef _WIN32
+  return "\"" + s + "\"";
+#else
+  return "'" + s + "'";
+#endif
 }
 
 HitsN parse_convergence_csv(const std::filesystem::path &csv) {
@@ -91,22 +105,34 @@ void check_n(const std::filesystem::path &xml, std::uint64_t requested) {
   const auto csv = tmp / "convergence.csv";
 
   std::ostringstream compile;
-  compile << "'" << FZB_PATH << "' compile '" << xml.string() << "' -c 2 --no-kn -o '"
-          << pcfb.string() << "'";
+  compile << shell_quote(FZB_PATH) << " compile " << shell_quote(xml.string())
+          << " -c 2 --no-kn -o " << shell_quote(pcfb.string());
   REQUIRE(run_cmd(compile.str()) == 0);
   REQUIRE(std::filesystem::exists(pcfb));
 
   std::ostringstream scram;
+#ifdef _WIN32
+  scram << "cmd /C \"cd /D " << shell_quote(tmp.string()) << " && " << shell_quote(SCRAM_CLI_PATH)
+        << " --monte-carlo --probability --pdag -c 2 --no-kn -P wald -N " << requested
+        << " --no-indent -V 0 -o " << shell_quote(report.string()) << " "
+        << shell_quote(xml.string()) << "\"";
+#else
   scram << "timeout 60 bash -lc \"cd '" << tmp.string() << "' && '" << SCRAM_CLI_PATH
         << "' --monte-carlo --probability --pdag -c 2 --no-kn -P wald -N " << requested
         << " --no-indent -V 0 -o '" << report.string() << "' '" << xml.string() << "'\"";
+#endif
   REQUIRE(run_cmd(scram.str()) == 0);
   REQUIRE(std::filesystem::exists(csv));
   const auto from_scram = parse_convergence_csv(csv);
 
   std::ostringstream fzb;
+#ifdef _WIN32
+  fzb << shell_quote(FZB_PATH) << " run " << shell_quote(pcfb.string()) << " --trials " << requested
+      << " --json > " << shell_quote(json_path.string());
+#else
   fzb << "timeout 60 '" << FZB_PATH << "' run '" << pcfb.string() << "' --trials " << requested
       << " --json > '" << json_path.string() << "'";
+#endif
   REQUIRE(run_cmd(fzb.str()) == 0);
   std::ifstream js(json_path);
   REQUIRE(js);
@@ -146,11 +172,16 @@ TEST_CASE("fzb run rejects a non-default --seed", "[mc][cli][seed]") {
   const auto xml = src / "input" / "Aralia" / "chinese.xml";
   const auto tmp = std::filesystem::temp_directory_path() / "fuzzybits-seed-reject.pcfb";
   std::ostringstream compile;
-  compile << "'" << FZB_PATH << "' compile '" << xml.string() << "' -c 2 --no-kn -o '"
-          << tmp.string() << "'";
+  compile << shell_quote(FZB_PATH) << " compile " << shell_quote(xml.string())
+          << " -c 2 --no-kn -o " << shell_quote(tmp.string());
   REQUIRE(run_cmd(compile.str()) == 0);
   std::ostringstream run;
+#ifdef _WIN32
+  run << shell_quote(FZB_PATH) << " run " << shell_quote(tmp.string())
+      << " --trials 64 --seed 1 >NUL 2>&1";
+#else
   run << "'" << FZB_PATH << "' run '" << tmp.string() << "' --trials 64 --seed 1 >/dev/null 2>&1";
+#endif
   REQUIRE(run_cmd(run.str()) != 0);
   std::filesystem::remove(tmp);
 }

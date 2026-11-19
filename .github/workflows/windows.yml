@@ -1,0 +1,420 @@
+# GitHub-hosted Windows x86_64 (windows-2025). Public repo: Windows minutes
+# are free. Never self-hosted. AdaptiveCpp generic SSCP + CUDA on Windows
+# requires linking AdaptiveCpp into LLVM (see AdaptiveCpp install docs);
+# the install is cached on (ACPP_REF_WINDOWS, LLVM_REF_WINDOWS, CUDA, ImageOS).
+name: Windows
+
+on:
+  pull_request:
+  push:
+    branches: [develop, "ci/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-generic:
+    name: windows-generic
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      ACPP_PREFIX: ${{ github.workspace }}/.cache/acpp-prefix
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Load toolchain pins
+        shell: bash
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          {
+            echo "ACPP_REPO=${ACPP_REPO}"
+            echo "ACPP_REF_WINDOWS=${ACPP_REF_WINDOWS}"
+            echo "LLVM_REF_WINDOWS=${LLVM_REF_WINDOWS}"
+            echo "LLVM_VERSION=${LLVM_VERSION}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "CUDA_VERSION=${CUDA_VERSION}"
+            echo "NINJA_VERSION_WINDOWS=${NINJA_VERSION_WINDOWS}"
+            echo "NINJA_SHA256_WINDOWS=${NINJA_SHA256_WINDOWS}"
+            echo "ACPP_COMPILER_FEATURE_PROFILE=${ACPP_COMPILER_FEATURE_PROFILE}"
+          } >> "${GITHUB_ENV}"
+          test "${ACPP_REF_WINDOWS}" != "TBD"
+          test "${LLVM_REF_WINDOWS}" != "TBD"
+
+      - name: Detect MSVC toolset
+        id: msvc
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -property installationPath
+          $msvc = Join-Path $vs 'VC\Tools\MSVC'
+          $vers = @(Get-ChildItem $msvc -Directory | ForEach-Object { $_.Name })
+          $vers | ForEach-Object { Write-Host "MSVC $_" }
+          $v1451 = $vers | Where-Object { $_ -like '14.51*' } | Select-Object -First 1
+          if ($v1451) {
+            'toolset=14.51' | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "prefer toolset 14.51 ($v1451) for LLVM 20"
+          } else {
+            'toolset=default' | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "14.51 missing; default toolset + _ALLOW_COMPILER_VERSION_MISMATCH"
+          }
+
+      - name: MSVC developer command prompt (14.51)
+        if: steps.msvc.outputs.toolset == '14.51'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          toolset: "14.51"
+
+      - name: MSVC developer command prompt (default)
+        if: steps.msvc.outputs.toolset != '14.51'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+
+      - name: Bootstrap LLVM 20 (clang-cl)
+        uses: KyleMayes/install-llvm-action@a7a1a882e2d06ebe05d5bb97c3e1f8c984ae96fc # v2.0.7
+        with:
+          version: "20"
+
+      - name: Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: sccache
+        uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
+        with:
+          variant: sccache
+          key: windows-generic-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}
+          restore-keys: |
+            windows-generic-${{ env.ACPP_REF_WINDOWS }}-
+            windows-generic-
+
+      - name: CUDA 12.8.1 toolkit
+        uses: Jimver/cuda-toolkit@b8bf9c6c28f8a92fbb04dcfcaee872e60c57462d # v0.2.36
+        id: cuda
+        with:
+          cuda: ${{ env.CUDA_VERSION }}
+          method: network
+          sub-packages: '["nvcc", "cudart", "visual_studio_integration", "nvrtc"]'
+          use-github-cache: true
+
+      - name: Ninja
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'ninja-win.zip'
+          $url = "https://github.com/ninja-build/ninja/releases/download/v$env:NINJA_VERSION_WINDOWS/ninja-win.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $got = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          $want = $env:NINJA_SHA256_WINDOWS.ToLowerInvariant()
+          if ($got -ne $want) { throw "ninja sha256 mismatch: $got != $want" }
+          $dest = Join-Path $env:GITHUB_WORKSPACE 'ninja_install'
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          $dest | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Restore AdaptiveCpp+LLVM install
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        id: acpp-cache
+        with:
+          path: ${{ env.ACPP_PREFIX }}
+          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}-clangcl20-x86-64
+
+      - name: Build AdaptiveCpp into LLVM (CUDA + OpenMP SSCP)
+        id: acpp-build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $start = Get-Date
+          $acppExe = Join-Path $env:ACPP_PREFIX 'bin\acpp.exe'
+          $acppScript = Join-Path $env:ACPP_PREFIX 'bin\acpp'
+          $cmakeDir = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
+          if (((Test-Path $acppExe) -or (Test-Path $acppScript)) -and (Test-Path $cmakeDir)) {
+            Write-Host "AdaptiveCpp cache hit at $env:ACPP_PREFIX"
+            "cache=hit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "acpp_build_seconds=0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            exit 0
+          }
+          "cache=miss" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if (Test-Path $env:ACPP_PREFIX) { Remove-Item -Recurse -Force $env:ACPP_PREFIX }
+          New-Item -ItemType Directory -Force -Path $env:ACPP_PREFIX | Out-Null
+
+          $tmp = Join-Path $env:RUNNER_TEMP 'acpp-llvm'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          git clone --depth 1 --single-branch -b $env:LLVM_REF_WINDOWS https://github.com/llvm/llvm-project.git (Join-Path $tmp 'llvm')
+          git clone --filter=blob:none $env:ACPP_REPO (Join-Path $tmp 'AdaptiveCpp')
+          git -C (Join-Path $tmp 'AdaptiveCpp') fetch --depth 1 origin $env:ACPP_REF_WINDOWS
+          git -C (Join-Path $tmp 'AdaptiveCpp') checkout --detach FETCH_HEAD
+          $got = git -C (Join-Path $tmp 'AdaptiveCpp') rev-parse HEAD
+          if ($got -ne $env:ACPP_REF_WINDOWS) { throw "AdaptiveCpp HEAD $got != $env:ACPP_REF_WINDOWS" }
+
+          # AdaptiveCpp uses GNU __atomic_* builtins (clang-cl, not MSVC cl).
+          # LLVM 19 clang-cl cannot parse the VS 2025 STL; LLVM 20 can.
+          $env:PATH = "$env:LLVM_PATH\bin;$env:PATH"
+          $env:CC = 'clang-cl'
+          $env:CXX = 'clang-cl'
+          $env:CFLAGS = '-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX'
+          $env:CXXFLAGS = $env:CFLAGS
+          $cuda = ($env:CUDA_PATH -replace '\\','/')
+          $build = Join-Path $tmp 'build'
+          New-Item -ItemType Directory -Force -Path $build | Out-Null
+          $acppSrc = Join-Path $tmp 'AdaptiveCpp'
+          $hatchOverride = (Join-Path $env:GITHUB_WORKSPACE 'cmake\windows_compiler_override.cmake') -replace '\\','/'
+          cmake -S (Join-Path $tmp 'llvm\llvm') -B $build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$env:ACPP_PREFIX" `
+            -DCMAKE_C_COMPILER=clang-cl `
+            -DCMAKE_CXX_COMPILER=clang-cl `
+            -DCMAKE_USER_MAKE_RULES_OVERRIDE="$hatchOverride" `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" `
+            -DLLVM_ENABLE_PROJECTS="clang;openmp;lld" `
+            -DLLVM_ENABLE_EH=ON `
+            -DLLVM_ENABLE_RTTI=ON `
+            -DLLVM_PARALLEL_LINK_JOBS=1 `
+            -DLLVM_EXTERNAL_PROJECTS=AdaptiveCpp `
+            -DLLVM_EXTERNAL_ADAPTIVECPP_SOURCE_DIR="$acppSrc" `
+            -DLLVM_ADAPTIVECPP_LINK_INTO_TOOLS=ON `
+            -DLLVM_INCLUDE_TESTS=OFF `
+            -DLLVM_INCLUDE_EXAMPLES=OFF `
+            -DLLVM_INCLUDE_BENCHMARKS=OFF `
+            -DLLVM_ENABLE_BINDINGS=OFF `
+            -DLLVM_TOOL_BUGPOINT_BUILD=OFF `
+            -DOPENMP_ENABLE_LIBOMPTARGET=OFF `
+            -DWITH_OPENCL_BACKEND=OFF `
+            -DWITH_ROCM_BACKEND=OFF `
+            -DWITH_LEVEL_ZERO_BACKEND=OFF `
+            -DWITH_CUDA_BACKEND=ON `
+            -DACPP_COMPILER_FEATURE_PROFILE=full `
+            -DACPP_HOST_FORCE_MCPU_TARGET=x86-64 `
+            -DCUDA_TOOLKIT_ROOT_DIR="$cuda"
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed ($LASTEXITCODE)" }
+          cmake --build $build --target install
+          if ($LASTEXITCODE -ne 0) { throw "ninja install failed ($LASTEXITCODE)" }
+          Remove-Item -Recurse -Force $tmp
+          $secs = [int]((Get-Date) - $start).TotalSeconds
+          "acpp_build_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Save AdaptiveCpp+LLVM install
+        if: always() && steps.acpp-cache.outputs.cache-hit != 'true' && steps.acpp-build.outcome == 'success'
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ${{ env.ACPP_PREFIX }}
+          key: ${{ steps.acpp-cache.outputs.cache-primary-key }}
+
+      - name: Ensure acpp.cmd (Python driver has no .exe)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = Join-Path $env:ACPP_PREFIX 'bin'
+          $exe = Join-Path $bin 'acpp.exe'
+          $cmd = Join-Path $bin 'acpp.cmd'
+          $script = Join-Path $bin 'acpp'
+          if (Test-Path $exe) {
+            Write-Host "acpp.exe present"
+            exit 0
+          }
+          if (-not (Test-Path $script)) { throw "no acpp driver in $bin" }
+          Set-Content -Path $cmd -Encoding ascii -Value "@echo off`r`npython `"%~dp0acpp`" %*`r`n"
+          Write-Host "wrote $cmd -> python acpp"
+
+      - name: Probe AdaptiveCpp devices
+        id: probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:ACPP_PREFIX\bin;$env:PATH"
+          $info = Join-Path $env:ACPP_PREFIX 'bin\acpp-info.exe'
+          $acppExe = Join-Path $env:ACPP_PREFIX 'bin\acpp.exe'
+          $acppCmd = Join-Path $env:ACPP_PREFIX 'bin\acpp.cmd'
+          "## acpp-info" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Test-Path $info) {
+            & $info -l *>&1 | Tee-Object -FilePath acpp-info.txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } elseif (Test-Path $acppExe) {
+            & $acppExe --version *>&1 | Tee-Object -FilePath acpp-info.txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } elseif (Test-Path $acppCmd) {
+            & $acppCmd --version *>&1 | Tee-Object -FilePath acpp-info.txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            throw "neither acpp-info.exe nor acpp in $env:ACPP_PREFIX\bin"
+          }
+          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Get-ChildItem $env:ACPP_PREFIX\bin -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+          Get-ChildItem $env:ACPP_PREFIX\bin\hipSYCL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+
+      - name: Configure and build fuzzybits (windows-generic)
+        id: product
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $start = Get-Date
+          $clang = Join-Path $env:ACPP_PREFIX 'bin\clang.exe'
+          $env:PATH = "$env:ACPP_PREFIX\bin;$env:PATH"
+          $env:CC = $clang
+          $env:CXX = $clang
+          $env:CFLAGS = '-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX'
+          $env:CXXFLAGS = $env:CFLAGS
+          $env:AdaptiveCpp_DIR = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
+          cmake --preset windows-generic `
+            -DCMAKE_PREFIX_PATH="$env:ACPP_PREFIX" `
+            -DAdaptiveCpp_DIR="$env:AdaptiveCpp_DIR" `
+            -DCMAKE_C_COMPILER="$clang" `
+            -DCMAKE_CXX_COMPILER="$clang" `
+            -DBUILD_TESTING=ON `
+            -DBUILD_PYTHON_BINDINGS=ON `
+            -DMALLOC_TYPE=malloc
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed ($LASTEXITCODE)" }
+          cmake --build --preset windows-generic
+          if ($LASTEXITCODE -ne 0) { throw "cmake --build failed ($LASTEXITCODE)" }
+          $secs = [int]((Get-Date) - $start).TotalSeconds
+          "fuzzybits_build_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: fzb --help
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $build = Join-Path $env:GITHUB_WORKSPACE 'build\windows-generic'
+          $libxml = Join-Path $build '_deps\libxml2-build'
+          $env:PATH = "$env:ACPP_PREFIX\bin;$libxml;$build\src;$env:PATH"
+          $bin = Get-ChildItem -Path $build -Recurse -Filter fzb.exe |
+            Select-Object -First 1
+          if (-not $bin) { throw "fzb.exe not found" }
+          Write-Host "fzb: $($bin.FullName)"
+          if (Get-Command dumpbin -ErrorAction SilentlyContinue) {
+            dumpbin /DEPENDENTS $bin.FullName
+          }
+          & $bin.FullName --help
+          if ($LASTEXITCODE -ne 0) { throw "fzb --help exited $LASTEXITCODE" }
+
+      - name: ctest CPU (OpenMP, quarantine excluded)
+        timeout-minutes: 20
+        continue-on-error: true
+        env:
+          ACPP_VISIBILITY_MASK: omp
+          ACPP_DEBUG_LEVEL: "0"
+          ACPP_PERSISTENT_RUNTIME: "1"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $build = Join-Path $env:GITHUB_WORKSPACE 'build\windows-generic'
+          $libxml = Join-Path $build '_deps\libxml2-build'
+          $env:PATH = "$env:ACPP_PREFIX\bin;$libxml;$build\src;$env:PATH"
+          $start = Get-Date
+          ctest --preset windows-generic --output-on-failure --no-tests=error
+          $code = $LASTEXITCODE
+          $secs = [int]((Get-Date) - $start).TotalSeconds
+          "cpu_ctest_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if ($code -ne 0) {
+            @(
+              '## ctest (windows-generic)',
+              "ctest exited $code after ${secs}s. Failures are reported, not hidden; they do not gate the wheel/smoke (#76).",
+              'Known remaining: aiger corpus diagnostic; scram_legacy BSCU mean/sigma; mc.cli.* ACCESS_VIOLATION (0xC0000005) under std::system; fzb_cli_identity scram IOError on temp paths.'
+            ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            throw "ctest failed ($code)"
+          }
+
+      - name: Build generic wheel
+        if: always() && steps.product.outcome == 'success'
+        id: wheel
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $start = Get-Date
+          $clang = Join-Path $env:ACPP_PREFIX 'bin\clang.exe'
+          $env:PATH = "$env:ACPP_PREFIX\bin;$env:CUDA_PATH\bin;$env:PATH"
+          $env:CC = $clang
+          $env:CXX = $clang
+          $env:CFLAGS = '-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX'
+          $env:CXXFLAGS = $env:CFLAGS
+          $env:AdaptiveCpp_DIR = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
+          $env:CMAKE_PREFIX_PATH = "$env:ACPP_PREFIX"
+          python -m pip install -U pip
+          python -m pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build delvewheel
+          New-Item -ItemType Directory -Force -Path wheelhouse, dist | Out-Null
+          $env:CMAKE_GENERATOR = 'Ninja'
+          python -m pip wheel . -w wheelhouse --no-deps `
+            --config-settings=cmake.define.ACPP_TARGETS=generic `
+            --config-settings=cmake.define.MALLOC_TYPE=malloc `
+            --config-settings=cmake.define.BUILD_TESTING=OFF `
+            --config-settings=cmake.define.BUILD_PYTHON_BINDINGS=ON `
+            --config-settings=cmake.define.OPTIMIZE_FOR_NATIVE=OFF `
+            --config-settings=cmake.define.CMAKE_C_COMPILER="$clang" `
+            --config-settings=cmake.define.CMAKE_CXX_COMPILER="$clang" `
+            --config-settings=cmake.define.AdaptiveCpp_DIR="$env:AdaptiveCpp_DIR" `
+            --config-settings=cmake.define.CMAKE_PREFIX_PATH="$env:CMAKE_PREFIX_PATH"
+          if ($LASTEXITCODE -ne 0) { throw "pip wheel failed ($LASTEXITCODE)" }
+          $whl = Get-ChildItem wheelhouse\fuzzybits-*.whl | Select-Object -First 1
+          if (-not $whl) { throw "no wheel in wheelhouse" }
+          python -m delvewheel repair `
+            --add-path (Join-Path $env:ACPP_PREFIX 'bin') `
+            --add-path (Join-Path $env:ACPP_PREFIX 'lib') `
+            --add-path (Join-Path $env:CUDA_PATH 'bin') `
+            --ignore-in-wheel `
+            --exclude nvcuda.dll `
+            --exclude nvml.dll `
+            --wheel-dir dist `
+            $whl.FullName
+          Get-ChildItem dist\*.whl | ForEach-Object {
+            "{0} {1} bytes ({2:N1} MB)" -f $_.Name, $_.Length, ($_.Length/1MB)
+          }
+          $secs = [int]((Get-Date) - $start).TotalSeconds
+          "wheel_build_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload wheel
+        if: always() && steps.wheel.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp312-win_amd64
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Smoke tests (clean venv)
+        if: always() && steps.wheel.outcome == 'success'
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $whl = Get-ChildItem dist\fuzzybits-*.whl | Select-Object -First 1
+          if (-not $whl) { throw "no repaired wheel in dist/" }
+          $venv = Join-Path $env:RUNNER_TEMP 'fb-venv'
+          python -m venv $venv
+          & "$venv\Scripts\python.exe" -m pip install -U pip
+          & "$venv\Scripts\python.exe" -m pip install $whl.FullName pytest
+          $env:ACPP_VISIBILITY_MASK = 'omp'
+          $env:FUZZYBITS_BACKEND = 'omp'
+          $env:ACPP_DEBUG_LEVEL = '2'
+          $env:ACPP_PERSISTENT_RUNTIME = '1'
+          & "$venv\Scripts\python.exe" scripts/ci/windows-smoke.py --wheel $whl.FullName --repo $env:GITHUB_WORKSPACE
+
+      - name: Record timings
+        if: always()
+        shell: pwsh
+        run: |
+          @(
+            '## windows-generic timings',
+            "- AdaptiveCpp cache: ${{ steps.acpp-build.outputs.cache || 'n/a' }}",
+            "- AdaptiveCpp+LLVM build seconds: $($env:acpp_build_seconds)",
+            "- Boost: FetchContent during fuzzybits configure (no separate install)",
+            "- fuzzybits build seconds: $($env:fuzzybits_build_seconds)",
+            "- CPU ctest seconds: $($env:cpu_ctest_seconds)",
+            "- wheel build seconds: $($env:wheel_build_seconds)",
+            "- ACPP_REF_WINDOWS: $env:ACPP_REF_WINDOWS",
+            "- LLVM_REF_WINDOWS: $env:LLVM_REF_WINDOWS",
+            "- CUDA_VERSION: $env:CUDA_VERSION",
+            "- CUDA_PATH: $env:CUDA_PATH"
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --show-stats }
+          Get-PSDrive -PSProvider FileSystem

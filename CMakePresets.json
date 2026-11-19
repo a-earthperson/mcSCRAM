@@ -62,6 +62,22 @@
       }
     },
     {
+      "name": "windows-generic",
+      "displayName": "windows-generic (SSCP JIT)",
+      "description": "Windows x86_64. ACPP_TARGETS=generic against AdaptiveCpp linked into LLVM (CUDA + OpenMP host, ACPP_COMPILER_FEATURE_PROFILE=full). clang targeting the MSVC ABI. MALLOC_TYPE=malloc, Python module on. See docs/build-variants.md.",
+      "inherits": "generic",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "ACPP_TARGETS": "generic",
+        "MALLOC_TYPE": "malloc",
+        "BUILD_PYTHON_BINDINGS": "ON"
+      }
+    },
+    {
       "name": "debug",
       "displayName": "debug (generic, Debug)",
       "description": "Developer preset: generic SSCP, Debug, native -march, AdaptiveCpp debug level 4.",
@@ -89,6 +105,10 @@
     {
       "name": "debug",
       "configurePreset": "debug"
+    },
+    {
+      "name": "windows-generic",
+      "configurePreset": "windows-generic"
     }
   ],
   "testPresets": [
@@ -181,6 +201,24 @@
         "ACPP_PERSISTENT_RUNTIME": "1",
         "CTEST_NO_TESTS_ACTION": "ignore"
       }
+    },
+    {
+      "name": "windows-generic",
+      "configurePreset": "windows-generic",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "exclude": {
+          "label": "quarantine"
+        }
+      },
+      "environment": {
+        "ACPP_VISIBILITY_MASK": "omp",
+        "ACPP_DEBUG_LEVEL": "0",
+        "ACPP_PERSISTENT_RUNTIME": "1",
+        "CTEST_NO_TESTS_ACTION": "ignore"
+      }
     }
   ],
   "workflowPresets": [
@@ -214,6 +252,14 @@
         { "type": "configure", "name": "debug" },
         { "type": "build", "name": "debug" },
         { "type": "test", "name": "debug" }
+      ]
+    },
+    {
+      "name": "windows-generic",
+      "steps": [
+        { "type": "configure", "name": "windows-generic" },
+        { "type": "build", "name": "windows-generic" },
+        { "type": "test", "name": "windows-generic" }
       ]
     }
   ]

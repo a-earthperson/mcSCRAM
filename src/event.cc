@@ -40,6 +40,12 @@ void BasicEvent::ccf_gate(std::unique_ptr<Gate> gate) {
   ccf_gate_ = std::move(gate);
 }
 
+std::unique_ptr<Formula> Gate::formula(std::unique_ptr<Formula> formula) {
+  assert(formula && "Cannot unset formula.");
+  formula_.swap(formula);
+  return formula;
+}
+
 HouseEvent HouseEvent::kTrue = []() {
   HouseEvent house_event("__true__");
   house_event.state(true);

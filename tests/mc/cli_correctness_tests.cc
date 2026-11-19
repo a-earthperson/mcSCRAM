@@ -23,17 +23,31 @@ namespace {
 constexpr unsigned long long kNumTrials = 4'194'304ull;  // 2^22
 constexpr double kZ = 4.0;
 
+std::string shell_quote(const std::string &s) {
+#ifdef _WIN32
+  return "\"" + s + "\"";
+#else
+  return "'" + s + "'";
+#endif
+}
+
 int run_scram(const std::filesystem::path &model, const std::filesystem::path &report) {
   std::ostringstream cmd;
-  cmd << "timeout 60 "
-      << "'" << SCRAM_CLI_PATH << "'"
+#ifndef _WIN32
+  cmd << "timeout 60 ";
+#endif
+  cmd << shell_quote(SCRAM_CLI_PATH)
       << " --monte-carlo --probability --pdag -c 2 --no-kn"
       << " -P wald -N " << kNumTrials
       << " -r " << kNumTrials
       << " --seed 372 --no-indent -V 0"
-      << " -o '" << report.string() << "'"
-      << " '" << model.string() << "'";
+      << " -o " << shell_quote(report.string())
+      << " " << shell_quote(model.string());
+#ifdef _WIN32
+  return std::system(("cmd /S /C \"" + cmd.str() + "\"").c_str());
+#else
   return std::system(cmd.str().c_str());
+#endif
 }
 
 double parse_p_hat(const std::filesystem::path &report) {
