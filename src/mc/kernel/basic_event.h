@@ -46,7 +46,37 @@
 
 #include <sycl/sycl.hpp>
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+
 namespace scram::mc::kernel {
+
+    /**
+     * @brief Device layout of the per-launch high-word tie records.
+     *
+     * The sampler kernel writes one record per slot on every launch, with no
+     * data-dependent control flow; the fix-up kernel scans the records in
+     * 8-byte chunks and recomputes only the tied work-items.
+     *
+     * - `slot_bytes == 1` (sub-group size 1, e.g. the OpenMP host device):
+     *   one byte per work-item at `group * slots_per_group + local_linear_id`,
+     *   non-zero iff that work-item drew a high-word tie.
+     * - `slot_bytes == 4`: one `uint32_t` per sub-group at
+     *   `group * slots_per_group + sub_group_id`, packing
+     *   `(min_lid + 1) | (max_lid + 1) << 16` over the tied work-items'
+     *   local linear ids (0 = no tie). The fix-up rechecks every lid in
+     *   `[min_lid, max_lid]`, so the record is exact for one tie and
+     *   conservative for several.
+     */
+    struct tie_slot_layout {
+        std::uint8_t *data = nullptr;
+        std::uint32_t slots_per_group = 0;
+        std::uint32_t slot_bytes = 0;
+        std::size_t num_chunks = 0;
+
+        static constexpr std::size_t kChunkBytes = sizeof(std::uint64_t);
+    };
 
     template<typename prob_t_, typename bitpack_t_, typename size_t_>
     class basic_event {
@@ -58,12 +88,16 @@ namespace scram::mc::kernel {
         /// @brief Configuration for sample batch dimensions and bit-packing
         const sample_shape sample_shape_;
 
+        tie_slot_layout tie_slots_;
+
     public:
         basic_event(
                 const be_block &basic_events_block,
-                const sample_shape &sample_shape)
+                const sample_shape &sample_shape,
+                const tie_slot_layout &tie_slots)
                 : basic_events_block_(basic_events_block),
-                  sample_shape_(sample_shape) {}
+                  sample_shape_(sample_shape),
+                  tie_slots_(tie_slots) {}
 
         struct positional_counter  {
             /// @brief Basic event position in block
@@ -99,10 +133,21 @@ namespace scram::mc::kernel {
             [[gnu::always_inline]] explicit positional_counter(const sycl::nd_item<3> &item,
                                                                const be_block &event_block,
                                                                const sample_shape &sample_shape,
+                                                               const uint32_t &iteration)
+                : positional_counter(static_cast<uint32_t>(item.get_global_id(0)),
+                                     static_cast<uint32_t>(item.get_global_id(1)),
+                                     static_cast<uint32_t>(item.get_global_id(2)),
+                                     event_block, sample_shape, iteration) {}
+
+            [[gnu::always_inline]] explicit positional_counter(const uint32_t global_x,
+                                                               const uint32_t global_y,
+                                                               const uint32_t global_z,
+                                                               const be_block &event_block,
+                                                               const sample_shape &sample_shape,
                                                                const uint32_t &iteration) {
-                event_idx     = static_cast<uint32_t>(item.get_global_id(0));
-                batch_idx     = static_cast<uint32_t>(item.get_global_id(1));
-                bitpack_idx   = static_cast<uint32_t>(item.get_global_id(2));
+                event_idx     = global_x;
+                batch_idx     = global_y;
+                bitpack_idx   = global_z;
                 pdag_idx      = static_cast<uint32_t>(event_block[event_idx].index);
                 sample_idx    = batch_idx * sample_shape.bitpacks_per_batch + bitpack_idx;
                 iteration_idx = iteration;
@@ -126,19 +171,83 @@ namespace scram::mc::kernel {
 
             const positional_counter args(item, basic_events_block_, sample_shape_, iteration);
 
-            // Bounds checking
-            if (args.is_out_of_bounds) {
+            // Out-of-bounds work-items skip sampling but still reach the
+            // sub-group collective in `record_tie`.
+            bool any_tie = false;
+            if (!args.is_out_of_bounds) {
+                const prng::state128 seed_base = positional_counter::fill(args);
+
+                const std::uint64_t t_hi64 = basic_events_block_[args.event_idx].high_word_threshold;
+                const bitpack_t_ bitpack_value =
+                    prng::philox::pack_bernoulli_draws_hi<bitpack_t_>(seed_base, t_hi64, any_tie);
+
+                // Store the bitpacked samples into the buffer
+                bitpack_t_ *output = basic_events_block_[args.event_idx].buffer;
+                output[args.sample_idx] = bitpack_value;
+            }
+            if (any_tie) tie_slots_.data[0] = 1;
+        }
+
+        /// Unconditional, branch-free tie record (see `tie_slot_layout`).
+        /// The sub-group size is a JIT-time constant, so only one arm survives.
+        [[gnu::always_inline]] void record_tie(const sycl::nd_item<3> &item, const bool any_tie) const {
+            const auto sg = item.get_sub_group();
+            const std::size_t group_base =
+                static_cast<std::size_t>(item.get_group_linear_id()) * tie_slots_.slots_per_group;
+            if (sg.get_max_local_range()[0] == 1) {
+                tie_slots_.data[group_base + item.get_local_linear_id()] = static_cast<std::uint8_t>(any_tie);
                 return;
             }
+            // Sub-group-uniform branch: the lid reductions only run when a lane tied.
+            std::uint32_t record = 0;
+            if (sycl::any_of_group(sg, any_tie)) [[unlikely]] {
+                const auto lid = static_cast<std::uint32_t>(item.get_local_linear_id());
+                const std::uint32_t lo = sycl::reduce_over_group(sg, any_tie ? lid + 1u : 0xffffffffu,
+                                                                 sycl::minimum<std::uint32_t>());
+                const std::uint32_t hi = sycl::reduce_over_group(sg, any_tie ? lid + 1u : 0u,
+                                                                 sycl::maximum<std::uint32_t>());
+                record = lo | (hi << 16);
+            }
+            if (sg.leader()) {
+                auto *slots = reinterpret_cast<std::uint32_t *>(tie_slots_.data);
+                slots[group_base + sg.get_group_linear_id()] = record;
+            }
+        }
 
-            const prng::state128 seed_base = positional_counter::fill(args);
+        /**
+         * @brief Allocate and zero the tie records for one `basic_event` launch shape.
+         *
+         * `slot_bytes` follows the device's sub-group sizes: 1 when the only
+         * size is 1 (per-work-item flag), otherwise 4 (per-sub-group lid range).
+         * Slots per group assume the smallest sub-group size, so every
+         * sub-group of every legal size has its own slot.
+         */
+        static tie_slot_layout allocate_tie_slots(const sycl::queue &queue, const sycl::nd_range<3> &nd_range) {
+            const auto sizes = queue.get_device().get_info<sycl::info::device::sub_group_sizes>();
+            std::size_t min_sg = 1;
+            std::size_t max_sg = 1;
+            if (!sizes.empty()) {
+                min_sg = *std::min_element(sizes.begin(), sizes.end());
+                max_sg = *std::max_element(sizes.begin(), sizes.end());
+            }
+            const auto local = nd_range.get_local_range();
+            const auto global = nd_range.get_global_range();
+            const std::size_t local_size = local.size();
+            const std::size_t num_groups = global.size() / local_size;
 
-            const auto &p_threshold = basic_events_block_[args.event_idx].probability_threshold;
-            const bitpack_t_ bitpack_value = prng::philox::pack_bernoulli_draws<bitpack_t_>(seed_base, p_threshold);
+            tie_slot_layout layout;
+            layout.slot_bytes = max_sg == 1 ? 1u : 4u;
+            layout.slots_per_group = static_cast<std::uint32_t>(
+                layout.slot_bytes == 1 ? local_size : (local_size + min_sg - 1) / min_sg);
+            const std::size_t used_bytes = num_groups * layout.slots_per_group * layout.slot_bytes;
+            layout.num_chunks = (used_bytes + tie_slot_layout::kChunkBytes - 1) / tie_slot_layout::kChunkBytes;
+            const std::size_t alloc_bytes = layout.num_chunks * tie_slot_layout::kChunkBytes;
 
-            // Store the bitpacked samples into the buffer
-            bitpack_t_ *output = basic_events_block_[args.event_idx].buffer;
-            output[args.sample_idx] = bitpack_value;
+            auto q = queue;
+            layout.data = static_cast<std::uint8_t *>(
+                sycl::aligned_alloc_device(tie_slot_layout::kChunkBytes, alloc_bytes, q));
+            q.memset(layout.data, 0, alloc_bytes).wait_and_throw();
+            return layout;
         }
 
         static sycl::nd_range<3> get_range(const size_t_ num_events,
@@ -157,6 +266,120 @@ namespace scram::mc::kernel {
             sycl::range<3> global_range(global_size_x, global_size_y, global_size_z);
             LOG(INFO) << "kernel::basic_event::\tlocal_range{x,y,z}:(" << local_range[0] <<", " << local_range[1] <<", " << local_range[2] <<")\tglobal_range{x,y,z}:("<< global_range[0] <<", " << global_range[1] <<", " << global_range[2] <<")\tnum_events:" << num_events << " | " << sample_shape_;
             return {global_range, local_range};
+        }
+    };
+
+    /**
+     * @brief Fix-up pass for `basic_event`: rewrites every work-item whose
+     * tie record is set with the exact two-word sample.
+     *
+     * One work-item per 8-byte chunk of tie records. A sampler work-item
+     * ties with probability ≈ 64 · 2^-32 = 2^-26 (64-bit packs), so almost
+     * every chunk is zero and its work-item exits after one load. The
+     * recompute is out of line so neither the host vectorizer nor the GPU
+     * register allocator sees the second Philox on the scan path.
+     * Must run after the `basic_event` launch it fixes and with the same
+     * `iteration`.
+     */
+    template<typename prob_t_, typename bitpack_t_, typename size_t_>
+    class basic_event_tie_fixup {
+        using sampler = basic_event<prob_t_, bitpack_t_, size_t_>;
+        using positional_counter = typename sampler::positional_counter;
+        using be_block = event::basic_event_block<prob_t_, bitpack_t_>;
+        using sample_shape = event::sample_shape<size_t_>;
+
+        be_block basic_events_block_;
+        sample_shape sample_shape_;
+        tie_slot_layout tie_slots_;
+        std::uint32_t local_[3]{};
+        std::uint32_t groups_[3]{};
+        std::size_t num_groups_ = 0;
+
+    public:
+        basic_event_tie_fixup(const be_block &basic_events_block,
+                              const sample_shape &sample_shape,
+                              const tie_slot_layout &tie_slots,
+                              const sycl::nd_range<3> &sampler_range)
+            : basic_events_block_(basic_events_block),
+              sample_shape_(sample_shape),
+              tie_slots_(tie_slots) {
+            const auto local = sampler_range.get_local_range();
+            const auto global = sampler_range.get_global_range();
+            for (int d = 0; d < 3; ++d) {
+                local_[d] = static_cast<std::uint32_t>(local[d]);
+                groups_[d] = static_cast<std::uint32_t>(global[d] / local[d]);
+            }
+            num_groups_ = static_cast<std::size_t>(groups_[0]) * groups_[1] * groups_[2];
+        }
+
+        void operator()(const sycl::nd_item<1> &item, const uint32_t iteration) const {
+            const std::size_t chunk = item.get_global_id(0);
+            if (chunk >= tie_slots_.num_chunks) {
+                return;
+            }
+            const std::uint64_t word = reinterpret_cast<const std::uint64_t *>(tie_slots_.data)[chunk];
+            if (word != 0) [[unlikely]] {
+                fix_chunk(chunk, word, iteration);
+            }
+        }
+
+        static sycl::nd_range<1> get_range(const tie_slot_layout &tie_slots, const std::size_t max_work_group_size) {
+            const std::size_t local = std::min<std::size_t>(256, std::max<std::size_t>(1, max_work_group_size));
+            const std::size_t global = ((std::max<std::size_t>(tie_slots.num_chunks, 1) + local - 1) / local) * local;
+            return {sycl::range<1>(global), sycl::range<1>(local)};
+        }
+
+    private:
+        [[gnu::noinline]] void fix_chunk(const std::size_t chunk, const std::uint64_t word, const uint32_t iteration) const {
+            const std::uint32_t slots_per_chunk = tie_slot_layout::kChunkBytes / tie_slots_.slot_bytes;
+            for (std::uint32_t k = 0; k < slots_per_chunk; ++k) {
+                const std::size_t slot = chunk * slots_per_chunk + k;
+                const std::size_t group = slot / tie_slots_.slots_per_group;
+                if (group >= num_groups_) {
+                    return;
+                }
+                std::uint32_t first_lid = 0;
+                std::uint32_t last_lid = 0;
+                if (tie_slots_.slot_bytes == 1) {
+                    if (((word >> (8u * k)) & 0xffu) == 0) {
+                        continue;
+                    }
+                    first_lid = last_lid = static_cast<std::uint32_t>(slot % tie_slots_.slots_per_group);
+                } else {
+                    const auto record = static_cast<std::uint32_t>(word >> (32u * k));
+                    if (record == 0) {
+                        continue;
+                    }
+                    first_lid = (record & 0xffffu) - 1u;
+                    last_lid = (record >> 16) - 1u;
+                }
+                for (std::uint32_t lid = first_lid; lid <= last_lid; ++lid) {
+                    fix_work_item(group, lid, iteration);
+                }
+            }
+        }
+
+        /// SYCL linear ids are row-major with dimension 2 fastest, for both
+        /// the group and the local id.
+        void fix_work_item(const std::size_t group, const std::uint32_t lid, const uint32_t iteration) const {
+            const auto gz = static_cast<std::uint32_t>(group % groups_[2]);
+            const auto gy = static_cast<std::uint32_t>((group / groups_[2]) % groups_[1]);
+            const auto gx = static_cast<std::uint32_t>(group / (static_cast<std::size_t>(groups_[2]) * groups_[1]));
+            const std::uint32_t lz = lid % local_[2];
+            const std::uint32_t ly = (lid / local_[2]) % local_[1];
+            const std::uint32_t lx = lid / (local_[2] * local_[1]);
+
+            const std::uint32_t x = gx * local_[0] + lx;
+            const std::uint32_t y = gy * local_[1] + ly;
+            const std::uint32_t z = gz * local_[2] + lz;
+            if (x >= basic_events_block_.count || y >= sample_shape_.batch_size || z >= sample_shape_.bitpacks_per_batch) {
+                return;
+            }
+            const positional_counter args(x, y, z, basic_events_block_, sample_shape_, iteration);
+            const prng::state128 seed_base = positional_counter::fill(args);
+            const auto &p_threshold = basic_events_block_[x].probability_threshold;
+            basic_events_block_[x].buffer[args.sample_idx] =
+                prng::philox::pack_bernoulli_draws<bitpack_t_>(seed_base, p_threshold);
         }
     };
 }// namespace scram::mc::kernel
