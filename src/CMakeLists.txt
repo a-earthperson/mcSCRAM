@@ -56,11 +56,11 @@ set(SCRAM_MC_SRC
   mc/core/importance_analysis.cc
 )
 
-if(APPLE)
-  # Darwin does not allow libscram.dylib to retain the DirectEval symbols that
-  # risk_analysis.cc now references and resolve them later from libmc.dylib.
-  # Build the DirectEval implementation into scram on Apple to keep the dynamic
-  # library self-contained and avoid a scram <-> mc shared-library cycle.
+if(APPLE OR WIN32)
+  # Darwin dylibs and Windows DLLs cannot leave DirectEval symbols undefined
+  # in libscram and resolve them later from libmc. Build the DirectEval
+  # implementation into scram so the shared library is self-contained and
+  # there is no scram <-> mc shared-library cycle.
   find_package(_adaptivecpp)
   # Runtime SYCL entrypoint: AdaptiveCpp::acpp-rt is directory-scoped here, so
   # add_sycl_to_target from src/runtime/ cannot see it. pcfb is linked later.
@@ -79,7 +79,7 @@ add_library(scram SHARED ${SCRAM_CORE_SRC})
 target_link_libraries(scram PRIVATE ${LIBS})
 target_compile_options(scram PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
 
-if(APPLE)
+if(APPLE OR WIN32)
   add_sycl_to_target(TARGET scram SOURCES ${SCRAM_MC_SRC})
   target_include_directories(scram PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/mc")
 endif()
