@@ -1,10 +1,9 @@
 import React from "react";
-import { createRoot, hydrateRoot } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import App from "./App";
 import { TooltipProvider } from "./app/components/ui/HintTooltip";
 import { normalizeAppPath } from "./app/routing";
-import "./siteDataGlobals";
 import "./app/styles/global.css";
 import "./app/styles/scroll-bar.css";
 import "./app/styles/sticky-panel.css";
@@ -20,20 +19,12 @@ if (normalizedUrl !== currentUrl) {
   window.history.replaceState(window.history.state, "", normalizedUrl);
 }
 
-const initialData = window.__SITE_DATA__ ?? null;
-
-const app = (
+createRoot(rootElement).render(
   <React.StrictMode>
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <TooltipProvider>
-        <App initialData={initialData} />
+        <App />
       </TooltipProvider>
     </BrowserRouter>
-  </React.StrictMode>
+  </React.StrictMode>,
 );
-
-if (rootElement.childElementCount > 0) {
-  hydrateRoot(rootElement, app);
-} else {
-  createRoot(rootElement).render(app);
-}

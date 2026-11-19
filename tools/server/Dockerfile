@@ -6,16 +6,27 @@
 # --system-site-packages so `import fuzzybits` / `import mcscram_native` hit
 # the runtime's system Python 3.12 site.
 #
+# Playground UI: Node build stage emits CSR assets into /app/server/webui/dist.
+# No Node at runtime. Disable with FUZZYBITS_SERVER_UI=0.
+#
 #   docker build -f tools/server/Dockerfile \
 #     --build-arg RUNTIME_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic \
 #     --build-arg VARIANT=generic \
 #     -t ghcr.io/fuzzybit-org/fuzzybits-server:ci-local-generic \
 #     tools/server
 #
-# Context is tools/server/ (pyproject.toml, uv.lock, src/, scripts/).
+# Context is tools/server/ (pyproject.toml, uv.lock, src/, scripts/, webui/).
 
 ARG RUNTIME_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
+
+FROM node:22-bookworm-slim AS webui
+WORKDIR /webui
+COPY webui/package.json webui/package-lock.json ./
+RUN npm ci
+COPY webui/ ./
+RUN npm run build
+
 FROM ${UV_IMAGE} AS uv
 FROM ${RUNTIME_IMAGE}
 
@@ -51,6 +62,8 @@ ENV HOST=0.0.0.0 \
     PATH="/app/server/.venv/bin:/usr/local/bin:${PATH}" \
     FUZZYBITS_SERVER_DATA_DIR=/data \
     FUZZYBITS_SERVER_CACHE_DIR=/home/coder/.cache/fuzzybits/server \
+    FUZZYBITS_SERVER_UI_DIR=/app/server/webui/dist \
+    FUZZYBITS_SERVER_UI=1 \
     ACPP_VISIBILITY_MASK=omp \
     ACPP_APPDB_DIR=/home/coder/.cache/fuzzybits/acpp
 
@@ -63,6 +76,7 @@ WORKDIR /app/server
 COPY --chown=coder:coder pyproject.toml uv.lock ./
 COPY --chown=coder:coder src ./src
 COPY --chown=coder:coder scripts/docker-entrypoint.sh /usr/local/bin/server-entrypoint
+COPY --from=webui --chown=coder:coder /webui/dist /app/server/webui/dist
 RUN chmod 0755 /usr/local/bin/server-entrypoint /usr/local/bin/uv /usr/local/bin/uvx
 
 USER coder

@@ -50,10 +50,6 @@ export function formatBytes(value: number | null | undefined): string {
   return `${formatNumber(size, 2)} ${units[index]}`;
 }
 
-export function githubPath(path: string): string {
-  return `https://github.com/a-earthperson/mcSCRAM-benchmarks/blob/main/${path}`;
-}
-
 export function classNames(...names: Array<string | false | null | undefined>): string {
   return names.filter(Boolean).join(" ");
 }

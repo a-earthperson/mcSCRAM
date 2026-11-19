@@ -4,10 +4,11 @@
 # Starts the image with ACPP_VISIBILITY_MASK=omp, mounts public Aralia XML
 # at /data/Aralia, then via the HTTP API (from inside the container, so this
 # works on a remote Docker host as well as GitHub-hosted):
-#   1. compile chinese and das9201 (GET /model/dag)
-#   2. start a fixed-budget run, poll /status until done
-#   3. assert |p̂ − p_bdd| ≤ z·σ̂  (z=4)
-#   4. POST a .pcfb produced by `fzb compile` inside the image and run it
+#   1. GET / (playground HTML) and one hashed /assets/* file
+#   2. compile chinese and das9201 (GET /model/dag)
+#   3. start a fixed-budget run, poll /status until done
+#   4. assert |p̂ − p_bdd| ≤ z·σ̂  (z=4)
+#   5. POST a .pcfb produced by `fzb compile` inside the image and run it
 #
 # Usage:
 #   tools/server/scripts/e2e-smoke.sh [IMAGE]
@@ -97,6 +98,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -219,6 +221,19 @@ def assert_ref(label: str, status: dict, ref: float) -> str:
 
 def main() -> int:
     lines: list[str] = []
+    status, home = _request("GET", "/", timeout_s=15)
+    html = home.decode() if isinstance(home, (bytes, bytearray)) else str(home)
+    if status != 200 or ("Playground" not in html and "<!doctype html>" not in html.lower()):
+        raise ApiError(f"UI / unexpected {status} {html[:300]!r}")
+    asset_m = re.search(r'src="(/assets/[^"]+)"', html)
+    if asset_m is None:
+        raise ApiError(f"UI / has no hashed /assets/ script: {html[:300]!r}")
+    ast, asset_body = _request("GET", asset_m.group(1), timeout_s=15)
+    asset_len = len(asset_body) if isinstance(asset_body, (bytes, bytearray, str)) else "?"
+    if ast != 200:
+        raise ApiError(f"UI asset {asset_m.group(1)} -> {ast}")
+    print(f"ui / ok  asset={asset_m.group(1)}  bytes={asset_len}", flush=True)
+
     _, catalog = _request("GET", "/api/v1/model/xml-inputs", timeout_s=15)
     ids = catalog.get("modelIds") if isinstance(catalog, dict) else []
     print(

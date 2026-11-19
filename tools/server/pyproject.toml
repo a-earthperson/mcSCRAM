@@ -19,6 +19,7 @@ dependencies = [
 #   uv pip install ../../dist/fuzzybits-*.whl
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.27",
     "pytest>=8.0",
 ]
 

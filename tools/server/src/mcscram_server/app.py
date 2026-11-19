@@ -7,11 +7,12 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from mcscram_server.config import CalculationConfig, env_bool
+from mcscram_server.config import CalculationConfig, apply_server_cli, env_bool
 from mcscram_server.event_hub import EventHub
-from mcscram_server.routes import create_router
 from mcscram_server.native import shutdown_native_workers
+from mcscram_server.routes import create_router
 from mcscram_server.supervisor import CalculationSupervisor
+from mcscram_server.ui import mount_ui
 
 
 def create_app(
@@ -33,6 +34,7 @@ def create_app(
     app.state.event_hub = hub
     app.state.supervisor = calc_supervisor
     app.include_router(create_router(calc_supervisor, hub))
+    mount_ui(app)
 
     should_autostart = autostart if autostart is not None else env_bool("MCSCRAM_AUTOSTART", False)
 
@@ -54,8 +56,10 @@ app = create_app()
 
 
 def main() -> None:
+    apply_server_cli()
     uvicorn.run(
-        "mcscram_server.app:app",
+        "mcscram_server.app:create_app",
+        factory=True,
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
         log_level=os.getenv("LOG_LEVEL", "info"),

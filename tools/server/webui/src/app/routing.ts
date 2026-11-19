@@ -1,12 +1,7 @@
-import {
-  benchmarkSectionHref,
-  benchmarksBasePath,
-  defaultBenchmarkSection,
-} from "./tabs/benchmarks/routes";
 import { playgroundPath } from "./tabs/playground/routes";
 import { knownAppPaths } from "./tabs/routes";
 
-/** Map `/` and unknown paths to the default tab route for SSR + CSR consistency. */
+/** Map `/` and unknown paths to the playground. */
 export function normalizeAppPath(url: string, basename = ""): string {
   const { pathname, search, hash } = new URL(url, "http://ssr.local");
   const normalizedBase = basename.replace(/\/$/, "");
@@ -14,12 +9,8 @@ export function normalizeAppPath(url: string, basename = ""): string {
     ? pathname.slice(normalizedBase.length) || "/"
     : pathname;
   const bare = pathWithoutBase.replace(/\/$/, "") || "/";
-  const resolved = bare === "/"
+  const resolved = bare === "/" || !knownAppPaths().includes(bare)
     ? playgroundPath
-    : bare === benchmarksBasePath
-      ? benchmarkSectionHref(defaultBenchmarkSection)
-      : knownAppPaths().includes(bare)
-        ? pathWithoutBase
-        : playgroundPath;
+    : pathWithoutBase;
   return `${normalizedBase}${resolved}${search}${hash}`;
 }

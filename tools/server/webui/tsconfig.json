@@ -17,5 +17,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["site/src", "site/server.ts", "site/dev-ssr.ts", "site/mcscramProxy.ts", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"]
 }
