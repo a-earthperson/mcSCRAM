@@ -137,6 +137,17 @@ FetchContent_Declare(
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 
+if(WIN32)
+  # Boost's add_subdirectory(project()) does not inherit directory
+  # add_compile_definitions from this module. Force the STL Clang-version
+  # escape hatch onto CMAKE_CXX_FLAGS before the Boost targets are created.
+  add_definitions(-D_ALLOW_COMPILER_VERSION_MISMATCH)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH"
+      CACHE STRING "C++ flags" FORCE)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH"
+      CACHE STRING "C flags" FORCE)
+endif()
+
 FetchContent_MakeAvailable(boost)
 
 # Boost.Math must not be included from translation units passed to
