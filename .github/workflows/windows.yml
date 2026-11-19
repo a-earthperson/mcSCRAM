@@ -57,6 +57,11 @@ jobs:
       - name: MSVC developer command prompt
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
+      - name: Bootstrap LLVM 20 (clang-cl)
+        uses: KyleMayes/install-llvm-action@a7a1a882e2d06ebe05d5bb97c3e1f8c984ae96fc # v2.0.7
+        with:
+          version: "20"
+
       - name: Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -99,7 +104,7 @@ jobs:
         id: acpp-cache
         with:
           path: ${{ env.ACPP_PREFIX }}
-          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}-cl-x86-64
+          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}-clangcl20-x86-64
 
       - name: Build AdaptiveCpp into LLVM (CUDA + OpenMP SSCP)
         id: acpp-build
@@ -128,11 +133,11 @@ jobs:
           $got = git -C (Join-Path $tmp 'AdaptiveCpp') rev-parse HEAD
           if ($got -ne $env:ACPP_REF_WINDOWS) { throw "AdaptiveCpp HEAD $got != $env:ACPP_REF_WINDOWS" }
 
-          # clang-cl from LLVM 19 cannot parse the VS 2025 STL on windows-2025
-          # (<filesystem> is invisible). MSVC cl.exe is the host compiler;
-          # the AdaptiveCpp-linked clang.exe is the product compiler.
-          $env:CC = 'cl'
-          $env:CXX = 'cl'
+          # AdaptiveCpp uses GNU __atomic_* builtins (clang-cl, not MSVC cl).
+          # LLVM 19 clang-cl cannot parse the VS 2025 STL; LLVM 20 can.
+          $env:PATH = "$env:LLVM_PATH\bin;$env:PATH"
+          $env:CC = 'clang-cl'
+          $env:CXX = 'clang-cl'
           $cuda = ($env:CUDA_PATH -replace '\\','/')
           $build = Join-Path $tmp 'build'
           New-Item -ItemType Directory -Force -Path $build | Out-Null
@@ -140,8 +145,8 @@ jobs:
           cmake -S (Join-Path $tmp 'llvm\llvm') -B $build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX="$env:ACPP_PREFIX" `
-            -DCMAKE_C_COMPILER=cl `
-            -DCMAKE_CXX_COMPILER=cl `
+            -DCMAKE_C_COMPILER=clang-cl `
+            -DCMAKE_CXX_COMPILER=clang-cl `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache `
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
             -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" `
