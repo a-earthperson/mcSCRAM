@@ -308,3 +308,8 @@ record `compat: {shim: generic_pwr, version: 1}`. If a file still cannot be
 reconstructed it stays as a known compile failure with a reason. Shim v1
 compiles Grp-5 and Grp-2; Grp-6 remains `compile.expected = validity_error`
 because FE56/FE57 fork order is cyclic.
+
+This shim is temporary. [#125](https://github.com/fuzzybit-org/fuzzybits/issues/125)
+(SAPHSOLVE `.JSInp` import: recover generic PWR models, general parser) will
+read the sibling JSInp files directly. Delete
+`benchmarks/datasets/compat/generic_pwr.py` once #125 recovers those models.

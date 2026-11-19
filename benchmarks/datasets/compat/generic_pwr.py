@@ -6,6 +6,11 @@ definitions in sibling files (``data/saphsolve/*.JSInp``,
 of one converted XML: it does **not** modify the submodule. The engine loader
 stays strict.
 
+Temporary until `#125
+<https://github.com/fuzzybit-org/fuzzybits/issues/125>`_ (SAPHSOLVE .JSInp
+import: recover generic PWR models, general parser) recovers models directly
+from JSInp. Delete this module once that lands.
+
 Naming (OpenPSA README): ``BE`` / ``G`` / ``S`` / ``INIT`` / ``FE`` / ``FT``
 prefixes; ``BE0`` is the single-child placeholder.
 """
