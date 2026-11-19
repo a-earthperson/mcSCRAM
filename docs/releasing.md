@@ -19,23 +19,17 @@ Publishing uses PyPI trusted publishing (OIDC), so there are no API tokens or se
    | Workflow name | `release.yml` | `release.yml` |
    | Environment name | `pypi` | `pypi-server` |
 
-   Repeat on https://test.pypi.org (separate account) with environments `testpypi` and `testpypi-server`. The environments must differ: PyPI allows one pending publisher per (repository, workflow, environment). A pending publisher does not reserve the name; the first upload creates the project.
-2. In the GitHub repository settings, create environments:
-   - `pypi` and `pypi-server`: required reviewer (a maintainer); deployment rule "selected tags" `v*`.
-   - `testpypi` and `testpypi-server`: no reviewer.
+   The environments must differ: PyPI allows one pending publisher per (repository, workflow, environment). A pending publisher does not reserve the name; the first upload creates the project.
+2. In the GitHub repository settings, create environments `pypi` and `pypi-server`: required reviewer (a maintainer); deployment rule "selected tags" `v*`.
 
    The server is uploaded only after the engine upload for the same version succeeds.
 3. Optional repository variables:
    - `RELEASE_INCLUDE_WINDOWS=true` builds the Windows wheel in releases. It is off by default until Windows CI is reliable (#108, #109).
    - `PYPI_MAX_FILE_MB`: set this once PyPI raises the per-file limit (see Limits).
 
-## Rehearse on TestPyPI
+## Dry run
 
-Actions → Release → Run workflow (on `develop`). Every version string becomes `X.Y.Z.dev<run number>`, all wheels are built and smoke-tested, and the result is uploaded to TestPyPI. TestPyPI does not carry the server's dependencies, so install with both indexes:
-
-```bash
-pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ fuzzybits-server
-```
+Actions → Release → Run workflow (on any branch). Every version string becomes `X.Y.Z.dev<run number>`, and all wheels are built and smoke-tested (including `pip install` of the engine and server wheels). Nothing is uploaded; the wheels are kept as workflow artifacts for 14 days.
 
 ## Cut a release
 
@@ -50,9 +44,9 @@ pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pyp
    git tag -a v0.18.0 -m "fuzzybits 0.18.0" && git push origin v0.18.0
    ```
    The `version` job fails if the tag and any version string disagree.
-3. Approve the `pypi` deployment. After the upload, `github-release` creates the GitHub Release with every wheel attached.
+3. Approve the `pypi` and then the `pypi-server` deployment. After both uploads, `github-release` creates the GitHub Release with every wheel attached.
 
-PyPI never accepts the same version twice; to fix a bad release, publish a new version.
+If an upload fails partway, fix the cause and rerun the failed jobs (`gh run rerun <run id> --failed`): the uploads use `skip-existing`, so files already on PyPI are skipped. PyPI never accepts changed files for an existing version; to fix a bad release, publish a new version.
 
 ## Limits
 
