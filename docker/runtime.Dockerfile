@@ -153,6 +153,8 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
       libnuma1 \
       libtinfo6 \
       libgomp1 \
+      libffi8 \
+      libxml2 \
       python3 \
       python3-pip \
       python3-venv && \
@@ -184,7 +186,15 @@ RUN python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
     test -x /usr/local/bin/fzb && \
     python3 -c "import fuzzybits, importlib.util; assert importlib.util.find_spec('mcscram_native')" && \
     test -z "${PYTHONPATH:-}" && \
-    test -z "${LD_PRELOAD:-}"
+    test -z "${LD_PRELOAD:-}" && \
+    missing="$(ldd /usr/local/lib/hipSYCL/librt-backend-omp.so \
+                   /usr/local/lib/hipSYCL/librt-backend-cuda.so \
+                   /usr/local/lib/hipSYCL/llvm-to-backend/*.so \
+                 | grep 'not found' | grep -v 'libcuda.so' || true)" && \
+    if [ -n "${missing}" ]; then echo "${missing}" >&2; exit 1; fi && \
+    ACPP_VISIBILITY_MASK=omp acpp-info -l && \
+    scram-cli --help >/dev/null && \
+    fzb --help >/dev/null
 
 USER ${USER}
 WORKDIR /app

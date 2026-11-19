@@ -105,6 +105,22 @@ stage /usr/local/share/acpp-describe
 mkdir -p "${DEST}/usr/local/lib/hipSYCL"
 stage /usr/local/lib/hipSYCL/librt-backend-cuda.so
 stage /usr/local/lib/hipSYCL/librt-backend-omp.so
+# librt-backend-{cuda,omp}.so DT_NEED these even for SMCP AOT. Omitting
+# them makes dlopen fail and AdaptiveCpp abort with
+# "terminate called without an active exception".
+if [[ -d /usr/local/lib/hipSYCL/llvm-to-backend ]]; then
+  cp -a /usr/local/lib/hipSYCL/llvm-to-backend \
+    "${DEST}/usr/local/lib/hipSYCL/llvm-to-backend"
+fi
+for llvm in \
+  "/usr/lib/llvm-${CLANG_VERSION}/lib/libLLVM.so.${CLANG_VERSION}.1" \
+  "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"; do
+  if [[ -e "${llvm}" ]]; then
+    stage "${llvm}" "/usr/local/lib/libLLVM.so.${CLANG_VERSION}.1"
+    stage "${llvm}" "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
+    break
+  fi
+done
 
 # --- CUDA runtime (cudart only; driver comes from nvidia-container-toolkit) -
 mkdir -p "${DEST}/usr/local/cuda/lib64" "${DEST}/usr/local/lib"
@@ -122,32 +138,20 @@ for omp in \
   fi
 done
 
-# --- SSCP JIT (generic only) ------------------------------------------------
+# --- SSCP JIT bitcode / clang tools (generic only) --------------------------
 if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
-  echo "including SSCP JIT pieces"
-  if [[ -d /usr/local/lib/hipSYCL/llvm-to-backend ]]; then
-    cp -a /usr/local/lib/hipSYCL/llvm-to-backend "${DEST}/usr/local/lib/hipSYCL/llvm-to-backend"
-  fi
+  echo "including SSCP JIT bitcode and clang tools"
   if [[ -d /usr/local/lib/hipSYCL/bitcode ]]; then
     cp -a /usr/local/lib/hipSYCL/bitcode "${DEST}/usr/local/lib/hipSYCL/bitcode"
   fi
   if [[ -d /usr/local/lib/hipSYCL/ext ]]; then
     cp -a /usr/local/lib/hipSYCL/ext "${DEST}/usr/local/lib/hipSYCL/ext"
   fi
-  for llvm in \
-    "/usr/lib/llvm-${CLANG_VERSION}/lib/libLLVM.so.${CLANG_VERSION}.1" \
-    "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"; do
-    if [[ -e "${llvm}" ]]; then
-      stage "${llvm}" "/usr/local/lib/libLLVM.so.${CLANG_VERSION}.1"
-      stage "${llvm}" "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
-      break
-    fi
-  done
   stage "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
   stage "/usr/lib/llvm-${CLANG_VERSION}/bin/llc"
   stage /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
 else
-  echo "omitting SSCP JIT pieces (SMCP AOT runtime)"
+  echo "omitting SSCP JIT bitcode (SMCP AOT runtime; llvm-to-backend still staged)"
 fi
 
 # --- smoke inputs + scripts -------------------------------------------------
@@ -203,9 +207,12 @@ require_staged /usr/local/lib/libacpp-rt.so /usr/local/lib/libacpp-rt.so.0
 require_staged /usr/local/lib/libacpp-common.so /usr/local/lib/libacpp-common.so.0
 require_staged /usr/local/lib/libxml2.so.16 /usr/local/lib/libxml2.so
 require_staged /usr/local/cuda/lib64/libcudart.so.12 /usr/local/lib/libcudart.so.12 /usr/local/cuda/lib64/libcudart.so
+require_staged /usr/local/lib/hipSYCL/llvm-to-backend/libllvm-to-backend.so
+require_staged /usr/local/lib/hipSYCL/llvm-to-backend/libllvm-to-host.so
+require_staged /usr/local/lib/hipSYCL/llvm-to-backend/libllvm-to-ptx.so
+require_staged "/usr/local/lib/libLLVM.so.${CLANG_VERSION}.1" \
+  "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
 if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
-  require_staged "/usr/local/lib/libLLVM.so.${CLANG_VERSION}.1" \
-    "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
   require_staged "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
   require_staged /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
 fi
