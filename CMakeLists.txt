@@ -143,7 +143,7 @@ if(WIN32)
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _ALLOW_COMPILER_VERSION_MISMATCH)
   # windows-2025 STL (MSVC 14.52+) gates on Clang 22; LLVM 20 is the AdaptiveCpp pin.
   # Directory add_compile_definitions do not reach Boost's nested project();
-  # CACHE FORCE + a compiler launcher do.
+  # append to CMAKE_<LANG>_FLAGS (keep -DWIN32) and wrap Clang with a launcher.
   if(NOT CMAKE_CXX_FLAGS MATCHES "_ALLOW_COMPILER_VERSION_MISMATCH")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX"
         CACHE STRING "C++ flags" FORCE)
