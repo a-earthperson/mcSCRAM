@@ -118,6 +118,12 @@ namespace scram::mc::event {
         index_t_ index;
 
         prng::bernoulli_threshold probability_threshold{};
+
+        /// `prng::high_word_threshold(probability_threshold)`, precomputed on
+        /// the host. The sampler loads it as an opaque `uint64_t`, exactly like
+        /// the old 32-bit threshold, so the device compiler cannot narrow the
+        /// compare and reshape the Philox arithmetic around it.
+        std::uint64_t high_word_threshold = 0;
     };
 
     template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
@@ -353,6 +359,7 @@ namespace scram::mc::event {
     struct basic_event_block : public node_block<basic_event<prob_t_, bitpack_t_, index_t_>> {
         bitpack_t_  *buffers            = nullptr;   ///< single contiguous device allocation
         std::size_t  bitpacks_per_event = 0;         ///< stride between successive event buffers
+        std::uint8_t *tie_slots         = nullptr;   ///< high-word tie records (`kernel::tie_slot_layout`), owned
     };
 
     /**
@@ -384,6 +391,7 @@ namespace scram::mc::event {
         //    device only sees two uint32 words and the always_true flag.
         for (std::size_t i = 0; i < num_events; ++i) {
             events[i].probability_threshold = indexed_thresholds[i].second;
+            events[i].high_word_threshold = prng::high_word_threshold(indexed_thresholds[i].second);
             events[i].index       = indexed_thresholds[i].first;
             events[i].buffer      = buffer_block + i * num_bitpacks;
             LOG(DEBUG4) << events[i];
@@ -410,6 +418,10 @@ namespace scram::mc::event {
         if (blk.buffers) {
             sycl::free(blk.buffers, queue);
             blk.buffers = nullptr;
+        }
+        if (blk.tie_slots) {
+            sycl::free(blk.tie_slots, queue);
+            blk.tie_slots = nullptr;
         }
         if (blk.data) {
             sycl::free(blk.data, queue);
