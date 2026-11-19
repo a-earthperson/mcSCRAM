@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 
+#include "mc/prng/bernoulli.h"
 #include "mc/prng/state128.h"
 
 namespace scram::mc::prng::philox {
@@ -55,26 +56,30 @@ namespace scram::mc::prng::philox {
 
 /**
  * @brief Bernoulli-sample four bits using the Philox 4x32-10 counter-based PRNG.
+ *
+ * High words are the four Philox outputs at `generation`. On a high-word tie
+ * (`u_hi == T_hi`, probability ≈ 2^-32) a second independent Philox block is
+ * drawn at `generation + kLowWordGenerationBase` and compared as `u_lo < T_lo`.
  */
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ sample(const state128 *seeds, const std::uint64_t threshold, const std::uint32_t generation) {
-    prng::state128 results;
-    prng::philox::generate(seeds, &results, static_cast<uint8_t>(generation));
+[[gnu::always_inline]] static bitpack_t_ sample(const state128 *seeds, const bernoulli_threshold &threshold,
+                                                const std::uint32_t generation) {
+    prng::state128 hi{};
+    prng::philox::generate(seeds, &hi, static_cast<uint8_t>(generation));
+
+    prng::state128 lo{};
+    if (any_high_word_tie(hi, threshold)) {
+        prng::philox::generate(seeds, &lo, static_cast<uint8_t>(generation + kLowWordGenerationBase));
+    }
 
     static constexpr std::uint32_t bernoulli_bits_per_generation = 4;
     const std::uint32_t bernoulli_bits_offset = bernoulli_bits_per_generation * generation;
-
-    using b = bitpack_t_;
-    bitpack_t_ out_bits = b(0);
-    out_bits |= (static_cast<std::uint64_t>(results.x[0]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 0);
-    out_bits |= (static_cast<std::uint64_t>(results.x[1]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 1);
-    out_bits |= (static_cast<std::uint64_t>(results.x[2]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 2);
-    out_bits |= (static_cast<std::uint64_t>(results.x[3]) < threshold ? b(1) : b(0)) << bitpack_t_(bernoulli_bits_offset + 3);
-    return out_bits;
+    return pack_four_bits<bitpack_t_>(hi, lo, threshold, bernoulli_bits_offset);
 }
 
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base, const std::uint64_t p_threshold) {
+[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base,
+                                                             const bernoulli_threshold &p_threshold) {
     static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
     static constexpr std::uint8_t num_generations = sizeof(bitpack_t_) * 8 / bernoulli_bits_per_generation;
 

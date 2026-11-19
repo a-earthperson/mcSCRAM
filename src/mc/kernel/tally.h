@@ -190,74 +190,6 @@ namespace scram::mc::kernel {
         }
 
         /**
-         * @brief Updates statistical measures for a tally event
-         * 
-         * @details Computes comprehensive statistical measures from accumulated bit counts
-         * using standard Monte Carlo estimation techniques. The function calculates the
-         * sample proportion, standard error, and confidence intervals based on the
-         * normal approximation to the binomial distribution.
-         * 
-         * **Statistical Methodology:**
-         * 1. **Sample Proportion**: Estimated as number of successes divided by total trials
-         * 2. **Variance Estimation**: Uses Bernoulli variance formula p(1-p)
-         * 3. **Standard Error**: Square root of variance divided by sample size
-         * 4. **Confidence Intervals**: Uses Z-score method with normal approximation
-         * 
-         * **Z-Score Values:**
-         * - 95% Confidence Interval: Z = 1.96 (captures 95% of normal distribution)
-         * - 99% Confidence Interval: Z = 2.58 (captures 99% of normal distribution)
-         * 
-         * **Confidence Interval Calculation:**
-         * - Lower bound: mean - Z × standard_error
-         * - Upper bound: mean + Z × standard_error
-         * - Results are clamped to [0,1] range for probability estimates
-         * 
-         * @tparam prob_vec_t_ Vector type for storing confidence interval bounds
-         * 
-         * @param tally [in,out] Tally event to update with computed statistics
-         * @param total_bits Total number of bits processed (sample size)
-         * 
-         * @note Uses double-precision arithmetic for numerical stability
-         * @note Confidence intervals are clamped to valid probability range [0,1]
-         * @note Normal approximation is valid for large sample sizes (n > 30)
-         * 
-         * @example Statistical computation:
-         * @code
-         * // Example with 1000 bits, 250 successes
-         * tally_event<uint64_t> tally;
-         * tally.num_one_bits = 250;
-         * update_tally_stats<sycl::double4>(tally, 1000.0);
-         * 
-         * // Results:
-         * // tally.mean = 0.25 (25% success rate)
-         * // tally.std_err ≈ 0.0137 (standard error)
-         * // tally.ci[0] ≈ 0.223 (95% CI lower bound)
-         * // tally.ci[1] ≈ 0.277 (95% CI upper bound)
-         * @endcode
-         */
-        template<typename prob_vec_t_>
-        static void update_tally_stats(event::tally<bitpack_t_> &tally, const prob_t_ &total_bits) {
-            const prob_t_ bernoulli_mean = static_cast<prob_t_>(tally.num_one_bits) / total_bits;
-            const prob_t_ bernoulli_variance = bernoulli_mean * (1.0 - bernoulli_mean);
-            const prob_t_ bernoulli_std_error = sycl::sqrt(bernoulli_variance / total_bits);
-
-            // Z-scores: first = 1.96 for ~95% CI, second = 2.58 for ~99% CI
-            const auto z_scores = sycl::double2(1.959963984540054, 2.5758293035489004);
-            const sycl::double2 margins = z_scores * bernoulli_std_error;
-            const prob_vec_t_ raw_confidence_intervals(
-                bernoulli_mean - margins.x(),
-                bernoulli_mean + margins.x(),
-                bernoulli_mean - margins.y(),
-                bernoulli_mean + margins.y()
-            );
-            const prob_vec_t_ clamped_cis = sycl::clamp(raw_confidence_intervals, 0.0, 1.0);
-            tally.total_bits = total_bits;
-            tally.mean = bernoulli_mean;
-            tally.std_err = bernoulli_std_error;
-            tally.ci = clamped_cis;
-        }
-
-        /**
          * @brief SYCL kernel operator for parallel statistical tally computation
          * 
          * @details This is the main kernel function that performs parallel population
@@ -372,11 +304,8 @@ namespace scram::mc::kernel {
             // num_one_bits for this tally.
             // item.barrier(sycl::access::fence_space::local_space);
 
-            // early return ::
-            // given the extra/redundant work being performed here due to potentially mismatched work-item ranges,
-            // for now, we are performing stats calculations host-side.
-            //return;
-            //update_tally_stats<sycl::double4>(tallies_block_.data[tally_idx], static_cast<prob_t_>(total_bits));
+            // Point estimates (mean, std_err, CI) are computed host-side in
+            // stats::populate_point_estimates so this kernel stays integer-only.
         }
     };
 

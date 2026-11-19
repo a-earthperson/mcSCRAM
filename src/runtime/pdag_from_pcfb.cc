@@ -22,8 +22,6 @@
 namespace fuzzybits::runtime {
 namespace {
 
-constexpr double kTwoTo32 = 4294967296.0;  // 2^32
-
 struct TensorBinding {
   std::shared_ptr<scram::core::Variable> variable;
   std::shared_ptr<scram::core::Gate> gate;
@@ -331,12 +329,13 @@ std::unique_ptr<scram::mef::Gate> make_origin_gate(std::string name, const Origi
 }
 
 std::string threshold_note(double p, std::uint64_t spec_threshold, bool always_true) {
-  const auto kernel_threshold = static_cast<std::uint64_t>(p * kTwoTo32);
+  const auto T = pcfb::probability_to_threshold(always_true ? 1.0 : p);
   std::ostringstream os;
   os << "p=" << p << " SampleArgs.threshold=" << spec_threshold
      << " always_true=" << (always_true ? "true" : "false")
-     << " kernel_threshold=floor(p*2^32)=" << kernel_threshold
-     << " (32-bit Philox word; #17 / Phase 2 lifts this to 64-bit)";
+     << " kernel_T_hi=" << static_cast<std::uint32_t>(T >> 32U)
+     << " kernel_T_lo=" << static_cast<std::uint32_t>(T)
+     << " (two-word Philox compare; #17)";
   return os.str();
 }
 

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "mc/prng/bernoulli.h"
 #include "mc/prng/state128.h"
 
 namespace scram::mc::prng::sfc64 {
@@ -64,20 +65,19 @@ static void generate(const prng::state128 *seeds,
 template <typename bitpack_t_>
 [[gnu::always_inline]]
 static bitpack_t_ sample(const prng::state128 *seeds,
-                         const std::uint64_t   threshold,
+                         const bernoulli_threshold &threshold,
                          const std::uint32_t   generation) {
-    prng::state128 rnd{};
-    generate(seeds, &rnd, static_cast<std::uint8_t>(generation));
+    prng::state128 hi{};
+    generate(seeds, &hi, static_cast<std::uint8_t>(generation));
+
+    prng::state128 lo{};
+    if (any_high_word_tie(hi, threshold)) {
+        generate(seeds, &lo, static_cast<std::uint8_t>(generation + kLowWordGenerationBase));
+    }
 
     constexpr std::uint32_t BITS_PER_GEN = 4;
     const std::uint32_t offset = BITS_PER_GEN * generation;
-
-    bitpack_t_ out = bitpack_t_(0);
-    out |= (static_cast<std::uint64_t>(rnd.x[0]) < threshold ? bitpack_t_(1) : bitpack_t_(0)) << bitpack_t_(offset + 0);
-    out |= (static_cast<std::uint64_t>(rnd.x[1]) < threshold ? bitpack_t_(1) : bitpack_t_(0)) << bitpack_t_(offset + 1);
-    out |= (static_cast<std::uint64_t>(rnd.x[2]) < threshold ? bitpack_t_(1) : bitpack_t_(0)) << bitpack_t_(offset + 2);
-    out |= (static_cast<std::uint64_t>(rnd.x[3]) < threshold ? bitpack_t_(1) : bitpack_t_(0)) << bitpack_t_(offset + 3);
-    return out;
+    return pack_four_bits<bitpack_t_>(hi, lo, threshold, offset);
 }
 
 // ------------------------------------------------------------------
@@ -87,7 +87,7 @@ static bitpack_t_ sample(const prng::state128 *seeds,
 template <typename bitpack_t_>
 [[gnu::always_inline]]
 static bitpack_t_ pack_bernoulli_draws(const prng::state128 &seed_base,
-                                       const std::uint64_t  p_threshold) {
+                                       const bernoulli_threshold &p_threshold) {
     constexpr std::uint8_t BITS_PER_GEN = 4;
     constexpr std::uint8_t NUM_GEN = sizeof(bitpack_t_) * 8 / BITS_PER_GEN;
 

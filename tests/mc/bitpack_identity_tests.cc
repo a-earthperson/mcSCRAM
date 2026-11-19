@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "mc/event/host_threshold.h"
 #include "mc/event/node.h"
 #include "mc/kernel/basic_event.h"
+#include "mc/prng/bernoulli.h"
 #include "mc/prng/philox128.h"
 #include "mc/prng/state128.h"
+#include "pcfb/threshold.h"
 
 #include <array>
 #include <cstdint>
@@ -18,6 +21,10 @@ namespace {
 using bitpack_t = std::uint64_t;
 using prob_t = double;
 using size_t_ = std::size_t;
+using scram::mc::prng::bernoulli_threshold;
+using scram::mc::prng::kLowWordGenerationBase;
+using scram::mc::prng::less_than_threshold;
+using scram::mc::prng::threshold_from_probability;
 
 constexpr std::size_t kNumEvents = 4;
 constexpr std::size_t kBatchSize = 4;
@@ -36,6 +43,12 @@ constexpr std::array<std::tuple<std::uint32_t, std::uint32_t, double>, kNumEvent
 // at the counters above. CPU (omp) and GPU (cuda) must match this value for
 // a counter-based Philox; a sampler refactor (#16) that changes the stream
 // will fail this test on every backend.
+//
+// #17 two-word compare is identical to the previous 32-bit `u_hi < T_hi`
+// sampler except on high-word ties (u_hi == T_hi), which have probability
+// 2^-32 per bit. These 32 packs contain 2048 bits, so a checksum change
+// here is a real stream/tie event and must be justified in the PR, not
+// silently re-baselined.
 constexpr std::uint64_t kExpectedChecksum = 0x113d94c03a83d4aaull;
 
 std::uint64_t fnv1a64(const bitpack_t *data, std::size_t n) {
@@ -51,25 +64,28 @@ std::uint64_t fnv1a64(const bitpack_t *data, std::size_t n) {
   return h;
 }
 
+scram::mc::prng::state128 seed_for(std::uint32_t event_idx, std::uint32_t pdag_idx,
+                                  std::uint32_t sample_idx) {
+  return scram::mc::prng::state128{
+      .x = {
+          pdag_idx + 1,
+          event_idx + 1,
+          sample_idx + 1,
+          (kIteration + 1) << 6,
+      },
+  };
+}
+
 std::uint64_t host_checksum() {
-  constexpr double two_to_32 = static_cast<double>(UINT64_C(1) << 32);
   std::vector<bitpack_t> packs;
   packs.reserve(kNumEvents * kBatchSize * kBitpacksPerBatch);
   for (const auto &[event_idx, pdag_idx, p] : kEvents) {
-    const auto threshold = static_cast<std::uint64_t>(p * two_to_32);
+    const auto threshold = threshold_from_probability(p);
     for (std::uint32_t batch_idx = 0; batch_idx < kBatchSize; ++batch_idx) {
       for (std::uint32_t bitpack_idx = 0; bitpack_idx < kBitpacksPerBatch; ++bitpack_idx) {
         const std::uint32_t sample_idx = batch_idx * kBitpacksPerBatch + bitpack_idx;
-        const scram::mc::prng::state128 seed_base{
-            .x = {
-                pdag_idx + 1,
-                event_idx + 1,
-                sample_idx + 1,
-                (kIteration + 1) << 6,
-            },
-        };
-        packs.push_back(
-            scram::mc::prng::philox::pack_bernoulli_draws<bitpack_t>(seed_base, threshold));
+        packs.push_back(scram::mc::prng::philox::pack_bernoulli_draws<bitpack_t>(
+            seed_for(event_idx, pdag_idx, sample_idx), threshold));
       }
     }
   }
@@ -80,11 +96,11 @@ std::uint64_t device_checksum(sycl::queue &queue) {
   using block_t = scram::mc::event::basic_event_block<prob_t, bitpack_t>;
   using kernel_t = scram::mc::kernel::basic_event<prob_t, bitpack_t, size_t_>;
 
-  std::vector<std::pair<std::int32_t, prob_t>> indexed;
+  std::vector<std::pair<std::int32_t, bernoulli_threshold>> indexed;
   indexed.reserve(kNumEvents);
   for (const auto &[event_idx, pdag_idx, p] : kEvents) {
     (void)event_idx;
-    indexed.emplace_back(static_cast<std::int32_t>(pdag_idx), p);
+    indexed.emplace_back(static_cast<std::int32_t>(pdag_idx), threshold_from_probability(p));
   }
 
   const scram::mc::event::sample_shape<size_t_> shape{kBatchSize, kBitpacksPerBatch};
@@ -121,4 +137,91 @@ TEST_CASE("basic_event bitpacks are bit-identical at fixed Philox counters", "[m
   INFO("device checksum=0x" << std::hex << device);
   CHECK(device == kExpectedChecksum);
   CHECK(device == host);
+}
+
+TEST_CASE("two-word compare matches 32-bit sampler except on high-word ties", "[mc][bit-identity][ties]") {
+  const auto t = threshold_from_probability(0.1);
+  REQUIRE(t.always_true == 0);
+  REQUIRE(t.hi == static_cast<std::uint32_t>(0.1 * 4294967296.0));
+
+  CHECK(less_than_threshold(t.hi - 1, 0, t));
+  CHECK_FALSE(less_than_threshold(t.hi + 1, 0, t));
+  CHECK_FALSE(less_than_threshold(t.hi, t.lo, t));
+  if (t.lo > 0) {
+    CHECK(less_than_threshold(t.hi, t.lo - 1, t));
+  }
+
+  const auto always = threshold_from_probability(1.0);
+  REQUIRE(always.always_true == 1);
+  CHECK(less_than_threshold(0xffffffffu, 0xffffffffu, always));
+
+  const auto zero = threshold_from_probability(0.0);
+  REQUIRE(zero.hi == 0);
+  REQUIRE(zero.lo == 0);
+  CHECK_FALSE(less_than_threshold(0, 0, zero));
+}
+
+TEST_CASE("p=1e-12 has a non-zero 64-bit threshold and fires on a forced high-word tie",
+          "[mc][rare]") {
+  constexpr double kP = 1e-12;
+  REQUIRE(kP < 0x1p-32);
+  REQUIRE(static_cast<std::uint64_t>(kP * 4294967296.0) == 0);
+
+  const auto t = threshold_from_probability(kP);
+  const auto T = pcfb::probability_to_threshold(kP);
+  REQUIRE(t.always_true == 0);
+  REQUIRE(t.hi == 0);
+  REQUIRE(t.lo != 0);
+  REQUIRE(t.lo == static_cast<std::uint32_t>(T));
+  REQUIRE((T >> 32U) == 0);
+
+  // Predicate: hits only on u_hi == 0 and u_lo < T_lo.
+  CHECK_FALSE(less_than_threshold(0, t.lo, t));
+  CHECK(less_than_threshold(0, t.lo - 1, t));
+  CHECK_FALSE(less_than_threshold(1, 0, t));
+  CHECK(less_than_threshold(0, 0, t));
+
+  // Forced-counter: take a real Philox block, set T_hi to lane 0's high word
+  // so the sampler must draw u_lo from generation+32, and check the bit.
+  const auto seed = seed_for(0, 2, 0);
+  scram::mc::prng::state128 hi{};
+  scram::mc::prng::philox::generate(&seed, &hi, 0);
+  bernoulli_threshold forced = t;
+  forced.hi = hi.x[0];
+  scram::mc::prng::state128 lo{};
+  scram::mc::prng::philox::generate(&seed, &lo, kLowWordGenerationBase);
+  const auto pack = scram::mc::prng::philox::sample<bitpack_t>(&seed, forced, 0);
+  const bool expected = lo.x[0] < forced.lo;
+  CHECK(((pack >> 0) & 1ull) == static_cast<bitpack_t>(expected));
+}
+
+TEST_CASE("device stores two-word threshold for p=1e-12", "[mc][rare][device]") {
+  using block_t = scram::mc::event::basic_event_block<prob_t, bitpack_t>;
+  using kernel_t = scram::mc::kernel::basic_event<prob_t, bitpack_t, size_t_>;
+
+  const auto t = threshold_from_probability(1e-12);
+  std::vector<std::pair<std::int32_t, bernoulli_threshold>> indexed{{2, t}};
+  const scram::mc::event::sample_shape<size_t_> shape{1, 1};
+
+  sycl::queue queue;
+  block_t block = scram::mc::event::create_basic_event_block<prob_t, bitpack_t>(
+      queue, indexed, shape.num_bitpacks());
+  REQUIRE(block.data[0].probability_threshold.hi == 0);
+  REQUIRE(block.data[0].probability_threshold.lo == t.lo);
+  REQUIRE(block.data[0].probability_threshold.always_true == 0);
+
+  kernel_t kernel(block, shape);
+  const sycl::range<3> local{1, 1, 1};
+  const auto nd = kernel.get_range(1, local, shape);
+  queue.submit([&](sycl::handler &cgh) {
+    cgh.parallel_for(nd, [=](sycl::nd_item<3> item) { kernel(item, kIteration); });
+  });
+  queue.wait_and_throw();
+
+  bitpack_t host = 0;
+  queue.memcpy(&host, block.buffers, sizeof(bitpack_t)).wait_and_throw();
+  const auto expected = scram::mc::prng::philox::pack_bernoulli_draws<bitpack_t>(
+      seed_for(0, 2, 0), t);
+  CHECK(host == expected);
+  scram::mc::event::destroy_basic_event_block(queue, block);
 }

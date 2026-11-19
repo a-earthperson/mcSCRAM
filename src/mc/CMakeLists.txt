@@ -18,6 +18,7 @@ set(MC_HEADERS
         #
         core/direct_eval.h
         #
+        event/host_threshold.h
         event/node.h
         event/sample_shape.h
         #
@@ -36,6 +37,7 @@ set(MC_HEADERS
         logger/log_sample_shaper.h
         logger/csv.h
         #
+        prng/bernoulli.h
         prng/philox128.h
         prng/sfc64.h
         prng/state128.h

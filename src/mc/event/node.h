@@ -33,12 +33,16 @@
 
 #include "logger.h"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
+#include <iomanip>
 #include <sycl/sycl.hpp>
 #include <vector>
 
 #include "mc/event/sample_shape.h"
+#include "mc/prng/bernoulli.h"
 
 using cache_line_bytes = sycl::info::device::global_mem_cache_line_size;
 
@@ -80,23 +84,17 @@ namespace scram::mc::event {
      * 
      * @par Probability-threshold mapping
      * The Monte Carlo kernels do not compare floating-point probabilities
-     * directly.  Instead, each basic event stores an *integer*
-     * `probability_threshold` in the closed range \f$[0,2^{32}]\f$ that is
-     * pre-computed from the user-supplied probability \f$p\in[0,1]\f$ as
-     * \f[\text{threshold} = p\,\cdot\,2^{32}.\f]
-     * During sampling the kernel draws a uniform 32-bit integer
-     * \f$u\sim\text{Unif}\{0,\dots,2^{32}-1\}\f$ (from either Philox or
-     * Xorshift) and returns \f$u < \text{threshold}\f$.
-     *
-     * Properties of this mapping:
-     *   • Resolution: one part in \f$2^{32}\approx2.33\times10^{-10}\f$.
-     *   • Representable set: all probabilities \f$n/2^{32}\f$ with integer
-     *     \f$n\in\{0,\dots,2^{32}\}\f$.
-     *   • The edge case \f$p=1\f$ maps to threshold \f$=2^{32}\f$ and is
-     *     **always** satisfied because \f$u\le 2^{32}-1\f$.
-     *
-     * The kernel casts the 32-bit PRNG output to 64 bits before the
-     * comparison so the full threshold range is honoured without overflow.
+     * on the device. The host computes
+     * \f$T = \min(\lfloor p\cdot 2^{64}\rfloor, 2^{64}-1)\f$
+     * (`pcfb::probability_to_threshold`) and stores it as two uint32 words
+     * `(T_hi, T_lo)` plus an `always_true` flag for \f$p = 1\f$.
+     * A trial is a hit iff
+     * \f$u_{\mathrm{hi}} < T_{\mathrm{hi}} \lor (u_{\mathrm{hi}} = T_{\mathrm{hi}} \land u_{\mathrm{lo}} < T_{\mathrm{lo}})\f$.
+     * `u_lo` is drawn from an independent Philox generation only on a
+     * high-word tie (probability \f$\approx 2^{-32}\f$). Because
+     * \f$\lfloor p\cdot 2^{32}\rfloor = T_{\mathrm{hi}}\f$ for \f$p < 1\f$,
+     * results match the previous 32-bit sampler except on those ties.
+     * Probabilities below \f$2^{-32}\f$ no longer collapse to 0.
      *
      * @tparam prob_t_ Floating-point type for probability values
      * @tparam bitpack_t_ Integer type for bit-packed result storage
@@ -119,16 +117,16 @@ namespace scram::mc::event {
         /// @brief Unique identifier for this event within the computation graph
         index_t_ index;
 
-        std::uint64_t probability_threshold{};
+        prng::bernoulli_threshold probability_threshold{};
     };
 
     template<typename prob_t_, typename bitpack_t_, typename index_t_ = int32_t>
     inline std::ostream &operator<<(std::ostream &os, const event::basic_event<prob_t_, bitpack_t_, index_t_> &be) {
-        constexpr double two_to_32 = static_cast<double>(UINT64_C(1) << 32); // 4,294,967,296
-        const double p = static_cast<double>(be.probability_threshold) / two_to_32;
+        const auto &t = be.probability_threshold;
         os << "index= " << be.index << "  |  "
-           << "p(double)= " << std::scientific << std::setprecision(6) << p << "  |  "
-           << "p_threshold= " << be.probability_threshold;
+           << "T_hi= " << t.hi << "  |  "
+           << "T_lo= " << t.lo << "  |  "
+           << "always_true= " << t.always_true;
         return os;
     }
 
@@ -160,6 +158,21 @@ namespace scram::mc::event {
      *     std::cout << "95% CI: [" << tally_result.ci[0] << ", " << tally_result.ci[1] << "]" << std::endl;
      * }
      * @endcode
+     */
+    /// Device USM layout: integer counters only. Doubles live on the host
+    /// `tally` value type so Metal/SSCP kernels never see `float64`.
+    template<typename bitpack_t_>
+    struct tally_device : node<bitpack_t_> {
+        /// @brief Count of positive outcomes (1-bits) across all samples
+        std::size_t num_one_bits = 0;
+
+        /// @brief Count of total outcomes evaluated so far
+        std::size_t total_bits = 0;
+    };
+
+    /**
+     * Host-side tally: device counters plus point estimates filled by
+     * `stats::populate_point_estimates`. Not allocated in USM.
      */
     template<typename bitpack_t_>
     struct tally : node<bitpack_t_> {
@@ -354,10 +367,10 @@ namespace scram::mc::event {
     [[nodiscard]]
     basic_event_block<prob_t_, bitpack_t_, index_t_>
     create_basic_event_block(const sycl::queue                                  &queue,
-                             const std::vector<std::pair<index_t_, prob_t_>>    &indexed_probabilities,
+                             const std::vector<std::pair<index_t_, prng::bernoulli_threshold>> &indexed_thresholds,
                              const std::size_t                                  num_bitpacks) {
 
-        const std::size_t num_events = indexed_probabilities.size();
+        const std::size_t num_events = indexed_thresholds.size();
 
         // 1. Allocate host-visible node array (USM shared memory).
         using event_t = basic_event<prob_t_, bitpack_t_, index_t_>;
@@ -367,15 +380,11 @@ namespace scram::mc::event {
         // 2. Allocate device-side bit-packed buffer for *all* events.
         bitpack_t_ *buffer_block = sycl::aligned_alloc_device<bitpack_t_>(align, num_events * num_bitpacks, queue);
 
-        // 3. Populate per-event fields.
+        // 3. Populate per-event fields. Thresholds are host-computed; the
+        //    device only sees two uint32 words and the always_true flag.
         for (std::size_t i = 0; i < num_events; ++i) {
-            // Pre-compute Bernoulli threshold in the range [0, 2^32].
-            // We use 64-bit storage so that a probability of 1.0 maps to
-            // the *inclusive* upper bound 2^32, guaranteeing that
-            // `u < threshold` is always true.
-            constexpr double two_to_32 = static_cast<double>(UINT64_C(1) << 32); // 4,294,967,296
-            events[i].probability_threshold = static_cast<std::uint64_t>(indexed_probabilities[i].second * two_to_32);
-            events[i].index       = indexed_probabilities[i].first;
+            events[i].probability_threshold = indexed_thresholds[i].second;
+            events[i].index       = indexed_thresholds[i].first;
             events[i].buffer      = buffer_block + i * num_bitpacks;
             LOG(DEBUG4) << events[i];
         }
@@ -423,7 +432,7 @@ namespace scram::mc::event {
      * no extra fields beyond the base `node_block`.
      */
     template<typename bitpack_t_>
-    struct tally_block : public node_block<tally<bitpack_t_>> {
+    struct tally_block : public node_block<tally_device<bitpack_t_>> {
         // no additional state – buffers are external
     };
 
@@ -439,7 +448,7 @@ namespace scram::mc::event {
     create_tally_block(const sycl::queue                    &queue,
                        const std::vector<bitpack_t_ *>      &source_buffers) {
         const std::size_t n = source_buffers.size();
-        using tally_t = tally<bitpack_t_>;
+        using tally_t = tally_device<bitpack_t_>;
         const auto align = queue.get_device().get_info<cache_line_bytes>();
         tally_t *tallies = sycl::aligned_alloc_shared<tally_t>(align, n, queue);
 
@@ -447,9 +456,6 @@ namespace scram::mc::event {
             tallies[i].buffer       = source_buffers[i];
             tallies[i].num_one_bits = 0;
             tallies[i].total_bits   = 0;
-            tallies[i].mean         = 0.0;
-            tallies[i].std_err      = 0.0;
-            tallies[i].ci           = {0.0, 0.0, 0.0, 0.0};
         }
 
         tally_block<bitpack_t_> blk;

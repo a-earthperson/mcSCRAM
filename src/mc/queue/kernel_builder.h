@@ -60,6 +60,7 @@
 
 #pragma once
 
+#include "mc/event/host_threshold.h"
 #include "mc/event/node.h"
 #include "working_set.h"
 
@@ -283,9 +284,9 @@ namespace scram::mc::queue {
             return nullptr;
         }
 
-        // 1) Gather each Variable's index and probability from the BasicEvent data
-        std::vector<std::pair<index_t_, prob_t_>> indexed_probabilities;
-        indexed_probabilities.reserve(variables_.size());
+        // 1) Gather each Variable's index and host-computed 64-bit threshold.
+        std::vector<std::pair<index_t_, prng::bernoulli_threshold>> indexed_thresholds;
+        indexed_thresholds.reserve(variables_.size());
 
         for (const auto& variable : variables_) {
             const auto var_unique_index = variable->index();
@@ -306,23 +307,23 @@ namespace scram::mc::queue {
                                          " point probability is not in [0, 1]");
             }
 
-            indexed_probabilities.push_back(std::pair<index_t_, prob_t_>{var_unique_index, static_cast<prob_t_>(p)});
+            indexed_thresholds.push_back({var_unique_index, prng::threshold_from_probability(p)});
         }
 
-        if (indexed_probabilities.empty()) {
+        if (indexed_thresholds.empty()) {
             return nullptr;
         }
 
-        const auto num_events_in_kernel = indexed_probabilities.size();
+        const auto num_events_in_kernel = indexed_thresholds.size();
         std::vector<std::int32_t> node_indices;
-        node_indices.reserve(indexed_probabilities.size());
-        for (const auto &[index, _] : indexed_probabilities) {
+        node_indices.reserve(indexed_thresholds.size());
+        for (const auto &[index, _] : indexed_thresholds) {
             node_indices.push_back(static_cast<std::int32_t>(index));
         }
 
         // 2) Create a contiguous block of basic_events
         using block_type = event::basic_event_block<prob_t_, bitpack_t_>;
-        block_type event_block = event::create_basic_event_block<prob_t_, bitpack_t_>(queue_, indexed_probabilities, sample_shape_.num_bitpacks());
+        block_type event_block = event::create_basic_event_block<prob_t_, bitpack_t_>(queue_, indexed_thresholds, sample_shape_.num_bitpacks());
 
         // 3) Build the basic_event kernel using the block wrapper
         using kernel_type = kernel::basic_event<prob_t_, bitpack_t_, size_t_>;
@@ -350,7 +351,7 @@ namespace scram::mc::queue {
 
         // 5) Update allocated objects and queueables in the global maps
         for (auto i = 0; i < num_events_in_kernel; ++i) {
-            const auto event_index_in_pdag = indexed_probabilities[i].first;
+            const auto event_index_in_pdag = indexed_thresholds[i].first;
             // allocated_basic_events_by_index_[event_index_in_pdag] = event_block.data + i;
             allocated_basic_events_by_index_[event_index_in_pdag] = &event_block[i];
             queueables_by_index_[event_index_in_pdag] = queueable_partition;
@@ -913,7 +914,7 @@ namespace scram::mc::queue {
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
         const std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
-        std::unordered_map<index_t_, event::tally<bitpack_t_> *> &allocated_tally_events_by_index_,
+        std::unordered_map<index_t_, event::tally_device<bitpack_t_> *> &allocated_tally_events_by_index_,
         std::vector<event::tally_block<bitpack_t_>> &device_tally_blocks_,
         std::vector<kernel_partition_description> &execution_partitions_,
         std::vector<kernel_dependency_edge> &execution_dependency_edges_,
