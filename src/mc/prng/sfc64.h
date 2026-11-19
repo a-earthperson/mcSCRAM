@@ -105,7 +105,7 @@ static bitpack_t_ pack_bernoulli_draws(const prng::state128 &seed_base,
     for (std::uint32_t i = 0; i < NUM_GEN; ++i) {
         prng::state128 hi{};
         generate(&seed_base, &hi, static_cast<std::uint8_t>(i));
-        packed |= pack_four_bits_hi<bitpack_t_>(hi, p_threshold, i * BITS_PER_GEN);
+        packed |= pack_four_bits_hi<bitpack_t_>(hi, high_word_threshold(p_threshold), i * BITS_PER_GEN);
         if (any_high_word_tie(hi, p_threshold)) {
             tie_mask |= (1u << i);
         }
