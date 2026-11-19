@@ -18,9 +18,14 @@ minutes (AdaptiveCpp + Boost); a LABEL-only toolchain rebuild is seconds. The
 product C++ build is ~8 min per preset with `BUILD_TESTING=OFF` (see the
 toolchain doc). This workflow still compiles twice per variant — once for
 `scram-cli`/`fzb` (non-SKBUILD; SKBUILD skips `fzb`) and once for the
-scikit-build-core wheel — so a **cold** publish is roughly toolchain pull +
-~16 min compile + slim assemble; a **warm** registry cache (`buildcache-<variant>`,
-`mode=max`) should drop to the C++ rebuild plus a few minutes of COPY/pip.
+scikit-build-core wheel.
+
+Measured on `ubuntu-24.04` (toolchain already in GHCR):
+
+| | generic | cuda12.8-sm70 |
+|---|---|---|
+| first publish (empty runtime cache) | 14m25s | 14m39s |
+| after registry `buildcache-<variant>` | **11m32s** | ~12–14m |
 
 The final image does **not** contain the toolchain. `runtime` is `ubuntu:24.04`
 plus:
@@ -73,7 +78,13 @@ The package is public; no `docker login` is required. Self-hosted smoke jobs
 pull this way (no `GITHUB_TOKEN`, no `packages: write`).
 
 If a freshly created GHCR package is still private, flip
-`ghcr.io/fuzzybit-org/fuzzybits-runtime` to public in the org package settings.
+`ghcr.io/fuzzybit-org/fuzzybits-runtime` to public in the org package
+settings (Danger Zone → Change visibility). There is **no** REST API for
+org container-package visibility; the first push always creates a private
+package. Subsequent pushes keep whatever visibility you set.
+
+Measured uncompressed sizes (`docker image inspect`, `ci/images`
+`f1f760a4ead0`): **generic 0.71 GiB**, **cuda12.8-sm70 0.44 GiB**.
 
 ## How to run
 
