@@ -17,12 +17,14 @@ Publishing uses PyPI trusted publishing (OIDC), so there are no API tokens or se
    | Owner | `fuzzybit-org` | `fuzzybit-org` |
    | Repository name | `fuzzybits` | `fuzzybits` |
    | Workflow name | `release.yml` | `release.yml` |
-   | Environment name | `pypi` | `pypi` |
+   | Environment name | `pypi` | `pypi-server` |
 
-   Repeat on https://test.pypi.org (separate account) with environment `testpypi`. A pending publisher does not reserve the name; the first upload creates the project.
+   Repeat on https://test.pypi.org (separate account) with environments `testpypi` and `testpypi-server`. The environments must differ: PyPI allows one pending publisher per (repository, workflow, environment). A pending publisher does not reserve the name; the first upload creates the project.
 2. In the GitHub repository settings, create environments:
-   - `pypi`: required reviewer (a maintainer); deployment rule "selected tags" `v*`.
-   - `testpypi`: no reviewer.
+   - `pypi` and `pypi-server`: required reviewer (a maintainer); deployment rule "selected tags" `v*`.
+   - `testpypi` and `testpypi-server`: no reviewer.
+
+   The server is uploaded only after the engine upload for the same version succeeds.
 3. Optional: once PyPI raises the per-file limit, set the repository variable `PYPI_MAX_FILE_MB` (see Limits).
 
 ## Rehearse on TestPyPI

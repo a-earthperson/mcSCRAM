@@ -3,9 +3,10 @@
 #   workflow_dispatch: TestPyPI rehearsal; versions become X.Y.Z.dev<run number>.
 #   push tag vX.Y.Z:   PyPI, then a GitHub Release with every wheel attached.
 #
-# Publishing uses PyPI trusted publishing (OIDC): no tokens. Both PyPI projects
-# must list this repo, this workflow file and the matching environment
-# (`pypi` / `testpypi`) as a trusted publisher. See docs/releasing.md.
+# Publishing uses PyPI trusted publishing (OIDC): no tokens. Each project has
+# its own environment because PyPI allows one pending publisher per
+# (repo, workflow, environment): `fuzzybits` uses `pypi` / `testpypi`,
+# `fuzzybits-server` uses `pypi-server` / `testpypi-server`. See docs/releasing.md.
 #
 # The publish jobs must stay in this file: PyPI does not accept a reusable
 # workflow as the trusted publisher.
@@ -264,10 +265,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download wheels
+      - name: Download engine wheels
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: fuzzybits-*
+          pattern: fuzzybits-cp*
           path: dist
           merge-multiple: true
 
@@ -276,12 +277,43 @@ jobs:
           MAX_MB: ${{ vars.PYPI_MAX_FILE_MB || '100' }}
         run: bash scripts/ci/release-size-gate.sh dist oversize "${MAX_MB}"
 
-      - name: Publish to TestPyPI
+      - name: Publish fuzzybits to TestPyPI
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           repository-url: https://test.pypi.org/legacy/
-          packages-dir: dist/
           skip-existing: true
+          packages-dir: dist/
+
+  # Separate environment: PyPI allows one pending publisher per
+  # (repo, workflow, environment), and the server must follow its engine.
+  publish-testpypi-server:
+    name: publish-testpypi-server
+    needs: [version, publish-testpypi]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'workflow_dispatch'
+      && needs.version.outputs.server == 'true'
+      && needs.publish-testpypi.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: testpypi-server
+      url: https://test.pypi.org/project/fuzzybits-server/${{ needs.version.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download server wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-server-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish fuzzybits-server to TestPyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          packages-dir: dist/
 
   publish-pypi:
     name: publish-pypi
@@ -306,10 +338,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download wheels
+      - name: Download engine wheels
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: fuzzybits-*
+          pattern: fuzzybits-cp*
           path: dist
           merge-multiple: true
 
@@ -318,15 +350,47 @@ jobs:
           MAX_MB: ${{ vars.PYPI_MAX_FILE_MB || '100' }}
         run: bash scripts/ci/release-size-gate.sh dist oversize "${MAX_MB}"
 
-      - name: Publish to PyPI
+      - name: Publish fuzzybits to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist/
+
+  # Separate environment: PyPI allows one pending publisher per
+  # (repo, workflow, environment), and the server must follow its engine.
+  publish-pypi-server:
+    name: publish-pypi-server
+    needs: [version, publish-pypi]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push'
+      && needs.version.outputs.server == 'true'
+      && needs.publish-pypi.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: pypi-server
+      url: https://pypi.org/project/fuzzybits-server/${{ needs.version.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download server wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-server-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish fuzzybits-server to PyPI
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           packages-dir: dist/
 
   github-release:
     name: github-release
-    needs: [version, publish-pypi]
-    if: ${{ github.event_name == 'push' }}
+    needs: [version, publish-pypi, publish-pypi-server]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push'
+      && needs.publish-pypi.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.publish-pypi-server.result) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
