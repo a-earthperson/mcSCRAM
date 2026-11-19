@@ -57,11 +57,6 @@ jobs:
       - name: MSVC developer command prompt
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
-      - name: Bootstrap LLVM 19 (clang-cl)
-        uses: KyleMayes/install-llvm-action@a7a1a882e2d06ebe05d5bb97c3e1f8c984ae96fc # v2.0.7
-        with:
-          version: "19"
-
       - name: Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -104,7 +99,7 @@ jobs:
         id: acpp-cache
         with:
           path: ${{ env.ACPP_PREFIX }}
-          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}
+          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}-cl
 
       - name: Build AdaptiveCpp into LLVM (CUDA + OpenMP SSCP)
         id: acpp-build
@@ -133,24 +128,29 @@ jobs:
           $got = git -C (Join-Path $tmp 'AdaptiveCpp') rev-parse HEAD
           if ($got -ne $env:ACPP_REF_WINDOWS) { throw "AdaptiveCpp HEAD $got != $env:ACPP_REF_WINDOWS" }
 
-          $env:PATH = "$env:LLVM_PATH\bin;$env:PATH"
-          $env:CC = 'clang-cl'
-          $env:CXX = 'clang-cl'
+          # clang-cl from LLVM 19 cannot parse the VS 2025 STL on windows-2025
+          # (<filesystem> is invisible). MSVC cl.exe is the host compiler;
+          # the AdaptiveCpp-linked clang.exe is the product compiler.
+          $env:CC = 'cl'
+          $env:CXX = 'cl'
           $cuda = ($env:CUDA_PATH -replace '\\','/')
           $build = Join-Path $tmp 'build'
           New-Item -ItemType Directory -Force -Path $build | Out-Null
+          $acppSrc = Join-Path $tmp 'AdaptiveCpp'
           cmake (Join-Path $tmp 'llvm\llvm') -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX="$env:ACPP_PREFIX" `
-            -DCMAKE_C_COMPILER=clang-cl `
-            -DCMAKE_CXX_COMPILER=clang-cl `
+            -DCMAKE_C_COMPILER=cl `
+            -DCMAKE_CXX_COMPILER=cl `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache `
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
             -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" `
             -DLLVM_ENABLE_PROJECTS="clang;openmp;lld" `
+            -DLLVM_ENABLE_EH=ON `
+            -DLLVM_ENABLE_RTTI=ON `
             -DLLVM_PARALLEL_LINK_JOBS=1 `
             -DLLVM_EXTERNAL_PROJECTS=AdaptiveCpp `
-            -DLLVM_EXTERNAL_ADAPTIVECPP_SOURCE_DIR="$(Join-Path $tmp 'AdaptiveCpp')" `
+            -DLLVM_EXTERNAL_ADAPTIVECPP_SOURCE_DIR="$acppSrc" `
             -DLLVM_ADAPTIVECPP_LINK_INTO_TOOLS=ON `
             -DLLVM_INCLUDE_TESTS=OFF `
             -DLLVM_INCLUDE_EXAMPLES=OFF `
@@ -164,7 +164,9 @@ jobs:
             -DWITH_CUDA_BACKEND=ON `
             -DACPP_COMPILER_FEATURE_PROFILE=full `
             -DCUDA_TOOLKIT_ROOT_DIR="$cuda"
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed ($LASTEXITCODE)" }
           cmake --build $build --target install
+          if ($LASTEXITCODE -ne 0) { throw "ninja install failed ($LASTEXITCODE)" }
           Remove-Item -Recurse -Force $tmp
           $secs = [int]((Get-Date) - $start).TotalSeconds
           "acpp_build_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8

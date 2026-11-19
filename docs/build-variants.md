@@ -208,13 +208,16 @@ NVIDIA device. CUDA kernels need an NVIDIA driver at run time (`nvcuda.dll`
 is **not** bundled).
 
 ```powershell
-# Bootstrap: VS 2022/2025 + clang-cl (LLVM 19+) + CUDA 12.8.1 toolkit + Ninja.
-# Product clang is the AdaptiveCpp-linked clang.exe from this install.
+# Host compiler: MSVC cl.exe (VS 2025 STL). Product clang is the
+# AdaptiveCpp-linked clang.exe from this install (MSVC ABI).
+# LLVM 19 clang-cl cannot parse the windows-2025 / VS 2025 STL.
 cmake ../llvm-project/llvm -G Ninja `
   -DCMAKE_BUILD_TYPE=Release `
   -DCMAKE_INSTALL_PREFIX=C:/acpp `
-  -DCMAKE_C_COMPILER=clang-cl `
-  -DCMAKE_CXX_COMPILER=clang-cl `
+  -DCMAKE_C_COMPILER=cl `
+  -DCMAKE_CXX_COMPILER=cl `
+  -DLLVM_ENABLE_EH=ON `
+  -DLLVM_ENABLE_RTTI=ON `
   -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" `
   -DLLVM_ENABLE_PROJECTS="clang;openmp;lld" `
   -DLLVM_EXTERNAL_PROJECTS=AdaptiveCpp `
