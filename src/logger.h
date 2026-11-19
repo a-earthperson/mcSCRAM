@@ -36,6 +36,16 @@
 #include <boost/noncopyable.hpp>
 #include <boost/preprocessor/cat.hpp>
 
+#ifdef _WIN32
+// wingdi.h / winerror.h define ERROR (and sometimes WARNING) as macros.
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef WARNING
+#undef WARNING
+#endif
+#endif
+
 namespace scram {
 
 /// Takes a current time stamp in nanoseconds.
@@ -57,8 +67,11 @@ namespace scram {
 
 // clang-format off
 /// Logging with a level.
-#define LOG(level) \
-  if (level <= scram::Logger::report_level()) scram::Logger().Get(level)
+/// static_cast so a poisoned Windows ERROR/WARNING macro (int 0) still
+/// selects the matching LogLevel enumerator.
+#define LOG(level)                                                         \
+  if (static_cast<scram::LogLevel>(level) <= scram::Logger::report_level()) \
+    scram::Logger().Get(static_cast<scram::LogLevel>(level))
 
 /// Conditional logging with a level.
 #define BLOG(level, cond) \
