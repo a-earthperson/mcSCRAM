@@ -114,11 +114,11 @@ jobs:
           if [[ "${VERSION}" == "develop" || "${VERSION}" == "nightly" ]]; then
             git fetch --no-tags origin develop:refs/remotes/origin/develop || true
             COMMIT="$(git rev-parse origin/develop 2>/dev/null || echo "${GITHUB_SHA}")"
-          elif git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
-            COMMIT="$(git rev-parse "refs/tags/${VERSION}")"
+          elif git rev-parse -q --verify "refs/tags/${VERSION}^{commit}" >/dev/null; then
+            COMMIT="$(git rev-parse "refs/tags/${VERSION}^{commit}")"
           else
             git fetch --tags origin "${VERSION}" || true
-            COMMIT="$(git rev-parse "refs/tags/${VERSION}" 2>/dev/null || echo "${GITHUB_SHA}")"
+            COMMIT="$(git rev-parse "refs/tags/${VERSION}^{commit}" 2>/dev/null || echo "${GITHUB_SHA}")"
           fi
           SHA12="${COMMIT:0:12}"
           if [[ -n "${IMAGE_OVERRIDE}" ]]; then
