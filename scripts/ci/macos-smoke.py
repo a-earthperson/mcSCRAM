@@ -49,6 +49,9 @@ def check_wheel(whl: Path) -> None:
     llvm = [n for n in names if "/libLLVM" in n and n.endswith(".dylib")]
     if not llvm:
         missing.append("fuzzybits/lib/libLLVM*.dylib")
+    lld_libs = [n for n in names if "/liblld" in n and n.endswith(".dylib")]
+    if not lld_libs:
+        missing.append("fuzzybits/lib/liblld*.dylib")
     omp = [n for n in names if n.endswith("/libomp.dylib")]
     if not omp:
         missing.append("fuzzybits/lib/libomp.dylib")

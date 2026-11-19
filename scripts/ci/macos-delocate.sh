@@ -14,6 +14,7 @@ excludes=(
   -e libacpp-rt
   -e libacpp-common
   -e libLLVM
+  -e liblld
   -e libomp.dylib
   -e libscram.dylib
 )
@@ -30,6 +31,7 @@ for whl in "${wheels[@]}"; do
   delocate-wheel -v \
     --lib-sdir lib \
     --require-archs arm64 \
+    --no-sanitize-rpaths \
     --wheel-dir "${dest_dir}" \
     "${excludes[@]}" \
     "${whl}"

@@ -127,6 +127,10 @@ def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
         _copy_tree(hipsycl_src, dest / "hipSYCL", copied)
     else:
         print(f"skip missing tree {hipsycl_src}")
+    # Executables install to prefix/bin/hipSYCL on Darwin.
+    hipsycl_bin = acpp_prefix / "bin" / "hipSYCL"
+    if hipsycl_bin.is_dir():
+        _copy_tree(hipsycl_bin, dest / "hipSYCL", copied)
 
     llvm_prefix = Path(os.environ.get("LLVM_PREFIX") or "")
     if not llvm_prefix.is_dir():
@@ -155,6 +159,17 @@ def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
             print(f"copy {src_copied} -> {alias}")
             shutil.copy2(src_copied, alias)
             copied.append(str(alias))
+        lld_lib = lld.resolve().parent.parent / "lib"
+        if not lld_lib.is_dir() and brew_lld is not None:
+            lld_lib = brew_lld / "lib"
+        if lld_lib.is_dir():
+            lld_libs = _copy_glob(lld_lib, "liblld*.dylib", dest)
+            if not lld_libs:
+                print(f"skip missing {lld_lib}/liblld*.dylib")
+            else:
+                for hit in lld_libs:
+                    copied.append(str(hit))
+                    print(f"copy {hit}")
     else:
         print("skip missing ld.lld / ld64.lld")
 
@@ -182,15 +197,28 @@ def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
     else:
         print("skip missing libomp.dylib")
 
+    for tool_dir in (dest / "hipSYCL" / "ext" / "llvm" / "bin", dest / "hipSYCL" / "llvm-to-backend"):
+        if not tool_dir.is_dir():
+            continue
+        for tool in tool_dir.iterdir():
+            if tool.is_file():
+                tool.chmod(tool.stat().st_mode | 0o111)
+
     metal = dest / "hipSYCL" / "librt-backend-metal.dylib"
     omp_be = dest / "hipSYCL" / "librt-backend-omp.dylib"
     rt = dest / "libacpp-rt.dylib"
+    lld_ok = (llvm_bin_dst / "ld64.lld").is_file() or (llvm_bin_dst / "ld.lld").is_file()
+    lld_libs_ok = any(dest.glob("liblld*.dylib"))
     if not rt.is_file():
         raise SystemExit(f"bundle failed: {rt} missing")
     if not omp_be.is_file():
         raise SystemExit(f"bundle failed: {omp_be} missing")
     if not metal.is_file():
         raise SystemExit(f"bundle failed: {metal} missing")
+    if not lld_ok:
+        raise SystemExit(f"bundle failed: {llvm_bin_dst}/ld.lld missing")
+    if not lld_libs_ok:
+        raise SystemExit(f"bundle failed: {dest}/liblld*.dylib missing (Homebrew lld@20)")
     print(f"bundled {len(copied)} AdaptiveCpp artefacts into {dest}")
 
 
