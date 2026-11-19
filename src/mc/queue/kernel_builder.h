@@ -325,14 +325,21 @@ namespace scram::mc::queue {
         using block_type = event::basic_event_block<prob_t_, bitpack_t_>;
         block_type event_block = event::create_basic_event_block<prob_t_, bitpack_t_>(queue_, indexed_thresholds, sample_shape_.num_bitpacks());
 
-        // 3) Build the basic_event kernel using the block wrapper
+        // 3) Compute the ND-range, then build the high-word-only sampler and
+        //    its tie fix-up over the same launch shape.
         using kernel_type = kernel::basic_event<prob_t_, bitpack_t_, size_t_>;
-        kernel_type be_kernel(event_block, sample_shape_);
-
-        // 4) Compute the ND-range and create a queueable partition
+        using fixup_type = kernel::basic_event_tie_fixup<prob_t_, bitpack_t_, size_t_>;
         const auto local_range = working_set<size_t_, bitpack_t_>(queue_, num_events_in_kernel, sample_shape_).compute_optimal_local_range_3d();
-        const auto nd_range = be_kernel.get_range(num_events_in_kernel, local_range, sample_shape_);
-        iterable_queueable<kernel_type, 3> be_partition(queue_, be_kernel, nd_range);
+        const auto nd_range = kernel_type::get_range(num_events_in_kernel, local_range, sample_shape_);
+        const kernel::tie_slot_layout tie_slots = kernel_type::allocate_tie_slots(queue_, nd_range);
+        event_block.tie_slots = tie_slots.data;
+        kernel_type be_kernel(event_block, sample_shape_, tie_slots);
+        fixup_type be_fixup(event_block, sample_shape_, tie_slots, nd_range);
+        const auto fixup_range = fixup_type::get_range(
+            tie_slots, queue_.get_device().get_info<sycl::info::device::max_work_group_size>());
+
+        // 4) Create a queueable partition: sampler, then fix-up, same iteration
+        iterable_queueable_with_followup<kernel_type, fixup_type, 3> be_partition(queue_, be_kernel, nd_range, be_fixup, fixup_range);
         auto queueable_partition = std::make_shared<decltype(be_partition)>(be_partition);
         register_kernel_partition(
             queueable_partition,
