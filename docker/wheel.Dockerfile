@@ -38,7 +38,8 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
       patchelf \
       binutils \
       ca-certificates \
-      libatomic1
+      libatomic1 \
+      git
 
 COPY . /src
 WORKDIR /src

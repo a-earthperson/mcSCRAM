@@ -33,6 +33,7 @@ target_link_libraries(${FUZZYBITS_NATIVE_MODULE}
   PRIVATE
     scram
     mc
+    fuzzybits_compile
     ${LIBS}
 )
 

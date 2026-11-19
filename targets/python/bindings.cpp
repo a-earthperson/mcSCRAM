@@ -6,6 +6,8 @@
 
 #include <sycl/sycl.hpp>
 
+#include "compile/pcfb_writer.h"
+#include "compile/sha256.h"
 #include "initializer.h"
 #include "mc/core/direct_eval.h"
 #include "mc/queue/layer_manager.h"
@@ -14,19 +16,27 @@
 #include "pdag.h"
 #include "preprocessor.h"
 #include "risk_analysis.h"
+#include "runtime/runtime.h"
 #include "settings.h"
 
+#include "pcfb.h"
+
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <initializer_list>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -319,21 +329,21 @@ py::dict execution_plan_dict(const PyLayerManagerNative::execution_plan_descript
 }
 
 struct PyLayerManager {
-    explicit PyLayerManager(const CompiledPdag &pdag, const std::vector<PyLayerIndex> &event_ids = {}) {
-        if (!pdag.graph) {
+    PyLayerManager(scram::core::Pdag *graph, std::size_t num_trials,
+                   const std::vector<PyLayerIndex> &event_ids, std::size_t requested_trials_per_pass) {
+        if (!graph) {
             throw std::runtime_error("cannot create a layer manager for an empty compiled PDAG");
         }
-        root_index = pdag.graph->root_ptr() ? pdag.graph->root_ptr()->index() : 0;
-        auto tallies = tally_map_for_indices(*pdag.graph, event_ids);
+        root_index = graph->root_ptr() ? graph->root_ptr()->index() : 0;
+        auto tallies = tally_map_for_indices(*graph, event_ids);
         for (const auto &entry : tallies) {
             tally_indices.insert(entry.first);
         }
-        manager = std::make_unique<PyLayerManagerNative>(
-            pdag.graph.get(),
-            pdag.num_trials,
-            tallies,
-            pdag.requested_trials_per_pass);
+        manager = std::make_unique<PyLayerManagerNative>(graph, num_trials, tallies, requested_trials_per_pass);
     }
+
+    explicit PyLayerManager(const CompiledPdag &pdag, const std::vector<PyLayerIndex> &event_ids = {})
+        : PyLayerManager(pdag.graph.get(), pdag.num_trials, event_ids, pdag.requested_trials_per_pass) {}
 
     py::dict single_pass(std::optional<PyLayerIndex> event_id = std::nullopt) {
         const PyLayerIndex target = event_id.value_or(root_index);
@@ -953,6 +963,448 @@ py::dict run_probability(const std::vector<std::string> &input_files,
     return result;
 }
 
+fuzzybits::compile::Options compile_options_from_py(const py::dict &options) {
+    fuzzybits::compile::Options out;
+    set_option<int>(options, {"compilation_level", "compilation-level", "compilation_passes",
+                              "compilation-passes", "pdag_c", "c"},
+                    [&](int value) { out.compilation_level = value; });
+    set_option<bool>(options,
+                     {"expand_atleast_gates", "expand-atleast-gates", "expand_kn", "expand-kn", "no_kn", "no-kn"},
+                     [&](bool value) { out.expand_atleast_gates = value; });
+    set_option<bool>(options, {"expand_xor_gates", "expand-xor-gates", "expand_xor", "expand-xor", "no_xor", "no-xor"},
+                     [&](bool value) { out.expand_xor_gates = value; });
+    set_option<bool>(options,
+                     {"recognize_atleast_groups", "recognize-atleast-groups", "recognize_atleast", "recognize-atleast",
+                      "recognize_kn", "recognize-kn"},
+                     [&](bool value) { out.recognize_atleast_groups = value; });
+    set_option<bool>(options,
+                     {"recognize_xor_groups", "recognize-xor-groups", "recognize_xor", "recognize-xor"},
+                     [&](bool value) { out.recognize_xor_groups = value; });
+    set_option<bool>(options, {"keep_null_gates", "keep-null-gates", "keep_null", "keep-null"},
+                     [&](bool value) { out.keep_null_gates = value; });
+    set_option<bool>(options, {"ccf"}, [&](bool value) { out.ccf = value; });
+    set_option<bool>(options, {"allow_extern", "allow-extern"}, [&](bool value) { out.allow_extern = value; });
+    set_option<std::string>(options, {"target", "target_gate", "target-gate", "top", "top_event", "top-event"},
+                            [&](const std::string &value) { out.target = value; });
+    return out;
+}
+
+std::vector<std::byte> bytes_from_py(const py::bytes &data) {
+    const std::string raw = data;
+    std::vector<std::byte> owned(raw.size());
+    if (!raw.empty()) {
+        std::memcpy(owned.data(), raw.data(), raw.size());
+    }
+    return owned;
+}
+
+py::bytes py_bytes_from(const std::vector<std::byte> &bytes) {
+    return py::bytes(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+}
+
+const char *opcode_name(pcfb::OpCode op) {
+    switch (op) {
+        case pcfb::OpCode::BITWISE_NO_OP:
+            return "NO_OP";
+        case pcfb::OpCode::BITWISE_NOT:
+            return "NOT";
+        case pcfb::OpCode::BITWISE_AND:
+            return "AND";
+        case pcfb::OpCode::BITWISE_OR:
+            return "OR";
+        case pcfb::OpCode::BITWISE_XOR:
+            return "XOR";
+        case pcfb::OpCode::BITWISE_NAND:
+            return "NAND";
+        case pcfb::OpCode::BITWISE_NOR:
+            return "NOR";
+        case pcfb::OpCode::BITWISE_XNOR:
+            return "XNOR";
+        case pcfb::OpCode::BITWISE_ATLEAST:
+            return "ATLEAST";
+        case pcfb::OpCode::BITWISE_ATMOST:
+            return "ATMOST";
+        case pcfb::OpCode::BITWISE_EXACTLY:
+            return "EXACTLY";
+        case pcfb::OpCode::BITWISE_ZEROS:
+            return "ZEROS";
+        case pcfb::OpCode::BITWISE_ONES:
+            return "ONES";
+        case pcfb::OpCode::SAMPLE:
+            return "SAMPLE";
+        default:
+            return "RESERVED";
+    }
+}
+
+const char *sample_source_name(pcfb::SampleSource s) {
+    switch (s) {
+        case pcfb::SampleSource::BASIC_EVENT:
+            return "BASIC_EVENT";
+        case pcfb::SampleSource::COLLAPSED_MODULE:
+            return "COLLAPSED_MODULE";
+        case pcfb::SampleSource::HOUSE_EVENT:
+            return "HOUSE_EVENT";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+const char *diagnostic_code_name(pcfb::Diagnostic::Code code) {
+    using C = pcfb::Diagnostic::Code;
+    switch (code) {
+        case C::Ok:
+            return "Ok";
+        case C::BadIdentifier:
+            return "BadIdentifier";
+        case C::BadMajorVersion:
+            return "BadMajorVersion";
+        case C::UnknownOpset:
+            return "UnknownOpset";
+        case C::MissingRequiredMetadata:
+            return "MissingRequiredMetadata";
+        case C::MissingEmptyBuffer:
+            return "MissingEmptyBuffer";
+        case C::BufferIndexOutOfRange:
+            return "BufferIndexOutOfRange";
+        case C::TensorIndexOutOfRange:
+            return "TensorIndexOutOfRange";
+        case C::NotTopological:
+            return "NotTopological";
+        case C::MultipleAssignment:
+            return "MultipleAssignment";
+        case C::BadArity:
+            return "BadArity";
+        case C::BadArgs:
+            return "BadArgs";
+        case C::ReservedOpcode:
+            return "ReservedOpcode";
+        case C::BadSample:
+            return "BadSample";
+        case C::InconsistentThreshold:
+            return "InconsistentThreshold";
+        case C::DuplicateEventId:
+            return "DuplicateEventId";
+        case C::MissingQuery:
+            return "MissingQuery";
+        case C::ExtraSubcircuit:
+            return "ExtraSubcircuit";
+        case C::InvalidFile:
+            return "InvalidFile";
+    }
+    return "Unknown";
+}
+
+py::list diagnostics_list(const std::vector<pcfb::Diagnostic> &diags) {
+    py::list out;
+    for (const auto &d : diags) {
+        py::dict item;
+        item["code"] = diagnostic_code_name(d.code);
+        item["location"] = d.location;
+        item["message"] = d.message;
+        out.append(std::move(item));
+    }
+    return out;
+}
+
+std::string metadata_entry_string(const auto *kv) {
+    if (!kv) {
+        return {};
+    }
+    if (const auto *str = kv->value_as_StringValue(); str && str->value()) {
+        return str->value()->str();
+    }
+    if (const auto *i = kv->value_as_IntValue()) {
+        return std::to_string(i->value());
+    }
+    if (const auto *f = kv->value_as_FloatValue()) {
+        std::ostringstream os;
+        os << f->value();
+        return os.str();
+    }
+    if (const auto *b = kv->value_as_BytesValue(); b && b->value()) {
+        std::vector<std::uint8_t> raw(b->value()->begin(), b->value()->end());
+        if (raw.size() == 32) {
+            std::array<std::uint8_t, 32> digest{};
+            std::copy(raw.begin(), raw.end(), digest.begin());
+            return fuzzybits::compile::sha256_hex(digest);
+        }
+        return "<" + std::to_string(raw.size()) + " bytes>";
+    }
+    return {};
+}
+
+py::dict inspect_circuit(const pcfb::ir::Circuit &circuit) {
+    py::dict result;
+    result["schema_version"] = circuit.schema_version();
+
+    std::size_t n_tensors = 0;
+    std::size_t n_ops = 0;
+    std::size_t n_queries = 0;
+    std::size_t n_samples = 0;
+    std::map<std::string, int> opcode_counts;
+    std::map<std::string, int> sample_sources;
+    py::list query_names;
+
+    if (circuit.subcircuits() && circuit.subcircuits()->size() > 0) {
+        const auto *sc = circuit.subcircuits()->Get(0);
+        if (sc->tensors()) {
+            n_tensors = sc->tensors()->size();
+        }
+        if (sc->operators()) {
+            n_ops = sc->operators()->size();
+            for (const auto *op : *sc->operators()) {
+                if (!op) {
+                    continue;
+                }
+                ++opcode_counts[opcode_name(op->opcode())];
+                if (op->opcode() == pcfb::OpCode::SAMPLE) {
+                    ++n_samples;
+                    if (const auto *sa = op->args_as_SampleArgs()) {
+                        ++sample_sources[sample_source_name(sa->source())];
+                    }
+                }
+            }
+        }
+        if (sc->queries()) {
+            n_queries = sc->queries()->size();
+            for (const auto *q : *sc->queries()) {
+                if (!q) {
+                    continue;
+                }
+                std::string name = q->name() ? q->name()->str() : "";
+                query_names.append(name.empty() ? ("t" + std::to_string(q->target())) : name);
+            }
+        }
+    }
+
+    result["tensors"] = n_tensors;
+    result["operators"] = n_ops;
+    result["samples"] = n_samples;
+    result["queries"] = n_queries;
+
+    py::dict opcodes;
+    for (const auto &[name, n] : opcode_counts) {
+        opcodes[py::str(name)] = n;
+    }
+    result["opcodes"] = std::move(opcodes);
+
+    py::dict sources;
+    for (const auto &[name, n] : sample_sources) {
+        sources[py::str(name)] = n;
+    }
+    result["sample_source"] = std::move(sources);
+    result["query_names"] = std::move(query_names);
+
+    py::dict metadata;
+    if (circuit.get() && circuit.get()->metadata()) {
+        for (const auto *kv : *circuit.get()->metadata()) {
+            if (!kv || !kv->key()) {
+                continue;
+            }
+            metadata[py::str(kv->key()->str())] = metadata_entry_string(kv);
+        }
+    }
+    result["metadata"] = std::move(metadata);
+    result["diagnostics"] = diagnostics_list(pcfb::validate(circuit));
+    return result;
+}
+
+py::bytes compile_pcfb(const std::vector<std::string> &input_files, const py::dict &options) {
+    if (input_files.empty()) {
+        throw std::invalid_argument("compile requires at least one input file");
+    }
+    auto compiled = fuzzybits::compile::compile_files(input_files, compile_options_from_py(options));
+    if (!compiled) {
+        throw std::runtime_error("compile: " + compiled.error().message);
+    }
+    return py_bytes_from(compiled->bytes);
+}
+
+py::dict inspect_pcfb_bytes(const py::bytes &data) {
+    auto owned = bytes_from_py(data);
+    auto circuit = pcfb::io::from_bytes(owned);
+    if (!circuit) {
+        throw std::runtime_error("inspect: " + circuit.error().message);
+    }
+    return inspect_circuit(*circuit);
+}
+
+py::dict inspect_pcfb_path(const std::string &path) {
+    auto circuit = pcfb::io::read(path);
+    if (!circuit) {
+        throw std::runtime_error("inspect: " + circuit.error().message);
+    }
+    return inspect_circuit(*circuit);
+}
+
+py::list query_results_to_py(const std::vector<fuzzybits::runtime::QueryResult> &results) {
+    py::list out;
+    for (const auto &r : results) {
+        py::dict item;
+        item["name"] = r.name;
+        item["estimate"] = r.estimate;
+        item["ci_low"] = r.ci_low;
+        item["ci_high"] = r.ci_high;
+        item["n"] = r.n;
+        item["hits"] = r.hits;
+        out.append(std::move(item));
+    }
+    return out;
+}
+
+py::list run_pcfb_bytes(const py::bytes &data, std::uint64_t trials, const std::string &backend) {
+    if (trials == 0) {
+        throw std::invalid_argument("run: trials must be positive");
+    }
+    auto owned = bytes_from_py(data);
+    fuzzybits::runtime::RunOptions opt;
+    opt.trials = trials;
+    opt.backend = backend;
+    std::vector<fuzzybits::runtime::QueryResult> results;
+    {
+        py::gil_scoped_release release;
+        results = fuzzybits::runtime::run_pcfb(std::span<const std::byte>(owned), opt);
+    }
+    return query_results_to_py(results);
+}
+
+struct PyPcfbSession {
+    std::vector<std::byte> owned_bytes;
+    fuzzybits::runtime::ReconstructedPdag reconstructed;
+    std::unique_ptr<PyLayerManager> manager;
+    std::uint64_t pass_index = 0;
+    bool closed = false;
+    std::string target_name;
+    std::string model_name;
+
+    explicit PyPcfbSession(const py::bytes &data, const std::string &backend,
+                           std::optional<std::uint64_t> trials_per_pass) {
+        owned_bytes = bytes_from_py(data);
+        auto circuit = pcfb::io::from_bytes(owned_bytes);
+        if (!circuit) {
+            throw std::runtime_error("Session: " + circuit.error().message);
+        }
+        const auto diags = pcfb::validate(*circuit);
+        if (!diags.empty()) {
+            throw std::runtime_error("Session: pcfb validation failed (" + std::to_string(diags.size()) +
+                                     " diagnostics)");
+        }
+        fuzzybits::runtime::apply_backend_mask(backend);
+        reconstructed = fuzzybits::runtime::pdag_from_circuit(*circuit);
+        std::vector<PyLayerIndex> ids;
+        for (const auto &q : reconstructed.queries) {
+            ids.push_back(static_cast<PyLayerIndex>(q.node_index));
+            if (target_name.empty()) {
+                target_name = q.name;
+            }
+        }
+        if (model_name.empty()) {
+            model_name = target_name;
+        }
+        manager = std::make_unique<PyLayerManager>(
+            reconstructed.graph.get(), /*num_trials=*/0, ids,
+            static_cast<std::size_t>(trials_per_pass.value_or(0)));
+    }
+
+    void close() {
+        manager.reset();
+        closed = true;
+    }
+
+    py::dict sample_shape() const {
+        if (!manager || !manager->manager) {
+            throw std::runtime_error("Session: closed");
+        }
+        return sample_shape_dict(*manager->manager);
+    }
+
+    py::dict graph() const {
+        if (!reconstructed.graph) {
+            throw std::runtime_error("Session: closed");
+        }
+        py::list nodes;
+        py::list edges;
+        std::unordered_set<int> seen_nodes;
+        std::unordered_set<int> expanded_gates;
+        collect_pdag_graph(*reconstructed.graph, reconstructed.graph->root_ptr(), nodes, edges, seen_nodes,
+                           expanded_gates);
+        py::dict compilation;
+        compilation["level"] = py::none();
+        compilation["ccf"] = false;
+        compilation["expand_atleast_gates"] = py::none();
+        compilation["expand_xor_gates"] = py::none();
+        compilation["recognize_atleast_groups"] = py::none();
+        compilation["recognize_xor_groups"] = py::none();
+        compilation["keep_null_gates"] = py::none();
+
+        py::dict result;
+        result["model"] = model_name.empty() ? py::object(py::none()) : py::cast(model_name);
+        result["source"] = py::none();
+        result["input_files"] = py::list();
+        result["target"] = target_name;
+        result["target_name"] = target_name;
+        result["top"] = reconstructed.graph->root_ptr() ? py::cast(reconstructed.graph->root_ptr()->index())
+                                                        : py::object(py::none());
+        result["root_complement"] = reconstructed.graph->complement();
+        result["coherent"] = reconstructed.graph->coherent();
+        result["normal"] = reconstructed.graph->normal();
+        result["compilation"] = compilation;
+        result["nodes"] = nodes;
+        result["edges"] = edges;
+        py::list queries;
+        for (const auto &q : reconstructed.queries) {
+            py::dict item;
+            item["name"] = q.name;
+            item["index"] = q.node_index;
+            queries.append(std::move(item));
+        }
+        result["query_nodes"] = queries;
+        return result;
+    }
+
+    py::dict execution_plan() const {
+        if (!manager) {
+            throw std::runtime_error("Session: closed");
+        }
+        py::dict plan = manager->execution_plan();
+        plan["model"] = model_name.empty() ? py::object(py::none()) : py::cast(model_name);
+        plan["source"] = py::none();
+        plan["input_files"] = py::list();
+        plan["target"] = target_name;
+        plan["target_name"] = target_name;
+        plan["semantic_graph"] = graph();
+        return plan;
+    }
+
+    py::dict step() {
+        if (!manager) {
+            throw std::runtime_error("Session: closed");
+        }
+        ++pass_index;
+        py::dict raw = manager->single_pass_all();
+        py::dict nodes;
+        for (auto item : raw) {
+            const int index = item.first.cast<int>();
+            py::dict counter = py::reinterpret_borrow<py::dict>(item.second);
+            py::dict counters;
+            counters["index"] = index;
+            counters["num_one_bits"] = counter["num_one_bits"];
+            counters["total_bits"] = counter["total_bits"];
+            counters["one_bits"] = counter["num_one_bits"];
+            counters["popcount"] = counter["num_one_bits"];
+            nodes[py::int_(index)] = std::move(counters);
+        }
+        py::dict out;
+        out["pass_index"] = pass_index;
+        out["trials_per_pass"] = sample_shape()["trials_per_pass"];
+        out["target_index"] = reconstructed.queries.empty() ? manager->root_index
+                                                            : reconstructed.queries.front().node_index;
+        out["nodes"] = std::move(nodes);
+        return out;
+    }
+};
+
 } // namespace
 
 #ifndef FUZZYBITS_NATIVE_MODULE
@@ -1092,4 +1544,69 @@ Args:
 Returns:
     A dict containing analysis timing, warnings, and probability results.
 )pbdoc");
+
+    m.def(
+        "compile_pcfb",
+        &compile_pcfb,
+        py::arg("input_files"),
+        py::arg("options") = py::dict(),
+        R"pbdoc(
+Compile OpenPSA/MEF XML into a pcfb 1.1 buffer.
+
+Args:
+    input_files: MEF XML paths.
+    options: `compilation_level` / `pdag_c`, `no_kn`, `no_xor`, `ccf`, `target`.
+
+Returns:
+    bytes of a validated core-1.1 `.pcfb`.
+)pbdoc");
+
+    m.def(
+        "inspect_pcfb_bytes",
+        &inspect_pcfb_bytes,
+        py::arg("data"),
+        R"pbdoc(
+Summarise an in-memory `.pcfb` (same keys as `fzb inspect --json`, plus `diagnostics`).
+)pbdoc");
+
+    m.def(
+        "inspect_pcfb_path",
+        &inspect_pcfb_path,
+        py::arg("path"),
+        R"pbdoc(
+Summarise a `.pcfb` file (same keys as `fzb inspect --json`, plus `diagnostics`).
+)pbdoc");
+
+    m.def(
+        "run_pcfb",
+        &run_pcfb_bytes,
+        py::arg("data"),
+        py::arg("trials"),
+        py::arg("backend") = "",
+        R"pbdoc(
+One-shot Monte Carlo of an in-memory `.pcfb`. Same numbers as `fzb run`.
+
+Releases the GIL while the kernel runs. `backend` is `cuda`, `omp`, or empty
+(use the mask already applied by fuzzybits.init).
+)pbdoc");
+
+    py::class_<PyPcfbSession>(m, "PcfbSession")
+        .def(py::init<const py::bytes &, const std::string &, std::optional<std::uint64_t>>(),
+             py::arg("data"), py::arg("backend") = "", py::arg("trials_per_pass") = py::none())
+        .def_property_readonly("sample_shape", &PyPcfbSession::sample_shape)
+        .def("graph", &PyPcfbSession::graph)
+        .def("execution_plan", &PyPcfbSession::execution_plan)
+        .def("step", &PyPcfbSession::step, R"pbdoc(
+Run exactly one device pass and return cumulative tally counters.
+
+Returns a dict with `pass_index` (1-based), `trials_per_pass`, `target_index`,
+and `nodes` mapping PDAG index -> `{num_one_bits, total_bits, one_bits, popcount}`.
+Releases the GIL during kernel execution.
+)pbdoc")
+        .def("close", &PyPcfbSession::close)
+        .def("__enter__", [](PyPcfbSession &self) -> PyPcfbSession & { return self; })
+        .def("__exit__", [](PyPcfbSession &self, py::object, py::object, py::object) {
+            self.close();
+            return false;
+        });
 }

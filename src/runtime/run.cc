@@ -7,6 +7,9 @@
 #include "settings.h"
 
 #include <cstdlib>
+#include <memory>
+#include <span>
+#include <string>
 #include <utility>
 
 namespace fuzzybits::runtime {
@@ -83,18 +86,174 @@ std::vector<QueryResult> run_pcfb(const pcfb::ir::Circuit &circuit, const RunOpt
   return run_graph(*reconstructed.graph, reconstructed.queries, options);
 }
 
-std::vector<QueryResult> run_pcfb(const std::filesystem::path &path, const RunOptions &options) {
-  apply_backend_mask(options.backend);
-  auto circuit = pcfb::io::read(path);
+namespace {
+
+pcfb::ir::Circuit require_valid_circuit(pcfb::Result<pcfb::ir::Circuit> circuit, const char *op) {
   if (!circuit) {
-    throw RuntimeError("run: " + circuit.error().message);
+    throw RuntimeError(std::string(op) + ": " + circuit.error().message);
   }
   const auto diags = pcfb::validate(*circuit);
   if (!diags.empty()) {
-    throw InvalidPcfbError("run: pcfb validation failed (" + std::to_string(diags.size()) + " diagnostics)",
+    throw InvalidPcfbError(std::string(op) + ": pcfb validation failed (" + std::to_string(diags.size()) +
+                               " diagnostics)",
                            diags);
   }
-  return run_pcfb(*circuit, options);
+  return std::move(*circuit);
+}
+
+}  // namespace
+
+pcfb::ir::Circuit load_pcfb(const std::filesystem::path &path) {
+  return require_valid_circuit(pcfb::io::read(path), "load_pcfb");
+}
+
+pcfb::ir::Circuit load_pcfb(std::span<const std::byte> bytes) {
+  return require_valid_circuit(pcfb::io::from_bytes(bytes), "load_pcfb");
+}
+
+std::vector<QueryResult> run_pcfb(const std::filesystem::path &path, const RunOptions &options) {
+  apply_backend_mask(options.backend);
+  return run_pcfb(load_pcfb(path), options);
+}
+
+std::vector<QueryResult> run_pcfb(std::span<const std::byte> bytes, const RunOptions &options) {
+  apply_backend_mask(options.backend);
+  return run_pcfb(load_pcfb(bytes), options);
+}
+
+struct Session::Impl {
+  using bitpack_t = std::uint64_t;
+  using prob_t = std::double_t;
+  using size_t_ = std::size_t;
+  using Manager = scram::mc::queue::layer_manager<bitpack_t, prob_t, size_t_>;
+
+  ReconstructedPdag reconstructed;
+  std::unique_ptr<Manager> manager;
+  std::uint64_t pass_index = 0;
+  bool closed = false;
+};
+
+Session::Session(ReconstructedPdag reconstructed, const std::string &backend,
+                 std::size_t requested_trials_per_pass) {
+  apply_backend_mask(backend);
+  auto impl = std::make_unique<Impl>();
+  impl->reconstructed = std::move(reconstructed);
+  if (!impl->reconstructed.graph || !impl->reconstructed.graph->root_ptr()) {
+    throw RuntimeError("session: reconstructed PDAG has no root");
+  }
+  if (impl->reconstructed.queries.empty()) {
+    throw RuntimeError("session: no queries");
+  }
+
+  scram::mc::stats::TallyNodeMap tallies;
+  for (const auto &q : impl->reconstructed.queries) {
+    if (!q.node) {
+      throw RuntimeError("session: query '" + q.name + "' has no node");
+    }
+    tallies.insert_or_assign(q.node->index(), scram::mc::stats::TallyNode{
+                                                  .status = scram::mc::stats::not_tracked,
+                                                  .tally_stats = {},
+                                                  .node = q.node,
+                                              });
+  }
+  impl->manager = std::make_unique<Impl::Manager>(impl->reconstructed.graph.get(), /*num_trials=*/0, tallies,
+                                                  requested_trials_per_pass);
+  impl_ = std::move(impl);
+}
+
+Session::Session(Session &&) noexcept = default;
+Session &Session::operator=(Session &&) noexcept = default;
+Session::~Session() = default;
+
+Session Session::from_circuit(const pcfb::ir::Circuit &circuit, const std::string &backend,
+                              std::size_t requested_trials_per_pass) {
+  const auto diags = pcfb::validate(circuit);
+  if (!diags.empty()) {
+    throw InvalidPcfbError(
+        "session: pcfb validation failed (" + std::to_string(diags.size()) + " diagnostics)", diags);
+  }
+  return Session(pdag_from_circuit(circuit), backend, requested_trials_per_pass);
+}
+
+Session Session::from_bytes(std::span<const std::byte> bytes, const std::string &backend,
+                            std::size_t requested_trials_per_pass) {
+  return from_circuit(load_pcfb(bytes), backend, requested_trials_per_pass);
+}
+
+Session Session::from_path(const std::filesystem::path &path, const std::string &backend,
+                           std::size_t requested_trials_per_pass) {
+  return from_circuit(load_pcfb(path), backend, requested_trials_per_pass);
+}
+
+scram::core::Pdag &Session::pdag() {
+  if (!impl_ || impl_->closed) {
+    throw RuntimeError("session: closed");
+  }
+  return *impl_->reconstructed.graph;
+}
+
+const scram::core::Pdag &Session::pdag() const {
+  if (!impl_ || impl_->closed) {
+    throw RuntimeError("session: closed");
+  }
+  return *impl_->reconstructed.graph;
+}
+
+const std::vector<ReconstructedQuery> &Session::queries() const {
+  if (!impl_ || impl_->closed) {
+    throw RuntimeError("session: closed");
+  }
+  return impl_->reconstructed.queries;
+}
+
+SampleShape Session::sample_shape() const {
+  if (!impl_ || impl_->closed || !impl_->manager) {
+    throw RuntimeError("session: closed");
+  }
+  const auto &shape = impl_->manager->shaper().SAMPLE_SHAPE;
+  SampleShape out;
+  out.batch_size = shape.batch_size;
+  out.bitpacks_per_batch = shape.bitpacks_per_batch;
+  out.bits_per_bitpack = sizeof(Impl::bitpack_t) * 8;
+  out.trials_per_pass =
+      static_cast<std::uint64_t>(shape.batch_size) * shape.bitpacks_per_batch * out.bits_per_bitpack;
+  out.total_iterations = impl_->manager->shaper().TOTAL_ITERATIONS;
+  return out;
+}
+
+bool Session::closed() const {
+  return !impl_ || impl_->closed;
+}
+
+PassResult Session::step() {
+  if (!impl_ || impl_->closed || !impl_->manager) {
+    throw RuntimeError("session: closed");
+  }
+  scram::mc::stats::TallyNodeMap tallies;
+  impl_->manager->pass_wait_collect(tallies, 1, 0);
+  ++impl_->pass_index;
+
+  PassResult out;
+  out.pass_index = impl_->pass_index;
+  out.trials_per_pass = sample_shape().trials_per_pass;
+  out.target_index = impl_->reconstructed.queries.front().node_index;
+  out.nodes.reserve(tallies.size());
+  for (const auto &[index, node_tally] : tallies) {
+    out.nodes.push_back(PassTally{
+        .index = index,
+        .num_one_bits = static_cast<std::uint64_t>(node_tally.tally_stats.num_one_bits),
+        .total_bits = static_cast<std::uint64_t>(node_tally.tally_stats.total_bits),
+    });
+  }
+  return out;
+}
+
+void Session::close() {
+  if (!impl_) {
+    return;
+  }
+  impl_->manager.reset();
+  impl_->closed = true;
 }
 
 }  // namespace fuzzybits::runtime

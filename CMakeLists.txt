@@ -53,7 +53,9 @@ option(FUZZYBITS_WITH_MC "Build the SYCL Monte Carlo engine (libmc, scram-cli, P
 if(SKBUILD)
   # pip/scikit-build-core: skip Catch2 and bake $ORIGIN RPATH into the
   # extension + libscram/libmc so the wheel does not record the build prefix.
-  # fzb/pcfb are skipped below; FUZZYBITS_WITH_MC stays ON (need libmc).
+  # pcfb + compile + runtime are built into the extension (statically linked);
+  # fzb / scram-cli stay out of the wheel (COMPONENT fzb / skipped below).
+  # FUZZYBITS_WITH_MC stays ON (need libmc).
   set(BUILD_TESTS OFF CACHE BOOL "Deprecated alias of BUILD_TESTING" FORCE)
   set(BUILD_TESTING OFF CACHE BOOL "Build the testing tree." FORCE)
   set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
@@ -347,15 +349,16 @@ add_subdirectory(src/api)
 add_subdirectory(src/ir)
 add_subdirectory(src/io)
 
+# pcfb is public; FetchContent uses toolchain.env PCFB_GIT_TAG
+# (currently 6b1af8bb4bb9af3d217a33317c006f0ff9516cf1). Override with
+# FUZZYBITS_PCFB_SOURCE_DIR for a local checkout (cmake/FuzzybitsPcfb.cmake).
+# Built for both the wheel (SKBUILD) and the in-tree fzb CLI.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsPcfb.cmake")
+add_subdirectory(src/compile)
+if(FUZZYBITS_WITH_MC)
+  add_subdirectory(src/runtime)
+endif()
 if(NOT SKBUILD)
-  # pcfb is public; FetchContent uses toolchain.env PCFB_GIT_TAG
-  # (currently 6b1af8bb4bb9af3d217a33317c006f0ff9516cf1). Override with
-  # FUZZYBITS_PCFB_SOURCE_DIR for a local checkout (cmake/FuzzybitsPcfb.cmake).
-  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsPcfb.cmake")
-  add_subdirectory(src/compile)
-  if(FUZZYBITS_WITH_MC)
-    add_subdirectory(src/runtime)
-  endif()
   add_subdirectory(targets/fzb)
 endif()
 

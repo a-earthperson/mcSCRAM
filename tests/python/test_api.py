@@ -59,9 +59,11 @@ def test_seed_is_not_implemented(tiny_xml: Path):
         fuzzybits.probability(tiny_xml, trials=1024, seed=1)
 
 
-def test_run_pcfb_is_extension_point():
-    with pytest.raises(NotImplementedError, match="PCFB"):
-        fuzzybits.run("model.pcfb")
+def test_run_seed_is_not_implemented():
+    with pytest.raises(TypeError):
+        fuzzybits.run(b"not-a-pcfb")
+    with pytest.raises(NotImplementedError, match="deterministic"):
+        fuzzybits.run(b"not-a-pcfb", trials=1024, seed=1)
 
 
 def test_native_run_probability_dict(tiny_xml: Path):

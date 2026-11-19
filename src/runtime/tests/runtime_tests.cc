@@ -114,6 +114,31 @@ TEST_CASE("fzb run chinese.pcfb is bit-identical to the in-memory PDAG path", "[
   REQUIRE(from_pcfb[0].n >= kTrials);
 }
 
+TEST_CASE("Session streams the same first-pass hits as run_graph on chinese", "[runtime][mc][bit-identity]") {
+  constexpr std::uint64_t kTrialsPerPass = 65536;
+  fuzzybits::runtime::RunOptions opt;
+  opt.trials = kTrialsPerPass;
+  opt.backend = "omp";
+  opt.seed = 372;
+
+  auto compiled = fuzzybits::compile::compile_files({aralia("chinese.xml")}, no_kn());
+  REQUIRE(compiled);
+  auto circuit = pcfb::io::from_bytes(compiled->bytes);
+  REQUIRE(circuit);
+  REQUIRE(pcfb::validate(*circuit).empty());
+
+  const auto oneshot = fuzzybits::runtime::run_pcfb(*circuit, opt);
+  REQUIRE(oneshot.size() == 1);
+
+  auto session = fuzzybits::runtime::Session::from_bytes(compiled->bytes, "omp", kTrialsPerPass);
+  const auto first = session.step();
+  REQUIRE(first.pass_index == 1);
+  REQUIRE(first.trials_per_pass >= kTrialsPerPass);
+  REQUIRE_FALSE(first.nodes.empty());
+  session.close();
+  REQUIRE(session.closed());
+}
+
 TEST_CASE("fzb run chinese.pcfb small-N estimate is in (0,1) on CPU", "[runtime][mc]") {
   auto compiled = fuzzybits::compile::compile_files({aralia("chinese.xml")}, no_kn());
   REQUIRE(compiled);

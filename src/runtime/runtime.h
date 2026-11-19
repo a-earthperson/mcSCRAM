@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -94,5 +96,69 @@ void apply_backend_mask(const std::string &backend);
 
 [[nodiscard]] std::vector<QueryResult> run_pcfb(const std::filesystem::path &path,
                                                 const RunOptions &options);
+
+[[nodiscard]] std::vector<QueryResult> run_pcfb(std::span<const std::byte> bytes,
+                                                const RunOptions &options);
+
+/// Read + `pcfb::validate`. Throws `InvalidPcfbError` on diagnostics, `RuntimeError`
+/// on I/O / verification failure. `from_bytes` is a non-owning view: `bytes` must
+/// outlive the returned circuit.
+[[nodiscard]] pcfb::ir::Circuit load_pcfb(const std::filesystem::path &path);
+[[nodiscard]] pcfb::ir::Circuit load_pcfb(std::span<const std::byte> bytes);
+
+struct SampleShape {
+  std::size_t batch_size = 0;
+  std::size_t bitpacks_per_batch = 0;
+  std::size_t bits_per_bitpack = 64;
+  std::uint64_t trials_per_pass = 0;
+  std::uint64_t total_iterations = 0;  ///< 0 when the shaper is unbounded
+};
+
+struct PassTally {
+  int index = 0;
+  std::uint64_t num_one_bits = 0;  ///< cumulative one-bits through this pass
+  std::uint64_t total_bits = 0;    ///< cumulative Bernoulli trials through this pass
+};
+
+struct PassResult {
+  std::uint64_t pass_index = 0;  ///< 1-based
+  std::uint64_t trials_per_pass = 0;
+  int target_index = 0;
+  std::vector<PassTally> nodes;
+};
+
+/// Streaming Monte Carlo over a reconstructed pcfb PDAG. One `step()` is one
+/// device pass (same kernel path as `fzb run` / `layer_manager`). Destroy or
+/// `close()` to release USM. Not thread-safe.
+class Session {
+ public:
+  Session(ReconstructedPdag reconstructed, const std::string &backend = {},
+          std::size_t requested_trials_per_pass = 0);
+  Session(Session &&) noexcept;
+  Session &operator=(Session &&) noexcept;
+  ~Session();
+  Session(const Session &) = delete;
+  Session &operator=(const Session &) = delete;
+
+  static Session from_circuit(const pcfb::ir::Circuit &circuit, const std::string &backend = {},
+                              std::size_t requested_trials_per_pass = 0);
+  static Session from_bytes(std::span<const std::byte> bytes, const std::string &backend = {},
+                            std::size_t requested_trials_per_pass = 0);
+  static Session from_path(const std::filesystem::path &path, const std::string &backend = {},
+                           std::size_t requested_trials_per_pass = 0);
+
+  [[nodiscard]] scram::core::Pdag &pdag();
+  [[nodiscard]] const scram::core::Pdag &pdag() const;
+  [[nodiscard]] const std::vector<ReconstructedQuery> &queries() const;
+  [[nodiscard]] SampleShape sample_shape() const;
+  [[nodiscard]] bool closed() const;
+
+  PassResult step();
+  void close();
+
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
 
 }  // namespace fuzzybits::runtime
