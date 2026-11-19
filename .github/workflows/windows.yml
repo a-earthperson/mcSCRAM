@@ -99,7 +99,7 @@ jobs:
         id: acpp-cache
         with:
           path: ${{ env.ACPP_PREFIX }}
-          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}-cl
+          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}-cl-x86-64
 
       - name: Build AdaptiveCpp into LLVM (CUDA + OpenMP SSCP)
         id: acpp-build
