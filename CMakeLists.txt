@@ -123,6 +123,7 @@ if(WIN32)
   # FetchContent Boost + AdaptiveCpp produce command lines that exceed
   # CreateProcess's 32767-char limit unless Ninja uses response files.
   set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON)
+  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -302,6 +303,29 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Add required Boost libraries
 find_package(Boost REQUIRED)
+
+if(WIN32)
+  # FetchContent Boost uses per-library include dirs. Public scram headers
+  # include Boost, but scram links Boost PRIVATE, so other TUs (runtime,
+  # mc) do not see those -I paths. The Linux image puts Boost on the
+  # default include path, so this only matters on Windows.
+  set(_fb_boost_inc_targets headers core iterator exception ${BOOST_INCLUDE_LIBRARIES})
+  foreach(_bt IN LISTS _fb_boost_inc_targets)
+    string(STRIP "${_bt}" _bt)
+    if(_bt STREQUAL "test")
+      set(_bt unit_test_framework)
+    endif()
+    if(TARGET Boost::${_bt})
+      get_target_property(_inc Boost::${_bt} INTERFACE_INCLUDE_DIRECTORIES)
+      if(_inc)
+        include_directories(${_inc})
+      endif()
+      unset(_inc)
+    endif()
+  endforeach()
+  unset(_fb_boost_inc_targets)
+  unset(_bt)
+endif()
 
 list(APPEND LIBS
     Boost::program_options
