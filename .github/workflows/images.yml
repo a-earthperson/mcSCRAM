@@ -27,11 +27,15 @@ env:
 jobs:
   gate:
     name: gate
-    runs-on: ubuntu-24.04
+    runs-on: { group: fuzzybits-ci, labels: [self-hosted, Linux, X64] }
     timeout-minutes: 5
     outputs:
       proceed: ${{ steps.decide.outputs.proceed }}
     steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: docker run --rm -v "${GITHUB_WORKSPACE}:/w" alpine:3.20 chown -R "$(id -u):$(id -g)" /w
+
       - name: Checkout
         if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -65,7 +69,7 @@ jobs:
     name: publish-${{ matrix.variant }}
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: { group: fuzzybits-ci, labels: [self-hosted, Linux, X64] }
     timeout-minutes: 120
     permissions:
       contents: read
@@ -91,6 +95,10 @@ jobs:
     env:
       VARIANT: ${{ matrix.variant }}
     steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: docker run --rm -v "${GITHUB_WORKSPACE}:/w" alpine:3.20 chown -R "$(id -u):$(id -g)" /w
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -99,6 +107,7 @@ jobs:
       # ubuntu-24.04 starts with ~20–30 GB free. The toolchain image is ~12.5 GB
       # uncompressed plus two C++ compiles; drop unused hosted-image trees.
       - name: Free disk
+        if: runner.environment == 'github-hosted'
         run: |
           set -eux
           echo "== disk before =="
@@ -393,11 +402,15 @@ jobs:
     name: smoke-cpu-omp
     needs: publish
     if: needs.publish.result == 'success'
-    runs-on: ubuntu-24.04
+    runs-on: { group: fuzzybits-ci, labels: [self-hosted, Linux, X64] }
     timeout-minutes: 20
     env:
       VARIANT: generic
     steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: docker run --rm -v "${GITHUB_WORKSPACE}:/w" alpine:3.20 chown -R "$(id -u):$(id -g)" /w
+
       - name: Resolve image tag
         run: |
           set -euo pipefail

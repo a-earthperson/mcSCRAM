@@ -20,7 +20,7 @@ permissions:
 jobs:
   publish:
     name: Build and push toolchain
-    runs-on: ubuntu-24.04
+    runs-on: { group: fuzzybits-ci, labels: [self-hosted, Linux, X64] }
     timeout-minutes: 240
     permissions:
       contents: read
@@ -29,6 +29,10 @@ jobs:
       REGISTRY: ghcr.io
       IMAGE: ghcr.io/fuzzybit-org/fuzzybits-toolchain
     steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: docker run --rm -v "${GITHUB_WORKSPACE}:/w" alpine:3.20 chown -R "$(id -u):$(id -g)" /w
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -38,6 +42,7 @@ jobs:
       # ~8 GB uncompressed plus LLVM/AdaptiveCpp/Boost layers; the buildfs
       # needs headroom. Drop hosted-image components this job does not use.
       - name: Free disk
+        if: runner.environment == 'github-hosted'
         run: |
           set -eux
           echo "== disk before =="
