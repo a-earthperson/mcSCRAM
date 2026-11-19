@@ -74,8 +74,16 @@ if(APPLE OR WIN32)
   )
 endif()
 
-# Build scram as shared library explicitly (dependencies are static)
-add_library(scram SHARED ${SCRAM_CORE_SRC})
+# Linux: shared libscram.so. Darwin/Windows: static into the consumer
+# (scram-cli, .pyd). Windows CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS does not
+# export private static data (Logger::report_level_), so a scram.dll
+# leaves scram-cli.exe with unresolved data symbols.
+if(WIN32)
+  add_library(scram STATIC ${SCRAM_CORE_SRC})
+  set_target_properties(scram PROPERTIES POSITION_INDEPENDENT_CODE ON)
+else()
+  add_library(scram SHARED ${SCRAM_CORE_SRC})
+endif()
 target_link_libraries(scram PRIVATE ${LIBS})
 target_compile_options(scram PRIVATE $<$<CONFIG:DEBUG>:${SCRAM_CXX_FLAGS_DEBUG}>)
 
