@@ -5,6 +5,13 @@ set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# WIN32: inject the STL Clang-version hatch into every nested project()
+# (Boost FetchContent otherwise compiles boost_container without it).
+if(WIN32)
+  set(CMAKE_PROJECT_INCLUDE
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_nested_project.cmake")
+endif()
+
 project(SCRAM VERSION 0.17.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 
