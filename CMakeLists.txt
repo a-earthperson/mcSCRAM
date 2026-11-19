@@ -167,10 +167,12 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
   include(CheckCXXCompilerFlag)
   CHECK_CXX_COMPILER_FLAG("-march=${FUZZYBITS_X86_ARCH}" COMPILER_SUPPORTS_FUZZYBITS_X86_ARCH)
   if(COMPILER_SUPPORTS_FUZZYBITS_X86_ARCH)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${FUZZYBITS_X86_ARCH}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${FUZZYBITS_X86_ARCH}")
-    add_compile_options("-march=${FUZZYBITS_X86_ARCH}")
-    message(STATUS "Portable x86 baseline: -march=${FUZZYBITS_X86_ARCH}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${FUZZYBITS_X86_ARCH} -mno-avx2 -mno-fma -mno-bmi -mno-bmi2")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${FUZZYBITS_X86_ARCH} -mno-avx2 -mno-fma -mno-bmi -mno-bmi2")
+    add_compile_options(
+      "-march=${FUZZYBITS_X86_ARCH}"
+      -mno-avx2 -mno-fma -mno-bmi -mno-bmi2)
+    message(STATUS "Portable x86 baseline: -march=${FUZZYBITS_X86_ARCH} -mno-avx2 -mno-fma -mno-bmi -mno-bmi2")
   else()
     message(WARNING
       "Compiler does not support -march=${FUZZYBITS_X86_ARCH}; leaving the "

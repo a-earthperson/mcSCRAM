@@ -68,6 +68,21 @@ RUN cmake --preset "${CMAKE_PRESET}" \
           -DBUILD_TESTS="${BUILD_TESTING}" \
           -DCMAKE_INSTALL_PREFIX=/usr/local \
           -DCMAKE_INSTALL_RPATH="/usr/local/lib;/usr/local/cuda/lib64" && \
+    python3 -c "\
+import json, glob, sys, os
+cmds=[]
+for p in glob.glob('build/*/compile_commands.json'):
+    cmds=json.load(open(p)); break
+hits=[c for c in cmds if c.get('file','').endswith('builder.cpp') and 'pcfb' in c.get('file','')]
+assert hits, 'pcfb builder.cpp missing from compile_commands.json'
+cmd=hits[0].get('command') or ' '.join(hits[0].get('arguments') or [])
+print('pcfb builder.cpp flags:', ' '.join(x for x in cmd.split() if 'march' in x or x.startswith('-mno-')))
+native_at=cmd.rfind('-march=native')
+v2_at=cmd.rfind('-march=x86-64-v2')
+mno=cmd.rfind('-mno-bmi2')
+assert v2_at>=0 or mno>=0, cmd
+assert native_at<0 or (v2_at>native_at) or (mno>native_at), cmd
+" && \
     cmake --build --preset "${CMAKE_PRESET}" --parallel "$(nproc)" && \
     cmake --install "build/${CMAKE_PRESET}"
 

@@ -67,19 +67,41 @@ function(fuzzybits_add_pcfb)
   endif()
 
   # pcfb cmake/common-flags.cmake does add_compile_options(-march=native).
-  # That is directory-scoped and wins over the project baseline, baking the
-  # builder CPU (GitHub-hosted: BMI2) into the static lib. fzb / libmc /
-  # _native_*.so then SIGILL on Ivy Bridge (bzhi in pcfb::builder::add_sample).
-  # target_compile_options is last on the compiler command line, so it wins.
+  # That bakes the *builder* CPU into the static lib (GHA: BMI2 `bzhi`;
+  # xerxes: Ivy Bridge, so a xerxes-side objdump is a false pass). Replace
+  # the directory COMPILE_OPTIONS snapshot and pin -mno-bmi2 after any
+  # leftover -march=native so the last ABI-affecting flags are portable.
   if(NOT OPTIMIZE_FOR_NATIVE AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     if(NOT DEFINED FUZZYBITS_X86_ARCH OR FUZZYBITS_X86_ARCH STREQUAL "")
       set(FUZZYBITS_X86_ARCH "x86-64-v2")
     endif()
-    foreach(_t pcfb flatbuffers flatc)
-      if(TARGET ${_t})
-        target_compile_options(${_t} PRIVATE "-march=${FUZZYBITS_X86_ARCH}")
+    set(_fb_portable_march
+      "-march=${FUZZYBITS_X86_ARCH}"
+      "-mno-avx2" "-mno-fma" "-mno-bmi" "-mno-bmi2")
+    if(FUZZYBITS_PCFB_SOURCE_DIR)
+      set(_pcfb_dir "${FUZZYBITS_PCFB_SOURCE_DIR}")
+    else()
+      FetchContent_GetProperties(pcfb SOURCE_DIR _pcfb_dir)
+    endif()
+    foreach(_dir "${_pcfb_dir}" "${_pcfb_dir}/src")
+      if(IS_DIRECTORY "${_dir}")
+        set_property(DIRECTORY "${_dir}" PROPERTY COMPILE_OPTIONS "${_fb_portable_march}")
       endif()
     endforeach()
+    FetchContent_GetProperties(flatbuffers SOURCE_DIR _flatbuffers_dir)
+    if(IS_DIRECTORY "${_flatbuffers_dir}")
+      set_property(DIRECTORY "${_flatbuffers_dir}" PROPERTY COMPILE_OPTIONS "${_fb_portable_march}")
+    endif()
+    foreach(_t pcfb flatbuffers flatc)
+      if(TARGET ${_t})
+        target_compile_options(${_t} PRIVATE ${_fb_portable_march})
+      endif()
+    endforeach()
+    message(STATUS "pcfb portable x86: ${_fb_portable_march}")
+    unset(_fb_portable_march)
+    unset(_pcfb_dir)
+    unset(_flatbuffers_dir)
+    unset(_dir)
     unset(_t)
   endif()
 endfunction()
