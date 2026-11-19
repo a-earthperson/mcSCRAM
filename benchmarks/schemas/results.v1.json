@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fuzzybit-org/fuzzybits/blob/develop/benchmarks/schemas/results.v1.json",
+  "title": "fuzzybits benchmark harness results",
+  "description": "Versioned JSON written by `python -m benchmarks run|ab` (#121).",
+  "type": "object",
+  "required": ["schema_version", "kind", "dataset", "created_utc", "context", "models"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "kind": { "type": "string", "enum": ["run", "ab"] },
+    "dataset": { "type": "string" },
+    "created_utc": { "type": "string" },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "pass (low power)",
+        "infeasible",
+        "known_failure",
+        "timeout",
+        "warn",
+        "block",
+        "error",
+        "inconclusive"
+      ]
+    },
+    "context": { "type": "object" },
+    "models": { "type": "array" },
+    "summary": { "type": "object" }
+  }
+}

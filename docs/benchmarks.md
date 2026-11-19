@@ -184,8 +184,10 @@ with the same recipe and timed alternately on the same host** (lesson from
 3. Alternate base/head for N rounds (default 6; CPU A/A uses 10). Drop the first round.
 4. CPU: `OMP_NUM_THREADS=8 OMP_PROC_BIND=close OMP_PLACES=cores`,
    `docker --cpuset-cpus 0-7`, `ACPP_VISIBILITY_MASK=omp`. The metric is
-   **in-process `fuzzybits.run` time after AdaptiveCpp init and a 2^20 JIT
-   warmup** (`cpu_sample_s`). Do not use container wall time: on chinese at
+   **in-process `fuzzybits.run(..., trials=head_trials)` time after AdaptiveCpp
+   init and a 2^20 JIT warmup** (`cpu_sample_s`). Extra `--inject-regression
+   scale:F` trials are that `head_trials` argument, not the warmup and not a
+   second untimed call. Do not use container wall time: on chinese at
    1e8, container wall was ~1.2 s while sampling is ~1.3 s once init is
    excluded — still too short, so CPU perf trial counts are sized for
    **~2–5 s of sampling**. GPU: `ACPP_VISIBILITY_MASK=cuda`. V100S uses
@@ -227,24 +229,34 @@ Sampling times were in band (chinese ~2.9 s at 225·2^20, das9201 ~3.2 s at
 rose to 10 during the run (ZFS + the 8-thread jobs). The CPU gate is
 **report-only** (`CPU_GATE_BLOCKS = False`, [#124](https://github.com/fuzzybit-org/fuzzybits/issues/124)): it can warn, it does not block.
 
-Pinned-image A/A and `scale:1.10` (registry digest
-`sha256:97e5ffe141ce4f1a969f9a520264f940b0e5c256b9cf7780dfd6e2a9831d7803`,
-`ghcr.io/fuzzybit-org/fuzzybits-runtime@sha256:97e5ffe1…`):
+Pinned-image A/A (registry digest
+`sha256:97e5ffe141ce4f1a969f9a520264f940b0e5c256b9cf7780dfd6e2a9831d7803`)
+and calibrated `scale:F` (later nightly
+`sha256:4a0e01b84c4b5f96836f89eaa02d709bcd28136d3c16b954aa7c7c6eedc2b4ef`,
+pass_size=`32·2^20` from `Session.sample_shape`):
 
 | target | model | inject | metric | ratio | 95% CI | half-width | verdict |
 |---|---|---|---|---|---|---|---|
 | V100S | chinese | A/A | gpu_total_ms | 1.002 | [0.990, 1.007] | 0.87% | **pass** |
 | V100S | chinese | A/A | gpu_kernel_ms | 1.001 | [0.989, 1.008] | 0.97% | pass (dual-gate) |
-| V100S | chinese | scale:1.10 | gpu_total_ms | 1.317 | [1.302, 1.326] | | **block** |
-| V100S | chinese | scale:1.10 | gpu_kernel_ms | 1.316 | [1.298, 1.325] | | block (dual-gate) |
+| V100S | chinese | scale:1.10 (10 vs 11 passes) | gpu_total_ms | 1.098 | [1.094, 1.103] | 0.44% | **block** |
+| V100S | chinese | scale:1.10 | gpu_kernel_ms | 1.098 | [1.094, 1.104] | 0.52% | block (dual-gate) |
+| V100S | chinese | scale:1.05 (20 vs 21 passes) | gpu_total_ms | 1.050 | [1.048, 1.051] | 0.17% | **block** |
+| V100S | chinese | scale:1.05 | gpu_kernel_ms | 1.049 | [1.048, 1.051] | 0.17% | block (dual-gate) |
 | CPU | chinese | A/A | cpu_sample_s | 0.993 | [0.977, 1.029] | 2.6% | pass (report-only) |
 | CPU | chinese | scale:1.10 | cpu_sample_s | 1.020 | [0.861, 1.171] | 15.5% | pass (report-only; CI includes 1) |
 
-`scale:1.10` multiplies the requested trial count and rounds up to 2^20.
-On V100S chinese the GPU pass is 32·2^20, so 1.10× of 96·2^20 (3 passes)
-becomes 4 passes (128·2^20, 1.33×). `gpu_total_ms` ratio 1.317 still
-clears `ci_lo > 1.03`. That is the small-regression check; `repeat` remains
-the 2× check. CPU `scale:1.10` is reported separately; it does not block (#124).
+`--inject-regression scale:F` does **not** multiply the configured trial
+count and round to 2^20. It probes
+`Session(..., num_trials=configured).sample_shape["trials_per_pass"]` (do
+not assume 2^20; chinese on V100S is 32·2^20). A 1-trial `fzb run --json`
+reports `n=64` (one uint64 bitpack) and is **not** the device pass. Then it
+picks the smallest integer N ≥ ceil(configured_trials / pass_size) such
+that round(N·F)/N is within 1% of F. Base runs N passes; head runs
+round(N·F) passes. For F=1.10 that is 10→11 (realized 1.10×). The earlier
+2^20 round-up turned chinese's 3 GPU passes into 4 (1.33×, measured 1.317);
+that is no longer the acceptance path. `repeat` remains the 2× check. CPU
+`scale:1.10` is reported separately; it does not block (#124).
 
 ### Timeouts
 
@@ -273,15 +285,29 @@ retry if busy. Do not time GPU work without the lock.
 
 ### Injected regression (acceptance)
 
-`--inject-regression scale:1.10` multiplies **head** trial counts by 1.10
-and rounds up to a 2^20 pass. V100S must **block** (`ci_lo > 1.03` on
-`gpu_total_ms`). On chinese the GPU pass is 32·2^20, so the 1.10× request
-runs 1.33× work (see table above). `--inject-regression repeat` still runs
-`fzb run` twice under one profiler session on head (≈2× GPU time).
+`--inject-regression scale:F` calibrates **both** sides to integer device
+passes so the extra work is actually ≈F, not a 2^20/pass round-up:
+
+1. Probe pass size: `Session(pcfb, num_trials=configured).sample_shape["trials_per_pass"]`.
+   Do not use `fzb run --trials 1 --json` (`n=64` is one bitpack).
+2. N = smallest integer ≥ ceil(configured_trials / pass_size) with
+   round(N·F)/N within 1% of F. Examples: F=1.10 → 10 vs 11; F=1.05 → 20
+   vs 21; CPU chinese at 225·2^20 scales to 230 vs 253 (exactly 1.10×).
+3. Base = N passes; head = round(N·F) passes.
+
+V100S must **block** (`ci_lo > 1.03` on `gpu_total_ms`) at F=1.10 and at
+F=1.05 (noise is ~±1%). `--inject-regression repeat` still runs `fzb run`
+twice under one profiler session on head (≈2× GPU time).
 `--inject-regression sleep:MS` sleeps on head *outside* the sampled region, so
 it no longer moves `cpu_sample_s`.
 
-CPU `scale:1.10` numbers are reported; they do not block (#124).
+CPU extra trials **do** land inside the timed `cpu_sample_s` region:
+`INNER_INPROCESS` times `fuzzybits.run(pcfb, trials=head_trials)` after
+AdaptiveCpp init and a 2^20 JIT warmup. The uncalibrated CPU `scale:1.10`
+of **1.020 [0.861, 1.171]** requested 248 vs 225 passes (1.102×) on that
+timed call; the CI includes 1 because gateway loadavg rose to ~6 on 8
+cores, not because extra trials were outside the timer. CPU stays
+report-only (#124).
 
 ### generic-pwr-model compatibility shim
 
