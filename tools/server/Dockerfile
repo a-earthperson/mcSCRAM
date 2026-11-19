@@ -7,7 +7,7 @@
 # the runtime's system Python 3.12 site.
 #
 #   docker build -f tools/server/Dockerfile \
-#     --build-arg RUNTIME_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-runtime:ci-a812f144f1d9-generic \
+#     --build-arg RUNTIME_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic \
 #     --build-arg VARIANT=generic \
 #     -t ghcr.io/fuzzybit-org/fuzzybits-server:ci-local-generic \
 #     tools/server

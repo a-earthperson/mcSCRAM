@@ -264,21 +264,13 @@ def main() -> int:
         text=True,
     )
     if compile.returncode != 0:
-        # Runtime CLI currently abort()s on CPU (`terminate called without an
-        # active exception`). fuzzybits.compile is the same host lowering as
-        # `fzb compile` (#71); use it so POST /model/pcfb still runs.
-        print(
-            f"   fzb compile failed ({compile.returncode}): {(compile.stderr or compile.stdout).strip()[:300]}",
-            flush=True,
+        raise ApiError(
+            f"fzb compile failed ({compile.returncode}): "
+            f"{(compile.stderr or compile.stdout).strip()[:400]}"
         )
-        print("   falling back to fuzzybits.compile (same host lowering)", flush=True)
-        import fuzzybits
-
-        pcfb = bytes(fuzzybits.compile(xml, pdag_c=2, no_kn=True))
-        open(out, "wb").write(pcfb)
-    else:
-        with open(out, "rb") as fh:
-            pcfb = fh.read()
+    print("   fzb compile ok", flush=True)
+    with open(out, "rb") as fh:
+        pcfb = fh.read()
     if len(pcfb) < 8:
         raise ApiError(f"compiled pcfb too small: {len(pcfb)} bytes")
     print(f"   pcfb {len(pcfb)} bytes", flush=True)

@@ -8,9 +8,10 @@
 #
 # Runtime base tag:
 #   - workflow_dispatch input `runtime_tag` wins (stem or full tag).
-#   - else on ci/**: newest existing ghcr.io/.../fuzzybits-runtime:ci-*-<variant>,
-#     falling back to nightly-<variant>.
-#   - else (develop / tags / dispatch without input): nightly-<variant>.
+#   - else on ci/**: newest existing ci-*-<variant> or nightly-<variant>
+#     (GHCR versions newest-first).
+#   - else (develop / tags): sha-<this-sha12>-<variant> if published,
+#     else nightly-<variant>.
 # Override with the dispatch input rather than editing this file.
 name: Server image
 
@@ -26,8 +27,9 @@ on:
       runtime_tag:
         description: >
           Runtime tag override (stem or full). Examples: nightly,
-          ci-f1f760a4ead0, ci-f1f760a4ead0-generic. Empty = auto
-          (newest ci-*-<variant> on ci/**, else nightly-<variant>).
+          sha-54254780c360, nightly-generic. Empty = auto
+          (newest ci-*/nightly on ci/**; sha-<sha12> or nightly
+          on develop/tags).
         required: false
         default: ""
 
@@ -145,21 +147,7 @@ jobs:
             tag="${stem}-${VARIANT}"
             echo "runtime tag from workflow_dispatch: ${tag}"
           elif [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
-            # GHCR versions are newest-first, but a newer *timestamp* can still
-            # be a pre-#71 wheel (rebased ci/images SHAs). Skip tags whose
-            # source commit does not define fuzzybits.compile.
-            runtime_has_pcfb_api() {
-              local candidate="$1" sha12=""
-              if [[ "${candidate}" =~ ^ci-([0-9a-f]{12})- ]]; then
-                sha12="${BASH_REMATCH[1]}"
-              else
-                return 0
-              fi
-              local b64
-              b64="$(gh api "repos/fuzzybit-org/fuzzybits/contents/python/fuzzybits/_api.py?ref=${sha12}" --jq .content 2>/dev/null)" || return 1
-              printf '%s' "${b64}" | base64 -d | grep -q 'def compile('
-            }
-            echo "listing fuzzybits-runtime tags for newest ci-*-${VARIANT} with pcfb API (#71)"
+            echo "listing fuzzybits-runtime tags for newest ci-*-${VARIANT} or nightly-${VARIANT}"
             mapfile -t tags < <(
               gh api --paginate \
                 -H "Accept: application/vnd.github+json" \
@@ -168,23 +156,25 @@ jobs:
                 | sed '/^$/d'
             )
             for t in "${tags[@]}"; do
-              if [[ "${t}" != ci-*-"${VARIANT}" ]]; then
-                continue
-              fi
-              if runtime_has_pcfb_api "${t}"; then
+              if [[ "${t}" == "nightly-${VARIANT}" || "${t}" == ci-*-"${VARIANT}" ]]; then
                 tag="${t}"
-                echo "newest ci tag with pcfb API: ${tag}"
+                echo "newest matching tag: ${tag}"
                 break
               fi
-              echo "skip ${t} (source commit lacks fuzzybits.compile)"
             done
             if [[ -z "${tag}" ]]; then
               tag="nightly-${VARIANT}"
-              echo "no ci-*-${VARIANT} tag with pcfb API; falling back to ${tag}"
+              echo "no listed match; falling back to ${tag}"
             fi
           else
-            tag="nightly-${VARIANT}"
-            echo "default runtime tag: ${tag}"
+            sha_tag="sha-${SHA12}-${VARIANT}"
+            if docker buildx imagetools inspect "${RUNTIME_REPO}:${sha_tag}" >/dev/null 2>&1; then
+              tag="${sha_tag}"
+              echo "same-commit runtime tag: ${tag}"
+            else
+              tag="nightly-${VARIANT}"
+              echo "no ${sha_tag}; using ${tag}"
+            fi
           fi
           RUNTIME_IMAGE="${RUNTIME_REPO}:${tag}"
           echo "RUNTIME_IMAGE=${RUNTIME_IMAGE}" >> "${GITHUB_ENV}"

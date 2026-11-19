@@ -120,7 +120,8 @@ instead of compiling MEF.
 ## Image
 
 `ghcr.io/fuzzybit-org/fuzzybits-server` is `FROM` the slim runtime image
-(`scram-cli`, `fzb`, AdaptiveCpp, pip-installed `fuzzybits`). uv installs
+(`ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic` by default;
+`scram-cli`, `fzb`, AdaptiveCpp, pip-installed `fuzzybits`). uv installs
 this package into a venv with `--system-site-packages` so the engine is not
 rebuilt. Variants match the runtime: `generic` (default) and `cuda12.8-sm70`.
 
@@ -142,9 +143,6 @@ Volumes: `/data` (models) and `/home/coder/.cache/fuzzybits` (JIT + `.pcfb` cach
 `HEALTHCHECK` hits `/api/v1/healthz`.
 
 ### `docker run`
-
-Until the GHCR package is public, `docker login ghcr.io` with a
-`packages:read` token.
 
 ```bash
 IMG=ghcr.io/fuzzybit-org/fuzzybits-server:nightly-generic

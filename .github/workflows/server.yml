@@ -6,8 +6,7 @@
 #
 # native: same suite with -m native inside the published runtime image so
 # import mcscram_native works. GHCR packages are public: no login, fork PRs
-# pull anonymously. Pin FUZZYBITS_RUNTIME_IMAGE; after #70 merge this can
-# move to nightly-generic.
+# pull anonymously. Base image is nightly-generic.
 name: Server
 
 on:
@@ -23,9 +22,7 @@ permissions:
   contents: read
 
 env:
-  # Newest published generic runtime with the Python pcfb API (#71).
-  # After #70 merge, switch to ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic.
-  FUZZYBITS_RUNTIME_IMAGE: ghcr.io/fuzzybit-org/fuzzybits-runtime:ci-a812f144f1d9-generic
+  FUZZYBITS_RUNTIME_IMAGE: ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic
 
 jobs:
   pytest:
