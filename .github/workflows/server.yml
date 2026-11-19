@@ -62,36 +62,49 @@ jobs:
     permissions:
       contents: read
       packages: read
-    container:
-      # Hardcoded: `container.image` cannot read `env` context. Keep in sync
-      # with workflow `env.FUZZYBITS_RUNTIME_IMAGE` above.
-      image: ghcr.io/fuzzybit-org/fuzzybits-runtime:ci-a812f144f1d9-generic
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
-      env:
-        ACPP_VISIBILITY_MASK: omp
-        ACPP_DEBUG_LEVEL: "0"
-        ACPP_APPDB_DIR: /tmp/acpp-appdb
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
-          enable-cache: true
-          cache-dependency-glob: tools/server/uv.lock
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Native tests
-        working-directory: tools/server
         env:
-          ACPP_VISIBILITY_MASK: omp
-          ACPP_APPDB_DIR: /tmp/acpp-appdb
+          RUNTIME_IMAGE: ${{ env.FUZZYBITS_RUNTIME_IMAGE }}
         run: |
+          set -euo pipefail
+          docker pull "${RUNTIME_IMAGE}"
+          docker pull ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
+          docker create --name uvbin ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
+          docker cp uvbin:/uv "${RUNNER_TEMP}/uv"
+          docker rm uvbin
+          chmod +x "${RUNNER_TEMP}/uv"
+          # docker run (not a GHA container job): LLVM JIT SIGILL'd under the
+          # Actions container runtime on some hosted SKUs; E2E uses this path.
+          docker run --rm -i \
+            --user root \
+            -e ACPP_VISIBILITY_MASK=omp \
+            -e ACPP_DEBUG_LEVEL=0 \
+            -e ACPP_APPDB_DIR=/tmp/acpp-appdb \
+            -e UV_LINK_MODE=copy \
+            -e OMP_NUM_THREADS=2 \
+            -v "${GITHUB_WORKSPACE}:/src:ro" \
+            -v "${RUNNER_TEMP}/uv:/usr/local/bin/uv:ro" \
+            -w /tmp \
+            --entrypoint bash \
+            "${RUNTIME_IMAGE}" \
+            -s <<'EOS'
+          set -euo pipefail
+          mkdir -p /tmp/acpp-appdb
+          cp -a /src /work
+          cd /work/tools/server
           python3 -c "import fuzzybits, mcscram_native; print(fuzzybits.__file__)"
           uv venv --system-site-packages
           uv sync --frozen --extra dev
@@ -99,12 +112,5 @@ jobs:
           sys_site="$(python3 -c 'import fuzzybits, pathlib; p=pathlib.Path(fuzzybits.__file__).resolve(); print(p.parent if p.name != "__init__.py" else p.parent.parent)')"
           printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"
           .venv/bin/python -c "import mcscram_native, fuzzybits"
-          mkdir -p "${ACPP_APPDB_DIR}"
-          export UV_LINK_MODE=copy
-          export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
-          # compile_pcfb has SIGILL'd once on a hosted SKU after a green run;
-          # retry once in a fresh process.
-          if ! timeout 120 uv run pytest -m native --tb=short -q; then
-            echo "native pytest failed; retrying once"
-            timeout 120 uv run pytest -m native --tb=short -q
-          fi
+          timeout 120 uv run pytest -m native --tb=short -q
+          EOS
