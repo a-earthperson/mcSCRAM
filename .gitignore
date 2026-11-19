@@ -52,3 +52,7 @@ CMakeFiles
 cmake-build-*
 
 .env
+
+# tools/server playground UI
+tools/server/webui/node_modules/
+tools/server/webui/dist/

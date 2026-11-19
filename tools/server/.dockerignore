@@ -1,0 +1,5 @@
+webui/node_modules
+webui/dist
+webui/.dist
+**/*.tsbuildinfo
+.git

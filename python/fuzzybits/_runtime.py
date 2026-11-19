@@ -32,9 +32,42 @@ _CUDA_SM70_MOD = "_native_cuda_sm70"
 def _cache_dir() -> Path:
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Caches" / "fuzzybits" / "acpp"
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+        return base / "fuzzybits" / "acpp"
     xdg = os.environ.get("XDG_CACHE_HOME")
     base = Path(xdg) if xdg else Path.home() / ".cache"
     return base / "fuzzybits" / "acpp"
+
+
+def _windows_dll_dirs() -> list[Path]:
+    pkg = Path(__file__).resolve().parent
+    return [
+        pkg,
+        pkg / "lib",
+        pkg / "lib" / "hipSYCL",
+        pkg / "lib" / "hipSYCL" / "llvm-to-backend",
+        pkg / "lib" / "hipSYCL" / "ext" / "llvm" / "bin",
+        pkg / ".libs",
+    ]
+
+
+def _ensure_windows_dll_search() -> None:
+    """Put AdaptiveCpp DLLs on the Windows loader path before the .pyd imports.
+
+    Python 3.8+ does not search PATH for extension DLL deps; AdaptiveCpp also
+    spawns opt/llc/llvm-to-*-tool as child processes, which *do* search PATH.
+    """
+    if sys.platform != "win32":
+        return
+    dirs = [p for p in _windows_dll_dirs() if p.is_dir()]
+    add = getattr(os, "add_dll_directory", None)
+    for d in dirs:
+        if add is not None:
+            add(str(d))
+    extra = os.pathsep.join(str(d) for d in dirs)
+    if extra:
+        os.environ["PATH"] = extra + os.pathsep + os.environ.get("PATH", "")
 
 
 def _ensure_jit_cache() -> None:
@@ -51,15 +84,25 @@ def _ensure_runtime_defaults() -> None:
     os.environ.setdefault("ACPP_PERSISTENT_RUNTIME", "1")
 
 
+def _load_cuda_driver():
+    """Load the NVIDIA driver library. Intentionally not bundled in the wheel."""
+    names = ("nvcuda.dll",) if sys.platform == "win32" else ("libcuda.so.1", "libcuda.so")
+    for name in names:
+        try:
+            return ctypes.CDLL(name)
+        except OSError:
+            continue
+    return None
+
+
 def _cuda_compute_capabilities() -> list[tuple[int, int, int]]:
     """Return ``(ordinal, major, minor)`` for each CUDA device via libcuda.
 
-    Does not initialise AdaptiveCpp. ``libcuda.so.1`` is the NVIDIA *driver*
-    library and is intentionally not bundled in the wheel.
+    Does not initialise AdaptiveCpp. ``libcuda.so.1`` / ``nvcuda.dll`` is the
+    NVIDIA *driver* library and is intentionally not bundled in the wheel.
     """
-    try:
-        cuda = ctypes.CDLL("libcuda.so.1")
-    except OSError:
+    cuda = _load_cuda_driver()
+    if cuda is None:
         return []
 
     if cuda.cuInit(0) != 0:
@@ -203,6 +246,7 @@ def init(
         assert _NATIVE is not None
         return _NATIVE
 
+    _ensure_windows_dll_search()
     _ensure_jit_cache()
     _ensure_runtime_defaults()
     _apply_visibility(chosen_backend, chosen_device)

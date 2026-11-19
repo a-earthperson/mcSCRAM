@@ -3,22 +3,23 @@ SPDX-FileCopyrightText: 2026 fuzzybit-org
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# tools/server — FastAPI Monte Carlo service
+# tools/server
 
 AGPL-3.0-or-later. Imported from `fuzzybit-org/fuzzybits-bench` (`src/server`)
-with history. Compile products, WebSocket sampling, and Wald/Bayes/GBAS
-convergence. Default engine compiles OpenPSA/MEF to `.pcfb` once per
-`(source SHA-256s, compile options)` and samples through
-`fuzzybits.Session`. Set `FUZZYBITS_SERVER_ENGINE=legacy` for the previous
-in-memory `run_compile` path. The `MCSCRAM_CONVERGENCE_ENGINE=native`
-`run_probability` fallback is unchanged.
+with history. Compiles OpenPSA/MEF **fault trees** to `.pcfb` (once per
+source SHA-256s and compile options) and samples the **top event** through
+`fuzzybits.Session`. Wald / Bayes / GBAS stopping. Event-tree sequences and
+end states are not compiled or sampled ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)).
+Set `FUZZYBITS_SERVER_ENGINE=legacy` for the in-memory `run_compile` path.
+The `MCSCRAM_CONVERGENCE_ENGINE=native` `run_probability` fallback is unchanged.
 
 ## Run
 
 ```bash
 cd tools/server
 uv sync --extra dev
-uv run mcscram-server          # HOST=0.0.0.0 PORT=8000
+uv run mcscram-server          # HOST=0.0.0.0 PORT=8000  (playground at /)
+uv run mcscram-server --no-ui  # headless API; GET / is a JSON pointer to /api/v1
 ```
 
 Compile / sampling endpoints need the native module. Install a `fuzzybits`
@@ -47,6 +48,31 @@ uv run pytest -m "not native"
 
 Mark future engine tests `@pytest.mark.native`. `tests/conftest.py` skips
 them when the wheel is absent.
+
+
+## UI
+
+CSR build in `webui/`, served by FastAPI at `/` (SPA fallback, hashed
+`/assets/*` with long cache). Same-origin `/api/v1` and `/api/v1/ws`. No Node
+at runtime. The UI catalogs XML, draws the first `define-fault-tree`, compiled
+PDAG, and kernel DAG, and streams the top-event estimate.
+
+```bash
+cd tools/server/webui
+npm ci
+npm run typecheck
+npm run build            # CSR assets → dist/
+npm run dev              # Vite + proxy to FUZZYBITS_SERVER_URL (default :8000)
+```
+
+| Variable | Role | Default |
+| --- | --- | --- |
+| `FUZZYBITS_SERVER_UI` | `1` serve UI, `0`/`--no-ui` disable | `1` |
+| `FUZZYBITS_SERVER_UI_DIR` | Directory with `index.html` + `assets/` | `tools/server/webui/dist` |
+
+With the UI disabled, `GET /` returns `{"service":"fuzzybits-server","api":"/api/v1","ui":false}`.
+The image copies `webui/dist` in; a later wheel (#86) can point
+`FUZZYBITS_SERVER_UI_DIR` at package data.
 
 ## Data (Aralia XML + optional bench CSVs)
 

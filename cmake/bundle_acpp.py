@@ -12,6 +12,7 @@ Layout (AdaptiveCpp v25.10 plugin discovery):
       <dest>/hipSYCL/librt-backend-{cuda,omp}.so
       <dest>/hipSYCL/llvm-to-backend/libllvm-to-{backend,host,ptx}.so
       <dest>/hipSYCL/ext/llvm/bin/{opt,llc,ld.lld}
+      <dest>/hipSYCL/ext/bitcode/ptx/libdevice.10.bc
 
     Darwin (Metal + OpenMP SSCP):
       <dest>/libacpp-rt.dylib
@@ -20,6 +21,14 @@ Layout (AdaptiveCpp v25.10 plugin discovery):
       <dest>/hipSYCL/ext/llvm/bin/{opt,llc,ld.lld,ld64.lld}
       <dest>/libLLVM.dylib
       <dest>/libomp.dylib
+
+    Windows (AdaptiveCpp linked into LLVM; DLLs live in prefix/bin):
+      <dest>/acpp-rt.dll
+      <dest>/hipSYCL/rt-backend-{cuda,omp}.dll
+      <dest>/hipSYCL/llvm-to-backend/llvm-to-{ptx,host}-tool.exe
+      <dest>/hipSYCL/ext/llvm/bin/{opt,llc,lld,clang}.exe
+      <dest>/hipSYCL/ext/bitcode/ptx/libdevice.10.bc
+      NVIDIA driver DLLs (nvcuda.dll) are never copied.
 """
 
 from __future__ import annotations
@@ -65,12 +74,25 @@ def _first_existing(candidates: list[Path]) -> Path | None:
     return None
 
 
+DRIVER_NAMES = {
+    "nvcuda.dll",
+    "nvcuda64.dll",
+    "nvml.dll",
+    "nvml64.dll",
+    "libcuda.so",
+    "libcuda.so.1",
+}
+
+
 def _copy_tree(src_dir: Path, dest_dir: Path, copied: list[str]) -> None:
     if not src_dir.is_dir():
         print(f"skip missing tree {src_dir}")
         return
     for src in src_dir.rglob("*"):
         if not src.is_file() and not src.is_symlink():
+            continue
+        if src.name.lower() in DRIVER_NAMES:
+            print(f"skip driver {src}")
             continue
         rel = src.relative_to(src_dir)
         out = _copy_file(src, dest_dir / rel.parent)
@@ -227,6 +249,9 @@ def bundle(acpp_prefix: Path, dest: Path) -> None:
     if sys.platform == "darwin":
         _bundle_darwin(acpp_prefix, dest)
         return
+    if os.name == "nt":
+        _bundle_windows(acpp_prefix, dest)
+        return
 
     lib = acpp_prefix / "lib"
     hipsycl = lib / "hipSYCL"
@@ -318,6 +343,76 @@ def bundle(acpp_prefix: Path, dest: Path) -> None:
 
     if not (dest / "libacpp-rt.so").is_file():
         raise SystemExit(f"bundle failed: {dest}/libacpp-rt.so missing")
+    print(f"bundled {len(copied)} AdaptiveCpp artefacts into {dest}")
+
+
+def _bundle_windows(acpp_prefix: Path, dest: Path) -> None:
+    """Windows AdaptiveCpp (LLVM-in-tree) lays runtime DLLs under prefix/bin."""
+    bin_dir = acpp_prefix / "bin"
+    lib = acpp_prefix / "lib"
+    copied: list[str] = []
+
+    def record(src: Path, dest_dir: Path) -> None:
+        if src.name.lower() in DRIVER_NAMES:
+            print(f"skip driver {src}")
+            return
+        out = _copy_file(src, dest_dir)
+        if out is None:
+            print(f"skip missing {src}")
+        else:
+            print(f"copy {src} -> {out}")
+            copied.append(str(out))
+
+    for name in ("acpp-rt.dll", "acpp-common.dll"):
+        record(_first_existing([bin_dir / name, lib / name]) or (bin_dir / name), dest)
+
+    hipsycl_src = _first_existing([bin_dir / "hipSYCL", lib / "hipSYCL"])
+    if hipsycl_src is not None:
+        _copy_tree(hipsycl_src, dest / "hipSYCL", copied)
+    else:
+        print("skip missing hipSYCL plugin tree")
+
+    llvm_bin_dst = dest / "hipSYCL" / "ext" / "llvm" / "bin"
+    for tool in ("opt.exe", "llc.exe", "lld.exe", "ld.lld.exe", "clang.exe", "clang++.exe"):
+        record(bin_dir / tool, llvm_bin_dst)
+
+    for omp_name in ("libomp.dll", "omp.dll"):
+        record(
+            _first_existing([bin_dir / omp_name, lib / omp_name, acpp_prefix / "bin" / omp_name])
+            or (bin_dir / omp_name),
+            dest,
+        )
+
+    cuda_root = Path(os.environ.get("CUDA_PATH") or os.environ.get("CUDA_TOOLKIT_ROOT_DIR") or "")
+    libdevice_candidates: list[Path] = []
+    if cuda_root:
+        libdevice_candidates.append(cuda_root / "nvvm" / "libdevice" / "libdevice.10.bc")
+    libdevice_candidates.append(
+        Path("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/nvvm/libdevice/libdevice.10.bc")
+    )
+    libdevice = _first_existing(libdevice_candidates)
+    if libdevice is not None and libdevice.is_file():
+        record(libdevice, dest / "hipSYCL" / "ext" / "bitcode" / "ptx")
+    else:
+        print("skip missing libdevice.10.bc")
+
+    cuda_bin = cuda_root / "bin" if cuda_root else Path()
+    for pattern in ("cudart64_*.dll", "cudart*.dll", "nvrtc64_*.dll", "nvrtc*.dll"):
+        hits = _copy_glob(cuda_bin, pattern, dest) if cuda_bin.is_dir() else []
+        if not hits:
+            print(f"skip missing {pattern}")
+        else:
+            for hit in hits:
+                copied.append(str(hit))
+                print(f"copy {hit}")
+
+    for driver in list(dest.rglob("*")):
+        if driver.is_file() and driver.name.lower() in DRIVER_NAMES:
+            print(f"removing driver library {driver}")
+            driver.unlink()
+
+    if not (dest / "acpp-rt.dll").is_file():
+        raise SystemExit(f"bundle failed: {dest}/acpp-rt.dll missing")
     print(f"bundled {len(copied)} AdaptiveCpp artefacts into {dest}")
 
 

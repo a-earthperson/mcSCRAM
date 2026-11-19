@@ -99,8 +99,12 @@ set(BOOST_ENABLE_CMAKE ON CACHE BOOL "Build Boost using its new CMake build" FOR
 # Force static libraries if BUILD_SHARED_LIBS is OFF
 if(NOT BUILD_SHARED_LIBS)
     set(Boost_USE_STATIC_LIBS ON)
-    # Additional Boost-specific options to ensure static builds
-    set(BOOST_RUNTIME_LINK "static" CACHE STRING "Boost runtime linking")
+    # Additional Boost-specific options to ensure static builds.
+    # Windows Python extensions link the DLL CRT (/MD); Boost's "static"
+    # runtime is /MT and would mix CRTs.
+    if(NOT WIN32)
+        set(BOOST_RUNTIME_LINK "static" CACHE STRING "Boost runtime linking")
+    endif()
 endif()
 
 # Position-independent code is generally required when building shared
@@ -115,7 +119,11 @@ if(NOT BUILD_SHARED_LIBS)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force Boost static libraries" FORCE)
     # Additional Boost-specific settings for static builds
     set(Boost_USE_STATIC_LIBS ON CACHE BOOL "Use static Boost libraries" FORCE)
-    set(Boost_USE_STATIC_RUNTIME ON CACHE BOOL "Use static runtime" FORCE)
+    if(WIN32)
+        set(Boost_USE_STATIC_RUNTIME OFF CACHE BOOL "Use static runtime" FORCE)
+    else()
+        set(Boost_USE_STATIC_RUNTIME ON CACHE BOOL "Use static runtime" FORCE)
+    endif()
 endif()
 
 # Boost 1.87/1.88 incorrectly enable GPU/SYCL code paths in Boost.Math, which
@@ -128,6 +136,18 @@ FetchContent_Declare(
     URL_HASH SHA256=954a01219bf818c7fb850fa610c2c8c71a4fa28fa32a1900056bcb6ff58cf908
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
+
+if(WIN32)
+  # Boost's nested project() drops directory compile definitions. Force-include
+  # the STL Clang-version escape hatch so it is defined before yvals_core.h.
+  set(_fb_stl_h "${CMAKE_CURRENT_LIST_DIR}/windows_stl_mismatch.h")
+  add_compile_options("SHELL:-include \"${_fb_stl_h}\"")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include \"${_fb_stl_h}\""
+      CACHE STRING "C++ flags" FORCE)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -include \"${_fb_stl_h}\""
+      CACHE STRING "C flags" FORCE)
+  unset(_fb_stl_h)
+endif()
 
 FetchContent_MakeAvailable(boost)
 

@@ -1,7 +1,7 @@
 [project]
 name = "mcscram-server"
 version = "0.1.0"
-description = "FastAPI wrapper around the fuzzybits Monte Carlo engine (mcscram_native shim)."
+description = "FastAPI server: compile OpenPSA/MEF fault trees to .pcfb and sample the top event."
 requires-python = ">=3.12"
 license = {text = "AGPL-3.0-or-later"}
 authors = [{ name = "fuzzybit-org" }]
@@ -19,6 +19,7 @@ dependencies = [
 #   uv pip install ../../dist/fuzzybits-*.whl
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.27",
     "pytest>=8.0",
 ]
 

@@ -5,6 +5,23 @@ set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# WIN32: STL Clang-version hatch must apply to *every* nested project(),
+# including Boost FetchContent libs/*/CMakeLists.txt. CMAKE_USER_MAKE_RULES_OVERRIDE
+# runs at enable_language in each of those; CMAKE_PROJECT_INCLUDE is a second belt.
+if(WIN32)
+  set(_fb_win_override
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_compiler_override.cmake")
+  set(CMAKE_USER_MAKE_RULES_OVERRIDE "${_fb_win_override}" CACHE FILEPATH
+      "Windows Clang STL hatch" FORCE)
+  set(CMAKE_USER_MAKE_RULES_OVERRIDE_C "${_fb_win_override}" CACHE FILEPATH
+      "Windows Clang STL hatch (C)" FORCE)
+  set(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX "${_fb_win_override}" CACHE FILEPATH
+      "Windows Clang STL hatch (C++)" FORCE)
+  set(CMAKE_PROJECT_INCLUDE
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_nested_project.cmake")
+  unset(_fb_win_override)
+endif()
+
 project(SCRAM VERSION 0.17.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 
@@ -120,6 +137,36 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sign-compare -Wno-missing-field-ini
 # NOTE: This is a list unlike CMAKE_CXX_FLAGS.
 #set(SCRAM_CXX_FLAGS_DEBUG -Wall -Wextra -Werror -Wnon-virtual-dtor -Wno-old-style-cast)
 
+if(WIN32)
+  # FetchContent Boost + AdaptiveCpp produce command lines that exceed
+  # CreateProcess's 32767-char limit unless Ninja uses response files.
+  set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON)
+  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _ALLOW_COMPILER_VERSION_MISMATCH)
+  # windows-2025 STL (MSVC 14.52+) gates on Clang 22; LLVM 20 is the AdaptiveCpp pin.
+  # Directory add_compile_definitions do not reach Boost's nested project();
+  # append to CMAKE_<LANG>_FLAGS (keep -DWIN32) and wrap Clang with a launcher.
+  if(NOT CMAKE_CXX_FLAGS MATCHES "_ALLOW_COMPILER_VERSION_MISMATCH")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX"
+        CACHE STRING "C++ flags" FORCE)
+  endif()
+  if(NOT CMAKE_C_FLAGS MATCHES "_ALLOW_COMPILER_VERSION_MISMATCH")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX"
+        CACHE STRING "C flags" FORCE)
+  endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(_fb_hatch_py "${PROJECT_SOURCE_DIR}/cmake/windows_clang_hatch_launcher.py")
+    find_program(_fb_hatch_python NAMES python3 python python3.12)
+    if(_fb_hatch_python AND EXISTS "${_fb_hatch_py}")
+      set(CMAKE_C_COMPILER_LAUNCHER "${_fb_hatch_python}" "${_fb_hatch_py}"
+          CACHE STRING "Windows Clang STL hatch launcher" FORCE)
+      set(CMAKE_CXX_COMPILER_LAUNCHER "${_fb_hatch_python}" "${_fb_hatch_py}"
+          CACHE STRING "Windows Clang STL hatch launcher" FORCE)
+    endif()
+    unset(_fb_hatch_py)
+    unset(_fb_hatch_python)
+  endif()
+endif()
+
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-new-ttp-matching")  # TODO: Boost ICL failure.
   CHECK_COMPILER_VERSION("7.1")
@@ -142,6 +189,11 @@ endif()
 
 if(WIN32)
   list(APPEND SCRAM_CXX_FLAGS_DEBUG -Wno-error)
+  # Shared scram/mc have no explicit dllexport; clang-cl/MSVC needs this to
+  # generate import libs. Python wheels use the DLL CRT (/MD), so Boost must
+  # not be built against the static CRT.
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
 if(WITH_COVERAGE)
@@ -287,11 +339,25 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
 
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_RUNTIME ON)
+if(WIN32)
+  set(Boost_USE_STATIC_RUNTIME OFF)
+else()
+  set(Boost_USE_STATIC_RUNTIME ON)
+endif()
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Add required Boost libraries
 find_package(Boost REQUIRED)
+
+if(WIN32 AND DEFINED boost_SOURCE_DIR)
+  # FetchContent Boost is a per-library include tree. Public scram headers
+  # include Boost, but scram links Boost PRIVATE, so other TUs do not
+  # inherit those -I paths. Glob every libs/*/include (transitive
+  # deps like Container are not in BOOST_INCLUDE_LIBRARIES).
+  file(GLOB _fb_boost_lib_inc "${boost_SOURCE_DIR}/libs/*/include")
+  include_directories(${_fb_boost_lib_inc})
+  unset(_fb_boost_lib_inc)
+endif()
 
 list(APPEND LIBS
     Boost::program_options

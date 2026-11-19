@@ -98,7 +98,7 @@ if(BUILD_TESTING)
   set_property(TEST convergence_stats_tests PROPERTY LABELS convergence unit)
 endif()
 
-if(APPLE)
+if(APPLE OR WIN32)
   add_library(mc INTERFACE)
   target_include_directories(mc
     INTERFACE

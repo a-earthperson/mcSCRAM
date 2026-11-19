@@ -1,0 +1,46 @@
+.field-hint-trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 1px solid var(--edge-plate-accent);
+  border-radius: 50%;
+  background: var(--paper-cool);
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+
+.field-hint-trigger:hover,
+.field-hint-trigger:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+
+.hint-tooltip {
+  z-index: 40;
+  max-width: min(16rem, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid var(--edge-plate-accent);
+  border-radius: 4px;
+  background-color: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 12%, transparent);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  isolation: isolate;
+}
+
+.hint-tooltip__content {
+  background-color: var(--paper);
+  text-wrap: pretty;
+}
+
+.hint-tooltip__arrow {
+  fill: var(--paper);
+}
