@@ -14,16 +14,18 @@ if(TARGET Boost::headers)
     return()
 endif()
 
-# Prefer a CMake-package Boost (the #33 toolchain image installs 1.89 into
-# /usr/local) over FetchContent. CONFIG + min version so Ubuntu 24.04's
-# Boost 1.83 is not picked up. CONFIG mode does not re-enter this module.
-# BoostConfig only creates Boost::<lib> imported targets when COMPONENTS
-# are requested; a bare find_package(Boost CONFIG) yields Boost::headers.
+# Prefer a CMake-package Boost (the #33 toolchain image installs 1.89.0 into
+# /usr/local) over FetchContent. CONFIG + EXACT pin so a newer system Boost
+# (Homebrew 1.90, etc.) is not silently picked up; mismatch falls through to
+# FetchContent of FUZZYBITS_PIN_BOOST_VERSION. CONFIG mode does not re-enter
+# this module. BoostConfig only creates Boost::<lib> imported targets when
+# COMPONENTS are requested; a bare find_package(Boost CONFIG) yields
+# Boost::headers.
 if(NOT TARGET Boost::program_options)
-    if(DEFINED FUZZYBITS_PIN_BOOST_MIN_VERSION AND FUZZYBITS_PIN_BOOST_MIN_VERSION)
-        set(_fuzzybits_boost_min "${FUZZYBITS_PIN_BOOST_MIN_VERSION}")
+    if(DEFINED FUZZYBITS_PIN_BOOST_VERSION AND FUZZYBITS_PIN_BOOST_VERSION)
+        set(_fuzzybits_boost_ver "${FUZZYBITS_PIN_BOOST_VERSION}")
     else()
-        set(_fuzzybits_boost_min "1.89")
+        set(_fuzzybits_boost_ver "1.89.0")
     endif()
     set(_fuzzybits_boost_comps ${BOOST_INCLUDE_LIBRARIES})
     if(_fuzzybits_boost_comps)
@@ -31,11 +33,11 @@ if(NOT TARGET Boost::program_options)
         # Boost.DLL is header-only and the 1.89 CMake tarball does not install a
         # boost_dll-config package; do not require it as a CONFIG component.
         list(REMOVE_ITEM _fuzzybits_boost_comps dll)
-        find_package(Boost ${_fuzzybits_boost_min} CONFIG COMPONENTS ${_fuzzybits_boost_comps} QUIET)
+        find_package(Boost ${_fuzzybits_boost_ver} EXACT CONFIG COMPONENTS ${_fuzzybits_boost_comps} QUIET)
     else()
-        find_package(Boost ${_fuzzybits_boost_min} CONFIG QUIET)
+        find_package(Boost ${_fuzzybits_boost_ver} EXACT CONFIG QUIET)
     endif()
-    unset(_fuzzybits_boost_min)
+    unset(_fuzzybits_boost_ver)
     unset(_fuzzybits_boost_comps)
 endif()
 if(TARGET Boost::headers AND TARGET Boost::program_options)
