@@ -1,0 +1,108 @@
+.bench-offline p {
+  max-width: 42em;
+  color: var(--ink-2);
+  font-family: var(--serif-text);
+}
+
+.bench-offline__detail,
+.bench-footnote,
+.bench-note,
+.bench-provenance {
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 0.82rem;
+}
+
+.bench-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 28px;
+}
+
+.bench-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 36px;
+  align-items: end;
+}
+
+.bench-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.bench-chart {
+  margin: 0;
+}
+
+.bench-chart figcaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.bench-chart__unit,
+.bench-chart__tick,
+.bench-chart__xlabel,
+.bench-chart__flag {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  fill: var(--ink-mute);
+  color: var(--ink-mute);
+}
+
+.bench-chart__axis {
+  stroke: var(--rule-mute);
+  stroke-width: 1;
+}
+
+.bench-chart__line {
+  stroke: var(--pigment-indigo-deep);
+  stroke-width: 1.6;
+}
+
+.bench-chart__dot {
+  fill: var(--pigment-indigo-deep);
+}
+
+.bench-chart__dot--develop {
+  fill: var(--pigment-ochre-dark);
+}
+
+.bench-chart--empty {
+  color: var(--ink-mute);
+  font-family: var(--serif-text);
+}
+
+.bench-cell--block {
+  background: color-mix(in oklch, var(--pigment-madder) 16%, transparent);
+  color: var(--pigment-madder-dark);
+}
+
+.bench-cell--warn {
+  background: color-mix(in oklch, var(--pigment-ochre) 18%, transparent);
+  color: var(--pigment-ochre-dark);
+}
+
+.bench-cell--pass {
+  color: var(--pigment-sage-dark);
+}
+
+.bench-note {
+  display: block;
+  max-width: 28em;
+  white-space: normal;
+}
+
+.bench-empty {
+  color: var(--ink-mute);
+  font-family: var(--serif-text);
+}
+
+@media (max-width: 800px) {
+  .bench-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

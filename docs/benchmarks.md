@@ -339,3 +339,83 @@ This shim is temporary. [#125](https://github.com/fuzzybit-org/fuzzybits/issues/
 (SAPHSOLVE `.JSInp` import: recover generic PWR models, general parser) will
 read the sibling JSInp files directly. Delete
 `benchmarks/datasets/compat/generic_pwr.py` once #125 recovers those models.
+
+## Published history and the Benchmarks tab
+
+[#123](https://github.com/fuzzybit-org/fuzzybits/issues/123) publishes
+single-build accuracy and performance for every `v*` tag and a nightly
+`develop` point. Results are **never committed to `develop`**. They live on
+the `bench-results` orphan branch and, once GitHub Pages is enabled, at
+
+```
+https://fuzzybit-org.github.io/fuzzybits/bench/v1/index.json
+```
+
+The web UI **Benchmarks** tab (`/benchmarks`, next to `/playground`) reads
+that JSON. Configure the URL at build time (`VITE_BENCH_DATA_URL`) or at run
+time (`window.__FUZZYBITS_BENCH_DATA_URL__`, `FUZZYBITS_BENCH_DATA_URL` on
+`fuzzybits-server`). The server may serve a cached copy from
+`FUZZYBITS_BENCH_CACHE_DIR` (a `bench-results` checkout, or a directory
+containing `index.json`) at `/api/v1/bench/v1/index.json`. If the data
+cannot be reached, the tab shows an offline message; the playground is
+unaffected.
+
+### How to read the tab
+
+- **Latest release vs develop** per target: ratios are develop / release on
+  the same runner and recipe. GPU colouring matches the PR gate: **block**
+  (madder) when the point estimate exceeds 3% slower, **warn** (ochre) when
+  it is slower but under 3%. CPU is **report-only** (#124): warn above 5%,
+  never block; gateway noise is about ±3–7%. Accuracy `|z| > 4` is a block.
+  Verdicts include `infeasible`, `pass (low power)`, and `timeout`.
+- **Charts** for the selected model and target: GPU `gpu_total_ms` (all
+  compute kernels) and `gpu_kernel_ms` (`basic_event`), CPU `cpu_sample_s`,
+  accuracy z. A starred point changed image digest, driver, recipe, or
+  runner versus the previous point on that target.
+- Absolute numbers are comparable only on the same runner and recipe. CPU
+  history is indicative.
+
+### Backfill a version
+
+Images: `ghcr.io/fuzzybit-org/fuzzybits-runtime:<tag>-generic` (and
+`:nightly-generic` for develop), pinned by registry digest. The workflow
+always checks out **this harness**, not the old tag source (`v0.17.0` has
+no harness).
+
+```bash
+# Actions → Bench history → Run workflow
+#   version: v0.17.0 | v0.17.1 | develop
+#   deploy_pages: leave off until Pages is enabled
+gh workflow run bench-history.yml --repo fuzzybit-org/fuzzybits \
+  -f version=v0.17.1 -f deploy_pages=false
+```
+
+Or the same recipe locally (take the GPU locks; do not time CPU on
+xerxes/shelly/bubs):
+
+```bash
+python3 -m benchmarks run --target v100s --mode accuracy \
+  --image ghcr.io/fuzzybit-org/fuzzybits-runtime:v0.17.1-generic \
+  --out /tmp/acc.json
+python3 -m benchmarks run --target v100s --mode perf \
+  --image ghcr.io/fuzzybit-org/fuzzybits-runtime:v0.17.1-generic \
+  --out /tmp/perf.json
+python3 -m benchmarks.history merge --accuracy /tmp/acc.json --perf /tmp/perf.json \
+  --version v0.17.1 --out /tmp/merged.json
+python3 -m benchmarks.history publish --results /tmp/merged.json --dest /path/to/bench-results
+```
+
+Older entries are never rewritten; a rerun adds a timestamped file
+(`…Z-2.json`). The workflow uses per-GPU concurrency groups
+`gpu-xerxes-v100s` / `gpu-xerxes-3070` (same as runtime-image smoke) plus
+the harness locks `/tmp/gpu-lock-xerxes-0` (V100S, `device=0`) and
+`/tmp/gpu-lock-xerxes-1` (RTX 3070, `device=1`).
+
+Until GitHub Pages is enabled (**Settings → Pages → Build and deployment →
+Source = GitHub Actions**), keep the JSON on `bench-results` and point the
+UI at a local copy:
+
+```bash
+export FUZZYBITS_BENCH_CACHE_DIR=/path/to/bench-results
+fuzzybits-server --data-dir ./input
+```

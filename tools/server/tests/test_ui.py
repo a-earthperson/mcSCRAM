@@ -39,6 +39,11 @@ def test_root_serves_index_html(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert playground.status_code == 200
     assert "Playground" in playground.text
 
+    benchmarks = client.get("/benchmarks")
+    assert benchmarks.status_code == 200
+    assert "text/html" in benchmarks.headers["content-type"]
+    assert "Playground" in benchmarks.text
+
     asset = client.get("/assets/index-test.js")
     assert asset.status_code == 200
     assert "playground" in asset.text

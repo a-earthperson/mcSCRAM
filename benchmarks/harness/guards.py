@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import time
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 DEFAULT_LOAD_FRACTION = 0.50
@@ -91,8 +92,20 @@ def gpu_compute_apps(
     return rows
 
 
-def acquire_lock(host: str, path: str) -> None:
-    """``mkdir`` a directory lock on ``host`` (ssh). Raises if the lock exists."""
+def acquire_lock(host: str | None, path: str) -> None:
+    """``mkdir`` a directory lock. Local when ``host`` is empty; otherwise ssh.
+
+    CI runners sit on the GPU host itself, so they lock ``/tmp/gpu-lock-xerxes-*``
+    without ssh. A laptop driving xerxes over a docker context still ssh's.
+    """
+    if not host:
+        try:
+            Path(path).mkdir(mode=0o700)
+        except FileExistsError as exc:
+            raise GuardError(f"could not acquire {path}: already held") from exc
+        except OSError as exc:
+            raise GuardError(f"could not acquire {path}: {exc}") from exc
+        return
     proc = subprocess.run(
         ["ssh", "-o", "BatchMode=yes", host, f"mkdir {path}"],
         check=False,
@@ -100,10 +113,18 @@ def acquire_lock(host: str, path: str) -> None:
         text=True,
     )
     if proc.returncode != 0:
-        raise GuardError(f"could not acquire {host}:{path}: {proc.stderr.strip() or proc.stdout.strip()}")
+        raise GuardError(
+            f"could not acquire {host}:{path}: {proc.stderr.strip() or proc.stdout.strip()}"
+        )
 
 
-def release_lock(host: str, path: str) -> None:
+def release_lock(host: str | None, path: str) -> None:
+    if not host:
+        try:
+            Path(path).rmdir()
+        except OSError:
+            pass
+        return
     subprocess.run(
         ["ssh", "-o", "BatchMode=yes", host, f"rmdir {path}"],
         check=False,

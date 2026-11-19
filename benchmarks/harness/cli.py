@@ -165,6 +165,7 @@ def _ensure_volume(context: str, name: str) -> None:
 
 def _ensure_host_dir(host: str | None, path: str) -> None:
     if not host:
+        Path(path).mkdir(parents=True, exist_ok=True)
         return
     subprocess.run(
         ["ssh", "-o", "BatchMode=yes", host, f"mkdir -p {path}"],
@@ -172,6 +173,10 @@ def _ensure_host_dir(host: str | None, path: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def _is_local_context(context: str | None) -> bool:
+    return context in {None, "", "default"}
 
 
 def _volumes(target: dict[str, Any], jit_name: str) -> list[str]:
@@ -371,9 +376,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     gpus = target["gpus"]
     jit = args.jit_volume or target["jit_volume"]
     _ensure_volume(context, jit)
-    host = target.get("lock_host") or (context if context != "default" else None)
-    if host:
-        _ensure_host_dir(host, target["work_dir"])
+    # ``default`` means this process is already on the docker host (CI runner).
+    host = None if _is_local_context(context) else (
+        target.get("lock_host") or context
+    )
+    _ensure_host_dir(host, target["work_dir"])
     volumes = _volumes(target, jit)
     env = container_env(
         backend=backend,
@@ -382,8 +389,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     cpuset = target.get("cpuset_cpus")
     lock_held = False
     try:
-        if target.get("lock_host") and target.get("lock_path") and not args.no_lock:
-            acquire_lock(target["lock_host"], target["lock_path"])
+        if target.get("lock_path") and not args.no_lock:
+            acquire_lock(host, target["lock_path"])
             lock_held = True
         try:
             load_before = wait_for_idle(
@@ -546,6 +553,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "ok": run.get("ok") and not timed_out,
                     "status": "timeout" if timed_out else ("ok" if run.get("ok") else "error"),
                     "wall_s": run.get("wall_s"),
+                    "sample_s": run.get("sample_s"),
                     "profiler": profiler,
                     "run": run.get("run"),
                     "verdict": VERDICT_TIMEOUT if timed_out else (
@@ -603,7 +611,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         } else 1
     finally:
         if lock_held:
-            release_lock(target["lock_host"], target["lock_path"])
+            release_lock(host, target["lock_path"])
 
 
 def _ratio_row(
@@ -700,14 +708,15 @@ def cmd_ab(args: argparse.Namespace) -> int:
     jit_head = (args.jit_volume or target["jit_volume"]) + "-head"
     _ensure_volume(context, jit_base)
     _ensure_volume(context, jit_head)
-    host = target.get("lock_host") or (context if context != "default" else None)
-    if host:
-        _ensure_host_dir(host, target["work_dir"])
+    host = None if _is_local_context(context) else (
+        target.get("lock_host") or context
+    )
+    _ensure_host_dir(host, target["work_dir"])
 
     lock_held = False
     try:
-        if target.get("lock_host") and target.get("lock_path") and not args.no_lock:
-            acquire_lock(target["lock_host"], target["lock_path"])
+        if target.get("lock_path") and not args.no_lock:
+            acquire_lock(host, target["lock_path"])
             lock_held = True
         try:
             load_before = wait_for_idle(
@@ -1147,7 +1156,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
         } else 1
     finally:
         if lock_held:
-            release_lock(target["lock_host"], target["lock_path"])
+            release_lock(host, target["lock_path"])
 
 
 def cmd_summarize(args: argparse.Namespace) -> int:
