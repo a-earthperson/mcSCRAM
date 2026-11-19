@@ -55,20 +55,47 @@ result = fuzzybits.probability(
     policy="wald",
 )
 print(result.estimate, result.ci, result.std_err)
+
+pcfb = fuzzybits.compile("model.xml", pdag_c=2, no_kn=True)   # -> bytes
+summary = fuzzybits.inspect(pcfb)  # fzb inspect --json keys + diagnostics
+print(summary["queries"], summary["diagnostics"])
+
+rows = fuzzybits.run(pcfb, trials=1e6, backend="auto")        # list[QueryResult]
+print(rows[0].name, rows[0].estimate, rows[0].hits, rows[0].n)
+
+with fuzzybits.Session(pcfb, backend="auto") as session:
+    print(session.sample_shape)
+    graph = session.graph()              # reconstructed PDAG, same keys as Pdag.to_graph()
+    plan = session.execution_plan()      # same keys as Pdag.to_execution_plan()
+    for obs in session.passes(max_passes=8):
+        tally = obs.nodes[obs.target_index]
+        print(obs.pass_index, tally.num_one_bits, tally.total_bits)
+        if tally.total_bits >= 1_000_000:
+            break                        # early stop; Session.close() on __exit__
 ```
 
-Results are deterministic for a given model and trial count (Philox
-counters). `seed=` raises `NotImplementedError`; seeded runs are tracked
-with `fzb run --seed` ([#44](https://github.com/fuzzybit-org/fuzzybits/issues/44)).
+`compile` / `compile_file` lower OpenPSA/MEF to a pcfb 1.1 buffer (the same
+host path as `fzb compile`). `inspect` always runs `pcfb::validate` and
+returns its diagnostics (empty iff the circuit is core-1.1 conforming).
+`run` is the one-shot `fzb run` equivalent: `list[QueryResult(name, estimate,
+ci_low, ci_high, n, hits)]`. `Session` reconstructs the PDAG and streams
+raw per-pass popcounts (`num_one_bits` / `total_bits`, pass index, trials
+per pass) so a host-side convergence loop can replace
+`run_compile` + `layer_manager.single_pass_all` without changing results.
 
-`fuzzybits.run("model.pcfb")` is an extension point for
-[#44](https://github.com/fuzzybit-org/fuzzybits/issues/44) and raises
-`NotImplementedError`.
+The wheel now links `fuzzybits_compile`, pcfb, and the runtime into the
+native extension (`libmc` already carries `run.cc`). `fzb` / `scram-cli`
+are not installed into the wheel.
+
+Results are deterministic for a given model and trial count (Philox
+counters). `seed=` raises `NotImplementedError` on `probability`, `compile`,
+`run`, and `Session` ([#65](https://github.com/fuzzybit-org/fuzzybits/issues/65)).
 
 `init()` must run before AdaptiveCpp initialises. The first call to
-`list_devices` / `probability` / `import mcscram_native` performs a lazy
-`init("auto")`. The JIT kernel cache defaults to `~/.cache/fuzzybits/acpp`
-(`ACPP_APPDB_DIR`); set that variable yourself to override.
+`list_devices` / `probability` / `compile` / `run` / `Session` /
+`import mcscram_native` performs a lazy `init("auto")`. The JIT kernel
+cache defaults to `~/.cache/fuzzybits/acpp` (`ACPP_APPDB_DIR`); set that
+variable yourself to override.
 
 ## Build wheels from source
 
@@ -117,5 +144,6 @@ docker --context xerxes build -f docker/wheel.Dockerfile \
 
 ```bash
 pip install pytest
-pytest tests/python -q          # OpenMP, small trial counts
+pytest tests/python -q -m "not gpu"     # OpenMP, small trial counts
+pytest tests/python/test_pcfb_gpu.py -q # CUDA bit-identity (separate interpreter)
 ```

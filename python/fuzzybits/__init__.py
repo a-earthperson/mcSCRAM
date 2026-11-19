@@ -1,12 +1,13 @@
 """fuzzybits — Monte Carlo probability engine for OpenPSA MEF fault trees.
 
-Public surface (this wave):
+Public surface:
 
 - :data:`__version__`
 - :func:`init`
 - :func:`list_devices`
 - :func:`probability`
-- :func:`run` (extension point for PCFB, #44 — not implemented)
+- :func:`compile` / :func:`compile_file` / :func:`inspect` / :func:`run`
+- :class:`Session` (streaming per-pass popcounts over a ``.pcfb``)
 
 The native SYCL extension is selected at import: ``_native_cuda_sm70`` if that
 wheel is installed *and* an sm_70 device is present, otherwise
@@ -17,7 +18,19 @@ that re-exports the active extension.
 from __future__ import annotations
 
 from . import _runtime
-from ._api import ProbabilityEstimate, list_devices, probability, run
+from ._api import (
+    NodeTally,
+    PassResult,
+    ProbabilityEstimate,
+    QueryResult,
+    Session,
+    compile,
+    compile_file,
+    inspect,
+    list_devices,
+    probability,
+    run,
+)
 from ._runtime import (
     active_backend,
     active_device,
@@ -31,14 +44,21 @@ from ._runtime import (
 __version__ = "0.17.0"
 
 __all__ = [
+    "NodeTally",
+    "PassResult",
     "ProbabilityEstimate",
+    "QueryResult",
+    "Session",
     "__version__",
     "active_backend",
     "active_device",
     "active_variant",
+    "compile",
+    "compile_file",
     "has_cuda_device",
     "has_sm70_device",
     "init",
+    "inspect",
     "list_devices",
     "native",
     "probability",

@@ -28,4 +28,4 @@ RUN chmod +x /usr/local/bin/wheel-smoke.sh && \
     rm -f /tmp/*.whl
 
 WORKDIR /tests
-CMD ["pytest", "-q"]
+CMD ["pytest", "-q", "-m", "not gpu"]
