@@ -163,6 +163,14 @@ def _ensure_volume(context: str, name: str) -> None:
             raise dockerutil.DockerError(create.stderr.strip())
 
 
+def _runtime_host(target: dict[str, Any]) -> str | None:
+    """SSH host for locks/staging, or None when docker is local (CI on the runner)."""
+    context = target.get("docker_context") or "default"
+    if _is_local_context(context):
+        return None
+    return target.get("lock_host") or context
+
+
 def _ensure_host_dir(host: str | None, path: str) -> None:
     if not host:
         Path(path).mkdir(parents=True, exist_ok=True)
@@ -376,10 +384,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     gpus = target["gpus"]
     jit = args.jit_volume or target["jit_volume"]
     _ensure_volume(context, jit)
-    # ``default`` means this process is already on the docker host (CI runner).
-    host = None if _is_local_context(context) else (
-        target.get("lock_host") or context
-    )
+    host = _runtime_host(target)
     _ensure_host_dir(host, target["work_dir"])
     volumes = _volumes(target, jit)
     env = container_env(
@@ -708,9 +713,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
     jit_head = (args.jit_volume or target["jit_volume"]) + "-head"
     _ensure_volume(context, jit_base)
     _ensure_volume(context, jit_head)
-    host = None if _is_local_context(context) else (
-        target.get("lock_host") or context
-    )
+    host = _runtime_host(target)
     _ensure_host_dir(host, target["work_dir"])
 
     lock_held = False

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from collections.abc import Mapping, Sequence
@@ -95,8 +96,10 @@ def gpu_compute_apps(
 def acquire_lock(host: str | None, path: str) -> None:
     """``mkdir`` a directory lock. Local when ``host`` is empty; otherwise ssh.
 
-    CI runners sit on the GPU host itself, so they lock ``/tmp/gpu-lock-xerxes-*``
-    without ssh. A laptop driving xerxes over a docker context still ssh's.
+    CI jobs run on the GPU host itself (``--docker-context default``) and
+    take ``/tmp/gpu-lock-xerxes-{0,1}`` locally so they interlock with
+    developer sessions that acquire the same path over ssh. A laptop driving
+    xerxes over a docker context still ssh's.
     """
     if not host:
         try:

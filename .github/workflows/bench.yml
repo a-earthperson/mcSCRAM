@@ -1,0 +1,578 @@
+# PR bench gate (#122). Accuracy + GPU/CPU A/B against develop.
+#
+# Same-repo, non-Dependabot PRs run on self-hosted runners. Fork and
+# Dependabot PRs skip GPU/CPU/accuracy work with a notice; bench-summary still
+# posts a green check so required status does not hang.
+#
+# CPU A/B is report-only (CPU_GATE_BLOCKS = False, #124).
+#
+# runs-on expressions must stay byte-identical to
+# scripts/ci/check-self-hosted-reachability.py APPROVED_PR_RUNS_ON_*.
+name: Bench
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      inject_regression:
+        description: >
+          Harness --inject-regression (repeat, sleep:MS, scale:F). Empty = none.
+          Use scale:1.10 to validate that GPU jobs block.
+        required: false
+        default: ""
+
+concurrency:
+  group: bench-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  packages: write
+  actions: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/fuzzybit-org/fuzzybits-runtime
+
+jobs:
+  bench-filter:
+    name: bench-filter
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      trusted: ${{ steps.classify.outputs.trusted }}
+      product: ${{ steps.classify.outputs.product }}
+      bench: ${{ steps.classify.outputs.bench }}
+      run_benches: ${{ steps.classify.outputs.run_benches }}
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      skip_reason: ${{ steps.classify.outputs.skip_reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Classify
+        id: classify
+        run: |
+          set -euo pipefail
+          trusted=false
+          skip_reason=""
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            trusted=true
+          elif [[ "${{ github.event.pull_request.head.repo.full_name }}" == "${{ github.repository }}" && "${{ github.event.pull_request.user.login }}" != "dependabot[bot]" ]]; then
+            trusted=true
+          else
+            skip_reason="Fork or Dependabot PR: GPU/CPU A/B and accuracy skip. Push a ci/** branch for numbers."
+          fi
+
+          git fetch --no-tags origin develop:refs/remotes/origin/develop
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          else
+            files="$(git diff --name-only origin/develop...HEAD || true)"
+          fi
+          echo "changed files:"
+          printf '%s\n' "${files}"
+          printf '%s\n' "${files}" | python3 scripts/ci/bench_filter.py --github-output "${GITHUB_OUTPUT}"
+
+          run_benches="$(grep '^run_benches=' "${GITHUB_OUTPUT}" | tail -1 | cut -d= -f2)"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run_benches=true" >> "${GITHUB_OUTPUT}"
+            run_benches=true
+          fi
+          if [[ "${trusted}" != "true" ]]; then
+            echo "run_benches=false" >> "${GITHUB_OUTPUT}"
+            echo "docs_only=false" >> "${GITHUB_OUTPUT}"
+          elif [[ "${run_benches}" != "true" ]]; then
+            skip_reason="Docs-only PR: accuracy and perf skipped (neutral pass)."
+          fi
+          echo "trusted=${trusted}" >> "${GITHUB_OUTPUT}"
+          echo "skip_reason=${skip_reason}" >> "${GITHUB_OUTPUT}"
+          echo "trusted=${trusted} run_benches=${run_benches} skip_reason=${skip_reason}"
+
+  bench-images:
+    name: bench-images
+    needs: bench-filter
+    if: needs.bench-filter.outputs.trusted == 'true' && needs.bench-filter.outputs.run_benches == 'true'
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      base_image: ${{ steps.pin.outputs.base_image }}
+      base_digest: ${{ steps.pin.outputs.base_digest }}
+      base_sha: ${{ steps.pin.outputs.base_sha }}
+      head_image: ${{ steps.pin.outputs.head_image }}
+      head_digest: ${{ steps.pin.outputs.head_digest }}
+      head_sha: ${{ steps.pin.outputs.head_sha }}
+    steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Fetch develop
+        run: git fetch --no-tags origin develop:refs/remotes/origin/develop
+
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "ACPP_COMMIT=${ACPP_COMMIT}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "CUDA_VERSION=${CUDA_VERSION}"
+            echo "CUDA_DEVEL_IMAGE=${CUDA_DEVEL_IMAGE}"
+            echo "CUDA_RUNTIME_IMAGE=${CUDA_RUNTIME_IMAGE}"
+            echo "ACPP_COMPILER_FEATURE_PROFILE=${ACPP_COMPILER_FEATURE_PROFILE}"
+            echo "BOOST_VERSION=${BOOST_VERSION}"
+            echo "BOOST_URL=${BOOST_URL}"
+            echo "BOOST_SHA256=${BOOST_SHA256}"
+            echo "TOOLCHAIN_SHA=$(sha256sum toolchain.env | cut -c1-12)"
+            echo "FUZZYBITS_VERSION=${version}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Resolve toolchain image
+        run: |
+          set -euo pipefail
+          immutable="ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${TOOLCHAIN_SHA}"
+          moving="ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic"
+          if docker buildx imagetools inspect "${immutable}" >/dev/null; then
+            echo "TOOLCHAIN_IMAGE=${immutable}" >> "${GITHUB_ENV}"
+          else
+            docker buildx imagetools inspect "${moving}" >/dev/null
+            echo "TOOLCHAIN_IMAGE=${moving}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Resolve base image
+        id: base
+        env:
+          PRODUCT: ${{ needs.bench-filter.outputs.product }}
+        run: |
+          set -euo pipefail
+          IMAGE="${IMAGE}"
+          base_sha="$(git rev-parse origin/develop)"
+          head_sha="${GITHUB_SHA}"
+          base12="${base_sha:0:12}"
+          head12="${head_sha:0:12}"
+          echo "BASE_SHA=${base_sha}" >> "${GITHUB_ENV}"
+          echo "HEAD_SHA=${head_sha}" >> "${GITHUB_ENV}"
+          echo "base_sha=${base_sha}" >> "${GITHUB_OUTPUT}"
+          echo "head_sha=${head_sha}" >> "${GITHUB_OUTPUT}"
+
+          base_tag=""
+          for candidate in "sha-${base12}-generic" "nightly-generic"; do
+            if docker buildx imagetools inspect "${IMAGE}:${candidate}" >/dev/null 2>&1; then
+              base_tag="${candidate}"
+              break
+            fi
+          done
+          if [[ -z "${base_tag}" ]]; then
+            echo "error: no ${IMAGE}:sha-${base12}-generic or nightly-generic in GHCR" >&2
+            exit 1
+          fi
+          base_digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "${IMAGE}:${base_tag}")"
+          echo "BASE_TAG=${base_tag}" >> "${GITHUB_ENV}"
+          echo "BASE_DIGEST=${base_digest}" >> "${GITHUB_ENV}"
+          echo "reusing base ${IMAGE}:${base_tag} ${base_digest}"
+
+          if [[ "${PRODUCT}" == "true" ]]; then
+            if [[ -n "${{ github.event.pull_request.number }}" ]]; then
+              head_tag="pr-${{ github.event.pull_request.number }}-${head12}-generic"
+            else
+              head_tag="dispatch-${head12}-generic"
+            fi
+            echo "HEAD_TAG=${head_tag}" >> "${GITHUB_ENV}"
+            echo "BUILD_HEAD=true" >> "${GITHUB_ENV}"
+          else
+            echo "product unchanged; head = base (A/A)"
+            echo "HEAD_TAG=" >> "${GITHUB_ENV}"
+            echo "BUILD_HEAD=false" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Build and push head
+        if: env.BUILD_HEAD == 'true'
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: docker/runtime.Dockerfile
+          target: runtime
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ env.IMAGE }}:${{ env.HEAD_TAG }}
+          build-args: |
+            TOOLCHAIN_IMAGE=${{ env.TOOLCHAIN_IMAGE }}
+            CMAKE_PRESET=generic
+            FUZZYBITS_VARIANT=generic
+            INCLUDE_SSCP_JIT=1
+            ACPP_TARGETS=generic
+            CUDA_EMBED_PTX=n/a
+            CLANG_VERSION=${{ env.CLANG_VERSION }}
+            ACPP_REF=${{ env.ACPP_REF }}
+            ACPP_COMMIT=${{ env.ACPP_COMMIT }}
+            CUDA_VERSION=${{ env.CUDA_VERSION }}
+            CUDA_DEVEL_IMAGE=${{ env.CUDA_DEVEL_IMAGE }}
+            CUDA_RUNTIME_IMAGE=${{ env.CUDA_RUNTIME_IMAGE }}
+            ACPP_COMPILER_FEATURE_PROFILE=${{ env.ACPP_COMPILER_FEATURE_PROFILE }}
+            BOOST_VERSION=${{ env.BOOST_VERSION }}
+            BOOST_URL=${{ env.BOOST_URL }}
+            BOOST_SHA256=${{ env.BOOST_SHA256 }}
+            FUZZYBITS_REVISION=${{ github.sha }}
+            FUZZYBITS_VERSION=${{ env.FUZZYBITS_VERSION }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/fuzzybit-org/fuzzybits
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.FUZZYBITS_VERSION }}
+            org.opencontainers.image.title=fuzzybits-runtime
+            dev.fuzzybits.variant=generic
+            dev.fuzzybits.bench=head
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-generic
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-generic,mode=max
+
+      - name: Pin images
+        id: pin
+        run: |
+          set -euo pipefail
+          IMAGE="${IMAGE}"
+          base_digest="${BASE_DIGEST}"
+          base_ref="${IMAGE}@${base_digest}"
+          echo "base_image=${base_ref}" >> "${GITHUB_OUTPUT}"
+          echo "base_digest=${base_digest}" >> "${GITHUB_OUTPUT}"
+          echo "base_sha=${BASE_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "head_sha=${HEAD_SHA}" >> "${GITHUB_OUTPUT}"
+          if [[ "${BUILD_HEAD}" == "true" ]]; then
+            digest="${{ steps.build.outputs.digest }}"
+            if [[ -z "${digest}" ]]; then
+              digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "${IMAGE}:${HEAD_TAG}")"
+            fi
+            echo "head_image=${IMAGE}@${digest}" >> "${GITHUB_OUTPUT}"
+            echo "head_digest=${digest}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "head_image=${base_ref}" >> "${GITHUB_OUTPUT}"
+            echo "head_digest=${base_digest}" >> "${GITHUB_OUTPUT}"
+          fi
+
+  bench-accuracy:
+    name: bench-accuracy
+    needs: [bench-filter, bench-images]
+    if: always() && needs.bench-filter.result == 'success' && needs.bench-filter.outputs.trusted == 'true' && needs.bench-filter.outputs.run_benches == 'true' && needs.bench-images.result == 'success'
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read
+    env:
+      HEAD_IMAGE: ${{ needs.bench-images.outputs.head_image }}
+      HEAD_SHA: ${{ needs.bench-images.outputs.head_sha }}
+      MODE: accuracy
+      TARGET: cpu
+      OUT: artifacts/accuracy.json
+    steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Pull head image
+        run: docker pull "${HEAD_IMAGE}"
+
+      - name: Accuracy (head)
+        run: bash scripts/ci/bench_invoke.sh
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-accuracy
+          path: artifacts/
+          if-no-files-found: warn
+
+  bench-perf-v100s:
+    name: bench-perf-v100s
+    needs: [bench-filter, bench-images]
+    if: always() && needs.bench-filter.result == 'success' && needs.bench-filter.outputs.trusted == 'true' && needs.bench-filter.outputs.run_benches == 'true' && needs.bench-images.result == 'success'
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"public-ci","labels":["self-hosted","Linux","X64","nvidia","sm_70","v100s"]}') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    concurrency:
+      group: gpu-xerxes-v100s
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      BASE_IMAGE: ${{ needs.bench-images.outputs.base_image }}
+      HEAD_IMAGE: ${{ needs.bench-images.outputs.head_image }}
+      BASE_SHA: ${{ needs.bench-images.outputs.base_sha }}
+      HEAD_SHA: ${{ needs.bench-images.outputs.head_sha }}
+      INJECT: ${{ github.event.inputs.inject_regression || '' }}
+      MODE: perf
+      TARGET: v100s
+      OUT: artifacts/v100s.json
+    steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Pull images
+        run: |
+          docker pull "${BASE_IMAGE}"
+          docker pull "${HEAD_IMAGE}"
+
+      - name: A/B V100S
+        run: bash scripts/ci/bench_invoke.sh
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-v100s
+          path: artifacts/
+          if-no-files-found: warn
+
+  bench-perf-rtx3070:
+    name: bench-perf-rtx3070
+    needs: [bench-filter, bench-images]
+    if: always() && needs.bench-filter.result == 'success' && needs.bench-filter.outputs.trusted == 'true' && needs.bench-filter.outputs.run_benches == 'true' && needs.bench-images.result == 'success'
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"public-ci","labels":["self-hosted","Linux","X64","nvidia","sm_86","rtx_3070"]}') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    concurrency:
+      group: gpu-xerxes-3070
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      BASE_IMAGE: ${{ needs.bench-images.outputs.base_image }}
+      HEAD_IMAGE: ${{ needs.bench-images.outputs.head_image }}
+      BASE_SHA: ${{ needs.bench-images.outputs.base_sha }}
+      HEAD_SHA: ${{ needs.bench-images.outputs.head_sha }}
+      INJECT: ${{ github.event.inputs.inject_regression || '' }}
+      MODE: perf
+      TARGET: rtx3070
+      OUT: artifacts/rtx3070.json
+    steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Pull images
+        run: |
+          docker pull "${BASE_IMAGE}"
+          docker pull "${HEAD_IMAGE}"
+
+      - name: A/B RTX 3070
+        run: bash scripts/ci/bench_invoke.sh
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-rtx3070
+          path: artifacts/
+          if-no-files-found: warn
+
+  bench-perf-cpu:
+    name: bench-perf-cpu
+    needs: [bench-filter, bench-images]
+    if: always() && needs.bench-filter.result == 'success' && needs.bench-filter.outputs.trusted == 'true' && needs.bench-filter.outputs.run_benches == 'true' && needs.bench-images.result == 'success'
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-bench","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    concurrency:
+      group: bench-cpu-gateway
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      BASE_IMAGE: ${{ needs.bench-images.outputs.base_image }}
+      HEAD_IMAGE: ${{ needs.bench-images.outputs.head_image }}
+      BASE_SHA: ${{ needs.bench-images.outputs.base_sha }}
+      HEAD_SHA: ${{ needs.bench-images.outputs.head_sha }}
+      INJECT: ${{ github.event.inputs.inject_regression || '' }}
+      MODE: perf
+      TARGET: cpu
+      OUT: artifacts/cpu.json
+    steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Pull images
+        run: |
+          docker pull "${BASE_IMAGE}"
+          docker pull "${HEAD_IMAGE}"
+
+      - name: A/B CPU (report-only)
+        run: bash scripts/ci/bench_invoke.sh
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-cpu
+          path: artifacts/
+          if-no-files-found: warn
+
+  bench-summary:
+    name: bench-summary
+    needs:
+      - bench-filter
+      - bench-images
+      - bench-accuracy
+      - bench-perf-v100s
+      - bench-perf-rtx3070
+      - bench-perf-cpu
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Download artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Comment + gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRUSTED: ${{ needs.bench-filter.outputs.trusted }}
+          RUN_BENCHES: ${{ needs.bench-filter.outputs.run_benches }}
+          SKIP_REASON: ${{ needs.bench-filter.outputs.skip_reason }}
+          IMAGES_RESULT: ${{ needs.bench-images.result }}
+          ACC_RESULT: ${{ needs.bench-accuracy.result }}
+          V100S_RESULT: ${{ needs.bench-perf-v100s.result }}
+          RTX_RESULT: ${{ needs.bench-perf-rtx3070.result }}
+          CPU_RESULT: ${{ needs.bench-perf-cpu.result }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          INJECT: ${{ github.event.inputs.inject_regression || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          notice_args=()
+          if [[ -n "${SKIP_REASON}" ]]; then
+            notice_args+=(--notice "${SKIP_REASON}")
+          fi
+          if [[ "${IMAGES_RESULT}" == "failure" ]]; then
+            notice_args+=(--notice "bench-images failed; GPU/CPU/accuracy did not run.")
+          fi
+          extra=()
+          if [[ "${TRUSTED}" == "true" ]]; then
+            extra+=(--trusted)
+          fi
+          if [[ "${RUN_BENCHES}" == "true" ]]; then
+            extra+=(--run-benches --require)
+          fi
+          post=()
+          if [[ -n "${PR_NUMBER}" ]]; then
+            post+=(--post-pr "${PR_NUMBER}")
+          fi
+          find_json() {
+            local name="$1"
+            local found
+            found="$(find artifacts -name "${name}.json" -print -quit 2>/dev/null || true)"
+            printf '%s' "${found}"
+          }
+          acc="$(find_json accuracy)"
+          v100s="$(find_json v100s)"
+          rtx="$(find_json rtx3070)"
+          cpu="$(find_json cpu)"
+          args=()
+          [[ -n "${acc}" ]] && args+=(--accuracy "${acc}")
+          [[ -n "${v100s}" ]] && args+=(--v100s "${v100s}")
+          [[ -n "${rtx}" ]] && args+=(--rtx3070 "${rtx}")
+          [[ -n "${cpu}" ]] && args+=(--cpu "${cpu}")
+          set +e
+          python3 scripts/ci/bench_comment.py \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            ${INJECT:+--inject "${INJECT}"} \
+            "${notice_args[@]}" \
+            "${extra[@]}" \
+            "${args[@]}" \
+            "${post[@]}" \
+            --out artifacts/comment.md \
+            --repo "${{ github.repository }}"
+          rc=$?
+          set -e
+          cat artifacts/comment.md || true
+          if [[ "${RUN_BENCHES}" == "true" && "${TRUSTED}" == "true" ]]; then
+            if [[ "${IMAGES_RESULT}" != "success" ]]; then
+              echo "bench-images result=${IMAGES_RESULT}" >&2
+              exit 1
+            fi
+            if [[ "${ACC_RESULT}" != "success" || "${V100S_RESULT}" != "success" || "${RTX_RESULT}" != "success" ]]; then
+              echo "blocking job results accuracy=${ACC_RESULT} v100s=${V100S_RESULT} rtx3070=${RTX_RESULT}" >&2
+              exit 1
+            fi
+            if [[ "${CPU_RESULT}" == "failure" ]]; then
+              echo "CPU job failed (harness error, not a report-only warn)" >&2
+              exit 1
+            fi
+          fi
+          exit "${rc}"

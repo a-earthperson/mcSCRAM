@@ -210,6 +210,40 @@ with the same recipe and timed alternately on the same host** (lesson from
    - **inconclusive** if idle/load guards fail, rather than reporting noise as
      a regression.
 
+### PR gate (CI)
+
+`.github/workflows/bench.yml` runs on `pull_request` and `workflow_dispatch`
+(#122). Same-repo, non-Dependabot PRs:
+
+| job | runner | what | merge? |
+|---|---|---|---|
+| `bench-accuracy` | `fuzzybits-ci` | head image, every `accuracy` model | blocks on \|z\| > 4 (and harness `block`/`error`) |
+| `bench-perf-v100s` | `public-ci` V100S (`sm_70,v100s`) | A/B vs develop runtime image | blocks when `ci_lo > 1.03` |
+| `bench-perf-rtx3070` | `public-ci` RTX 3070 (`sm_86,rtx_3070`) | same | same |
+| `bench-perf-cpu` | `fuzzybits-bench` (gateway) | A/B, `cpu_sample_s` | **report-only** (#124) |
+| `bench-summary` | hosted | sticky PR comment + overall verdict | the check to require first |
+
+Fork and Dependabot PRs skip the self-hosted jobs with a notice (push a
+`ci/**` branch for numbers). Docs-only PRs skip accuracy/perf and
+`bench-summary` still reports a green check so required status does not hang.
+
+Base image is `ghcr.io/fuzzybit-org/fuzzybits-runtime:sha-<develop12>-generic`
+when that tag exists, else `nightly-generic`, pinned by registry digest. Head
+is rebuilt with `docker/runtime.Dockerfile --target runtime` only when product
+paths change (`src/`, `python/`, `cmake/`, `docker/`, …); otherwise head is
+the same digest as base (true A/A). Jobs use `--docker-context default` and
+take `/tmp/gpu-lock-xerxes-{0,1}` locally. V100S / RTX 3070 jobs also take
+GitHub `concurrency` groups `gpu-xerxes-v100s` / `gpu-xerxes-3070`
+(`cancel-in-progress: false`) so they queue behind `images.yml` smoke.
+
+`workflow_dispatch` accepts `inject_regression` (`scale:1.10`, `scale:1.05`,
+`repeat`) to confirm the GPU jobs block. Do not make `bench-perf-cpu` a
+blocking required check.
+
+Recommended required checks once green: **`bench-summary`**, then
+`bench-accuracy`, `bench-perf-v100s`, `bench-perf-rtx3070`. Leave
+`bench-perf-cpu` optional. Do not require `windows-generic` (#108).
+
 ### A/A noise (nightly-generic, identical images)
 
 `nightly-generic` must be pinned by digest before A/A. Local config ids were
