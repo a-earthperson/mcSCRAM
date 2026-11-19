@@ -1,0 +1,265 @@
+# Server image on top of fuzzybits-runtime → GHCR. Public repo.
+#
+# GitHub-hosted ubuntu-24.04 only (no self-hosted, no pull_request).
+# Registry pushes never run on pull_request; this workflow is not triggered
+# by pull_request / pull_request_target / workflow_run (#34).
+#
+# Image: ghcr.io/fuzzybit-org/fuzzybits-server  (public; same as fuzzybits-runtime).
+#
+# Runtime base tag:
+#   - workflow_dispatch input `runtime_tag` wins (stem or full tag).
+#   - else on ci/**: newest existing ci-*-<variant> or nightly-<variant>
+#     (GHCR versions newest-first).
+#   - else (develop / tags): sha-<this-sha12>-<variant> if published,
+#     else nightly-<variant>.
+# Override with the dispatch input rather than editing this file.
+name: Server image
+
+on:
+  push:
+    branches: [develop, "ci/**"]
+    tags: ["v*"]
+    paths:
+      - tools/server/**
+      - .github/workflows/server-image.yml
+  workflow_dispatch:
+    inputs:
+      runtime_tag:
+        description: >
+          Runtime tag override (stem or full). Examples: nightly,
+          sha-54254780c360, nightly-generic. Empty = auto
+          (newest ci-*/nightly on ci/**; sha-<sha12> or nightly
+          on develop/tags).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-image-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/fuzzybit-org/fuzzybits-server
+  RUNTIME_REPO: ghcr.io/fuzzybit-org/fuzzybits-runtime
+  GHCR_PULL_AUTH: "false"
+
+jobs:
+  publish:
+    name: publish-${{ matrix.variant }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [generic, cuda12.8-sm70]
+    env:
+      VARIANT: ${{ matrix.variant }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Versions
+        run: |
+          set -eu
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)"
+          server_version="$(sed -n 's/^version = "\(.*\)"/\1/p' tools/server/pyproject.toml | head -1)"
+          {
+            echo "FUZZYBITS_VERSION=${version}"
+            echo "SERVER_VERSION=${server_version}"
+            echo "SHA12=${GITHUB_SHA:0:12}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Compute tags
+        id: meta
+        run: |
+          set -euo pipefail
+          IMAGE="${IMAGE}"
+          VARIANT="${VARIANT}"
+          SHA12="${SHA12}"
+          tags=()
+          if [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
+            primary="ci-${SHA12}-${VARIANT}"
+            tags+=("${IMAGE}:${primary}")
+          elif [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            version="${GITHUB_REF_NAME}"
+            primary="${version}-${VARIANT}"
+            tags+=("${IMAGE}:${primary}")
+            if [[ "${VARIANT}" == generic ]]; then
+              tags+=("${IMAGE}:${version}")
+              tags+=("${IMAGE}:latest")
+            fi
+          else
+            # develop, workflow_dispatch on develop (or other trusted refs)
+            primary="sha-${SHA12}-${VARIANT}"
+            tags+=("${IMAGE}:nightly-${VARIANT}")
+            tags+=("${IMAGE}:${primary}")
+          fi
+          {
+            echo "primary=${primary}"
+            echo "tags<<EOF"
+            printf '%s\n' "${tags[@]}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+          echo "primary tag: ${primary}"
+          printf 'tags:\n'
+          printf '  %s\n' "${tags[@]}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Resolve runtime image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNTIME_TAG_INPUT: ${{ github.event.inputs.runtime_tag || '' }}
+        run: |
+          set -euo pipefail
+          VARIANT="${VARIANT}"
+          stem_from() {
+            local raw="$1"
+            raw="${raw#ghcr.io/fuzzybit-org/fuzzybits-runtime:}"
+            raw="$(printf '%s' "${raw}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            case "${raw}" in
+              *-cuda12.8-sm70) raw="${raw%-cuda12.8-sm70}" ;;
+              *-generic) raw="${raw%-generic}" ;;
+            esac
+            printf '%s' "${raw}"
+          }
+          tag=""
+          if [[ -n "${RUNTIME_TAG_INPUT}" ]]; then
+            stem="$(stem_from "${RUNTIME_TAG_INPUT}")"
+            tag="${stem}-${VARIANT}"
+            echo "runtime tag from workflow_dispatch: ${tag}"
+          elif [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
+            echo "listing fuzzybits-runtime tags for newest ci-*-${VARIANT} or nightly-${VARIANT}"
+            mapfile -t tags < <(
+              gh api --paginate \
+                -H "Accept: application/vnd.github+json" \
+                "/orgs/fuzzybit-org/packages/container/fuzzybits-runtime/versions?per_page=100" \
+                --jq '.[].metadata.container.tags[]?' \
+                | sed '/^$/d'
+            )
+            for t in "${tags[@]}"; do
+              if [[ "${t}" == "nightly-${VARIANT}" || "${t}" == ci-*-"${VARIANT}" ]]; then
+                tag="${t}"
+                echo "newest matching tag: ${tag}"
+                break
+              fi
+            done
+            if [[ -z "${tag}" ]]; then
+              tag="nightly-${VARIANT}"
+              echo "no listed match; falling back to ${tag}"
+            fi
+          else
+            sha_tag="sha-${SHA12}-${VARIANT}"
+            if docker buildx imagetools inspect "${RUNTIME_REPO}:${sha_tag}" >/dev/null 2>&1; then
+              tag="${sha_tag}"
+              echo "same-commit runtime tag: ${tag}"
+            else
+              tag="nightly-${VARIANT}"
+              echo "no ${sha_tag}; using ${tag}"
+            fi
+          fi
+          RUNTIME_IMAGE="${RUNTIME_REPO}:${tag}"
+          echo "RUNTIME_IMAGE=${RUNTIME_IMAGE}" >> "${GITHUB_ENV}"
+          echo "inspecting ${RUNTIME_IMAGE}"
+          docker buildx imagetools inspect "${RUNTIME_IMAGE}" | tee /tmp/runtime-inspect.txt
+          digest="$(awk '/^Digest:/{print $2; exit}' /tmp/runtime-inspect.txt)"
+          if [[ -z "${digest}" ]]; then
+            echo "error: could not read digest of ${RUNTIME_IMAGE}" >&2
+            exit 1
+          fi
+          echo "RUNTIME_DIGEST=${digest}" >> "${GITHUB_ENV}"
+          echo "runtime ${RUNTIME_IMAGE}  digest ${digest}"
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: tools/server
+          file: tools/server/Dockerfile
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            RUNTIME_IMAGE=${{ env.RUNTIME_IMAGE }}
+            RUNTIME_DIGEST=${{ env.RUNTIME_DIGEST }}
+            VARIANT=${{ matrix.variant }}
+            FUZZYBITS_REVISION=${{ github.sha }}
+            FUZZYBITS_VERSION=${{ env.FUZZYBITS_VERSION }}
+            SERVER_VERSION=${{ env.SERVER_VERSION }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/fuzzybit-org/fuzzybits
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.FUZZYBITS_VERSION }}
+            org.opencontainers.image.title=fuzzybits-server
+            org.opencontainers.image.base.name=${{ env.RUNTIME_IMAGE }}
+            org.opencontainers.image.base.digest=${{ env.RUNTIME_DIGEST }}
+            dev.fuzzybits.variant=${{ matrix.variant }}
+            dev.fuzzybits.server.version=${{ env.SERVER_VERSION }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.variant }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.variant }},mode=max
+
+      - name: Inspect published image
+        run: |
+          set -euo pipefail
+          tag="${IMAGE}:${{ steps.meta.outputs.primary }}"
+          echo "## ${{ matrix.variant }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- primary: \`${tag}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- runtime: \`${RUNTIME_IMAGE}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- runtime digest: \`${RUNTIME_DIGEST}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- digest: \`${{ steps.build.outputs.digest }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          docker buildx imagetools inspect "${tag}" | tee /tmp/inspect.txt
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          head -n 40 /tmp/inspect.txt >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Pull image for size + E2E
+        if: matrix.variant == 'generic'
+        run: |
+          set -euo pipefail
+          tag="${IMAGE}:${{ steps.meta.outputs.primary }}"
+          docker pull "${tag}"
+          docker image inspect "${tag}" --format '{{.Id}} {{.Size}}' \
+            | awk '{printf "id=%s uncompressed_bytes=%s uncompressed_GiB=%.2f\n", $1, $2, $2/1024/1024/1024}' \
+            | tee /tmp/size.txt
+          size_gib="$(docker image inspect "${tag}" --format '{{.Size}}' | awk '{printf "%.2f", $1/1024/1024/1024}')"
+          echo "- uncompressed: ${size_gib} GiB" >> "${GITHUB_STEP_SUMMARY}"
+          python3 -c 'import sys; gib=float(sys.argv[1]); raise SystemExit(f"error: image {gib:.2f} GiB exceeds 5 GiB budget" if gib>=5.0 else 0)' "${size_gib}"
+
+      - name: E2E smoke (CPU, Aralia chinese/das9201)
+        if: matrix.variant == 'generic'
+        env:
+          ACPP_VISIBILITY_MASK: omp
+          SMOKE_N: "1e7"
+          SMOKE_TPP: "1000000"
+          SMOKE_TIMEOUT: "90"
+          SMOKE_Z_MAX: "4"
+          SMOKE_NAME: fuzzybits-server-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          chmod +x tools/server/scripts/e2e-smoke.sh
+          timeout 240 tools/server/scripts/e2e-smoke.sh "${IMAGE}:${{ steps.meta.outputs.primary }}"
+
+      - name: Drop smoke container
+        if: always() && matrix.variant == 'generic'
+        run: docker rm -f fuzzybits-server-e2e-${{ github.run_id }}-${{ github.run_attempt }} || true

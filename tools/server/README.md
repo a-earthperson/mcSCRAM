@@ -48,18 +48,16 @@ uv run pytest -m "not native"
 Mark future engine tests `@pytest.mark.native`. `tests/conftest.py` skips
 them when the wheel is absent.
 
-## Data (fuzzybits-bench mount)
+## Data (Aralia XML + optional bench CSVs)
 
-This public tree does **not** ship run tables or Aralia XML. Historical
-`compiler.csv` / `convergence.csv` stay in fuzzybits-bench (CC BY-SA 4.0).
-Point the server at a bench checkout or container mount:
+Public OpenPSA/Aralia models live in this repo at `input/Aralia/*.xml`.
+Historical `compiler.csv` / `convergence.csv` stay in fuzzybits-bench
+(CC BY-SA 4.0) and are optional. Point the server at a data root:
 
 ```bash
-export FUZZYBITS_SERVER_DATA_DIR=/path/to/fuzzybits-bench
-# or a flattened mount, e.g. docker:
-#   -v $BENCH/src/server/compiler.csv:/data/compiler.csv
-#   -v $BENCH/src/server/convergence.csv:/data/convergence.csv
-#   -v $BENCH/input/Aralia:/data/Aralia
+export FUZZYBITS_SERVER_DATA_DIR=/path/to/data
+# docker: mount this repo's models (CSVs optional)
+#   -v $PWD/input/Aralia:/data/Aralia
 #   -e FUZZYBITS_SERVER_DATA_DIR=/data
 ```
 
@@ -121,6 +119,89 @@ instead of compiling MEF.
 
 ## Image
 
-`Dockerfile` is a **legacy** bench recipe: it copies `src/mcSCRAM` and
-`src/server/` and cannot be built from this layout. CI does not build it.
-Step E of #46 replaces it with an image on top of the runtime image.
+`ghcr.io/fuzzybit-org/fuzzybits-server` is `FROM` the slim runtime image
+(`ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic` by default;
+`scram-cli`, `fzb`, AdaptiveCpp, pip-installed `fuzzybits`). uv installs
+this package into a venv with `--system-site-packages` so the engine is not
+rebuilt. Variants match the runtime: `generic` (default) and `cuda12.8-sm70`.
+
+Tags (same scheme as `fuzzybits-runtime`): `ci-<sha12>-<variant>` on `ci/**`,
+`nightly-<variant>` + `sha-<sha12>-<variant>` on `develop`, `vX.Y.Z-<variant>`
+on release tags.
+
+The image runs as non-root `coder`. Default env:
+
+| Variable | Image default |
+| --- | --- |
+| `FUZZYBITS_SERVER_DATA_DIR` | `/data` |
+| `FUZZYBITS_SERVER_CACHE_DIR` | `/home/coder/.cache/fuzzybits/server` |
+| `ACPP_APPDB_DIR` | `/home/coder/.cache/fuzzybits/acpp` |
+| `ACPP_VISIBILITY_MASK` | `omp` |
+| `HOST` / `PORT` | `0.0.0.0` / `8000` |
+
+Volumes: `/data` (models) and `/home/coder/.cache/fuzzybits` (JIT + `.pcfb` cache).
+`HEALTHCHECK` hits `/api/v1/healthz`.
+
+### `docker run`
+
+```bash
+IMG=ghcr.io/fuzzybit-org/fuzzybits-server:nightly-generic
+
+# CPU (OpenMP)
+docker run --rm -p 8000:8000 \
+  -e ACPP_VISIBILITY_MASK=omp \
+  -v "$PWD/input/Aralia:/data/Aralia:ro" \
+  -v fuzzybits-cache:/home/coder/.cache/fuzzybits \
+  "$IMG"
+
+# GPU (NVIDIA device N). Use the cuda12.8-sm70 tag on Volta (sm_70);
+# generic SSCP covers other NVIDIA GPUs.
+docker run --rm --gpus device=0 -p 8000:8000 \
+  -e ACPP_VISIBILITY_MASK=cuda \
+  -v "$PWD/input/Aralia:/data/Aralia:ro" \
+  -v fuzzybits-cache:/home/coder/.cache/fuzzybits \
+  ghcr.io/fuzzybit-org/fuzzybits-server:nightly-cuda12.8-sm70
+```
+
+xerxes mapping: `--gpus device=0` is the Tesla V100S, `device=1` is the RTX 3070.
+Hosted CI smokes CPU only (`ACPP_VISIBILITY_MASK=omp`).
+
+```bash
+curl -sS http://127.0.0.1:8000/api/v1/healthz
+curl -sS http://127.0.0.1:8000/api/v1/model/xml-inputs
+curl -sS -X POST http://127.0.0.1:8000/api/v1/start \
+  -H "Content-Type: application/json" \
+  -d '{"model_id":"chinese","num_trials":1e7,"early_stop":false}'
+```
+
+E2E helper (compile chinese + das9201, check \|z\|≤4 vs BDD refs, POST a
+`fzb compile` `.pcfb`):
+
+```bash
+tools/server/scripts/e2e-smoke.sh "$IMG"
+```
+
+### Compose
+
+```yaml
+services:
+  server:
+    image: ghcr.io/fuzzybit-org/fuzzybits-server:nightly-generic
+    ports: ["8000:8000"]
+    environment:
+      ACPP_VISIBILITY_MASK: omp          # cuda on GPU hosts
+      HOST: "0.0.0.0"
+      PORT: "8000"
+    volumes:
+      - ../../input/Aralia:/data/Aralia:ro
+      - fuzzybits-cache:/home/coder/.cache/fuzzybits
+    # gpus: ["device=0"]                 # NVIDIA: also set ACPP_VISIBILITY_MASK=cuda
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  fuzzybits-cache:
+```
