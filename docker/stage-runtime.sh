@@ -149,6 +149,13 @@ if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
   fi
   stage "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
   stage "/usr/lib/llvm-${CLANG_VERSION}/bin/llc"
+  # llvm-to-host invokes ld.lld; without it fzb run --backend omp fails
+  # with "LLVMToHost: lld invocation failed with exit code -1". The wheel
+  # already bundles hipSYCL/ext/llvm/bin/ld.lld (python run works).
+  stage "/usr/lib/llvm-${CLANG_VERSION}/bin/ld.lld"
+  stage "/usr/lib/llvm-${CLANG_VERSION}/bin/lld"
+  stage "/usr/lib/llvm-${CLANG_VERSION}/bin/ld.lld" /usr/local/bin/ld.lld
+  stage "/usr/lib/llvm-${CLANG_VERSION}/bin/lld" /usr/local/bin/lld
   stage /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
 else
   echo "omitting SSCP JIT bitcode (SMCP AOT runtime; llvm-to-backend still staged)"
@@ -214,6 +221,8 @@ require_staged "/usr/local/lib/libLLVM.so.${CLANG_VERSION}.1" \
   "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
 if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
   require_staged "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
+  require_staged "/usr/lib/llvm-${CLANG_VERSION}/bin/llc"
+  require_staged "/usr/lib/llvm-${CLANG_VERSION}/bin/ld.lld" /usr/local/bin/ld.lld
   require_staged /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
 fi
 echo "required libs present"

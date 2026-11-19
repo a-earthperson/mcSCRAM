@@ -200,7 +200,11 @@ RUN python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
     if [ -n "${missing}" ]; then echo "${missing}" >&2; exit 1; fi && \
     ACPP_VISIBILITY_MASK=omp acpp-info -l && \
     scram-cli --help >/dev/null && \
-    fzb --help >/dev/null
+    fzb --help >/dev/null && \
+    ACPP_VISIBILITY_MASK=omp fzb compile /app/input/chinese.xml -o /tmp/c.pcfb && \
+    ACPP_VISIBILITY_MASK=omp fzb inspect --validate /tmp/c.pcfb >/dev/null && \
+    ACPP_VISIBILITY_MASK=omp fzb run /tmp/c.pcfb --backend omp --trials 1e5 >/dev/null && \
+    rm -f /tmp/c.pcfb
 
 USER ${USER}
 WORKDIR /app
