@@ -61,17 +61,23 @@ less_than_threshold(const std::uint32_t u_hi, const std::uint32_t u_lo,
     return u_hi < t.hi || (u_hi == t.hi && u_lo < t.lo);
 }
 
-/// High-word-only pack: `always_true || u_hi < T_hi`. Matches the old 32-bit
+/// The 32-bit sampler's threshold: `T_hi`, or `2^32` for `always_true`, so
+/// that `(u64)u_hi < high_word_threshold(t)` is the old compare verbatim and
+/// `(u64)u_hi == high_word_threshold(t)` can never hold for `always_true`.
+[[gnu::always_inline]] static inline std::uint64_t high_word_threshold(const bernoulli_threshold &t) {
+    return t.always_true != 0 ? (std::uint64_t{1} << 32) : static_cast<std::uint64_t>(t.hi);
+}
+
+/// High-word-only pack: `(u64)u_hi < T_hi64`. Matches the old 32-bit
 /// sampler (ties are misses). The rare-path helper then ORs in `u_lo < T_lo`.
 template <typename bitpack_t_>
 [[gnu::always_inline]] static inline bitpack_t_
-pack_four_bits_hi(const state128 &hi, const bernoulli_threshold &t,
-                  const std::uint32_t bit_offset) {
+pack_four_bits_hi(const state128 &hi, const std::uint64_t t_hi64, const std::uint32_t bit_offset) {
     using b = bitpack_t_;
     bitpack_t_ out_bits = b(0);
 #pragma unroll
     for (int lane = 0; lane < 4; ++lane) {
-        const bool hit = t.always_true != 0 || hi.x[lane] < t.hi;
+        const bool hit = static_cast<std::uint64_t>(hi.x[lane]) < t_hi64;
         out_bits |= (hit ? b(1) : b(0)) << bitpack_t_(bit_offset + static_cast<std::uint32_t>(lane));
     }
     return out_bits;
@@ -105,6 +111,14 @@ pack_four_bits(const state128 &hi, const state128 &lo,
         }
     }
     return false;
+}
+
+/// Branch-free `∃ lane: (u64)u_hi == T_hi64` (never true for `always_true`).
+/// Must stay free of control flow so the host JIT keeps the sampler loop
+/// vectorized.
+[[gnu::always_inline]] static inline bool high_word_tie_any(const state128 &hi, const std::uint64_t t_hi64) {
+    return (static_cast<std::uint64_t>(hi.x[0]) == t_hi64) | (static_cast<std::uint64_t>(hi.x[1]) == t_hi64) |
+           (static_cast<std::uint64_t>(hi.x[2]) == t_hi64) | (static_cast<std::uint64_t>(hi.x[3]) == t_hi64);
 }
 
 }  // namespace scram::mc::prng
