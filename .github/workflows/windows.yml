@@ -113,8 +113,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $start = Get-Date
           $acppExe = Join-Path $env:ACPP_PREFIX 'bin\acpp.exe'
+          $acppScript = Join-Path $env:ACPP_PREFIX 'bin\acpp'
           $cmakeDir = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
-          if ((Test-Path $acppExe) -and (Test-Path $cmakeDir)) {
+          if (((Test-Path $acppExe) -or (Test-Path $acppScript)) -and (Test-Path $cmakeDir)) {
             Write-Host "AdaptiveCpp cache hit at $env:ACPP_PREFIX"
             "cache=hit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             "acpp_build_seconds=0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -184,6 +185,22 @@ jobs:
           path: ${{ env.ACPP_PREFIX }}
           key: ${{ steps.acpp-cache.outputs.cache-primary-key }}
 
+      - name: Ensure acpp.cmd (Python driver has no .exe)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = Join-Path $env:ACPP_PREFIX 'bin'
+          $exe = Join-Path $bin 'acpp.exe'
+          $cmd = Join-Path $bin 'acpp.cmd'
+          $script = Join-Path $bin 'acpp'
+          if (Test-Path $exe) {
+            Write-Host "acpp.exe present"
+            exit 0
+          }
+          if (-not (Test-Path $script)) { throw "no acpp driver in $bin" }
+          Set-Content -Path $cmd -Encoding ascii -Value "@echo off`r`npython `"%~dp0acpp`" %*`r`n"
+          Write-Host "wrote $cmd -> python acpp"
+
       - name: Probe AdaptiveCpp devices
         id: probe
         shell: pwsh
@@ -191,15 +208,18 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $env:PATH = "$env:ACPP_PREFIX\bin;$env:PATH"
           $info = Join-Path $env:ACPP_PREFIX 'bin\acpp-info.exe'
-          $acpp = Join-Path $env:ACPP_PREFIX 'bin\acpp.exe'
+          $acppExe = Join-Path $env:ACPP_PREFIX 'bin\acpp.exe'
+          $acppCmd = Join-Path $env:ACPP_PREFIX 'bin\acpp.cmd'
           "## acpp-info" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           if (Test-Path $info) {
             & $info -l *>&1 | Tee-Object -FilePath acpp-info.txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          } elseif (Test-Path $acpp) {
-            & $acpp --version *>&1 | Tee-Object -FilePath acpp-info.txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } elseif (Test-Path $acppExe) {
+            & $acppExe --version *>&1 | Tee-Object -FilePath acpp-info.txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } elseif (Test-Path $acppCmd) {
+            & $acppCmd --version *>&1 | Tee-Object -FilePath acpp-info.txt | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           } else {
-            throw "neither acpp-info.exe nor acpp.exe in $env:ACPP_PREFIX\bin"
+            throw "neither acpp-info.exe nor acpp in $env:ACPP_PREFIX\bin"
           }
           '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           Get-ChildItem $env:ACPP_PREFIX\bin -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
@@ -221,8 +241,6 @@ jobs:
             -DAdaptiveCpp_DIR="$env:AdaptiveCpp_DIR" `
             -DCMAKE_C_COMPILER="$clang" `
             -DCMAKE_CXX_COMPILER="$clang" `
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
-            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
             -DBUILD_TESTING=ON `
             -DBUILD_PYTHON_BINDINGS=ON `
             -DMALLOC_TYPE=malloc
@@ -283,9 +301,7 @@ jobs:
             --config-settings=cmake.define.CMAKE_C_COMPILER="$clang" `
             --config-settings=cmake.define.CMAKE_CXX_COMPILER="$clang" `
             --config-settings=cmake.define.AdaptiveCpp_DIR="$env:AdaptiveCpp_DIR" `
-            --config-settings=cmake.define.CMAKE_PREFIX_PATH="$env:CMAKE_PREFIX_PATH" `
-            --config-settings=cmake.define.CMAKE_C_COMPILER_LAUNCHER=sccache `
-            --config-settings=cmake.define.CMAKE_CXX_COMPILER_LAUNCHER=sccache
+            --config-settings=cmake.define.CMAKE_PREFIX_PATH="$env:CMAKE_PREFIX_PATH"
           if ($LASTEXITCODE -ne 0) { throw "pip wheel failed ($LASTEXITCODE)" }
           $whl = Get-ChildItem wheelhouse\fuzzybits-*.whl | Select-Object -First 1
           if (-not $whl) { throw "no wheel in wheelhouse" }

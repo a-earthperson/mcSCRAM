@@ -25,6 +25,7 @@ target_link_libraries(fuzzybits_runtime_host
     scram
     pcfb
     Boost::headers
+    Boost::multi_index
 )
 
 # Device-side Monte Carlo.
