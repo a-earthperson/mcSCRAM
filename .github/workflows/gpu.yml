@@ -89,7 +89,9 @@ jobs:
         run: docker rm -f "${FUZZYBITS_CTR}" || true
       - name: Trim workspace (keep .ccache for cache post)
         if: always()
-        run: rm -rf build dist .cache
+        run: |
+          scripts/ci/docker-toolchain-run.sh --name "${FUZZYBITS_CTR}" -- scripts/ci/inner-build.sh generic trim || true
+          rm -rf build dist .cache || true
 
   sm86:
     name: sm86-generic
@@ -153,7 +155,9 @@ jobs:
         run: docker rm -f "${FUZZYBITS_CTR}" || true
       - name: Trim workspace (keep .ccache for cache post)
         if: always()
-        run: rm -rf build dist .cache
+        run: |
+          scripts/ci/docker-toolchain-run.sh --name "${FUZZYBITS_CTR}" -- scripts/ci/inner-build.sh generic trim || true
+          rm -rf build dist .cache || true
 
   sm120:
     name: sm120-generic
@@ -217,7 +221,9 @@ jobs:
         run: docker rm -f "${FUZZYBITS_CTR}" || true
       - name: Trim workspace (keep .ccache for cache post)
         if: always()
-        run: rm -rf build dist .cache
+        run: |
+          scripts/ci/docker-toolchain-run.sh --name "${FUZZYBITS_CTR}" -- scripts/ci/inner-build.sh generic trim || true
+          rm -rf build dist .cache || true
 
   sm75:
     name: sm75-generic

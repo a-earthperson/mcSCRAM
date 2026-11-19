@@ -5,6 +5,17 @@ set -euo pipefail
 cd /src
 git config --global --add safe.directory /src || true
 
+# docker runs as root; chown bind-mounted outputs so the runner can cache
+# and delete them.
+fix_owner() {
+  local owner
+  owner="$(stat -c '%u:%g' /src 2>/dev/null || true)"
+  if [[ -n "${owner}" && "${owner}" != "0:0" ]]; then
+    chown -R "${owner}" /src/build /src/.ccache /src/.cache /src/dist 2>/dev/null || true
+  fi
+}
+trap fix_owner EXIT
+
 preset="${1:?preset}"
 cmd="${2:?command}"
 
@@ -120,7 +131,7 @@ case "${cmd}" in
     ccache -z || true
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y --no-install-recommends python3-venv python3-pip python3-dev >/dev/null
+    apt-get install -y --no-install-recommends python3-venv python3-pip python3-dev patchelf >/dev/null
     python3 -m venv /tmp/wheel-venv
     /tmp/wheel-venv/bin/pip install -U pip >/dev/null
     /tmp/wheel-venv/bin/pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build packaging
@@ -128,6 +139,9 @@ case "${cmd}" in
     export CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache
     PATH="/tmp/wheel-venv/bin:${PATH}" FUZZYBITS_VARIANT=generic /src/docker/pip-wheel.sh /src/dist
     ls -lah /src/dist
+    ;;
+  trim)
+    rm -rf /src/build /src/dist /src/.cache
     ;;
   *)
     echo "unknown command ${cmd}" >&2

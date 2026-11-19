@@ -48,11 +48,26 @@ sha="$(sha256sum toolchain.env | cut -c1-12)"
 image="${TOOLCHAIN_IMAGE:-ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}}"
 
 echo "toolchain image=${image}"
-if ! docker pull "${image}"; then
+ensure_image() {
+  local ref="$1"
+  if docker pull "${ref}"; then
+    image="${ref}"
+    return 0
+  fi
+  if docker image inspect "${ref}" >/dev/null 2>&1; then
+    echo "registry pull failed; using local ${ref}"
+    image="${ref}"
+    return 0
+  fi
+  return 1
+}
+if ! ensure_image "${image}"; then
   fallback="ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic"
   echo "immutable tag missing; falling back to ${fallback}"
-  docker pull "${fallback}"
-  image="${fallback}"
+  if ! ensure_image "${fallback}"; then
+    echo "error: cannot pull or find ${image} or ${fallback}" >&2
+    exit 1
+  fi
 fi
 
 run_args=(
