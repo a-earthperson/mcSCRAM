@@ -260,6 +260,8 @@ jobs:
           $env:PATH = "$env:ACPP_PREFIX\bin;$env:PATH"
           $env:CC = $clang
           $env:CXX = $clang
+          $env:CFLAGS = '-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX'
+          $env:CXXFLAGS = $env:CFLAGS
           $env:AdaptiveCpp_DIR = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
           cmake --preset windows-generic `
             -DCMAKE_PREFIX_PATH="$env:ACPP_PREFIX" `
@@ -332,6 +334,8 @@ jobs:
           $env:PATH = "$env:ACPP_PREFIX\bin;$env:CUDA_PATH\bin;$env:PATH"
           $env:CC = $clang
           $env:CXX = $clang
+          $env:CFLAGS = '-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX'
+          $env:CXXFLAGS = $env:CFLAGS
           $env:AdaptiveCpp_DIR = Join-Path $env:ACPP_PREFIX 'lib\cmake\AdaptiveCpp'
           $env:CMAKE_PREFIX_PATH = "$env:ACPP_PREFIX"
           python -m pip install -U pip
