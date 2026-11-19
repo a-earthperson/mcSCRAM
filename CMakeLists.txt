@@ -119,6 +119,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sign-compare -Wno-missing-field-ini
 # NOTE: This is a list unlike CMAKE_CXX_FLAGS.
 #set(SCRAM_CXX_FLAGS_DEBUG -Wall -Wextra -Werror -Wnon-virtual-dtor -Wno-old-style-cast)
 
+if(WIN32)
+  # FetchContent Boost + AdaptiveCpp produce command lines that exceed
+  # CreateProcess's 32767-char limit unless Ninja uses response files.
+  set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON)
+endif()
+
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-new-ttp-matching")  # TODO: Boost ICL failure.
   CHECK_COMPILER_VERSION("7.1")
