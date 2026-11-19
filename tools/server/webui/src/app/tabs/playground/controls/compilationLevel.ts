@@ -30,7 +30,7 @@ export const COMPILATION_LEVEL_OPTIONS: readonly CompilationLevelOption[] = [
     level: 2,
     label: "C2 — CSE, modules, coalesce, merge args",
     summary:
-      "ProcessMultipleDefinitions, DetectModules, CoalesceGates (non-shared then shared), MergeCommonArgs — the default throughput sweet spot.",
+      "ProcessMultipleDefinitions, DetectModules, CoalesceGates (non-shared then shared), MergeCommonArgs. Default compilation_level (2).",
   },
   {
     level: 3,

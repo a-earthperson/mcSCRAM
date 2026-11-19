@@ -1,7 +1,7 @@
 {
   "name": "fuzzybits-webui",
   "version": "1.0.0",
-  "description": "Playground UI served by the fuzzybits Monte Carlo server.",
+  "description": "CSR UI served at / by fuzzybits-server: catalog, compile, sample.",
   "type": "module",
   "private": true,
   "scripts": {

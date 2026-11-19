@@ -3,15 +3,15 @@ SPDX-FileCopyrightText: 2026 fuzzybit-org
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# tools/server — FastAPI Monte Carlo service
+# tools/server
 
 AGPL-3.0-or-later. Imported from `fuzzybit-org/fuzzybits-bench` (`src/server`)
-with history. Compile products, WebSocket sampling, and Wald/Bayes/GBAS
-convergence. Default engine compiles OpenPSA/MEF to `.pcfb` once per
-`(source SHA-256s, compile options)` and samples through
-`fuzzybits.Session`. Set `FUZZYBITS_SERVER_ENGINE=legacy` for the previous
-in-memory `run_compile` path. The `MCSCRAM_CONVERGENCE_ENGINE=native`
-`run_probability` fallback is unchanged.
+with history. Compiles OpenPSA/MEF **fault trees** to `.pcfb` (once per
+source SHA-256s and compile options) and samples the **top event** through
+`fuzzybits.Session`. Wald / Bayes / GBAS stopping. Event-tree sequences and
+end states are not compiled or sampled ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)).
+Set `FUZZYBITS_SERVER_ENGINE=legacy` for the in-memory `run_compile` path.
+The `MCSCRAM_CONVERGENCE_ENGINE=native` `run_probability` fallback is unchanged.
 
 ## Run
 
@@ -50,11 +50,12 @@ Mark future engine tests `@pytest.mark.native`. `tests/conftest.py` skips
 them when the wheel is absent.
 
 
-## Playground UI
+## UI
 
-The Vite/React playground lives in `webui/` and is served by FastAPI at `/`
-(SPA fallback, hashed `/assets/*` with long cache). Same-origin `/api/v1` and
-`/api/v1/ws` — no Node proxy in production.
+CSR build in `webui/`, served by FastAPI at `/` (SPA fallback, hashed
+`/assets/*` with long cache). Same-origin `/api/v1` and `/api/v1/ws`. No Node
+at runtime. The UI catalogs XML, draws the first `define-fault-tree`, compiled
+PDAG, and kernel DAG, and streams the top-event estimate.
 
 ```bash
 cd tools/server/webui

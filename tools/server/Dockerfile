@@ -6,7 +6,7 @@
 # --system-site-packages so `import fuzzybits` / `import mcscram_native` hit
 # the runtime's system Python 3.12 site.
 #
-# Playground UI: Node build stage emits CSR assets into /app/server/webui/dist.
+# UI: Node build stage emits CSR assets into /app/server/webui/dist.
 # No Node at runtime. Disable with FUZZYBITS_SERVER_UI=0.
 #
 #   docker build -f tools/server/Dockerfile \
@@ -41,7 +41,7 @@ LABEL org.opencontainers.image.source="https://github.com/fuzzybit-org/fuzzybits
       org.opencontainers.image.revision="${FUZZYBITS_REVISION}" \
       org.opencontainers.image.version="${FUZZYBITS_VERSION}" \
       org.opencontainers.image.title="fuzzybits-server" \
-      org.opencontainers.image.description="FastAPI Monte Carlo service on the fuzzybits runtime" \
+      org.opencontainers.image.description="Compile OpenPSA/MEF fault trees to .pcfb and sample the top event" \
       org.opencontainers.image.base.name="${RUNTIME_IMAGE}" \
       org.opencontainers.image.base.digest="${RUNTIME_DIGEST}" \
       dev.fuzzybits.variant="${VARIANT}" \

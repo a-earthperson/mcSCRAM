@@ -72,7 +72,7 @@ export function formatOraclePDescription(value: number): string {
 }
 
 export const ORACLE_P_FIELD_HINT = [
-  "Known (true) top-event probability µ used as the Monte-Carlo oracle when diagnostics are enabled.",
-  "Leave empty to disable (mcSCRAM oracle = −1). Type any p in [0, 1] (scientific or fixed decimal); displayed values use 6-decimal scientific notation. Use −/+ to step decades from 10⁻¹² through 1.",
-  "When set, convergence diagnostics compare the running estimate p̂ against this reference.",
+  "Known top-event probability µ. Empty disables it (oracle = −1).",
+  "p in [0, 1]; display is 6-decimal scientific. −/+ steps decades from 10⁻¹² through 1.",
+  "When set, diagnostics compare p̂ to µ.",
 ].join(" ");

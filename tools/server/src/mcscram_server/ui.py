@@ -1,4 +1,4 @@
-"""Optional playground UI served next to the FastAPI API.
+"""CSR UI at ``/``, next to the API.
 
 Enabled by default. Disable with ``--no-ui`` / ``FUZZYBITS_SERVER_UI=0``.
 Static assets live in ``FUZZYBITS_SERVER_UI_DIR`` (default:

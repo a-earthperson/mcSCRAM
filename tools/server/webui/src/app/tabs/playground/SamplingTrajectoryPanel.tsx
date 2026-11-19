@@ -281,26 +281,26 @@ export function SamplingTrajectoryPanel({
     <div className="panel span-3 playground-sampling-outputs">
       <div className="playground-sampling-outputs__section">
         <SectionTitle
-          eyebrow="Output: Cumulative Trials since Start"
-          title="Sampled probability trajectory with cumulative trials"
-          text="WebGL line plot of the sampled probability point estimate with its percentile envelope, client confidence interval, and (when provided) the oracle reference bands."
+          eyebrow="Output: p̂ vs trials"
+          title="Top-event estimate"
+          text="Running mean p̂ of the compiled top event vs cumulative trials, with interval bands. Oracle bands when µ is set."
         />
         {streamError ? <p className="live-demo-error playground-sampling-error">{streamError}</p> : null}
         <LiveProbabilityPathPlot points={replayPathPoints} xMode="absolute" clientAlpha={clientAlpha} />
       </div>
       <div className="playground-sampling-outputs__section">
         <SectionTitle
-          eyebrow="Output: GBAS Exact Relative-Error Interval"
-          title="GBAS estimate with its exact confidence band"
-          text="Running GBAS confidence band — the running mean scaled by the exact relative-error law Gamma(k, k−1), which is independent of p — with the exact interval marked once the success-count target k is reached. Oracle reference bands are shown when provided."
+          eyebrow="Output: GBAS interval"
+          title="GBAS estimate"
+          text="GBAS interval on the top-event estimate (Gamma(k, k−1); independent of p̂). Marked when success-count k is reached."
         />
         <LiveGbasPathPlot points={replayPathPoints} clientAlpha={clientAlpha} />
       </div>
       <div className="playground-sampling-outputs__section">
         <SectionTitle
-          eyebrow="Output: Convergence Criteria"
-          title="Per-policy ε vs. target ε with projected sample sizes"
-          text="Each policy has its own hue and line style (GBAS solid, Wald dashed, Bayes dotted). Per policy: the current half-width ε is the lighter line, its stopping target ε the bolder line, and a thick darker vertical marks the projected total trials N."
+          eyebrow="Output: ε vs target"
+          title="Stopping half-width"
+          text="Per policy (GBAS solid, Wald dashed, Bayes dotted): current ε, target ε, projected N."
         />
         <ConvergenceCriteriaPlot points={replayPathPoints} yScale={{ type: "log", base: 10 }} xScale={{ type: "log", base: 10 }} />
       </div>

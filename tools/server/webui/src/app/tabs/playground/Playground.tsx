@@ -187,7 +187,7 @@ export function Playground() {
         <SectionTitle
           eyebrow="Input: Fault Tree"
           title={faultTree?.model ? `${faultTree.model}: logical structure` : "Fault-tree structure"}
-          text={faultTree ? formatFaultTreeCounts(faultTree) : "Logical gate and basic-event structure from the selected MEF input."}
+          text={faultTree ? formatFaultTreeCounts(faultTree) : "First define-fault-tree in the selected MEF: gates, basic events, house events."}
         />
         {faultTreeError && faultTree ? <p className="live-demo-error playground-dag-error">{faultTreeError}</p> : null}
         <FaultTreePanel
@@ -203,7 +203,7 @@ export function Playground() {
         <SectionTitle
           eyebrow="Input MEF DAG"
           title={titleModel}
-          text={sourceDag ? formatCounts(sourceDag.counts) : "Parsed XML structure from the selected fault-tree input."}
+          text={sourceDag ? formatCounts(sourceDag.counts) : "MEF DAG for the compiled top event."}
         />
         {catalogError && !catalog ? <EmptyState text={catalogError} /> : null}
         {sourceDagError && sourceDag ? <p className="live-demo-error playground-dag-error">{sourceDagError}</p> : null}
@@ -220,7 +220,7 @@ export function Playground() {
         <SectionTitle
           eyebrow="Compiled PDAG"
           title={titleModel}
-          text={compiledDag ? compileDetail(compiledDag, compileOptions) : "Native compiler output for the current normalization switches."}
+          text={compiledDag ? compileDetail(compiledDag, compileOptions) : "Compiled PDAG for the current compiler flags."}
         />
         {compiledDagError && compiledDag ? <p className="live-demo-error playground-dag-error">{compiledDagError}</p> : null}
         <DagPanel
@@ -236,7 +236,7 @@ export function Playground() {
         <SectionTitle
           eyebrow="Kernel Execution DAG"
           title={titleModel}
-          text={kernelDag ? kernelDetail(kernelDag) : "LayerManager task DAG grouped by execution layer and kernel partition."}
+          text={kernelDag ? kernelDetail(kernelDag) : "Kernel partitions of the compiled PDAG."}
         />
         {kernelDagError && kernelDag ? <p className="live-demo-error playground-dag-error">{kernelDagError}</p> : null}
         <DagPanel

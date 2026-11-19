@@ -70,7 +70,7 @@ export function ExecutionPlanPanel({
 
   const summaryText = plan
     ? `${formatInteger(plan.partition_count)} kernel partitions · ${compactCount(totals?.totalWorkItems ?? 0)} launched work-items · ${plan.bitpack_type} lanes · ${plan.schema}`
-    : "DirectEval partition graph: device capabilities, sample shaping, and per-kernel launch geometry.";
+    : "Kernel partitions, sample shape, and launch geometry for the compiled PDAG.";
 
   return (
     <div className="panel span-3 exec-plan">

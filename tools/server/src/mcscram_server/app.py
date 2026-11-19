@@ -24,7 +24,14 @@ def create_app(
     hub = event_hub or EventHub()
     calc_supervisor = supervisor or CalculationSupervisor(hub)
 
-    app = FastAPI(title="mcSCRAM Server")
+    app = FastAPI(
+        title="fuzzybits-server",
+        description=(
+            "Compile OpenPSA/MEF fault trees to a PDAG (.pcfb) and sample the top event. "
+            "Monte Carlo estimates with confidence intervals. "
+            "Event-tree sequences are not compiled or sampled."
+        ),
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

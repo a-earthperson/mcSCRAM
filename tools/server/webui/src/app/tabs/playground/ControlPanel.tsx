@@ -165,12 +165,12 @@ export function ControlPanel({
   }, [onSamplerConfidenceChange, samplerSettings.confidence]);
 
   return (
-    <StickyPanel className="playground-controls" aria-label="DAG playground controls">
+    <StickyPanel className="playground-controls" aria-label="Compile and sample">
       <StickyPanelSlot area="controls-grid-inner" hSpan={CONTROL_GROUP_SPANS.container.hSpan} vSpan={CONTROL_GROUP_SPANS.container.vSpan}>
         
         <StickyPanelSlot area="title" className="pg-title" vSpan={CONTROL_GROUP_SPANS.input.vSpan} hSpan={CONTROL_GROUP_SPANS.input.hSpan}>
           <div className="md-hidden">
-            <SectionTitle eyebrow="Playground" title="End-to-End Pipeline" />
+            <SectionTitle eyebrow="Playground" title="Compile and sample" />
           </div>
           <div className="sticky-panel-group sticky-panel-group--input pg-title-input">
             <fieldset className="sticky-panel-group__fieldset">
