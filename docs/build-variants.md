@@ -17,7 +17,7 @@ Presets require CMake ≥ 3.25 (schema version 6). `cmake_minimum_required` in
 |---|---|---|---|---|
 | **`generic`** (default) | Linux x86_64 (+ aarch64 later) | `generic` (SSCP JIT) | CUDA, OpenMP CPU | covers sm_86 / sm_120 via runtime JIT |
 | **`cuda-sm70`** | Linux x86_64 | `cuda:sm_70` (SMCP, clang CUDA), SASS + PTX | CUDA | Volta-specialised AOT |
-| **`metal`** | macOS 26, Apple Silicon | `generic` + Metal backend (experimental) | Metal, OpenMP CPU | see [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30) |
+| **`metal`** | macOS 26, Apple Silicon | `generic` + Metal backend (experimental) | Metal, OpenMP CPU | parked: [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30). No `macos-metal` CI job. |
 
 No specialisation for sm_86 / sm_120. Use `generic` there (see
 [backend-per-architecture](#backend-per-architecture)).

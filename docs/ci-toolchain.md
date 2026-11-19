@@ -155,18 +155,25 @@ Do not `docker push` from a laptop; publishing is the workflow after merge.
 
 ## How CI consumes them
 
-A later build/test workflow (#34) should:
+Workflows [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (hosted)
+and [`.github/workflows/gpu.yml`](../.github/workflows/gpu.yml) (self-hosted):
 
 1. `docker login ghcr.io` with `GITHUB_TOKEN` (`packages: read` is enough to
-   pull a private package linked to this repo).
-2. Pull
-   `ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic`
-   (or the immutable `-${TOOLCHAIN_SHA}` tag).
-3. Copy or mount the fuzzybits source and run
-   `cmake --preset <variant> && cmake --build --preset <variant>`.
+   pull a private package linked to this repo). Hosted jobs only, plus the
+   documented self-hosted exception in `gpu.yml`.
+2. Pull the immutable tag
+   `ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${TOOLCHAIN_SHA}`.
+3. Bind-mount the source at `/src` and run
+   `cmake --preset <variant>` with `CMAKE_C/CXX_COMPILER_LAUNCHER=ccache`.
+   AdaptiveCpp's `syclcc-launcher` keeps that launcher in front of `acpp`, so
+   SYCL TUs go through ccache as `ccache acpp …`.
 
-`cmake/FindBoost.cmake` uses a CMake-package Boost ≥ `BOOST_MIN_VERSION` when
-present (the toolchain image) and FetchContent 1.89.0 otherwise.
+`cmake/FindBoost.cmake` uses a CMake-package Boost at **exactly**
+`FUZZYBITS_PIN_BOOST_VERSION` (currently 1.89.0) when present (the toolchain
+image) and FetchContent of that same tarball otherwise. A newer system Boost
+is not accepted.
+
+macOS / `metal` is parked; see [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30).
 
 ## How to bump pins
 

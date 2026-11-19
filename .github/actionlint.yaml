@@ -1,0 +1,14 @@
+# Labels on org runners enabled for this repo (gpu-runners + Default).
+self-hosted-runner:
+  labels:
+    - nvidia
+    - sm_70
+    - sm_75
+    - sm_86
+    - sm_120
+    - v100s
+    - rtx_3070
+    - gtx_1660s
+    - rtx_5060ti_8gb
+    - fast
+    - gfx1012
