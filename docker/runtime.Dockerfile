@@ -163,6 +163,11 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
 
 COPY --from=builder /opt/runtime-root /
 COPY --from=builder /out/dist /tmp/wheels
+RUN ls -lh /usr/local/bin /usr/local/lib && \
+    test -x /usr/local/bin/scram-cli && test -x /usr/local/bin/fzb && \
+    ls /usr/local/lib/libscram.so* /usr/local/lib/libmc.so* \
+       /usr/local/lib/libacpp-rt.so* /usr/local/lib/libacpp-common.so* \
+       /usr/local/lib/libxml2.so*
 
 RUN python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
     rm -rf /tmp/wheels && \

@@ -34,13 +34,17 @@ stage() {
 stage_glob() {
   local pattern="$1"
   local dest_dir="${2:-}"
+  local hits=()
   shopt -s nullglob
-  local hits=("${pattern}")
+  # Unquoted so the glob expands. Quoted "${pattern}" staged a literal
+  # `libacpp-rt.so*` path and silently skipped every shared library.
+  hits=(${pattern})
   shopt -u nullglob
-  if [[ ${#hits[@]} -eq 0 || ! -e "${hits[0]}" ]]; then
+  if [[ ${#hits[@]} -eq 0 ]]; then
     echo "skip missing ${pattern}"
     return 0
   fi
+  local src
   for src in "${hits[@]}"; do
     if [[ -n "${dest_dir}" ]]; then
       stage "${src}" "${dest_dir}/$(basename "${src}")"
@@ -48,6 +52,18 @@ stage_glob() {
       stage "${src}"
     fi
   done
+}
+
+require_staged() {
+  local rel
+  for rel in "$@"; do
+    if [[ -e "${DEST}${rel}" ]]; then
+      return 0
+    fi
+  done
+  echo "error: required artefact missing in ${DEST}: $*" >&2
+  find "${DEST}/usr/local/lib" -maxdepth 2 -type f -printf '%p\n' | sort >&2 || true
+  exit 1
 }
 
 echo "stage-runtime DEST=${DEST} INCLUDE_SSCP_JIT=${INCLUDE_SSCP_JIT} CMAKE_PRESET=${CMAKE_PRESET}"
@@ -112,8 +128,15 @@ if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
   if [[ -d /usr/local/lib/hipSYCL/ext ]]; then
     cp -a /usr/local/lib/hipSYCL/ext "${DEST}/usr/local/lib/hipSYCL/ext"
   fi
-  stage "/usr/lib/llvm-${CLANG_VERSION}/lib/libLLVM.so.${CLANG_VERSION}.1" \
-    "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
+  for llvm in \
+    "/usr/lib/llvm-${CLANG_VERSION}/lib/libLLVM.so.${CLANG_VERSION}.1" \
+    "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"; do
+    if [[ -e "${llvm}" ]]; then
+      stage "${llvm}" "/usr/local/lib/libLLVM.so.${CLANG_VERSION}.1"
+      stage "${llvm}" "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
+      break
+    fi
+  done
   stage "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
   stage "/usr/lib/llvm-${CLANG_VERSION}/bin/llc"
   stage /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
@@ -168,3 +191,16 @@ test -x "${DEST}/usr/local/bin/fzb"
 test -x "${DEST}/usr/local/bin/acpp-info"
 test -x "${DEST}/usr/local/bin/mcscram-smoke"
 test -f "${DEST}/app/input/chinese.xml"
+require_staged /usr/local/lib/libscram.so /usr/local/lib/libscram.so.0
+require_staged /usr/local/lib/libmc.so /usr/local/lib/libmc.so.0
+require_staged /usr/local/lib/libacpp-rt.so /usr/local/lib/libacpp-rt.so.0
+require_staged /usr/local/lib/libacpp-common.so /usr/local/lib/libacpp-common.so.0
+require_staged /usr/local/lib/libxml2.so.16 /usr/local/lib/libxml2.so
+require_staged /usr/local/cuda/lib64/libcudart.so.12 /usr/local/lib/libcudart.so.12 /usr/local/cuda/lib64/libcudart.so
+if [[ "${INCLUDE_SSCP_JIT}" == "1" ]]; then
+  require_staged "/usr/local/lib/libLLVM.so.${CLANG_VERSION}.1" \
+    "/usr/lib/x86_64-linux-gnu/libLLVM.so.${CLANG_VERSION}.1"
+  require_staged "/usr/lib/llvm-${CLANG_VERSION}/bin/opt"
+  require_staged /usr/local/cuda/nvvm/libdevice/libdevice.10.bc
+fi
+echo "required libs present"
