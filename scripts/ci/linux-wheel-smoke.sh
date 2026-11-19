@@ -17,7 +17,7 @@ export PATH="${HOME}/.local/bin:${PATH}"
 uv python install "${py}"
 venv="/tmp/fb-venv-${py}"
 rm -rf "${venv}"
-uv venv --python "${py}" "${venv}"
+uv venv --seed --python "${py}" "${venv}"
 # shellcheck disable=SC1091
 . "${venv}/bin/activate"
 

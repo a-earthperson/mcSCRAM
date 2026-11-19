@@ -202,11 +202,15 @@ jobs:
         run: |
           set -euo pipefail
           (cd tools/server && uv build --wheel --out-dir ../../dist-server)
-          test -f dist-server/fuzzybits_server-0.17.0-py3-none-any.whl
-          python3 - <<'PY'
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' tools/server/pyproject.toml | head -1)"
+          test -n "${version}"
+          test -f "dist-server/fuzzybits_server-${version}-py3-none-any.whl"
+          VERSION="${version}" python3 - <<'PY'
+          import os
           import zipfile
           from pathlib import Path
-          p = Path("dist-server/fuzzybits_server-0.17.0-py3-none-any.whl")
+          version = os.environ["VERSION"]
+          p = Path(f"dist-server/fuzzybits_server-{version}-py3-none-any.whl")
           z = zipfile.ZipFile(p)
           names = z.namelist()
           ui = [n for n in names if n.startswith("fuzzybits_server/webui/")]
@@ -218,8 +222,9 @@ jobs:
           assert any("/assets/" in n for n in ui), ui
           meta_name = next(n for n in names if n.endswith(".dist-info/METADATA"))
           meta = z.read(meta_name).decode()
-          assert "Requires-Dist: fuzzybits==0.17.0" in meta, meta
-          print("Requires-Dist: fuzzybits==0.17.0  ok")
+          pin = f"Requires-Dist: fuzzybits=={version}"
+          assert pin in meta, meta
+          print(f"{pin}  ok")
           PY
 
       - name: Install wheel in runtime image and smoke
@@ -255,7 +260,10 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/acpp-appdb
           python3 -c "import fuzzybits; print(fuzzybits.__file__)"
-          whl="$(echo /wheel/fuzzybits_server-0.17.0-py3-none-any.whl)"
+          shopt -s nullglob
+          whls=(/wheel/fuzzybits_server-*-py3-none-any.whl)
+          test "${#whls[@]}" -eq 1
+          whl="${whls[0]}"
           test -f "${whl}"
           uv venv --system-site-packages /tmp/smoke-venv
           # --no-deps: fuzzybits is not on PyPI; the runtime image already has it.

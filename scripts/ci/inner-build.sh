@@ -171,7 +171,7 @@ case "${cmd}" in
       start=$(date +%s)
       venv="/tmp/wheel-venv-${py}"
       rm -rf "${venv}"
-      uv venv --python "${py}" "${venv}"
+      uv venv --seed --python "${py}" "${venv}"
       "${venv}/bin/pip" install -U pip >/dev/null
       "${venv}/bin/pip" install 'scikit-build-core>=0.10' 'pybind11>=3.1' ninja cmake build packaging auditwheel
       wheelhouse="/tmp/wheelhouse-cp${py//./}"

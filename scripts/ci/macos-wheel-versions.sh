@@ -33,7 +33,7 @@ case "${cmd}" in
       start=$(date +%s)
       venv="${RUNNER_TEMP}/fb-build-${py}"
       rm -rf "${venv}"
-      uv venv --python "${py}" "${venv}"
+      uv venv --seed --python "${py}" "${venv}"
       # shellcheck disable=SC1091
       . "${venv}/bin/activate"
       python -m pip install -U pip
@@ -72,7 +72,7 @@ if [[ "${cmd}" == "smoke" || "${cmd}" == "all" ]]; then
     start=$(date +%s)
     venv="${RUNNER_TEMP}/fb-venv-${py}"
     rm -rf "${venv}"
-    uv venv --python "${py}" "${venv}"
+    uv venv --seed --python "${py}" "${venv}"
     tag="cp${py//./}"
     shopt -s nullglob
     whls=(dist/fuzzybits-*-"${tag}"-*.whl)
