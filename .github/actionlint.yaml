@@ -1,0 +1,19 @@
+# Labels on org runners enabled for this repo (gpu-runners + Default).
+# macos.yml is parked (#30); ignore its pre-existing shellcheck style hits.
+paths:
+  .github/workflows/macos.yml:
+    ignore:
+      - "shellcheck reported issue"
+self-hosted-runner:
+  labels:
+    - nvidia
+    - sm_70
+    - sm_75
+    - sm_86
+    - sm_120
+    - v100s
+    - rtx_3070
+    - gtx_1660s
+    - rtx_5060ti_8gb
+    - fast
+    - gfx1012

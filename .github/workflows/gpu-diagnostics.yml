@@ -1,0 +1,57 @@
+# GPU device-mapping diagnostic. Public repo: GitHub-hosted never appears here.
+# Triggers: push to ci/gpu-diagnostics (pre-merge) and workflow_dispatch.
+# No GHCR, no secrets, no host installs. Only docker run --rm of this job's
+# containers (shelly hosts the production swarm).
+name: GPU diagnostics
+
+on:
+  push:
+    branches: [ci/gpu-diagnostics]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: diagnose-${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: sm70
+            runs_on: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
+            concurrency_group: gpu-xerxes-v100s
+            optional: false
+          - label: sm86
+            runs_on: [self-hosted, Linux, X64, nvidia, sm_86, rtx_3070]
+            concurrency_group: gpu-xerxes-3070
+            optional: false
+          - label: sm75
+            runs_on: [self-hosted, Linux, X64, nvidia, sm_75, gtx_1660s]
+            concurrency_group: gpu-xerxes-1660s
+            optional: true
+          - label: sm120
+            runs_on: [self-hosted, Linux, X64, nvidia, fast, sm_120, rtx_5060ti_8gb]
+            concurrency_group: gpu-shelly-5060ti
+            optional: false
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 15
+    continue-on-error: ${{ matrix.optional }}
+    concurrency:
+      group: ${{ matrix.concurrency_group }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Probe host and docker --gpus mapping
+        run: |
+          chmod +x scripts/ci/gpu-diagnose.sh
+          scripts/ci/gpu-diagnose.sh
+
+      - name: Remove this job's container if leftover
+        if: always()
+        run: docker rm -f "fuzzybits-gpu-diag-${GITHUB_RUN_ID}-${GITHUB_JOB}" || true

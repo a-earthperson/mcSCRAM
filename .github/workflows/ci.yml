@@ -1,0 +1,307 @@
+# Hosted-only build/test. Public repo: never self-hosted on pull_request.
+# Toolchain image is private; GITHUB_TOKEN packages:read is enough because
+# org.opencontainers.image.source links it to this repo. Fork PRs cannot
+# pull private packages — maintainers should push a ci/** branch instead.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  workflow-lint:
+    name: workflow-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Self-hosted reachability
+        run: |
+          python3 -m venv .lint-venv
+          .lint-venv/bin/pip install pyyaml
+          .lint-venv/bin/python scripts/ci/check-self-hosted-reachability.py
+
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        run: |
+          set -euo pipefail
+          curl -fsSL -o actionlint.tgz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tgz" | sha256sum -c
+          tar -xzf actionlint.tgz actionlint
+          # macos.yml is parked (#30); ignore its pre-existing shellcheck nits.
+          ./actionlint -color -ignore 'shellcheck reported issue'
+
+  hygiene:
+    name: hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Tracked non-LFS files must be ≤ 5 MiB
+        run: bash scripts/ci/check-tracked-file-sizes.sh
+
+      - name: REUSE/SPDX report (informational)
+        continue-on-error: true
+        run: |
+          python3 -m venv .reuse-venv
+          .reuse-venv/bin/pip install reuse
+          echo "REUSE is non-blocking until SPDX headers exist (#38)."
+          .reuse-venv/bin/reuse lint || true
+
+  linux-generic:
+    name: linux-generic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      packages: read
+    env:
+      PRESET: generic
+      BUILD_TESTING: "ON"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          sha="$(sha256sum toolchain.env | cut -c1-12)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "TOOLCHAIN_SHA=${sha}"
+            echo "TOOLCHAIN_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}"
+          } >> "${GITHUB_ENV}"
+
+      - name: ccache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: .ccache
+          key: ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-
+
+      - name: Free disk
+        run: |
+          set -eux
+          df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/share/powershell \
+            /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Ruby \
+            /usr/lib/jvm \
+            /usr/local/.ghcup \
+            /opt/microsoft \
+            /usr/share/miniconda || true
+          sudo docker system prune -af || true
+          df -h /
+
+      - name: Log in to GHCR
+        id: login
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build product
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic configure-product
+
+      - name: Build tests
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic tests
+
+      - name: ctest (OpenMP, quarantine excluded)
+        timeout-minutes: 25
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic ctest-omp
+
+      - name: ccache stats
+        if: steps.login.outcome == 'success'
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic ccache-stats
+
+  python-generic:
+    name: python-generic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    env:
+      PRESET: generic
+      BUILD_TESTING: "OFF"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          sha="$(sha256sum toolchain.env | cut -c1-12)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "TOOLCHAIN_SHA=${sha}"
+            echo "TOOLCHAIN_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}"
+          } >> "${GITHUB_ENV}"
+
+      - name: ccache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: .ccache
+          key: ccache-linux-wheel-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-wheel-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+
+      - name: Free disk
+        run: |
+          set -eux
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Ruby \
+            /usr/lib/jvm \
+            /usr/share/miniconda || true
+          sudo docker system prune -af || true
+          df -h /
+
+      - name: Log in to GHCR
+        id: login
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build generic wheel
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic wheel
+
+      - name: ccache stats
+        if: steps.login.outcome == 'success'
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic ccache-stats
+
+      - name: pip install + pytest (clean Ubuntu 24.04)
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            ubuntu:24.04 \
+            bash scripts/ci/python-pytest.sh
+
+  linux-cuda-sm70-build:
+    name: linux-cuda-sm70-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read
+    env:
+      PRESET: cuda-sm70
+      BUILD_TESTING: "OFF"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          sha="$(sha256sum toolchain.env | cut -c1-12)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "TOOLCHAIN_SHA=${sha}"
+            echo "TOOLCHAIN_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}"
+          } >> "${GITHUB_ENV}"
+
+      - name: ccache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: .ccache
+          key: ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-
+
+      - name: Free disk
+        run: |
+          set -eux
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Ruby \
+            /usr/lib/jvm \
+            /usr/share/miniconda || true
+          sudo docker system prune -af || true
+          df -h /
+
+      - name: Log in to GHCR
+        id: login
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build product
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh cuda-sm70 configure-product
+
+      - name: Assert sm_70 SASS + PTX in libmc
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh cuda-sm70 cuobjdump-sm70
+
+      - name: ccache stats
+        if: steps.login.outcome == 'success'
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh cuda-sm70 ccache-stats

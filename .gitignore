@@ -35,6 +35,7 @@ venv/
 
 # Pytest cache
 .cache
+.ccache/
 .idea
 fixtures
 
