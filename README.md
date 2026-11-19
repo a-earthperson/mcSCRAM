@@ -117,6 +117,8 @@ for (auto i = 0; i < num_inputs; ++i) {
 
 ## Build and Installation
 
+Python: `pip install` a Linux x86_64 wheel (see [`docs/python.md`](docs/python.md)). The import name is **`fuzzybits`**; `import mcscram_native` remains a compatibility shim. Wheels bundle AdaptiveCpp (`MALLOC_TYPE=malloc`, no `LD_PRELOAD` / `PYTHONPATH`). Variants are `generic` (default, SSCP JIT) and `cuda-sm70`. `fuzzybits.run("model.pcfb")` is reserved for [#44](https://github.com/fuzzybit-org/fuzzybits/issues/44).
+
 ### Container-based Development (Recommended)
 
 The project provides multi-stage Docker builds for different phases. Architecture-specific CUDA 12.8 images, build args, and Nsight notes: [docs/cuda-builds.md](docs/cuda-builds.md). 

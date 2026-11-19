@@ -1,45 +1,17 @@
-# Qt Generated Project Configuration
-CMakeLists.txt.user
-
-# Build directories
 build/
-
-# Compiled Object files
-*.slo
-*.lo
-*.o
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-
-# Python compiled files
-*.pyc
-
-# Pytest cache
+dist/
+wheelhouse/
+_skbuild/
+.venv/
+venv/
+**/.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.egg-info
+cmake-build-*
 .cache
 .idea
-fixtures
-benchmarks
-
 .vscode
-.cursorrules
-.cursorignore
-.cursorindexingignore
+.cursor
 .specstory
-
-_deps
-CMakeCache.txt
-CMakeFiles
-
-cmake-build-*
-
-.env
-
-docker-compose.yml
-Dockerfile

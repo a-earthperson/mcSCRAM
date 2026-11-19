@@ -88,14 +88,27 @@ set_source_files_properties(
   PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable"
 )
 
-# Install the library to standard system directories respecting CMAKE_INSTALL_PREFIX
+# Install the library to standard system directories respecting CMAKE_INSTALL_PREFIX.
+# Wheels co-locate libscram next to the Python extension so RPATH $ORIGIN works.
+if(SKBUILD)
+  set(_scram_lib_dest "fuzzybits")
+else()
+  set(_scram_lib_dest ${CMAKE_INSTALL_LIBDIR})
+endif()
 install(
         TARGETS scram
         COMPONENT scram
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${_scram_lib_dest}
+        ARCHIVE DESTINATION ${_scram_lib_dest}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+if(SKBUILD)
+  set_target_properties(scram PROPERTIES
+    INSTALL_RPATH "$ORIGIN:$ORIGIN/lib"
+    BUILD_WITH_INSTALL_RPATH ON
+    INSTALL_RPATH_USE_LINK_PATH FALSE
+  )
+endif()
 
 # add mc (SYCL). Host-only `fzb compile` sets FUZZYBITS_WITH_MC=OFF.
 if(FUZZYBITS_WITH_MC)

@@ -1,0 +1,103 @@
+[build-system]
+requires = [
+    "scikit-build-core>=0.10",
+    "pybind11>=2.13",
+    "setuptools>=68",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "fuzzybits"
+version = "0.17.0"
+description = "Monte Carlo probability engine for OpenPSA MEF fault trees (AdaptiveCpp/SYCL)"
+readme = "docs/python.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "fuzzybit-org" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# cuda-sm70 is a distinct wheel (same distribution name, different native
+# extension), not a PyPI extra. Kept so `pip install 'fuzzybits[cuda-sm70]'`
+# documents the intent; the extra is a no-op until native packages split (#32).
+cuda-sm70 = []
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/fuzzybit-org/fuzzybits"
+Issues = "https://github.com/fuzzybit-org/fuzzybits/issues"
+Documentation = "https://github.com/fuzzybit-org/fuzzybits/blob/develop/docs/python.md"
+
+[tool.scikit-build]
+minimum-version = "0.10"
+cmake.version = ">=3.25"
+ninja.make-fallback = true
+# Python sources are installed by CMake (targets/python/CMakeLists.txt) so the
+# wheel layout is prefix/fuzzybits/*.py + the native extension. An empty list
+# disables scikit-build-core autodetection, which would otherwise pack
+# python/fuzzybits as the import path python.fuzzybits.
+wheel.packages = []
+sdist.include = [
+    "python/mcscram_native.py",
+    "python/fuzzybits/**",
+    "cmake/**",
+    "src/**",
+    "targets/python/**",
+    "targets/scram/**",
+    "share/**",
+    "input/schema/**",
+    "CMakeLists.txt",
+    "CMakePresets.json",
+    "toolchain.env",
+    "LICENSE",
+]
+sdist.exclude = [
+    "build/**",
+    "dist/**",
+    "**/*.so",
+    "**/*.whl",
+]
+# Match CMakePresets.json `generic`. Override at install time with
+#   pip install . --config-settings=cmake.define.ACPP_TARGETS=cuda:sm_70
+# or cmake.preset=cuda-sm70 (binaryDir from the preset is ignored below).
+cmake.build-type = "Release"
+# Only our COMPONENT scram artefacts (extension + bundled AdaptiveCpp).
+# FetchContent (libxml2, Boost, pybind11) default-component installs would
+# otherwise dump headers, xmllint, and a second libxml2 into the wheel.
+install.components = ["scram"]
+
+[tool.scikit-build.cmake.define]
+BUILD_PYTHON_BINDINGS = "ON"
+FUZZYBITS_WITH_MC = "ON"
+BUILD_TESTS = "OFF"
+BUILD_TESTING = "OFF"
+MALLOC_TYPE = "malloc"
+OPTIMIZE_FOR_NATIVE = "OFF"
+WITH_PROFILE = "OFF"
+WITH_COVERAGE = "OFF"
+CMAKE_CXX_SCAN_FOR_MODULES = "OFF"
+ACPP_TARGETS = "generic"
+CMAKE_C_COMPILER = "clang-20"
+CMAKE_CXX_COMPILER = "clang++-20"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+pythonpath = ["python"]
+addopts = "-q"
+markers = [
+    "slow: longer Monte Carlo runs",
+    "gpu: requires a CUDA device",
+]
