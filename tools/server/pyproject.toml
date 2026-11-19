@@ -1,0 +1,41 @@
+[project]
+name = "mcscram-server"
+version = "0.1.0"
+description = "FastAPI wrapper around the fuzzybits Monte Carlo engine (mcscram_native shim)."
+requires-python = ">=3.12"
+license = {text = "AGPL-3.0-or-later"}
+authors = [{ name = "fuzzybit-org" }]
+dependencies = [
+    "fastapi>=0.115",
+    "numpy>=2.4.6",
+    "scipy>=1.17.1",
+    "uvicorn[standard]>=0.30",
+]
+
+# Native engine: the `fuzzybits` wheel from this repo (`import mcscram_native`
+# still works — python/mcscram_native.py). It is not on PyPI (#36), so it is
+# not listed as a required dependency: `uv sync` on hosted runners must stay
+# solvable. Install a locally built wheel alongside:
+#   uv pip install ../../dist/fuzzybits-*.whl
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+mcscram-server = "mcscram_server.app:main"
+
+[project.urls]
+Homepage = "https://github.com/fuzzybit-org/fuzzybits"
+Issues = "https://github.com/fuzzybit-org/fuzzybits/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "native: requires the fuzzybits wheel (mcscram_native shim)",
+]
