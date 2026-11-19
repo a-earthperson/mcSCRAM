@@ -141,6 +141,23 @@ template <typename Group>
     }
 }
 
+/// After a Metal pass, popcount each tally buffer on the host and accumulate.
+/// Device kernels still cannot see nested USM pointers the way a host memcpy
+/// after wait can (bitpack_identity vs tally hits=0). No-op on other backends.
+template <typename Tally, typename Shape>
+inline void host_accumulate_if_metal(sycl::queue &queue, Tally *tally, const Shape &shape) {
+    if (static_cast<int>(queue.get_device().get_backend()) != kMetalRuntimeBackendId) {
+        return;
+    }
+    const std::size_t npacks =
+        static_cast<std::size_t>(shape.batch_size) * static_cast<std::size_t>(shape.bitpacks_per_batch);
+    std::size_t bits = 0;
+    for (std::size_t j = 0; j < npacks; ++j) {
+        bits += static_cast<std::size_t>(sycl::popcount(tally->buffer[j]));
+    }
+    tally->num_one_bits += bits;
+}
+
 [[gnu::always_inline]] [[gnu::flatten]] inline void add_hits(std::size_t &num_one_bits, const std::size_t group_sum) {
     auto atomic_one_bits = sycl::atomic_ref<std::size_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
                                             sycl::access::address_space::global_space>(num_one_bits);

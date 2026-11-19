@@ -480,6 +480,9 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
         queueable->submit();
         scram::mc::compat::wait_if_metal(queue_);
     }
+    for (auto &pair : allocated_tally_events_by_index_) {
+        scram::mc::compat::host_accumulate_if_metal(queue_, pair.second, sample_shape_);
+    }
     return queue_;
 }
 
