@@ -31,7 +31,7 @@ export type ConvergenceStatsPayload = {
 
   // --- host-side (Python) engine extensions -------------------------------
   // The convergence/statistics loop now runs on the host (see
-  // server `mcscram_server.convergence`).  In addition to the canonical Wald
+  // server `fuzzybits_server.convergence`).  In addition to the canonical Wald
   // fields above, every attached policy/metric is streamed under its own
   // namespace.  All optional and additive; existing consumers are unaffected.
   pass_index?: number;

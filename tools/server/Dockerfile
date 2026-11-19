@@ -3,7 +3,7 @@
 # FastAPI server image on top of the slim fuzzybits runtime (#46 step E).
 # Does NOT rebuild AdaptiveCpp / scram-cli / the fuzzybits wheel: those come
 # from RUNTIME_IMAGE. uv installs fuzzybits-server into a venv with
-# --system-site-packages so `import fuzzybits` / `import mcscram_native` hit
+# --system-site-packages so `import fuzzybits` hits
 # the runtime's system Python 3.12 site.
 #
 # UI: Node build stage emits CSR assets into /app/server/webui/dist.
@@ -90,10 +90,11 @@ RUN set -eux; \
     sys_site="$(python3 -c 'import fuzzybits, pathlib; p=pathlib.Path(fuzzybits.__file__).resolve(); print(p.parent if p.name != "__init__.py" else p.parent.parent)')"; \
     printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"; \
     /app/server/.venv/bin/python -c \
-      "import fuzzybits, mcscram_native, fuzzybits_server, uvicorn; import importlib.util as u; \
-assert u.find_spec('mcscram_native'); \
+      "import fuzzybits, fuzzybits_server, uvicorn; import importlib.util as u; \
+assert u.find_spec('fuzzybits'); \
 assert u.find_spec('fuzzybits_server'); \
-assert hasattr(mcscram_native, 'compile_pcfb'), 'runtime image lacks compile_pcfb (#71)'; \
+native = fuzzybits.native(); \
+assert hasattr(native, 'compile_pcfb'), 'runtime image lacks compile_pcfb (#71)'; \
 assert hasattr(fuzzybits, 'compile') and hasattr(fuzzybits, 'inspect') and hasattr(fuzzybits, 'Session'), 'runtime image lacks fuzzybits.compile/inspect/Session (#71)'"
 
 VOLUME ["/data", "/home/coder/.cache/fuzzybits"]

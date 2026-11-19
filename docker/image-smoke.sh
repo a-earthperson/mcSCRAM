@@ -33,21 +33,24 @@ if [[ "${SMOKE_FZB_OMP}" == "1" ]]; then
   test -x /usr/lib/llvm-20/bin/ld.lld || test -x /usr/local/lib/hipSYCL/ext/llvm/bin/ld.lld
 fi
 
-echo "== python (import mcscram_native shim, no PYTHONPATH/LD_PRELOAD) =="
+echo "== python (import fuzzybits, no PYTHONPATH/LD_PRELOAD; native /usr/local/bin/fzb) =="
 python3 - <<'PY'
 import os, sys
 assert not os.environ.get("PYTHONPATH"), "PYTHONPATH must be unset"
 assert not os.environ.get("LD_PRELOAD"), "LD_PRELOAD must be unset"
+magic = open("/usr/local/bin/fzb", "rb").read(4)
+assert magic == b"\x7fELF", f"/usr/local/bin/fzb is not a native ELF (got {magic!r})"
+print("native fzb ELF ok")
 import fuzzybits
 fuzzybits.init()
 print("fuzzybits", fuzzybits.__version__,
       "variant", fuzzybits.active_variant(),
       "backend", fuzzybits.active_backend())
 print("devices", fuzzybits.list_devices())
-import mcscram_native
-assert hasattr(mcscram_native, "run_probability")
-print("mcscram_native ok")
+assert hasattr(fuzzybits, "compile") and hasattr(fuzzybits, "inspect")
+print("fuzzybits ok")
 PY
+python3 -m fuzzybits._cli --help >/dev/null
 
 if [[ "${SMOKE_MC}" == "1" ]]; then
   echo "== mcscram-smoke =="

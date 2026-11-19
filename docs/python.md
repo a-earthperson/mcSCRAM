@@ -26,10 +26,21 @@ and is gated on a legal review. Until then, install a locally built wheel.
 ```bash
 pip install dist/fuzzybits-*.whl
 python -c "import fuzzybits; print(fuzzybits.__version__, fuzzybits.list_devices())"
+fzb --help
 ```
 
-No `PYTHONPATH` or `LD_PRELOAD`. `import mcscram_native` still works (shim
-that re-exports the active native extension) for the bench server.
+No `PYTHONPATH` or `LD_PRELOAD`. The wheel installs an `fzb` console script
+that matches the native CLI's compile / inspect / run flag surface so scripts
+can use either binary. Docker images keep the native `/usr/local/bin/fzb`
+(the pip script is overwritten after install).
+
+### Migration from `mcscram_native` / `mcscram_server`
+
+`import mcscram_native` is removed. Use `import fuzzybits`
+(`fuzzybits.compile`, `fuzzybits.inspect`, `fuzzybits.run`,
+`fuzzybits.Session`, or `fuzzybits.native()` for bindings that are not yet
+public). The `mcscram_server` package and `mcscram-server` console script
+are gone; use `fuzzybits_server` / `fuzzybits-server`.
 
 Variants follow [#29](https://github.com/fuzzybit-org/fuzzybits/issues/29):
 
@@ -96,18 +107,33 @@ per pass) so a host-side convergence loop can replace
 `run_compile` + `layer_manager.single_pass_all` without changing results.
 
 The wheel now links `fuzzybits_compile`, pcfb, and the runtime into the
-native extension (`libmc` already carries `run.cc`). `fzb` / `scram-cli`
-are not installed into the wheel.
+native extension (`libmc` already carries `run.cc`). Native `fzb` /
+`scram-cli` binaries are not packed into the wheel; pip users get the
+Python `fzb` console script instead.
 
 Results are deterministic for a given model and trial count (Philox
 counters). `seed=` raises `NotImplementedError` on `probability`, `compile`,
 `run`, and `Session` ([#65](https://github.com/fuzzybit-org/fuzzybits/issues/65)).
 
 `init()` must run before AdaptiveCpp initialises. The first call to
-`list_devices` / `probability` / `compile` / `run` / `Session` /
-`import mcscram_native` performs a lazy `init("auto")`. The JIT kernel
-cache defaults to `~/.cache/fuzzybits/acpp` (`ACPP_APPDB_DIR`); set that
-variable yourself to override.
+`list_devices` / `probability` / `compile` / `run` / `Session` performs a
+lazy `init("auto")`. The JIT kernel cache defaults to
+`~/.cache/fuzzybits/acpp` (`ACPP_APPDB_DIR`); set that variable yourself
+to override.
+
+## CLI (`fzb` on the wheel)
+
+```bash
+fzb compile model.xml [more.xml ...] [-c N] [--no-kn] [-o model.pcfb]
+fzb inspect model.pcfb [--validate] [--json] [--exact]
+fzb run model.pcfb --trials N [--seed S] [--backend auto|cuda|omp|metal] [--json]
+fzb --help
+fzb --version
+```
+
+`--json` keys match the native `fzb inspect --json` / `fzb run --json`
+payloads. `--seed` is rejected unless it is `372` (the scram-cli default),
+same as native ([#65](https://github.com/fuzzybit-org/fuzzybits/issues/65)).
 
 ## Build wheels from source
 

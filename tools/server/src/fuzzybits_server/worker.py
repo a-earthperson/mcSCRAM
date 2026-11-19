@@ -3,7 +3,7 @@
 By default the convergence loop and all statistics run **on the host in Python**
 (:mod:`fuzzybits_server.convergence`); the native engine is used only to produce
 raw per-pass popcounts.  Set ``MCSCRAM_CONVERGENCE_ENGINE=native`` to fall back
-to the legacy in-engine C++ convergence loop (``mcscram_native.run_probability``).
+to the legacy in-engine C++ convergence loop (``fuzzybits.native().run_probability``).
 """
 
 from __future__ import annotations

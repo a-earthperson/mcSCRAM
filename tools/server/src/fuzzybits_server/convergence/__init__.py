@@ -1,6 +1,6 @@
 """Host-side Monte-Carlo convergence and statistics engine.
 
-The native ``mcscram_native`` engine is responsible only for the massively
+The native ``fuzzybits`` engine is responsible only for the massively
 parallel, device-side bitstream sampling.  Everything statistical -- point
 estimates, confidence/credible intervals, convergence policies, information gain,
 diagnostics -- is computed here, on the host, in pure Python.

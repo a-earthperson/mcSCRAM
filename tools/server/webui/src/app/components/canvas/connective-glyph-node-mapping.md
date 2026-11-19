@@ -15,7 +15,7 @@ frame or the final perceived WebGL canvas colors.
 | HTTP route shape and compile query options | Backend API server | `tools/server/src/fuzzybits_server/routes.py` in fuzzybit-org/fuzzybits exposes `/model/source-dag`, `/model/dag`, `/model/kernel-dag`, and `/model/dag-bundle`; compile flags are converted into native compile options there. |
 | Stable DAG node type vocabulary and integer indices | Backend API server | `DAG_NODE_TYPES` in fuzzybit-org/fuzzybits `tools/server/src/fuzzybits_server/fault_tree_payload.py`. The client trusts `payload.nodeTypes[typeIndex]`. |
 | Source MEF tag to DAG type index | Backend API server | `_parse_fault_tree_graph` and `NODE_TYPE_BY_CONNECTIVE` in `fault_tree_payload.py`. |
-| Compiled/native graph node kind/connective data | Backend Python binding for `mcscram_native`, backed by native mcSCRAM | `mcscram_native.run_compile(...).to_graph()` and `.to_kernel_graph()` provide nodes, edges, root complement, graph kind, and optional kernel metadata. The binding source is not present in this checkout; the Python server consumes its dictionaries. |
+| Compiled/native graph node kind/connective data | Backend Python binding for `fuzzybits`, backed by native fuzzybits | `fuzzybits.native().run_compile(...).to_graph()` and `.to_kernel_graph()` provide nodes, edges, root complement, graph kind, and optional kernel metadata. The binding source is in `targets/python/bindings.cpp`; the Python server consumes its dictionaries. |
 | Compiled/native kind/connective to DAG type index | Backend API server | `_compiled_node_type` maps native `kind` and `connective` strings to `DAG_NODE_TYPES`. |
 | Kernel layer and partition grouping | Native mcSCRAM layer manager plus backend layout | `layer_manager::describe_kernel_dag` groups nodes by execution layer and homogeneous kernel partition. `_position_layer_nodes` uses layer/partition only to choose world coordinates. |
 | WebGL node shape and fill/stroke role by type name | Client-side JavaScript | `NODE_TYPE_STYLES` and `SHAPE_CODES` in `drawDagWebGl.ts`. |
@@ -31,8 +31,8 @@ frame or the final perceived WebGL canvas colors.
 | View | Frontend fetch | Server builder | Native dependency | Layout source | Notes |
 |---|---|---|---|---|---|
 | Source MEF DAG | `fetchDagBundleForModel(...).source` | `_build_source_dag_payload` | None | Backend depth layout | Parsed directly from XML. Connective tag names drive type indices. |
-| Compiled PDAG | `fetchDagBundleForModel(...).compiled` | `_build_native_dag_payload(..., graph_kind="compiled")` or bundle path | `mcscram_native.run_compile(...).to_graph()` | Backend depth layout unless every native node includes `layer` and `partition` | Compile options can preserve, expand, or recognize threshold/XOR gates before this graph is exposed. |
-| Kernel execution DAG | `fetchDagBundleForModel(...).kernel` | `_build_native_dag_payload(..., graph_kind="kernel")` or bundle path | `mcscram_native.run_compile(...).to_kernel_graph()` | Native layer/partition metadata, then backend coordinate rotation | Backend rotates kernel payload coordinates visually counter-clockwise with `(x, y) -> (y, -x)`. |
+| Compiled PDAG | `fetchDagBundleForModel(...).compiled` | `_build_native_dag_payload(..., graph_kind="compiled")` or bundle path | `fuzzybits.native().run_compile(...).to_graph()` | Backend depth layout unless every native node includes `layer` and `partition` | Compile options can preserve, expand, or recognize threshold/XOR gates before this graph is exposed. |
+| Kernel execution DAG | `fetchDagBundleForModel(...).kernel` | `_build_native_dag_payload(..., graph_kind="kernel")` or bundle path | `fuzzybits.native().run_compile(...).to_kernel_graph()` | Native layer/partition metadata, then backend coordinate rotation | Backend rotates kernel payload coordinates visually counter-clockwise with `(x, y) -> (y, -x)`. |
 
 All three views are rendered by the same `DagWebGlRenderer`. The renderer does
 not inspect `graphKind`, `nodes.layer`, `nodes.partition`, or `kernel.partitions`
@@ -238,7 +238,7 @@ The many `--ft-*` CSS variables in `canvas.css` are consumed by the 2D
 | `nodes.layer`, `nodes.partition`, and `kernel.partitions` are not rendered as labels or colors. | Kernel partitioning is inferable only from spatial grouping. | Client-side visualization decision. |
 | Type clamp maps negative type indices to `basic_event`. | Corrupt negative type data would appear as a valid basic event. | Client-side validation/fallback decision. |
 | `mix-blend-mode: exclusion` changes final perceived color by background. | Palette values are not guaranteed to visually match raw sRGB floats on every background. | CSS design decision. |
-| Backend Python binding source for `mcscram_native` is absent from this checkout. | Exact native dictionary ownership can only be inferred at the Python API boundary and native layer-manager code. | Repository/source organization issue or external/generated binding. |
+| Backend Python binding source for `fuzzybits` is in `targets/python/bindings.cpp`. | Exact native dictionary ownership is defined at the Python API boundary and native layer-manager code. | Binding is in-tree; the server consumes its dictionaries. |
 
 ## Practical Legend for the Current WebGL View
 

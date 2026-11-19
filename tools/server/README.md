@@ -20,7 +20,6 @@ cd tools/server
 uv sync --extra dev --no-install-package fuzzybits
 uv run --no-sync fuzzybits-server --data-dir ../../input/Aralia
 uv run --no-sync fuzzybits-server --no-ui          # headless API; GET / is a JSON pointer to /api/v1
-# alias for one release: uv run --no-sync mcscram-server
 ```
 
 CLI defaults to `127.0.0.1:8000`. Flags: `--host`, `--port`, `--data-dir`,
@@ -36,7 +35,7 @@ or a locally built wheel can supply the engine:
 
 ```bash
 uv pip install ../../dist/fuzzybits-*.whl
-python -c "import mcscram_native; print(mcscram_native)"
+python -c "import fuzzybits; print(fuzzybits.__file__, fuzzybits.list_devices())"
 ```
 
 Without the wheel the process still starts: `/api/v1/healthz` works, model
@@ -65,7 +64,7 @@ wheel from the sdist does not need Node.
 ## Test
 
 The imported pytest suite is pure Python (BernoulliSampler, numpy, scipy)
-plus config/cache helpers. It does not import `mcscram_native` unless a
+plus config/cache helpers. It does not import `fuzzybits` unless a
 test is marked `@pytest.mark.native`.
 
 ```bash

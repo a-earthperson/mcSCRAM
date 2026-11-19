@@ -54,7 +54,7 @@ def probability(
 ) -> ProbabilityEstimate:
     """Run a Monte Carlo probability analysis on OpenPSA MEF XML.
 
-    Wraps ``mcscram_native.run_probability`` (the existing engine). Extra
+    Wraps the native ``run_probability`` engine. Extra
     keyword arguments are forwarded as CLI-like options (``delta``,
     ``early_stop``, ``compilation_level``, …). Results are deterministic for
     a given model and trial count (Philox counters); ``seed`` is not
@@ -332,6 +332,17 @@ def inspect(pcfb: bytes | str | os.PathLike[str]) -> dict[str, Any]:
     return dict(native.inspect_pcfb_path(os.fspath(pcfb)))
 
 
+def exact(pcfb: bytes | str | os.PathLike[str], query_index: int = 0) -> float:
+    """Exhaustive exact P(query) for small models (≤ 30 random SAMPLE events).
+
+    Same as ``fzb inspect --exact``. Raises if the circuit has too many events.
+    """
+    native = _runtime.native()
+    if isinstance(pcfb, (bytes, bytearray, memoryview)):
+        return float(native.exact_pcfb_bytes(bytes(pcfb), int(query_index)))
+    return float(native.exact_pcfb_path(os.fspath(pcfb), int(query_index)))
+
+
 def run(
     pcfb: bytes | str | os.PathLike[str],
     *,
@@ -485,6 +496,7 @@ __all__ = [
     "Session",
     "compile",
     "compile_file",
+    "exact",
     "inspect",
     "list_devices",
     "probability",

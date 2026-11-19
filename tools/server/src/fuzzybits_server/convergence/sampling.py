@@ -5,7 +5,7 @@ outside world.  Each :meth:`Sampler.step` runs exactly one device pass and
 returns a :class:`PassObservation` of raw cumulative counters.  Two
 implementations are provided:
 
-* :class:`NativeSampler` — wraps the ``mcscram_native`` extension
+* :class:`NativeSampler` — wraps the ``fuzzybits`` native extension
   (``run_compile`` -> ``Pdag.create_layer_manager`` -> ``single_pass``).  It
   prefers the multi-node ``single_pass_all`` binding when present and otherwise
   falls back to the single-event ``single_pass`` (root only), so the engine
@@ -134,7 +134,7 @@ def _watch_event_ids(pdag: Any, options: dict[str, Any] | None, event_ids: list[
 
 
 class NativeSampler:
-    """Adapts the ``mcscram_native`` layer manager to the :class:`Sampler` protocol."""
+    """Adapts the ``fuzzybits`` layer manager to the :class:`Sampler` protocol."""
 
     def __init__(
         self,
@@ -143,9 +143,9 @@ class NativeSampler:
         *,
         event_ids: list[int] | None = None,
     ) -> None:
-        import mcscram_native  # imported lazily so the engine imports without the ext
+        import fuzzybits  # imported lazily so the engine imports without the ext
 
-        self._pdag = mcscram_native.run_compile(input_files, _native_options(options))
+        self._pdag = fuzzybits.native().run_compile(input_files, _native_options(options))
         requested = list(event_ids or [])
         extra = _watch_event_ids(self._pdag, options, [])
         if requested or extra:

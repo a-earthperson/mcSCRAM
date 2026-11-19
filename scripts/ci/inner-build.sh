@@ -57,7 +57,11 @@ case "${cmd}" in
   product)
     ensure_ccache
     echo "build product targets (${preset})"
-    cmake --build --preset "${preset}" --target scram-cli fzb mc mcscram_native
+    native_mod="_native_generic"
+    case "${preset}" in
+      *sm70*) native_mod="_native_cuda_sm70" ;;
+    esac
+    cmake --build --preset "${preset}" --target scram-cli fzb mc "${native_mod}"
     ;;
   configure-product)
     ensure_ccache
@@ -67,7 +71,11 @@ case "${cmd}" in
     cmake --preset "${preset}" -DBUILD_TESTING="${testing}" "${cmake_launcher_flags[@]}"
     echo "CMAKE_CXX_COMPILER_LAUNCHER is set; AdaptiveCpp syclcc-launcher preserves it and invokes: ccache acpp <flags>"
     echo "build product targets (${preset})"
-    cmake --build --preset "${preset}" --target scram-cli fzb mc mcscram_native
+    native_mod="_native_generic"
+    case "${preset}" in
+      *sm70*) native_mod="_native_cuda_sm70" ;;
+    esac
+    cmake --build --preset "${preset}" --target scram-cli fzb mc "${native_mod}"
     ;;
   tests)
     ensure_ccache

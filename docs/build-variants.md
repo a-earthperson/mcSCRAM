@@ -46,7 +46,7 @@ Option names (from `CMakeLists.txt` / `cmake/Find_adaptivecpp.cmake`):
 |---|---|
 | `ACPP_TARGETS` | AdaptiveCpp compilation target (`generic`, `cuda:sm_70`, …) |
 | `MALLOC_TYPE` | `malloc` (default), `tcmalloc`, `jemalloc` |
-| `BUILD_PYTHON_BINDINGS` | native `mcscram_native` extension |
+| `BUILD_PYTHON_BINDINGS` | native `fuzzybits._native_generic` / `_native_cuda_sm70` extension |
 | `BUILD_TESTS` | test suite (ON in CMakeLists; the `add_subdirectory(tests)` block is commented out until [#31](https://github.com/fuzzybit-org/fuzzybits/issues/31)) |
 | `WITH_PROFILE` | `-pg` instrumentation |
 | `WITH_COVERAGE` | coverage instrumentation |

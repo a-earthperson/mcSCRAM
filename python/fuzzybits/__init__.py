@@ -6,13 +6,12 @@ Public surface:
 - :func:`init`
 - :func:`list_devices`
 - :func:`probability`
-- :func:`compile` / :func:`compile_file` / :func:`inspect` / :func:`run`
+- :func:`compile` / :func:`compile_file` / :func:`inspect` / :func:`exact` / :func:`run`
 - :class:`Session` (streaming per-pass popcounts over a ``.pcfb``)
 
 The native SYCL extension is selected at import: ``_native_cuda_sm70`` if that
 wheel is installed *and* an sm_70 device is present, otherwise
-``_native_generic``. ``import mcscram_native`` remains a compatibility shim
-that re-exports the active extension.
+``_native_generic``.
 """
 
 from __future__ import annotations
@@ -26,6 +25,7 @@ from ._api import (
     Session,
     compile,
     compile_file,
+    exact,
     inspect,
     list_devices,
     probability,
@@ -55,6 +55,7 @@ __all__ = [
     "active_variant",
     "compile",
     "compile_file",
+    "exact",
     "has_cuda_device",
     "has_sm70_device",
     "init",
@@ -70,7 +71,7 @@ def __getattr__(name: str):
     """Forward unknown names to the native module after lazy init.
 
     Lets ``fuzzybits.run_probability`` / ``fuzzybits.run_compile`` keep working
-    for callers that previously used ``mcscram_native`` directly.
+    for callers that need native entry points not wrapped by the public API.
     """
     native_mod = _runtime.native()
     try:

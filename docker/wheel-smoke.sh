@@ -27,8 +27,7 @@ print("version", fuzzybits.__version__)
 print("variant", fuzzybits.active_variant())
 print("backend", fuzzybits.active_backend())
 print("devices", fuzzybits.list_devices())
-import mcscram_native
-print("mcscram_native", hasattr(mcscram_native, "run_probability"))
+print("compile", hasattr(fuzzybits, "compile"), "inspect", hasattr(fuzzybits, "inspect"))
 PY
 
 Z=1.959963984540054

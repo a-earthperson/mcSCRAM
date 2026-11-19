@@ -105,12 +105,3 @@ def test_env_ui_dir_wins_over_packaged(tmp_path: Path, monkeypatch: pytest.Monke
     assert "from-env" in client.get("/").text
 
 
-def test_mcscram_server_alias_imports() -> None:
-    import fuzzybits_server
-    import mcscram_server
-
-    assert mcscram_server.create_app is fuzzybits_server.create_app
-    from mcscram_server.config import server_ui_enabled as alias_fn
-    from fuzzybits_server.config import server_ui_enabled as real_fn
-
-    assert alias_fn is real_fn

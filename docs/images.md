@@ -36,7 +36,7 @@ plus:
 | `scram-cli`, `fzb` | `/usr/local/bin`; entrypoint wrapper: `docker run IMG` → scram-cli, `docker run IMG fzb …` → fzb |
 | AdaptiveCpp runtime | `libacpp-rt`, `libacpp-common`, CUDA/OMP backends, `llvm-to-backend` plugins, `libLLVM.so.20.1`, `acpp-info`. Distro `libxml2` (`libxml2.so.2`) is required by LLVM; the product uses FetchContent `libxml2.so.16`. |
 | SSCP JIT (`generic` only) | `libdevice.10.bc`, `opt`/`llc`/`ld.lld` at `/usr/lib/llvm-20/bin` and `hipSYCL/ext/llvm/bin` (AdaptiveCpp LLVMToHost/LLVMToPtx). `llvm-to-backend` / `libLLVM` ship in both variants because the backends DT_NEED them even for SMCP AOT. |
-| `fuzzybits` Python | wheel built in the same Dockerfile, `pip install` into the image; `import mcscram_native` shim; no `PYTHONPATH` / `LD_PRELOAD` |
+| `fuzzybits` Python | wheel built in the same Dockerfile, `pip install` into the image; native `/usr/local/bin/fzb` restored after pip so the console script does not overwrite it; no `PYTHONPATH` / `LD_PRELOAD` |
 | `mcscram-smoke` | chinese, baobab1, das9201 vs Aralia BDD refs; `timeout 60` each |
 | CUDA | `libcudart` from the toolchain (CUDA 12.8.1). Driver (`libcuda.so.1`) comes from `--gpus`. Not `FROM nvidia/cuda:*-runtime` (that image is ~3 GB of unused cublas/cufft/…). |
 
@@ -106,7 +106,7 @@ docker run --rm --gpus device=0 --entrypoint fuzzybits-image-smoke "$IMG"
 
 # Python (no PYTHONPATH / LD_PRELOAD)
 docker run --rm --gpus device=0 --entrypoint python3 "$IMG" -c \
-  'import fuzzybits, mcscram_native; fuzzybits.init(); print(fuzzybits.list_devices())'
+  'import fuzzybits; fuzzybits.init(); print(fuzzybits.list_devices())'
 
 # AdaptiveCpp backends
 docker run --rm --entrypoint acpp-info "$IMG" -l
