@@ -7,6 +7,10 @@
 # (libLLVM, llvm-to-backend, libdevice.10.bc) at runtime, which is already in
 # the image. xerxes has 48 cores so the compile is faster than hosted 4-core.
 # The image pull uses GITHUB_TOKEN with packages: read only — no other secrets.
+#
+# sm_70 generic and cuda-sm70 share one physical GPU (V100S). They are one
+# job (sequential presets) so a matrix concurrency group cannot cancel a
+# sibling. Other jobs use one concurrency group per physical GPU.
 name: GPU tests
 
 on:
@@ -20,67 +24,25 @@ permissions:
   contents: read
 
 jobs:
-  gpu:
-    name: ${{ matrix.name }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # xerxes Docker maps physical GPU 0 = Tesla V100S (shared by all
-          # sm_70 runners). Concurrency group serialises them.
-          - name: sm70-generic
-            runs_on: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
-            concurrency_group: gpu-xerxes-v100s
-            preset: generic
-            docker_gpus: device=0
-            optional: false
-          - name: sm70-cuda-sm70
-            runs_on: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
-            concurrency_group: gpu-xerxes-v100s
-            preset: cuda-sm70
-            docker_gpus: device=0
-            optional: false
-          # physical GPU 1 = RTX 3070
-          - name: sm86-generic
-            runs_on: [self-hosted, Linux, X64, nvidia, sm_86, rtx_3070]
-            concurrency_group: gpu-xerxes-3070
-            preset: generic
-            docker_gpus: device=1
-            optional: false
-          - name: sm120-generic
-            runs_on: [self-hosted, Linux, X64, nvidia, fast, sm_120, rtx_5060ti_8gb]
-            concurrency_group: gpu-shelly-5060ti
-            preset: generic
-            docker_gpus: device=0
-            optional: false
-          # sm_75 may have no GPU (xerxes exposes only two devices to Docker).
-          - name: sm75-generic
-            runs_on: [self-hosted, Linux, X64, nvidia, sm_75, gtx_1660s]
-            concurrency_group: gpu-xerxes-1660s
-            preset: generic
-            docker_gpus: device=0
-            optional: true
-    runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 90
-    continue-on-error: ${{ matrix.optional }}
+  sm70:
+    name: sm70
+    runs-on: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
+    timeout-minutes: 120
     concurrency:
-      group: ${{ matrix.concurrency_group }}
+      group: gpu-xerxes-v100s
       cancel-in-progress: false
     permissions:
       contents: read
       packages: read
     env:
-      PRESET: ${{ matrix.preset }}
-      BUILD_TESTING: "ON"
-      DOCKER_GPUS: ${{ matrix.docker_gpus }}
-      FUZZYBITS_CTR: fuzzybits-ci-${{ github.run_id }}-${{ matrix.name }}-${{ github.run_attempt }}
+      DOCKER_GPUS: device=0
+      FUZZYBITS_CTR: fuzzybits-ci-${{ github.run_id }}-sm70-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
           submodules: recursive
-
       - name: Load toolchain pins
         run: |
           set -eu
@@ -95,16 +57,15 @@ jobs:
             echo "TOOLCHAIN_SHA=${sha}"
             echo "TOOLCHAIN_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}"
           } >> "${GITHUB_ENV}"
-
       - name: ccache
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: .ccache
-          key: ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-${{ github.sha }}
+          key: ccache-linux-gpu-sm70-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-${{ github.sha }}
           restore-keys: |
-            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
-            ccache-linux-${{ env.PRESET }}-${{ env.TOOLCHAIN_SHA }}-
-
+            ccache-linux-gpu-sm70-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+            ccache-linux-generic-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+            ccache-linux-cuda-sm70-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
       - name: GPU mapping probe
         run: |
           echo "runner=${RUNNER_NAME:-} docker_gpus=${DOCKER_GPUS}"
@@ -113,36 +74,176 @@ jobs:
           nvidia-smi -L || true
           docker run --rm --gpus "${DOCKER_GPUS}" --entrypoint bash \
             nvidia/cuda:12.8.1-base-ubuntu24.04 -lc 'nvidia-smi -L'
-
       - name: Log in to GHCR (packages:read only)
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build product
-        run: scripts/ci/docker-toolchain-run.sh --gpus "${DOCKER_GPUS}" --name "${FUZZYBITS_CTR}" -- scripts/ci/inner-build.sh "${PRESET}" configure-product
-
-      - name: Build tests
-        run: scripts/ci/docker-toolchain-run.sh --gpus "${DOCKER_GPUS}" --name "${FUZZYBITS_CTR}" -- scripts/ci/inner-build.sh "${PRESET}" tests
-
-      - name: ctest -L mc (CUDA)
-        timeout-minutes: 20
-        run: scripts/ci/docker-toolchain-run.sh --gpus "${DOCKER_GPUS}" --name "${FUZZYBITS_CTR}" -- scripts/ci/inner-build.sh "${PRESET}" ctest-mc
-
-      - name: smoke.sh (chinese, baobab1, das9201)
-        timeout-minutes: 10
-        run: scripts/ci/docker-toolchain-run.sh --gpus "${DOCKER_GPUS}" --name "${FUZZYBITS_CTR}" -- scripts/ci/inner-build.sh "${PRESET}" smoke
-
-      - name: ccache stats
-        if: always()
-        run: scripts/ci/docker-toolchain-run.sh --gpus "${DOCKER_GPUS}" --name "${FUZZYBITS_CTR}" -- scripts/ci/inner-build.sh "${PRESET}" ccache-stats
-
+      - name: generic (SSCP) product + ctest -L mc + smoke
+        run: scripts/ci/gpu-test.sh generic
+      - name: cuda-sm70 (SMCP) product + ctest -L mc + smoke
+        run: scripts/ci/gpu-test.sh cuda-sm70
       - name: Drop this job's container
         if: always()
         run: docker rm -f "${FUZZYBITS_CTR}" || true
-
       - name: Trim workspace (keep .ccache for cache post)
         if: always()
         run: rm -rf build dist .cache
+
+  sm86:
+    name: sm86-generic
+    runs-on: [self-hosted, Linux, X64, nvidia, sm_86, rtx_3070]
+    timeout-minutes: 90
+    concurrency:
+      group: gpu-xerxes-3070
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DOCKER_GPUS: device=1
+      FUZZYBITS_CTR: fuzzybits-ci-${{ github.run_id }}-sm86-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          sha="$(sha256sum toolchain.env | cut -c1-12)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "TOOLCHAIN_SHA=${sha}"
+            echo "TOOLCHAIN_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}"
+          } >> "${GITHUB_ENV}"
+      - name: ccache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: .ccache
+          key: ccache-linux-generic-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-generic-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+            ccache-linux-generic-${{ env.TOOLCHAIN_SHA }}-
+      - name: GPU mapping probe
+        run: |
+          echo "runner=${RUNNER_NAME:-} docker_gpus=${DOCKER_GPUS}"
+          echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES-UNSET}"
+          echo "NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES-UNSET}"
+          nvidia-smi -L || true
+          docker run --rm --gpus "${DOCKER_GPUS}" --entrypoint bash \
+            nvidia/cuda:12.8.1-base-ubuntu24.04 -lc 'nvidia-smi -L'
+      - name: Log in to GHCR (packages:read only)
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: generic (SSCP) product + ctest -L mc + smoke
+        run: scripts/ci/gpu-test.sh generic
+      - name: Drop this job's container
+        if: always()
+        run: docker rm -f "${FUZZYBITS_CTR}" || true
+      - name: Trim workspace (keep .ccache for cache post)
+        if: always()
+        run: rm -rf build dist .cache
+
+  sm120:
+    name: sm120-generic
+    runs-on: [self-hosted, Linux, X64, nvidia, fast, sm_120, rtx_5060ti_8gb]
+    timeout-minutes: 90
+    concurrency:
+      group: gpu-shelly-5060ti
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DOCKER_GPUS: device=0
+      FUZZYBITS_CTR: fuzzybits-ci-${{ github.run_id }}-sm120-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          sha="$(sha256sum toolchain.env | cut -c1-12)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "TOOLCHAIN_SHA=${sha}"
+            echo "TOOLCHAIN_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}"
+          } >> "${GITHUB_ENV}"
+      - name: ccache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: .ccache
+          key: ccache-linux-generic-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-generic-${{ env.TOOLCHAIN_SHA }}-clang${{ env.CLANG_VERSION }}-
+            ccache-linux-generic-${{ env.TOOLCHAIN_SHA }}-
+      - name: GPU mapping probe
+        run: |
+          echo "runner=${RUNNER_NAME:-} docker_gpus=${DOCKER_GPUS}"
+          echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES-UNSET}"
+          echo "NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES-UNSET}"
+          nvidia-smi -L || true
+          docker run --rm --gpus "${DOCKER_GPUS}" --entrypoint bash \
+            nvidia/cuda:12.8.1-base-ubuntu24.04 -lc 'nvidia-smi -L'
+      - name: Log in to GHCR (packages:read only)
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: generic (SSCP) product + ctest -L mc + smoke
+        run: scripts/ci/gpu-test.sh generic
+      - name: Drop this job's container
+        if: always()
+        run: docker rm -f "${FUZZYBITS_CTR}" || true
+      - name: Trim workspace (keep .ccache for cache post)
+        if: always()
+        run: rm -rf build dist .cache
+
+  sm75:
+    name: sm75-generic
+    runs-on: [self-hosted, Linux, X64, nvidia, sm_75, gtx_1660s]
+    timeout-minutes: 45
+    continue-on-error: true
+    concurrency:
+      group: gpu-xerxes-1660s
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DOCKER_GPUS: device=0
+      FUZZYBITS_CTR: fuzzybits-ci-${{ github.run_id }}-sm75-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: GPU mapping probe (optional; may have no device)
+        run: |
+          echo "runner=${RUNNER_NAME:-} docker_gpus=${DOCKER_GPUS}"
+          echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES-UNSET}"
+          echo "NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES-UNSET}"
+          nvidia-smi -L || true
+          docker run --rm --gpus "${DOCKER_GPUS}" --entrypoint bash \
+            nvidia/cuda:12.8.1-base-ubuntu24.04 -lc 'nvidia-smi -L'
