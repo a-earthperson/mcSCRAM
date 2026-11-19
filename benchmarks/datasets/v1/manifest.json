@@ -1,0 +1,4600 @@
+{
+  "schema_version": 1,
+  "dataset": "v1",
+  "description": "Frozen Aralia accuracy set (43 models, exact top-event probabilities) plus generic-pwr-model (95 event-tree-group XMLs, compile/size/throughput only). synthetic-models is excluded (no license).",
+  "versioning": "A dataset version never changes once used. Schema or contents changes are a new version (v2, …). The harness, PR gate (#122) and published history (#123) pin a dataset id.",
+  "submodules": {
+    "input/generic-pwr-model": "ce2ef006ab3880e1982e8dd38e87149f6d54d603"
+  },
+  "defaults": {
+    "accuracy_target_hits": 1000,
+    "accuracy_infeasible_hits": 16,
+    "accuracy_low_power_hits": 1000,
+    "accuracy_sampler_min_p": 2.3283064365386963e-10,
+    "accuracy_min_trials": 1048576,
+    "accuracy_max_trials": 100663296,
+    "perf_trials": 100663296,
+    "time_budget_s": {
+      "cpu_accuracy": 60,
+      "cpu_perf": 60,
+      "gpu_perf": 15,
+      "cpu_compile": 120
+    },
+    "compile": {
+      "pdag_c": 2,
+      "no_kn": true
+    }
+  },
+  "models": [
+    {
+      "id": "baobab1",
+      "path": "input/Aralia/baobab1.xml",
+      "sha256": "0406a7346af9b5f16933fc8333ea89f6f0da2b2bc9c1f8cc023e2a15f17fc7d8",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.000101708,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 10485760,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 1066.48567808,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "baobab2",
+      "path": "input/Aralia/baobab2.xml",
+      "sha256": "46cfbd3fbe913fcced6a22b190a7c8f83f957bb1e72d347085fcc2327bb1aba6",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.000713018,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 2097152,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 1495.307124736,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "baobab3",
+      "path": "input/Aralia/baobab3.xml",
+      "sha256": "59cfeaa0661af5df9f0117131bb5a3c6651945d621b96869f0fbdad371235df7",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.00224117,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 2350.03707392,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "cea9601",
+      "path": "input/Aralia/cea9601.xml",
+      "sha256": "b1cc616f6f066b9093cc3e5e8d1a712d0cfc0761f80a959c9edd93b0cdd6b4cb",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.00148409,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 1556.18115584,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "chinese",
+      "path": "input/Aralia/chinese.xml",
+      "sha256": "01b4e1df4debac7f467c31556bad39d91acef82fa8015fa2e1359c2fef24c338",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.00117058,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "perf"
+      ],
+      "perf_reason": "Small model; baseline for launch, JIT, and host overhead. Kernel time is ~9–13 ms at 1e8, so fixed costs are visible.",
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": 100663296,
+        "cpu_perf": 235929600
+      },
+      "expected_hits_accuracy": 1227.44209408,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9201",
+      "path": "input/Aralia/das9201.xml",
+      "sha256": "fa2dd56511f3e0389054c101d5f74cd622a125431caa07527a871fd1bf34b5b4",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.01342366773,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "perf"
+      ],
+      "perf_reason": "Sampler-dominated: on V100S at 1e8 trials, basic_event is ~89% of GPU kernel time (37.6 of 42.1 ms, PR #91). Gate kernels are a small tail.",
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": 100663296,
+        "cpu_perf": 83886080
+      },
+      "expected_hits_accuracy": 14075.73581365248,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9202",
+      "path": "input/Aralia/das9202.xml",
+      "sha256": "e0e460c72f744d7a655c148262decd556d9e48f473628326bfc8e5b8d7f280d6",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.01011538126,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 10606.74602008576,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9203",
+      "path": "input/Aralia/das9203.xml",
+      "sha256": "76dc571db7cae22c7938fdd91acc760abe907ff105ef9bc453c02806d97232c0",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.0013488,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 1414.3193088,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9204",
+      "path": "input/Aralia/das9204.xml",
+      "sha256": "3c704d215f0ee280928f63eedb7d28c4fa57b13d173a0de08d79050edf70daa9",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 2.16942e-11,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "hard"
+      ],
+      "perf_reason": null,
+      "notes": "n·p = 0.00218 at the 100663296 trial cap (fzb --trials 1e8); 1000 hits would need n ≈ 4.61e+13, which is outside the accuracy time budget.",
+      "accuracy": {
+        "check": "infeasible",
+        "reason": "p_ref 2.16942e-11 is below the 2^-32 Bernoulli threshold (~2.33e-10, #17); the sampler represents those events as 0; expected hits n·p_ref = 0.00218 at the budgeted 100663296 trials (far below 16; 1000 hits would need n ≈ 4.61e+13). Rare-event methods are #6 / #17 / #91, not a larger CI budget"
+      },
+      "trials": {
+        "accuracy": 100663296,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 0.0021838096760832,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9205",
+      "path": "input/Aralia/das9205.xml",
+      "sha256": "f2b54fc0b3c2dcdc727751c96e4247012163882a76f0c467256239551e9818de",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 1.38408e-08,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "hard"
+      ],
+      "perf_reason": null,
+      "notes": "n·p = 1.39 at the 100663296 trial cap (fzb --trials 1e8); 1000 hits would need n ≈ 7.23e+10, which is outside the accuracy time budget.",
+      "accuracy": {
+        "check": "infeasible",
+        "reason": "expected hits n·p_ref = 1.39 at the budgeted 100663296 trials (far below 16; 1000 hits would need n ≈ 7.23e+10). Rare-event methods are #6 / #17 / #91, not a larger CI budget"
+      },
+      "trials": {
+        "accuracy": 100663296,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 1.3932605472768,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9206",
+      "path": "input/Aralia/das9206.xml",
+      "sha256": "b88a9c0ce1d4ce24699859427f5aeb11ce8aaa190324dd30a2c25da54944c198",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.229686838,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 240844.105842688,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9207",
+      "path": "input/Aralia/das9207.xml",
+      "sha256": "7d9f9c2ec6a11b8e56d25e1475f9f31f6b23ba6d8f5c4837ad23166b115ea4b9",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.3466958884,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 363536.9878749184,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9208",
+      "path": "input/Aralia/das9208.xml",
+      "sha256": "ed057e87de736a7d65732be33d2d7603259fdd69e70f4cc311f03b377645b31e",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.01301789692,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 13650.25428078592,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9209",
+      "path": "input/Aralia/das9209.xml",
+      "sha256": "449ace6b7890f761dce382177c0f5b9bb7f0d075e7e07dcd95a428dd301a6c8a",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 1.058e-13,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "hard"
+      ],
+      "perf_reason": null,
+      "notes": "n·p = 1.07e-05 at the 100663296 trial cap (fzb --trials 1e8); 1000 hits would need n ≈ 9.45e+15, which is outside the accuracy time budget.",
+      "accuracy": {
+        "check": "infeasible",
+        "reason": "p_ref 1.058e-13 is below the 2^-32 Bernoulli threshold (~2.33e-10, #17); the sampler represents those events as 0; expected hits n·p_ref = 1.07e-05 at the budgeted 100663296 trials (far below 16; 1000 hits would need n ≈ 9.45e+15). Rare-event methods are #6 / #17 / #91, not a larger CI budget"
+      },
+      "trials": {
+        "accuracy": 100663296,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 1.06501767168e-05,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9601",
+      "path": "input/Aralia/das9601.xml",
+      "sha256": "96080dd6fbd1d3d681a6c34c8e7d481fef60216c437fb50c1d7bad3f9a86ac9d",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.0042344,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 4440.0902144,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "das9701",
+      "path": "input/Aralia/das9701.xml",
+      "sha256": "729de7f2ccaeb732d8e0d21281b7d1eaec30117c4e1013f413149c76b358e299",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.0744694,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "perf"
+      ],
+      "perf_reason": "Largest Aralia gate counts. The fused-kernel prototype in #20 is fastest here (3.11× vs unfused at -c 2), so gate-kernel and occupancy work shows up.",
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": 100663296,
+        "cpu_perf": 16777216
+      },
+      "expected_hits_accuracy": 78086.8255744,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edf9201",
+      "path": "input/Aralia/edf9201.xml",
+      "sha256": "de6240795914b53765ff5394fbace8eca16a5561a2e98692a8d639e3e15a5231",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.3245914467,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 340358.8008148992,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edf9202",
+      "path": "input/Aralia/edf9202.xml",
+      "sha256": "da665f9bf2e0d415199bc91c9dc255242e0d0bd71c12160de2d57fbb5e2bbcfb",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.7813024513,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 819254.9991743488,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edf9203",
+      "path": "input/Aralia/edf9203.xml",
+      "sha256": "29cbc77ebfce11eba92d9d906886e5571f029ac55ceee05bcd2ff55d91528d56",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.5995890977,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "perf"
+      ],
+      "perf_reason": "Known fused-path regressor in #20 (2.2× slower than unfused at TB=8, 160 regs, chunking overhead). Guards a per-model fallback.",
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": 100663296,
+        "cpu_perf": 33554432
+      },
+      "expected_hits_accuracy": 628714.7377098752,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edf9204",
+      "path": "input/Aralia/edf9204.xml",
+      "sha256": "e682ff939b793fa321b991e4fa9ee0af05f90480034cc0ad3bdc8add0a9800bb",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.5253742885,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 550894.869938176,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edf9205",
+      "path": "input/Aralia/edf9205.xml",
+      "sha256": "705929a83ea6e06548e7e32bd0df95ee5d521c0e5d03e2e5684ef3d8896e4cf8",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.2093509058,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 219520.3354001408,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edf9206",
+      "path": "input/Aralia/edf9206.xml",
+      "sha256": "77c7f516b35626feef01282a467f1121750c34038c2ff5695153bbf881f72f1c",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 8.615e-12,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "hard"
+      ],
+      "perf_reason": null,
+      "notes": "n·p = 0.000867 at the 100663296 trial cap (fzb --trials 1e8); 1000 hits would need n ≈ 1.16e+14, which is outside the accuracy time budget.",
+      "accuracy": {
+        "check": "infeasible",
+        "reason": "p_ref 8.615e-12 is below the 2^-32 Bernoulli threshold (~2.33e-10, #17); the sampler represents those events as 0; expected hits n·p_ref = 0.000867 at the budgeted 100663296 trials (far below 16; 1000 hits would need n ≈ 1.16e+14). Rare-event methods are #6 / #17 / #91, not a larger CI budget"
+      },
+      "trials": {
+        "accuracy": 100663296,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 0.0008672142950400001,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa14b",
+      "path": "input/Aralia/edfpa14b.xml",
+      "sha256": "41017bb1b7fd8181cc00385891a0c08661aed4565712435ee661207e8deec5f2",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.2956195457,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 309979.5607519232,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa14o",
+      "path": "input/Aralia/edfpa14o.xml",
+      "sha256": "c09d25ae5fbaf6658982c471ef42e41ff38e52f91b11719b28f94a6eb6f596d1",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.2970571108,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 311486.9570142208,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa14p",
+      "path": "input/Aralia/edfpa14p.xml",
+      "sha256": "79abc6f1cde49e39708855c688cd33c1c16c17c276c0cf4fe226664a29f4c532",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.08070592177,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 84626.29262589951,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa14q",
+      "path": "input/Aralia/edfpa14q.xml",
+      "sha256": "b87b07d90debfd82b31ee89fe50d4295e0350bb1a80949bb072b2a42e06a3a7e",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.2959054909,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 310279.3960259584,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa14r",
+      "path": "input/Aralia/edfpa14r.xml",
+      "sha256": "bfc1fbd2622646001d52ac9ff0c20dd5a5fde4539a32c905320c64cacadd9aa2",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.02099765778,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 22017.64000432128,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa15b",
+      "path": "input/Aralia/edfpa15b.xml",
+      "sha256": "e13fe30c8f9da7ef94be973ec70814b36f1fdc3d73eeed7cc7833d844d36059b",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.3627365169,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 380356.8059449344,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa15o",
+      "path": "input/Aralia/edfpa15o.xml",
+      "sha256": "d5b411ccba8e294828d36862b91b45f8481bf5cc631600f4ed7c502af1e77e90",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.3629559152,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 380586.8617367552,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa15p",
+      "path": "input/Aralia/edfpa15p.xml",
+      "sha256": "f8fa84f4db209ed39500f34bd4bcc0735610f8ac1ddb0f10c7feeb91440cb212",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.07363023823,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 77206.90068226049,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa15q",
+      "path": "input/Aralia/edfpa15q.xml",
+      "sha256": "0244a9446dcc6fad040bf30a84620273dda7aaa2ace147b7c435b7d4f5375a8e",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.3627365169,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 380356.8059449344,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "edfpa15r",
+      "path": "input/Aralia/edfpa15r.xml",
+      "sha256": "68b203b91955332d7fcb072e5d7445aea5c7231daa3e06d1b9e9e79c9b741a05",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.01897503071,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 19896.76180176896,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "elf9601",
+      "path": "input/Aralia/elf9601.xml",
+      "sha256": "0da901891829f59e24fedc818e950a3c612c9c586e53f78d14b21286f97ef416",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.09662909854,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 101322.95363067904,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "ftr10",
+      "path": "input/Aralia/ftr10.xml",
+      "sha256": "06b857be024a49f50573cffa5d86d2728d87f0dcc3c44b69f0643fda235aeaa8",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.4486771197,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 470472.0594665472,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "isp9601",
+      "path": "input/Aralia/isp9601.xml",
+      "sha256": "d13a7c1af037b666961e28998b090439076db9414040def703d0dc37bb51f236",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.05712449272,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 59899.37207836672,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "isp9602",
+      "path": "input/Aralia/isp9602.xml",
+      "sha256": "a247a64bcc738b9a3197388ec5be4940d54a9ac7361bdde010a5319025fa2e1d",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.01724474483,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 18082.42555486208,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "isp9603",
+      "path": "input/Aralia/isp9603.xml",
+      "sha256": "e949eb707fad7e9a28766125f6b92222b262e8cedb6fea89c3a225afd7799e2a",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.003233264387,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 3390.323437862912,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "isp9604",
+      "path": "input/Aralia/isp9604.xml",
+      "sha256": "123f353972b0503c28f88da1f2665762e9a256c0981fb389952cc1e397a16cc6",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.1427507476,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 149685.0079154176,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "isp9605",
+      "path": "input/Aralia/isp9605.xml",
+      "sha256": "866144560ef58bebb514ee6eeff5612777a44b6344d432b466f50910ded3075f",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 1.37171e-05,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 73400320,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 1006.839529472,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "isp9606",
+      "path": "input/Aralia/isp9606.xml",
+      "sha256": "3e9651f6a77be5a8865af12cde54c0143df628b05a07f2ffa8d213deb525c1c7",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.05431735536,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 56955.87521396736,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "isp9607",
+      "path": "input/Aralia/isp9607.xml",
+      "sha256": "9199304065d39f4bf4291940a496e90225f2fabb000b5fbd967f9cd49bf93222",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 9.4951e-07,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy",
+        "hard"
+      ],
+      "perf_reason": null,
+      "notes": "n·p = 95.6 at the 100663296 trial cap (fzb --trials 1e8); 1000 hits would need n ≈ 1.05e+09, which is outside the accuracy time budget.",
+      "accuracy": {
+        "check": "low_power",
+        "reason": "expected hits n·p_ref = 95.6 at 100663296 trials (below 1000; the 4-sigma check is underpowered)"
+      },
+      "trials": {
+        "accuracy": 100663296,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 95.58080618496001,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "jbd9601",
+      "path": "input/Aralia/jbd9601.xml",
+      "sha256": "786d272039be270bd612e3b9602f157c77ed78123d0ab8d1d31a20243441dc56",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 0.7550906151,
+        "source": "bdd",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "tools/server/src/fuzzybits_server/model_oracle_p.json"
+      },
+      "tags": [
+        "accuracy"
+      ],
+      "perf_reason": null,
+      "notes": null,
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 1048576,
+        "perf": null,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": 791769.8968190976,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "nus9601",
+      "path": "input/Aralia/nus9601.xml",
+      "sha256": "7dd1b137b93acd03df1122849dace475636b6e20aaf2fa025f0f19f27880dd4b",
+      "source": "aralia",
+      "submodule_commit": null,
+      "query": "r1",
+      "query_note": null,
+      "reference": {
+        "probability": 9.94453321e-06,
+        "source": "nombrillo (Kirill Shumilov, @kshumilov)",
+        "kind": "exact",
+        "uncertainty": 0.0,
+        "citation": "https://github.com/fuzzybit-org/fuzzybits/issues/120"
+      },
+      "tags": [
+        "accuracy",
+        "perf",
+        "hard"
+      ],
+      "perf_reason": "1,567 basic events (largest Aralia sampler). #20: the fused BE tile does not fit in shared memory and falls back to per-work-group global scratch.",
+      "notes": "Accuracy n is 100663296 (96·2^20, same as fzb --trials 1e8) so n·p ≈ 1001. CPU accuracy budget is 180s (3× the 60s default) because the sampler walks 1,567 events. fzb inspect --exact refuses 1,567 SAMPLE events (cap 30); scram-cli --bdd/--zbdd OOMs on this model.",
+      "accuracy": {
+        "check": "feasible",
+        "reason": null
+      },
+      "trials": {
+        "accuracy": 100663296,
+        "perf": 100663296,
+        "cpu_perf": 8388608
+      },
+      "expected_hits_accuracy": 1001.0494901000601,
+      "time_budget_s": {
+        "cpu_accuracy": 180,
+        "cpu_perf": 180,
+        "gpu_perf": 30,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN1/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN1_et_Grp-1_24-02-26_15-57-10.xml",
+      "sha256": "36409f618616b33f27bbf63a67b2f80fec5c794ad4af8ee6c1011c7a08b135ca",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN1/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN1_et_Grp-2_24-02-26_15-57-14.xml",
+      "sha256": "f14ee7eff461f69a830a9db5e8138c732f3eb8bca4139ad25cee67f0b5ddff0b",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN1/Grp-3",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN1_et_Grp-3_24-02-26_15-57-16.xml",
+      "sha256": "28be494ee6d957d79ce6d2b786b87ad0f036d1d4241e33fb3483632989c0227f",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN1/Grp-4",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN1_et_Grp-4_24-02-26_15-57-18.xml",
+      "sha256": "0000f278cb421f640e55b596d238d9babaae2e9e771d99cce82d36a25633631a",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT12' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN1/Grp-5",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN1_et_Grp-5_24-02-26_15-57-19.xml",
+      "sha256": "c8b88ab78374b19512f7c9096764d564db5c232b23554921078aa24b064ddcf1",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT12' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN1/Grp-6",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN1_et_Grp-6_24-02-26_15-57-20.xml",
+      "sha256": "400d348fd91efaf1f6fc8a4902074a717ffc6bd185eb561d78da77d79ee9bb38",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN2/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN2_et_Grp-1_24-02-26_15-57-25.xml",
+      "sha256": "aea7acc9f872281cd451e61f5d53a8e52c1e536d57d26ceb241c42f5477b0afc",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN2/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN2_et_Grp-2_24-02-26_15-57-28.xml",
+      "sha256": "6378c4f6736e181430a35ca2016f0eabffd7f7a2f0d6f0b286f83a12d72cb3fb",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN2/Grp-3",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN2_et_Grp-3_24-02-26_15-57-28.xml",
+      "sha256": "daf1f86191df5cf99a3dddd7f2b7fd767463d80e46ba09546e8f3b23e7331a66",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN2/Grp-4",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN2_et_Grp-4_24-02-26_15-57-29.xml",
+      "sha256": "0fac2f2568fcb8c357655efb70044eae7bc52dddf8b33a0dc9819233ce0d2758",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN2/Grp-5",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN2_et_Grp-5_24-02-26_15-57-32.xml",
+      "sha256": "58dcd57df548b5fc7738ebd225c86ea94ed65a1d7b5ea453e9b179779a18ef97",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN2/Grp-6",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN2_et_Grp-6_24-02-26_15-57-37.xml",
+      "sha256": "b0fd6c06dc35a60fd972bd62765c7d0145452a3b9a96aaa334a9692d632ff525",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN3/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN3_et_Grp-1_24-02-26_15-57-39.xml",
+      "sha256": "a167f2cc9d04611237d8b15f6ea6487389f59817d822b98fc3ce332541cb207d",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN3/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN3_et_Grp-2_24-02-26_15-57-44.xml",
+      "sha256": "42a433429ffeb96a28423732f8a5a29fad2fc210456b287bbf18abdda16994cb",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN3/Grp-3",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN3_et_Grp-3_24-02-26_15-57-46.xml",
+      "sha256": "4d934578a839c179fcf59502814bf840f804b9f85fc2181b18755484c9172037",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN3/Grp-4",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN3_et_Grp-4_24-02-26_15-57-49.xml",
+      "sha256": "acbc33d8f2cb2997713ac5ea4c6707463b19ec1386cde887025f6c5703c805f0",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN3/Grp-5",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN3_et_Grp-5_24-02-26_15-57-54.xml",
+      "sha256": "954de0aa9e1f0e0fe9431a93e6706410d3c3a4433ef07c6c11a8c2592c7a90f1",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN3/Grp-6",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN3_et_Grp-6_24-02-26_15-57-55.xml",
+      "sha256": "00124274798b276f69c315656f74900b86f5197e07315a9bfa0e41f19648055f",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN4/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN4_et_Grp-1_24-02-26_15-57-57.xml",
+      "sha256": "746fc2ff49df8a2323b63126bcfad55a54945dfec153420e828dd9234830e891",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN4/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN4_et_Grp-2_24-02-26_15-58-00.xml",
+      "sha256": "250caf4d1028e56f880975c625b97bedb969e3e1e7fb3040cdf1ae0574f25fe2",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN4/Grp-3",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN4_et_Grp-3_24-02-26_15-58-03.xml",
+      "sha256": "cd317da692240d6a3481a67cfa5e561085ab1c2f689dc44b1787dfb2104b1501",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN4/Grp-4",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN4_et_Grp-4_24-02-26_15-58-03.xml",
+      "sha256": "49567432b1dbd1d1e0dfe0aab5b372200c27e76f108492cbe05fa2dc75af4a4a",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN4/Grp-5",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN4_et_Grp-5_24-02-26_15-58-09.xml",
+      "sha256": "91dfacba65c3835ac3a79b09a1463734d04d10efe76e809435cebfe05f58cba5",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6. Known compile failure: MEF initialize: Undefined Element Error. FT42 and FT44 define-gate G300 (private) reference <gate name=\"G3\"/>, but G3 is not defined in this file; it is define-gate G3 role=private inside FT3 of sibling converted_EQK-BIN4 Grp-1/2/6. FT51 define-gate G227 references <gate name=\"G10\"/>, and G10 is not defined in any of the 95 converted OpenPSA XMLs. The SAPHIRE→OpenPSA split dropped those gates. Dataset (generic-pwr-model converter), not the engine.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      },
+      "compile": {
+        "expected": "undefined_element",
+        "missing_elements": [
+          "G3",
+          "G10"
+        ],
+        "reason": "MEF initialize: Undefined Element Error. FT42 and FT44 define-gate G300 (private) reference <gate name=\"G3\"/>, but G3 is not defined in this file; it is define-gate G3 role=private inside FT3 of sibling converted_EQK-BIN4 Grp-1/2/6. FT51 define-gate G227 references <gate name=\"G10\"/>, and G10 is not defined in any of the 95 converted OpenPSA XMLs. The SAPHIRE→OpenPSA split dropped those gates. Dataset (generic-pwr-model converter), not the engine."
+      }
+    },
+    {
+      "id": "EQK-BIN4/Grp-6",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN4_et_Grp-6_24-02-26_15-58-10.xml",
+      "sha256": "da4813a30b3b9c4a94a4bcf291cc584cdf41f089cf6d56a0e2c1eaa13b3a8675",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6. Known compile failure: MEF initialize: Undefined Element Error. G3 is define-gate role=private in FT3 of this same file, but G300 in FT4, FT26, FT42, FT44, FT55, FT56, FT57 and FT121 references <gate name=\"G3\"/> without a path. OpenPSA private gates are fault-tree local; the engine correctly rejects the cross-tree use. Sibling EQK-BIN4/Grp-2 compiles because those FTs do not reference G3. Converter cloned G300 into every FT without cloning G3. Dataset, not the engine.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      },
+      "compile": {
+        "expected": "undefined_element",
+        "missing_elements": [
+          "G3"
+        ],
+        "reason": "MEF initialize: Undefined Element Error. G3 is define-gate role=private in FT3 of this same file, but G300 in FT4, FT26, FT42, FT44, FT55, FT56, FT57 and FT121 references <gate name=\"G3\"/> without a path. OpenPSA private gates are fault-tree local; the engine correctly rejects the cross-tree use. Sibling EQK-BIN4/Grp-2 compiles because those FTs do not reference G3. Converter cloned G300 into every FT without cloning G3. Dataset, not the engine."
+      }
+    },
+    {
+      "id": "EQK-BIN5/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN5_et_Grp-1_24-02-26_15-58-12.xml",
+      "sha256": "d951eb7cfc01c0ae11f6a665cb7a6a1d33584e666e28a65c620bbd1b1679c0c7",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN5/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN5_et_Grp-2_24-02-26_15-58-15.xml",
+      "sha256": "a73cc0b7b196b2287e20c2165feedb5be9ecc0c39759f7a98b61f589a7d20637",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6. Known compile failure: MEF initialize: Undefined Element Error. Event-tree fork uses functional-event=\"F44\" (line 163 of converted_EQK-BIN5_et_Grp-2_…xml); the defined name is FE44 (label LPR-FT). Sibling groups use FE44. Also the same cross-FT private G3 reference as EQK-BIN4/Grp-6 (G300 in FT4/26/42/44/55/56/57/121, G3 private to FT3). Dataset (typo + converter clone), not the engine.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      },
+      "compile": {
+        "expected": "undefined_element",
+        "missing_elements": [
+          "F44",
+          "G3"
+        ],
+        "reason": "MEF initialize: Undefined Element Error. Event-tree fork uses functional-event=\"F44\" (line 163 of converted_EQK-BIN5_et_Grp-2_…xml); the defined name is FE44 (label LPR-FT). Sibling groups use FE44. Also the same cross-FT private G3 reference as EQK-BIN4/Grp-6 (G300 in FT4/26/42/44/55/56/57/121, G3 private to FT3). Dataset (typo + converter clone), not the engine."
+      }
+    },
+    {
+      "id": "EQK-BIN5/Grp-3",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN5_et_Grp-3_24-02-26_15-58-18.xml",
+      "sha256": "7fb9448e19b9129d3fa830de367e93e24b179fee7fe200ab12258944887b6b2b",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN5/Grp-4",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN5_et_Grp-4_24-02-26_15-58-18.xml",
+      "sha256": "6242f8ea46b604caa1781e1846ea9cb2386fc7e502c40c891a6fe9063803b987",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN5/Grp-5",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN5_et_Grp-5_24-02-26_15-58-31.xml",
+      "sha256": "2fd8bad8bcdd26c91101baa1f612f97563b4db2b2a52a700119a947dfd8d233f",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN5/Grp-6",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN5_et_Grp-6_24-02-26_15-58-32.xml",
+      "sha256": "ee8d3a50ff56d85d1bd9f6f54e7aa7bc54f2474d5154442085944f242d8bdafc",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN6/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN6_et_Grp-1_24-02-26_15-58-35.xml",
+      "sha256": "1059f0cef1d210c354cd8114248cd7ec7600c00ddd8bba93c3253321db52aea6",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN6/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN6_et_Grp-2_24-02-26_15-58-38.xml",
+      "sha256": "a6608044dfe3a9be1d7244eb93258935448c3ec1cfa59444057007872e0764e2",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN6/Grp-3",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN6_et_Grp-3_24-02-26_15-58-39.xml",
+      "sha256": "7c5e1e54d14c94ccf002817c29760831e34ce9ac3d05c18842bb58c0519f2092",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN6/Grp-4",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN6_et_Grp-4_24-02-26_15-58-40.xml",
+      "sha256": "b4dd1864dcda0ca026b309cb8a4889803af3fcd7732ab69b4e9c12f7bf178ee6",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN6/Grp-5",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN6_et_Grp-5_24-02-26_15-58-42.xml",
+      "sha256": "5a5400f83db04ce4158165a9a86828207c6ab7281b1ddada90959bf0a66b3c02",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN6/Grp-6",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN6_et_Grp-6_24-02-26_15-58-45.xml",
+      "sha256": "c1648849fa679d74e1bcdc3fc5a0922b46e587c20e47e99b5f043a3881f10fdd",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "EQK-BIN7/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_EQK-BIN7_et_Grp-1_24-02-26_15-58-50.xml",
+      "sha256": "198aab2009556387d18be622d6f7029b2ab70cdf8537f031fbb372bc6661ed1e",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT132' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-4160VACA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-4160VACA_et_Grp-1_24-02-26_15-58-50.xml",
+      "sha256": "ee1a208d2d9dacfc5bccb270821ae7886ca225661fa5fee278b481d48024309f",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-4160VACB/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-4160VACB_et_Grp-1_24-02-26_15-58-53.xml",
+      "sha256": "edfab9013fd3670cccde0a90beb85d2ab075c20537fd77351c6b0e511198c643",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-AFW-ROOM/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-AFW-ROOM_et_Grp-1_24-02-26_15-59-01.xml",
+      "sha256": "53554a6213e9bf74351b9501b30d208fb721e55afadce57a89dfe5b00fddaac6",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-CCW-ROOMA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-CCW-ROOMA_et_Grp-1_24-02-26_15-59-07.xml",
+      "sha256": "838ed4922617d7935d2958b6798d020e98ac8451c27610e4738b5d9e9e8a8aa8",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-CCW-ROOMB/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-CCW-ROOMB_et_Grp-1_24-02-26_15-59-09.xml",
+      "sha256": "37bf0f03ddd929ff966d4e0eef10f3ccb3fe8b7c3119154c948de8da8c02c0c1",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-CCW-ROOM/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-CCW-ROOM_et_Grp-1_24-02-26_15-59-04.xml",
+      "sha256": "d0d274e6c8e8fcea7fb1525a173895fbe937eae05bfe20d10394c4b77552fce8",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-CVC-ROOM/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-CVC-ROOM_et_Grp-1_24-02-26_15-59-13.xml",
+      "sha256": "a55e96bee00de3f70f502e5c8a68d16200d8cdba5c23080812262ade0c628747",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-RHR-ROOM/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-RHR-ROOM_et_Grp-1_24-02-26_15-59-17.xml",
+      "sha256": "04b0d7d4192ef2709039dfa1844f058a23cba0e4602f9780c914aba7cfa65afd",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-SWS-ROOMA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-SWS-ROOMA_et_Grp-1_24-02-26_15-59-23.xml",
+      "sha256": "79e595769426fd77979c6e25e08a3a2e9e776c1b4da1cbd06d683d80ad254e54",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-SWS-ROOMB/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-SWS-ROOMB_et_Grp-1_24-02-26_15-59-26.xml",
+      "sha256": "9288f602c4f8e3129abde5646fe6d315a22925de76cb076aeaa30103ba10918c",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FLI-SWS-ROOM/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FLI-SWS-ROOM_et_Grp-1_24-02-26_15-59-20.xml",
+      "sha256": "4799462b453ff516c82b32e49ba675ead84edc4b0177965a2bdbc06ae58414b9",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-AB-AFWAB/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-AB-AFWAB_et_Grp-1_24-02-26_15-59-29.xml",
+      "sha256": "e2a28792af3eccba9e383198081e546a87eb7ae108c4bcfab68603fc2e4f2852",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-AB-CCWBC/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-AB-CCWBC_et_Grp-1_24-02-26_15-59-32.xml",
+      "sha256": "f38d54e15f92dea3ecc9d24d73b1c1a4e5c2cd58e9a292ee8cfd3b0959bd9f87",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-AB-LOOP-DIVA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-AB-LOOP-DIVA_et_Grp-1_24-02-26_15-59-41.xml",
+      "sha256": "85f0fe1ba55d6fc8e5edd8ed06a3e75d9a208da0188039745be109be87f37174",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-AB-LOOP-DIVB/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-AB-LOOP-DIVB_et_Grp-1_24-02-26_15-59-46.xml",
+      "sha256": "2424d3b098fcfad56196910befe4cfe6895e539225bc874960b0446c34240b61",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-AB-LOOP/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-AB-LOOP_et_Grp-1_24-02-26_15-59-35.xml",
+      "sha256": "c825e5262cb2996f20b016e2a0fa232411e6d99bc8f91dd15788db5ca0e3717d",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-AB-RHRA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-AB-RHRA_et_Grp-1_24-02-26_15-59-51.xml",
+      "sha256": "6dfb13be4ce2cd4f5a5a3def1e94e4ba3ab5cd3291a8db1d49e9e58f9c7a699b",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-AB-SIS/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-AB-SIS_et_Grp-1_24-02-26_15-59-54.xml",
+      "sha256": "53e5e5bd70ba1fd347024af2f94acb0190b2428de99d932d62264bb1b3ffeaff",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-AB-SLOCA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-AB-SLOCA_et_Grp-1_24-02-26_16-00-06.xml",
+      "sha256": "ace7c40b14d87fa4347a9bdb08b2aee4ac50283cabf66684d1273c3f825d29c9",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-MCR/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-MCR_et_Grp-1_24-02-26_16-00-09.xml",
+      "sha256": "e22bf8190ffc1d98ee89cb8f32dbbff6fc100703118d3bc57ff93ada771826dd",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT62' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "FRI-SWS-BLD/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_FRI-SWS-BLD_et_Grp-1_24-02-26_16-00-10.xml",
+      "sha256": "4e5031372932dacc2ed0d826a37850d3dfc438f3fcb9b939feb121a580bc01fa",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HCN-BIN1/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HCN-BIN1_et_Grp-1_24-02-26_16-00-13.xml",
+      "sha256": "72ebde6585e80a6fc4fad6262ba396d83e76eeadbe1b0450d93120ef27e5c579",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HCN-BIN1/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HCN-BIN1_et_Grp-2_24-02-26_16-00-16.xml",
+      "sha256": "f493be4f3d86225d3e9e1964a0b3b13dd8139829125794f205a29a052af2b65d",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HCN-BIN2/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HCN-BIN2_et_Grp-1_24-02-26_16-00-21.xml",
+      "sha256": "45d72fdbf6241f50c24d63523e4c93ffdb0b2964945e84e75e5f12a13d5e3283",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HCN-BIN2/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HCN-BIN2_et_Grp-2_24-02-26_16-00-24.xml",
+      "sha256": "387449f5cfbfc48f904dd4fc2465374aaed383752549f646c7293378210af2dc",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HCN-BIN3/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HCN-BIN3_et_Grp-1_24-02-26_16-00-30.xml",
+      "sha256": "371dcf0e300a61e48b80c8af4309a9f90740c4aa1553a155bc0640830e37d7d8",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HCN-BIN3/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HCN-BIN3_et_Grp-2_24-02-26_16-00-33.xml",
+      "sha256": "60e24e473a8005668725edd0ca88fefbaf46eb2dddf9b418986062719a35e47c",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HCN-BIN4/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HCN-BIN4_et_Grp-1_24-02-26_16-00-42.xml",
+      "sha256": "85db280f4c43eb9f8824f249bf77871356f975c732383e47db298b3798848de3",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HCN-BIN4/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HCN-BIN4_et_Grp-2_24-02-26_16-00-45.xml",
+      "sha256": "1ba03f5a95ccd9e06478489ca3d15934ed10d989b0159b2235e9d8203f7e82b2",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HWD-96MPH/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HWD-96MPH_et_Grp-1_24-02-26_16-00-50.xml",
+      "sha256": "3cb82e60e6ded826b03fa5fac428c222734717e91f22785f6aea02e87a605146",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "HWD-96MPH/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_HWD-96MPH_et_Grp-2_24-02-26_16-00-53.xml",
+      "sha256": "b0fea96c2778ad6a50ea47ba2fad3bf50318dd46b59a7ffc27831d28974c0726",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "ISL-RHR-CL/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_ISL-RHR-CL_et_Grp-1_24-02-26_16-01-01.xml",
+      "sha256": "65f4b8776cf957db603382b8c740f855f93925bbb634fe1cd2130693455760d8",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT68' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "ISL-RHR-HL/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_ISL-RHR-HL_et_Grp-1_24-02-26_16-01-01.xml",
+      "sha256": "86f878dd073fa62a7affc7e56d44d14e325aef985fa12de0cb13d4059824f20d",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT69' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "L4160ACA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_L4160ACA_et_Grp-1_24-02-26_16-01-01.xml",
+      "sha256": "e52c3e5613082d6e57fd7a03188043faec840563130114d35a0ca8d58b037531",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "L4160ACB/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_L4160ACB_et_Grp-1_24-02-26_16-01-05.xml",
+      "sha256": "f916c756bcfd23366e9bde37035254a955f7d91eb3f85bfbc3b6d459138308f3",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LLOCA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LLOCA_et_Grp-1_24-02-26_16-01-08.xml",
+      "sha256": "14ac0d7ad7b8d42dbbe50ed52143e16d7092d106b546453e491c107778c01261",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT42' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LOCCW/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LOCCW_et_Grp-1_24-02-26_16-01-09.xml",
+      "sha256": "aa2140d45537dd2a3b19dbde82d7af3bdf28965bf98c13f97b848901dc6f4fef",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LODCA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LODCA_et_Grp-1_24-02-26_16-01-12.xml",
+      "sha256": "5179933cbc0b2ee9bf718ae5e902be08992858713f2a02b7f87a0b7114b00f5d",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LODCB/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LODCB_et_Grp-1_24-02-26_16-01-15.xml",
+      "sha256": "5cff4c6968c48164fd5f6b190611782a3ade0f5fc9af0b0db3839d759eae6d4e",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LOMFW/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LOMFW_et_Grp-1_24-02-26_16-01-18.xml",
+      "sha256": "4905380a38ea69e1771a2fb252891c53c90e4b9994d2b6357bbd56ac82349360",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LOOPGR/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LOOPGR_et_Grp-1_24-02-26_16-01-22.xml",
+      "sha256": "a845f5db8bb80c01fd08bc4f7676ec1329708452a21dd7b002ac3a2f7df1b192",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LOOPPC/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LOOPPC_et_Grp-1_24-02-26_16-01-27.xml",
+      "sha256": "6e40c29b72caf0637032a734a1e0e93a627c5e956fb684604c35f605315d219e",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LOOPSC/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LOOPSC_et_Grp-1_24-02-26_16-01-32.xml",
+      "sha256": "fbdef328986c1a6cc97155a690b689099b4bc32186f2cd6eadf698cdd6245819",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LOOPWR/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LOOPWR_et_Grp-1_24-02-26_16-01-38.xml",
+      "sha256": "ed4964945f3be021b7275ce48390b4ea108603951345b8ad308a9d526743a5c3",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LSSB/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LSSB_et_Grp-1_24-02-26_16-01-46.xml",
+      "sha256": "29a54d6d83da8ca97ea6a3f40bf13d58661b830c7cf5cb640ee041b897daf4a0",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT62' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LSSB/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LSSB_et_Grp-2_24-02-26_16-01-46.xml",
+      "sha256": "b9aa7e0cb27c35f3547e0283788ab30a1165e9669f2f4d5b5576265ebe4e2770",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "LSSB/Grp-3",
+      "path": "input/generic-pwr-model/data/openpsa/converted_LSSB_et_Grp-3_24-02-26_16-01-47.xml",
+      "sha256": "0b656a833407d34a2bcdce901f646188b22e6ff4d2ff25f6c9ed95e790998925",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "MLOCA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_MLOCA_et_Grp-1_24-02-26_16-01-50.xml",
+      "sha256": "7264ed5ad1497364397c45d51cb0b1f8c77b6943ea60404e9ae30ca79be77a69",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT26' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "SGTR/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_SGTR_et_Grp-1_24-02-26_16-01-51.xml",
+      "sha256": "025a00799af00aec6d38a78796f90670afb4ff8e1f932d45796bede5f1d19f7c",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "SLOCA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_SLOCA_et_Grp-1_24-02-26_16-01-54.xml",
+      "sha256": "444326ad21a1e6b2bb413e874453aa46d19c3385b572b6e383f8aa0130bc092c",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "TOR-BIN1/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_TOR-BIN1_et_Grp-1_24-02-26_16-01-57.xml",
+      "sha256": "1b3d1ace897a13ad30496df7aefeafeee575c8a0d1fc6184b07c419baa95d9ac",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "TOR-BIN1/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_TOR-BIN1_et_Grp-2_24-02-26_16-01-59.xml",
+      "sha256": "701890ac69668df1eeabf83df064a43bee23629e68a0a6fddca7e1421145ec35",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "TOR-BIN2/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_TOR-BIN2_et_Grp-1_24-02-26_16-02-07.xml",
+      "sha256": "394f861619d3c9c8da75d5dec5da29deec727fcc528b276f5810358abafccb91",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "TOR-BIN2/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_TOR-BIN2_et_Grp-2_24-02-26_16-02-10.xml",
+      "sha256": "0d0b2474fe8dae5f0deaeb48f67d4125b905bef5e2b63c90059d8cea81e8fbe1",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "TOR-BIN3/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_TOR-BIN3_et_Grp-1_24-02-26_16-02-15.xml",
+      "sha256": "581bbadcbfa6fe04fe3e24618cf83d1686aa399dd9e91802f6d83ed2353474d0",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "TOR-BIN3/Grp-2",
+      "path": "input/generic-pwr-model/data/openpsa/converted_TOR-BIN3_et_Grp-2_24-02-26_16-02-18.xml",
+      "sha256": "df886fbef19db6af0092210abfc815c233140d11cf8ee5d39196ae375c9c561a",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT2' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "TRANS/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_TRANS_et_Grp-1_24-02-26_16-02-24.xml",
+      "sha256": "9943f1de5257fab15caaa75842a262076e0fb4a905d28a8941720e1c4d47be7e",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT3' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    },
+    {
+      "id": "XLOCA/Grp-1",
+      "path": "input/generic-pwr-model/data/openpsa/converted_XLOCA_et_Grp-1_24-02-26_16-02-27.xml",
+      "sha256": "a314e936727fd2e2153ba53135e57dd0f7af85a8a7a37699fe6ce6401a3537fd",
+      "source": "pwr",
+      "submodule_commit": "ce2ef006ab3880e1982e8dd38e87149f6d54d603",
+      "query": "TOP",
+      "query_note": "first fault-tree 'FT133' top; event-tree sequences are not compiled (#92). SAPHIRE MCS references are not used for accuracy in v1.",
+      "reference": null,
+      "tags": [
+        "pwr"
+      ],
+      "accuracy": {
+        "check": "n/a",
+        "reason": "v1 PWR is compile/size/throughput only; SAPHIRE MCS references are not a 4-sigma gate (#92, #17, #6)"
+      },
+      "perf_reason": null,
+      "notes": "v1 is compile/size/throughput only. SAPHIRE MCS probabilities are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 quantize to zero (#17). Revisit accuracy with #92, #17, #6.",
+      "trials": {
+        "accuracy": null,
+        "perf": 100663296,
+        "cpu_perf": null
+      },
+      "expected_hits_accuracy": null,
+      "time_budget_s": {
+        "cpu_accuracy": 60,
+        "cpu_perf": 60,
+        "gpu_perf": 15,
+        "cpu_compile": 120
+      }
+    }
+  ]
+}
