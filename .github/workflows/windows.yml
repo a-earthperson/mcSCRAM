@@ -241,6 +241,8 @@ jobs:
             -DAdaptiveCpp_DIR="$env:AdaptiveCpp_DIR" `
             -DCMAKE_C_COMPILER="$clang" `
             -DCMAKE_CXX_COMPILER="$clang" `
+            -DCMAKE_C_FLAGS="-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX" `
+            -DCMAKE_CXX_FLAGS="-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX" `
             -DBUILD_TESTING=ON `
             -DBUILD_PYTHON_BINDINGS=ON `
             -DMALLOC_TYPE=malloc
@@ -300,6 +302,8 @@ jobs:
             --config-settings=cmake.define.OPTIMIZE_FOR_NATIVE=OFF `
             --config-settings=cmake.define.CMAKE_C_COMPILER="$clang" `
             --config-settings=cmake.define.CMAKE_CXX_COMPILER="$clang" `
+            --config-settings=cmake.define.CMAKE_C_FLAGS="-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX" `
+            --config-settings=cmake.define.CMAKE_CXX_FLAGS="-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX" `
             --config-settings=cmake.define.AdaptiveCpp_DIR="$env:AdaptiveCpp_DIR" `
             --config-settings=cmake.define.CMAKE_PREFIX_PATH="$env:CMAKE_PREFIX_PATH"
           if ($LASTEXITCODE -ne 0) { throw "pip wheel failed ($LASTEXITCODE)" }
