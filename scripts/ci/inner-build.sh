@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Commands run *inside* the toolchain container (workdir /src).
-# Usage: inner-build.sh <preset> <configure|product|tests|ctest-omp|ctest-mc|cuobjdump-sm70|ccache-stats|smoke|wheel>
+# Usage: inner-build.sh <preset> <configure|product|tests|ctest-omp|ctest-mc|cuobjdump-sm70|ccache-stats|smoke|spine|wheel>
 set -euo pipefail
 cd /src
 git config --global --add safe.directory /src || true
@@ -126,6 +126,15 @@ case "${cmd}" in
     echo "smoke scram-cli=${cli}"
     # docker/smoke.sh wraps every model in `timeout 60` inside this container.
     /src/docker/smoke.sh chinese baobab1 das9201
+    ;;
+  spine)
+    export SPINE_BACKEND="${SPINE_BACKEND:-omp}"
+    export SPINE_TRIALS="${SPINE_TRIALS:-4194304}"
+    export SPINE_TIMEOUT="${SPINE_TIMEOUT:-60}"
+    export SPINE_Z_MAX="${SPINE_Z_MAX:-4}"
+    echo "spine backend=${SPINE_BACKEND} trials=${SPINE_TRIALS}"
+    # scripts/ci/spine.sh wraps every fzb run in `timeout 60` inside this container.
+    /src/scripts/ci/spine.sh
     ;;
   wheel)
     ensure_ccache

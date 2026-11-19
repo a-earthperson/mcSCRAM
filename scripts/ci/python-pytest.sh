@@ -21,3 +21,36 @@ python3 -m venv /tmp/fb-venv
 export ACPP_VISIBILITY_MASK=omp
 export FUZZYBITS_BACKEND=omp
 /tmp/fb-venv/bin/pytest tests/python -q -m 'not gpu' -o pythonpath=
+
+# Issue #45 Python smoke: exact public API, timeout 60 inside this container.
+echo "python spine: chinese compile → run (omp, timeout 60)"
+timeout 60 /tmp/fb-venv/bin/python - <<'PY'
+import math
+import sys
+
+import fuzzybits
+
+REF = 1.17058e-3
+Z_MAX = 4.0
+TRIALS = 1 << 20  # 2^20: chinese finishes in seconds on hosted CPU
+
+pcfb = fuzzybits.compile(["input/Aralia/chinese.xml"])
+summary = fuzzybits.inspect(pcfb)
+if summary.get("diagnostics"):
+    print("inspect diagnostics:", summary["diagnostics"], file=sys.stderr)
+    sys.exit(1)
+rows = fuzzybits.run(pcfb, trials=TRIALS, backend="omp")
+if not rows:
+    print("error: fuzzybits.run returned no queries", file=sys.stderr)
+    sys.exit(1)
+row = rows[0]
+n = float(row.n)
+sigma = math.sqrt(max(row.estimate * (1.0 - row.estimate), 0.0) / n) if n else float("nan")
+z = (row.estimate - REF) / sigma if sigma > 0 else float("inf")
+ok = abs(z) <= Z_MAX
+print(
+    f"chinese  p̂={row.estimate:.6e}  p_ref={REF:.6e}  |z|={abs(z):.3f}  "
+    f"n={row.n}  ok={ok}"
+)
+sys.exit(0 if ok else 1)
+PY

@@ -93,9 +93,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: generic (SSCP) product + ctest -L mc + smoke
+      - name: generic (SSCP) product + ctest -L mc + smoke + spine
         run: scripts/ci/gpu-test.sh generic
-      - name: cuda-sm70 (SMCP) product + ctest -L mc + smoke
+      - name: cuda-sm70 (SMCP) product + ctest -L mc + smoke + spine
         run: scripts/ci/gpu-test.sh cuda-sm70
       - name: Drop this job's container
         if: always()
@@ -166,7 +166,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: generic (SSCP) product + ctest -L mc + smoke
+      - name: generic (SSCP) product + ctest -L mc + smoke + spine
         run: scripts/ci/gpu-test.sh generic
       - name: Drop this job's container
         if: always()
@@ -237,7 +237,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: generic (SSCP) product + ctest -L mc + smoke
+      - name: generic (SSCP) product + ctest -L mc + smoke + spine
         run: scripts/ci/gpu-test.sh generic
       - name: Drop this job's container
         if: always()
