@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+# Optional data mount from fuzzybits-bench (CSVs, OpenPSA/Aralia XML).
+# Historical run tables stay in that private repo; this tree never ships them.
+SERVER_DATA_DIR_ENV = "FUZZYBITS_SERVER_DATA_DIR"
+_LEGACY_DEFAULT_INPUT = Path("/app/input/SmallTree.xml")
 
 
 def env_bool(name: str, default: bool) -> bool:
@@ -20,9 +26,51 @@ def env_float(name: str, default: float) -> float:
     return float(raw)
 
 
+def server_data_dir() -> Path | None:
+    """Directory of optional bench data (CSVs, model XML).
+
+    Set ``FUZZYBITS_SERVER_DATA_DIR`` to a fuzzybits-bench checkout or mount.
+    Returns ``None`` when unset or not a directory — the server still starts;
+    model listing is empty and default input files are omitted.
+    """
+    raw = os.getenv(SERVER_DATA_DIR_ENV, "").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    return path if path.is_dir() else None
+
+
+def optional_table_path(name: str) -> Path | None:
+    """Locate ``compiler.csv`` / ``convergence.csv`` under the data dir.
+
+    These tables are not imported into this public repo. fuzzybits-bench can
+    mount its copies via ``FUZZYBITS_SERVER_DATA_DIR``.
+    """
+    data = server_data_dir()
+    if data is None:
+        return None
+    path = data / name
+    return path if path.is_file() else None
+
+
 def input_files_from_env() -> list[str]:
-    raw = os.getenv("MCSCRAM_INPUT_FILES", "/app/input/SmallTree.xml")
-    return [part.strip() for part in raw.replace(":", ",").split(",") if part.strip()]
+    raw = os.getenv("MCSCRAM_INPUT_FILES")
+    if raw is not None:
+        return [part.strip() for part in raw.replace(":", ",").split(",") if part.strip()]
+
+    data = server_data_dir()
+    if data is not None:
+        for candidate in (
+            data / "SmallTree.xml",
+            data / "input" / "SmallTree.xml",
+            data / "input" / "SmallTree" / "SmallTree.xml",
+        ):
+            if candidate.is_file():
+                return [str(candidate)]
+
+    if _LEGACY_DEFAULT_INPUT.is_file():
+        return [str(_LEGACY_DEFAULT_INPUT)]
+    return []
 
 
 def options_from_env() -> dict[str, Any]:

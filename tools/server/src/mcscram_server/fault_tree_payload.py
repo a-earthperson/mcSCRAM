@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from mcscram_server.config import server_data_dir
 from mcscram_server.native import CompileProduct, native_import_error, run_compile_isolated
 
 
@@ -205,17 +206,43 @@ def _infer_fault_tree_top(
 
 
 def aralia_model_search_roots() -> list[Path]:
+    """Search roots for OpenPSA/Aralia ``*.xml`` models.
+
+    Missing directories are skipped by callers. With no data mount the catalog
+    is empty; the server still serves ``/healthz`` and the pytest suite.
+    """
     roots: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Path) -> None:
+        key = str(path)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(path)
+
     env_root = os.getenv("MCSCRAM_ARALIA_INPUT_DIR")
     if env_root:
-        roots.append(Path(env_root))
-    # The server image copies `input/*` into `/app/input/`, which flattens the
-    # Aralia XML files beside the legacy fixture inputs.
-    roots.append(Path("/app/input"))
-    roots.append(Path("/app/input/Aralia"))
-    repo_aralia = Path(__file__).resolve().parents[4] / "input" / "Aralia"
-    if repo_aralia.is_dir():
-        roots.append(repo_aralia)
+        _add(Path(env_root))
+
+    data = server_data_dir()
+    if data is not None:
+        _add(data)
+        _add(data / "Aralia")
+        _add(data / "input")
+        _add(data / "input" / "Aralia")
+
+    # Legacy bench image copies `input/*` into `/app/input/` (flattened).
+    _add(Path("/app/input"))
+    _add(Path("/app/input/Aralia"))
+
+    # Walk up from this file to the fuzzybits repo root (the directory that
+    # contains tools/server/pyproject.toml). Installed copies may live at a
+    # shorter path than the source tree; skip rather than IndexError.
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "tools" / "server" / "pyproject.toml").is_file():
+            _add(parent / "input" / "Aralia")
+            break
     return roots
 
 

@@ -1,4 +1,13 @@
 # syntax=docker/dockerfile:1.10.0
+#
+# LEGACY — do not build this image in CI (.github/workflows/server.yml
+# runs pytest only). This file rebuilds the Monte Carlo engine from a
+# `src/mcSCRAM` git submodule and copies `src/server/` plus `input/Aralia/`
+# — the fuzzybits-bench layout. After the move to `tools/server/` those
+# COPY paths do not exist in this repository, so the image cannot be built
+# from here. Step E of #46 replaces it with an image based on the runtime
+# image plus the `fuzzybits` wheel. Kept as a historical recipe only.
+#
 #FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04 AS base
 # FROM nvidia/cuda:12.9.2-cudnn-devel-ubuntu24.04 AS base
 FROM nvcr.io/nvidia/cuda-dl-base:26.04-cuda13.2-devel-ubuntu24.04 AS base
