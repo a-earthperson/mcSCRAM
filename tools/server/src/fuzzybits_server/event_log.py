@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from mcscram_server.config import env_bool
+from fuzzybits_server.config import env_bool
 
 
 def log_events_to_stdout() -> bool:

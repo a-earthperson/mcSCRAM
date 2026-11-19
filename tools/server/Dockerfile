@@ -2,7 +2,7 @@
 #
 # FastAPI server image on top of the slim fuzzybits runtime (#46 step E).
 # Does NOT rebuild AdaptiveCpp / scram-cli / the fuzzybits wheel: those come
-# from RUNTIME_IMAGE. uv installs mcscram-server into a venv with
+# from RUNTIME_IMAGE. uv installs fuzzybits-server into a venv with
 # --system-site-packages so `import fuzzybits` / `import mcscram_native` hit
 # the runtime's system Python 3.12 site.
 #
@@ -35,7 +35,7 @@ ARG RUNTIME_DIGEST=unknown
 ARG VARIANT=generic
 ARG FUZZYBITS_REVISION=unknown
 ARG FUZZYBITS_VERSION=0.17.0
-ARG SERVER_VERSION=0.1.0
+ARG SERVER_VERSION=0.17.0
 
 LABEL org.opencontainers.image.source="https://github.com/fuzzybit-org/fuzzybits" \
       org.opencontainers.image.revision="${FUZZYBITS_REVISION}" \
@@ -73,7 +73,7 @@ RUN mkdir -p /app/server /data \
     chown -R coder:coder /app/server /data /home/coder/.cache/fuzzybits
 
 WORKDIR /app/server
-COPY --chown=coder:coder pyproject.toml uv.lock ./
+COPY --chown=coder:coder pyproject.toml uv.lock hatch_build.py README.md ./
 COPY --chown=coder:coder src ./src
 COPY --chown=coder:coder scripts/docker-entrypoint.sh /usr/local/bin/server-entrypoint
 COPY --from=webui --chown=coder:coder /webui/dist /app/server/webui/dist
@@ -85,13 +85,14 @@ USER coder
 # /usr/local/lib/python3.12/dist-packages even with the flag.
 RUN set -eux; \
     uv venv --system-site-packages /app/server/.venv; \
-    uv sync --frozen --no-dev; \
+    uv sync --frozen --no-dev --no-install-package fuzzybits; \
     venv_site="$(/app/server/.venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"; \
     sys_site="$(python3 -c 'import fuzzybits, pathlib; p=pathlib.Path(fuzzybits.__file__).resolve(); print(p.parent if p.name != "__init__.py" else p.parent.parent)')"; \
     printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"; \
     /app/server/.venv/bin/python -c \
-      "import fuzzybits, mcscram_native, mcscram_server, uvicorn; import importlib.util as u; \
+      "import fuzzybits, mcscram_native, fuzzybits_server, uvicorn; import importlib.util as u; \
 assert u.find_spec('mcscram_native'); \
+assert u.find_spec('fuzzybits_server'); \
 assert hasattr(mcscram_native, 'compile_pcfb'), 'runtime image lacks compile_pcfb (#71)'; \
 assert hasattr(fuzzybits, 'compile') and hasattr(fuzzybits, 'inspect') and hasattr(fuzzybits, 'Session'), 'runtime image lacks fuzzybits.compile/inspect/Session (#71)'"
 

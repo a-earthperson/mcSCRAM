@@ -128,8 +128,8 @@ def main() -> int:
     sys.path.insert(0, str(REPO / "tools" / "server" / "src"))
     os.environ.setdefault("FUZZYBITS_SERVER_CACHE_DIR", "/tmp/fuzzybits-server-pcfb-cache")
 
-    from mcscram_server.convergence.sampling import NativeSampler, make_sampler
-    from mcscram_server.fault_tree_payload import build_dag_payload
+    from fuzzybits_server.convergence.sampling import NativeSampler, make_sampler
+    from fuzzybits_server.fault_tree_payload import build_dag_payload
 
     watch = [part for part in args.watch.split(",") if part]
     options = _options(watch)

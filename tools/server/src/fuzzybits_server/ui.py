@@ -1,8 +1,11 @@
 """CSR UI at ``/``, next to the API.
 
 Enabled by default. Disable with ``--no-ui`` / ``FUZZYBITS_SERVER_UI=0``.
-Static assets live in ``FUZZYBITS_SERVER_UI_DIR`` (default:
-``tools/server/webui/dist`` in a source checkout or image).
+Resolution order for the asset directory (``index.html`` + ``assets/``):
+
+1. ``FUZZYBITS_SERVER_UI_DIR``
+2. packaged copy at ``fuzzybits_server/webui`` (wheel)
+3. ``tools/server/webui/dist`` (source checkout / Docker image)
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from mcscram_server.config import server_ui_dir, server_ui_enabled
+from fuzzybits_server.config import server_ui_dir, server_ui_enabled
 
 _INDEX_CACHE = {"Cache-Control": "no-cache"}
 _ASSET_CACHE = "public, max-age=31536000, immutable"
@@ -48,7 +51,10 @@ def mount_ui(app: FastAPI) -> None:
     if dist is None:
         @app.get("/")
         def ui_missing() -> JSONResponse:
-            return _pointer(detail="UI assets not found; set FUZZYBITS_SERVER_UI_DIR or build tools/server/webui")
+            return _pointer(
+                detail="UI assets not found; set FUZZYBITS_SERVER_UI_DIR, "
+                "install fuzzybits-server (packaged UI), or build tools/server/webui"
+            )
 
         return
 

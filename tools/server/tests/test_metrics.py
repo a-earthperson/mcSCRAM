@@ -6,13 +6,13 @@ import math
 
 import pytest
 
-from mcscram_server.convergence import (
+from fuzzybits_server.convergence import (
     InfoGainMetric,
     OracleDiagnostics,
     PointEstimate,
 )
-from mcscram_server.convergence.tally import NodeCounters, NodeState, RunContext
-from mcscram_server.convergence import special
+from fuzzybits_server.convergence.tally import NodeCounters, NodeState, RunContext
+from fuzzybits_server.convergence import special
 
 
 def _ctx(oracle_p: float | None = None) -> RunContext:

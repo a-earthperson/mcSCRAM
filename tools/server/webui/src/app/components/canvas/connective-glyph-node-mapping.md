@@ -12,8 +12,8 @@ frame or the final perceived WebGL canvas colors.
 
 | Artifact decision | Owner | Current implementation |
 |---|---|---|
-| HTTP route shape and compile query options | Backend API server | `tools/server/src/mcscram_server/routes.py` in fuzzybit-org/fuzzybits exposes `/model/source-dag`, `/model/dag`, `/model/kernel-dag`, and `/model/dag-bundle`; compile flags are converted into native compile options there. |
-| Stable DAG node type vocabulary and integer indices | Backend API server | `DAG_NODE_TYPES` in fuzzybit-org/fuzzybits `tools/server/src/mcscram_server/fault_tree_payload.py`. The client trusts `payload.nodeTypes[typeIndex]`. |
+| HTTP route shape and compile query options | Backend API server | `tools/server/src/fuzzybits_server/routes.py` in fuzzybit-org/fuzzybits exposes `/model/source-dag`, `/model/dag`, `/model/kernel-dag`, and `/model/dag-bundle`; compile flags are converted into native compile options there. |
+| Stable DAG node type vocabulary and integer indices | Backend API server | `DAG_NODE_TYPES` in fuzzybit-org/fuzzybits `tools/server/src/fuzzybits_server/fault_tree_payload.py`. The client trusts `payload.nodeTypes[typeIndex]`. |
 | Source MEF tag to DAG type index | Backend API server | `_parse_fault_tree_graph` and `NODE_TYPE_BY_CONNECTIVE` in `fault_tree_payload.py`. |
 | Compiled/native graph node kind/connective data | Backend Python binding for `mcscram_native`, backed by native mcSCRAM | `mcscram_native.run_compile(...).to_graph()` and `.to_kernel_graph()` provide nodes, edges, root complement, graph kind, and optional kernel metadata. The binding source is not present in this checkout; the Python server consumes its dictionaries. |
 | Compiled/native kind/connective to DAG type index | Backend API server | `_compiled_node_type` maps native `kind` and `connective` strings to `DAG_NODE_TYPES`. |

@@ -6,9 +6,9 @@ import math
 
 import pytest
 
-from mcscram_server.convergence import BayesPolicy, WaldLinearPolicy
-from mcscram_server.convergence import special
-from mcscram_server.convergence.tally import NodeCounters, NodeState, RunContext
+from fuzzybits_server.convergence import BayesPolicy, WaldLinearPolicy
+from fuzzybits_server.convergence import special
+from fuzzybits_server.convergence.tally import NodeCounters, NodeState, RunContext
 
 
 def _node(ones: int, total: int, index: int = 1) -> NodeState:

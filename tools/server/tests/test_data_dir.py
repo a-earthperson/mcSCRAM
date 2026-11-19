@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from mcscram_server.config import input_files_from_env, optional_table_path, server_data_dir
-from mcscram_server.fault_tree_payload import aralia_model_search_roots, list_aralia_xml_inputs
+from fuzzybits_server.config import input_files_from_env, optional_table_path, server_data_dir
+from fuzzybits_server.fault_tree_payload import aralia_model_search_roots, list_aralia_xml_inputs
 
 
 def test_absent_data_dir_is_none(monkeypatch: pytest.MonkeyPatch) -> None:

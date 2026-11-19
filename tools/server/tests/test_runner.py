@@ -12,7 +12,7 @@ import math
 
 import pytest
 
-from mcscram_server.convergence import (
+from fuzzybits_server.convergence import (
     BernoulliSampler,
     ConvergenceConfig,
     ConvergenceRunner,

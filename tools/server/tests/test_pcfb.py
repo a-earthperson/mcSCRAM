@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from mcscram_server.config import parse_watch_value, pcfb_cache_dir, server_engine
-from mcscram_server.native import (
+from fuzzybits_server.config import parse_watch_value, pcfb_cache_dir, server_engine
+from fuzzybits_server.native import (
     InvalidPcfbError,
     compile_option_subset,
     compile_pcfb_to_cache,
@@ -129,7 +129,7 @@ def test_pcfb_sampler_watch_and_legacy_parity(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setenv("FUZZYBITS_SERVER_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("FUZZYBITS_SERVER_ENGINE", "pcfb")
 
-    from mcscram_server.convergence.sampling import NativeSampler, make_sampler
+    from fuzzybits_server.convergence.sampling import NativeSampler, make_sampler
 
     options = {
         "compilation_level": 2,

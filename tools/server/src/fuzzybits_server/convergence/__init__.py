@@ -18,12 +18,12 @@ Layered design (each layer is independently testable):
 
 Typical use::
 
-    from mcscram_server.convergence import run_calculation
+    from fuzzybits_server.convergence import run_calculation
     result = run_calculation(input_files, options, on_progress)
 
 or, for full control / testing::
 
-    from mcscram_server.convergence import (
+    from fuzzybits_server.convergence import (
         BernoulliSampler, ConvergenceConfig, ConvergenceRunner,
         WaldLinearPolicy, BayesPolicy,
     )

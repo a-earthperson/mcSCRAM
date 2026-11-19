@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
+import time
+import webbrowser
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from mcscram_server.config import CalculationConfig, apply_server_cli, env_bool
-from mcscram_server.event_hub import EventHub
-from mcscram_server.native import shutdown_native_workers
-from mcscram_server.routes import create_router
-from mcscram_server.supervisor import CalculationSupervisor
-from mcscram_server.ui import mount_ui
+from fuzzybits_server.config import CalculationConfig, apply_server_cli, env_bool
+from fuzzybits_server.event_hub import EventHub
+from fuzzybits_server.native import shutdown_native_workers
+from fuzzybits_server.routes import create_router
+from fuzzybits_server.supervisor import CalculationSupervisor
+from fuzzybits_server.ui import mount_ui
 
 
 def create_app(
@@ -62,13 +65,26 @@ def create_app(
 app = create_app()
 
 
+def _browser_url(host: str, port: int) -> str:
+    browse_host = "127.0.0.1" if host in {"0.0.0.0", "::", "[::]"} else host
+    return f"http://{browse_host}:{port}/"
+
+
 def main() -> None:
-    apply_server_cli()
+    args = apply_server_cli()
+    if args.open:
+        url = _browser_url(args.host, args.port)
+
+        def _open() -> None:
+            time.sleep(0.6)
+            webbrowser.open(url)
+
+        threading.Thread(target=_open, daemon=True).start()
     uvicorn.run(
-        "mcscram_server.app:create_app",
+        "fuzzybits_server.app:create_app",
         factory=True,
-        host=os.getenv("HOST", "0.0.0.0"),
-        port=int(os.getenv("PORT", "8000")),
+        host=args.host,
+        port=args.port,
         log_level=os.getenv("LOG_LEVEL", "info"),
     )
 
