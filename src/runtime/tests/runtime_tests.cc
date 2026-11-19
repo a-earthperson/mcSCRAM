@@ -14,7 +14,11 @@
 namespace {
 
 struct OmpBackend {
+#ifdef _WIN32
+  OmpBackend() { _putenv_s("ACPP_VISIBILITY_MASK", "omp"); }
+#else
   OmpBackend() { setenv("ACPP_VISIBILITY_MASK", "omp", 0); }
+#endif
 };
 const OmpBackend kOmpBackend{};
 

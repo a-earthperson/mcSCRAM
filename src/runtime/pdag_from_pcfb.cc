@@ -427,7 +427,11 @@ void apply_backend_mask(const std::string &backend) {
   } else {
     throw RuntimeError("unknown backend '" + backend + "' (expected cuda, omp, or metal)");
   }
+#ifdef _WIN32
+  if (_putenv_s("ACPP_VISIBILITY_MASK", mask) != 0) {
+#else
   if (setenv("ACPP_VISIBILITY_MASK", mask, 1) != 0) {
+#endif
     throw RuntimeError("failed to set ACPP_VISIBILITY_MASK=" + std::string(mask));
   }
 }
