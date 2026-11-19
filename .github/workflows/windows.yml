@@ -256,11 +256,18 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $env:PATH = "$env:ACPP_PREFIX\bin;$env:PATH"
-          $bin = Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE 'build\windows-generic') -Recurse -Filter fzb.exe |
+          $build = Join-Path $env:GITHUB_WORKSPACE 'build\windows-generic'
+          $libxml = Join-Path $build '_deps\libxml2-build'
+          $env:PATH = "$env:ACPP_PREFIX\bin;$libxml;$build\src;$env:PATH"
+          $bin = Get-ChildItem -Path $build -Recurse -Filter fzb.exe |
             Select-Object -First 1
           if (-not $bin) { throw "fzb.exe not found" }
+          Write-Host "fzb: $($bin.FullName)"
+          if (Get-Command dumpbin -ErrorAction SilentlyContinue) {
+            dumpbin /DEPENDENTS $bin.FullName
+          }
           & $bin.FullName --help
+          if ($LASTEXITCODE -ne 0) { throw "fzb --help exited $LASTEXITCODE" }
 
       - name: ctest CPU (OpenMP, quarantine excluded)
         timeout-minutes: 20
@@ -271,7 +278,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $env:PATH = "$env:ACPP_PREFIX\bin;$env:PATH"
+          $build = Join-Path $env:GITHUB_WORKSPACE 'build\windows-generic'
+          $libxml = Join-Path $build '_deps\libxml2-build'
+          $env:PATH = "$env:ACPP_PREFIX\bin;$libxml;$build\src;$env:PATH"
           $start = Get-Date
           ctest --preset windows-generic --output-on-failure --no-tests=error
           if ($LASTEXITCODE -ne 0) { throw "ctest failed ($LASTEXITCODE)" }
