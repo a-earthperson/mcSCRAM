@@ -16,6 +16,7 @@ Presets require CMake ≥ 3.25 (schema version 6). `cmake_minimum_required` in
 | variant | platform | AdaptiveCpp flow | runtime backends | notes |
 |---|---|---|---|---|
 | **`generic`** (default) | Linux x86_64 (+ aarch64 later) | `generic` (SSCP JIT) | CUDA, OpenMP CPU | covers sm_86 / sm_120 via runtime JIT |
+| **`windows-generic`** | Windows x86_64 | `generic` (SSCP JIT) | CUDA, OpenMP CPU | GitHub-hosted `windows-2025` ([#76](https://github.com/fuzzybit-org/fuzzybits/issues/76)). AdaptiveCpp linked into LLVM. CUDA execution untested until a self-hosted Windows+NVIDIA runner exists. |
 | **`cuda-sm70`** | Linux x86_64 | `cuda:sm_70` (SMCP, clang CUDA), SASS + PTX | CUDA | Volta-specialised AOT |
 | **`metal`** | macOS 26, Apple Silicon | `generic` + Metal backend (experimental) | Metal, OpenMP CPU | parked: [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30). No `macos-metal` CI job. |
 
@@ -33,6 +34,7 @@ invoked directly.
 | preset | `ACPP_TARGETS` | `MALLOC_TYPE` | `CMAKE_BUILD_TYPE` | `BUILD_PYTHON_BINDINGS` | other cache |
 |---|---|---|---|---|---|
 | `generic` | `generic` | `malloc` | Release | ON | `OPTIMIZE_FOR_NATIVE=OFF` |
+| `windows-generic` | `generic` | `malloc` | Release | ON | Windows-only; clang targeting the MSVC ABI; same cache as `generic` |
 | `cuda-sm70` | `cuda:sm_70` | `malloc` | Release | ON | `ACPP_USE_ACCELERATED_CPU=off`, `ACPP_STDPAR=off`, `ACPP_EXTRA_COMPILE_OPTIONS=--cuda-include-ptx=sm_70`; Linux-only |
 | `metal` | `generic` | `malloc` | Release | ON | Darwin-only (Apple Silicon required at run time) |
 | `metal-cpu` | (test preset) | | | | `ctest --preset metal-cpu`: same metal build, `ACPP_VISIBILITY_MASK=omp` |
@@ -61,6 +63,8 @@ changing preset names.
 | pin | value | consumer |
 |---|---|---|
 | `ACPP_REF` / `ACPP_COMMIT` | `v25.10.0` / `9f842c701a599107cc6d117d3539f971036363a1` | AdaptiveCpp clone; Docker `ARG ACPP_REF` |
+| `ACPP_REF_WINDOWS` | `9f842c701a599107cc6d117d3539f971036363a1` (same commit as `ACPP_COMMIT`) | Hosted Windows LLVM-in-tree AdaptiveCpp ([#76](https://github.com/fuzzybit-org/fuzzybits/issues/76)) |
+| `LLVM_REF_WINDOWS` | `llvmorg-20.1.8` | llvm-project tag for the Windows in-tree build (X86 + NVPTX) |
 | `CLANG_VERSION` / `LLVM_VERSION` | `20` | `llvm.sh`, `clang-20`, Docker `ARG CLANG_VERSION` |
 | `CUDA_DEVEL_IMAGE` / `CUDA_RUNTIME_IMAGE` | `nvidia/cuda:12.8.1-{devel,runtime}-ubuntu24.04` | Docker `ARG`s |
 | `BOOST_VERSION` | `1.89.0` (≥ `BOOST_MIN_VERSION=1.89`) | `cmake/FindBoost.cmake` FetchContent URL |
@@ -189,6 +193,52 @@ CPU tests on a metal build: `ctest --preset metal-cpu` (`ACPP_VISIBILITY_MASK=om
 Metal device tests: `ctest --preset metal` (or `ctest -L mc` with
 `ACPP_VISIBILITY_MASK=metal`).
 
+### `windows-generic`
+
+Windows x86_64, clang targeting the MSVC ABI. AdaptiveCpp's plugin-based
+install (the Linux path) does **not** provide a working generic SSCP compiler
+on Windows; AdaptiveCpp must be built *into* LLVM
+(`-DLLVM_ADAPTIVECPP_LINK_INTO_TOOLS=ON`, LLVM ≥ 18). Pins:
+`ACPP_REF_WINDOWS=9f842c701a599107cc6d117d3539f971036363a1` (same commit as
+`ACPP_COMMIT` / `v25.10.0`), `LLVM_REF_WINDOWS=llvmorg-20.1.8`,
+`CUDA_VERSION=12.8.1`. Hosted CI lives in
+[`.github/workflows/windows.yml`](../.github/workflows/windows.yml)
+(`windows-2025`). GPU execution is untested: GitHub-hosted runners have no
+NVIDIA device. CUDA kernels need an NVIDIA driver at run time (`nvcuda.dll`
+is **not** bundled).
+
+```powershell
+# Bootstrap: VS 2022/2025 + clang-cl (LLVM 19+) + CUDA 12.8.1 toolkit + Ninja.
+# Product clang is the AdaptiveCpp-linked clang.exe from this install.
+cmake ../llvm-project/llvm -G Ninja `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DCMAKE_INSTALL_PREFIX=C:/acpp `
+  -DCMAKE_C_COMPILER=clang-cl `
+  -DCMAKE_CXX_COMPILER=clang-cl `
+  -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" `
+  -DLLVM_ENABLE_PROJECTS="clang;openmp;lld" `
+  -DLLVM_EXTERNAL_PROJECTS=AdaptiveCpp `
+  -DLLVM_EXTERNAL_ADAPTIVECPP_SOURCE_DIR=C:/src/AdaptiveCpp `
+  -DLLVM_ADAPTIVECPP_LINK_INTO_TOOLS=ON `
+  -DWITH_CUDA_BACKEND=ON `
+  -DWITH_OPENCL_BACKEND=OFF `
+  -DWITH_ROCM_BACKEND=OFF `
+  -DWITH_LEVEL_ZERO_BACKEND=OFF `
+  -DACPP_COMPILER_FEATURE_PROFILE=full `
+  -DCUDA_TOOLKIT_ROOT_DIR="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8"
+ninja install
+```
+
+fuzzybits: `cmake --preset windows-generic` then `cmake --build --preset windows-generic`.
+CPU tests: `ctest --preset windows-generic` (`ACPP_VISIBILITY_MASK=omp`).
+Python wheel: `pip wheel .` with `ACPP_TARGETS=generic`, repaired with
+`delvewheel` (`--ignore-in-wheel`, exclude `nvcuda.dll`). The AdaptiveCpp
+runtime + `hipSYCL` plugins + SSCP tools (`opt`/`llc`/`llvm-to-*-tool`) sit
+under `fuzzybits/lib/` in the layout AdaptiveCpp expects next to `acpp-rt.dll`.
+OpenMP (`libomp.dll`) and `libxml2.dll` are bundled; the NVIDIA **driver** is
+not. CUDA GPU execution of that wheel needs a machine with an NVIDIA driver
+and has not been run in CI.
+
 ## `ACPP_VISIBILITY_MASK` / device selection
 
 `omp` is always loaded (AdaptiveCpp requires a CPU backend). An empty mask
@@ -197,6 +247,7 @@ exposes every compiled-in backend.
 | variant | default mask | device selection | notes |
 |---|---|---|---|
 | `generic` | `cuda` | `CUDA_VISIBLE_DEVICES` for the NVIDIA device; OpenMP host is always present | without a GPU, `acpp-info -l` lists only the OpenMP host device — that is expected |
+| `windows-generic` | `omp` on hosted CI | same; `nvcuda.dll` from the NVIDIA driver | GitHub-hosted `windows-2025` has no GPU. The CUDA backend DLL is in the wheel and should skip cleanly if the driver is absent |
 | `cuda-sm70` | `cuda` | `CUDA_VISIBLE_DEVICES`; binary only contains sm_70 SASS (+ embedded PTX) | PTX driver-JIT can run the image on newer archs; sm_70 SASS will not |
 | `metal` | `metal` (device) / `omp` (`metal-cpu` preset) | AdaptiveCpp auto-detects the Apple GPU; `omp` remains the CPU fallback | `metal` is accepted by AdaptiveCpp's backend loader; it is not yet listed in upstream `env_variables.md`. GitHub-hosted `macos-26` exposes a paravirtual GPU (`Mac2`/`Common3`), not `Apple7`. Unset the mask to let auto-detect pick Metal |
 

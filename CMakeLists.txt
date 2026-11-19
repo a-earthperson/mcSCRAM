@@ -141,6 +141,11 @@ endif()
 
 if(WIN32)
   list(APPEND SCRAM_CXX_FLAGS_DEBUG -Wno-error)
+  # Shared scram/mc have no explicit dllexport; clang-cl/MSVC needs this to
+  # generate import libs. Python wheels use the DLL CRT (/MD), so Boost must
+  # not be built against the static CRT.
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
 if(WITH_COVERAGE)
@@ -282,7 +287,11 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
 
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_RUNTIME ON)
+if(WIN32)
+  set(Boost_USE_STATIC_RUNTIME OFF)
+else()
+  set(Boost_USE_STATIC_RUNTIME ON)
+endif()
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Add required Boost libraries

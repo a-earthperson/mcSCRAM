@@ -99,8 +99,12 @@ set(BOOST_ENABLE_CMAKE ON CACHE BOOL "Build Boost using its new CMake build" FOR
 # Force static libraries if BUILD_SHARED_LIBS is OFF
 if(NOT BUILD_SHARED_LIBS)
     set(Boost_USE_STATIC_LIBS ON)
-    # Additional Boost-specific options to ensure static builds
-    set(BOOST_RUNTIME_LINK "static" CACHE STRING "Boost runtime linking")
+    # Additional Boost-specific options to ensure static builds.
+    # Windows Python extensions link the DLL CRT (/MD); Boost's "static"
+    # runtime is /MT and would mix CRTs.
+    if(NOT WIN32)
+        set(BOOST_RUNTIME_LINK "static" CACHE STRING "Boost runtime linking")
+    endif()
 endif()
 
 # Position-independent code is generally required when building shared
@@ -115,7 +119,11 @@ if(NOT BUILD_SHARED_LIBS)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force Boost static libraries" FORCE)
     # Additional Boost-specific settings for static builds
     set(Boost_USE_STATIC_LIBS ON CACHE BOOL "Use static Boost libraries" FORCE)
-    set(Boost_USE_STATIC_RUNTIME ON CACHE BOOL "Use static runtime" FORCE)
+    if(WIN32)
+        set(Boost_USE_STATIC_RUNTIME OFF CACHE BOOL "Use static runtime" FORCE)
+    else()
+        set(Boost_USE_STATIC_RUNTIME ON CACHE BOOL "Use static runtime" FORCE)
+    endif()
 endif()
 
 # Boost 1.87/1.88 incorrectly enable GPU/SYCL code paths in Boost.Math, which
