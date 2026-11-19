@@ -1,12 +1,22 @@
 # Python package (`fuzzybits`)
 
 The Monte Carlo engine is installable as **`fuzzybits`** (import name and
-distribution name). Wheels are Linux x86_64, self-contained: they bundle the
-AdaptiveCpp runtime (`libacpp-rt`, `libacpp-common`, CUDA/OpenMP backend
-plugins) and, for the `generic` variant, the SSCP JIT pieces (`llvm-to-backend`,
-`libLLVM`, `libdevice.10.bc`, `opt`/`llc`). NVIDIA **driver** libraries
-(`libcuda.so*`) are not bundled; a CUDA ≥ 12.8 driver is required for GPU
-runs. Wheels are built with `MALLOC_TYPE=malloc` — no `LD_PRELOAD`.
+distribution name). Wheels are self-contained:
+
+- **Linux x86_64** (`manylinux_*`): AdaptiveCpp runtime (`libacpp-rt`,
+  `libacpp-common`, CUDA/OpenMP backend plugins) and, for the `generic`
+  variant, the SSCP JIT pieces (`llvm-to-backend`, `libLLVM`,
+  `libdevice.10.bc`, `opt`/`llc`). NVIDIA **driver** libraries (`libcuda.so*`)
+  are not bundled; a CUDA ≥ 12.8 driver is required for GPU runs.
+- **macOS 26 Apple Silicon** (`macosx_*_arm64`): AdaptiveCpp `ACPP_REF_METAL`
+  runtime with Metal + OpenMP backends and SSCP JIT (`libllvm-to-metal`,
+  `opt`/`llc`/`ld64.lld`, `libLLVM`, Homebrew `libomp`), `delocate`-repaired
+  with `@loader_path` rpaths. There is no separate `libmc.dylib` (INTERFACE
+  `mc` → `libscram`). Metal kernel JIT currently rejects `double` until
+  [#17](https://github.com/fuzzybit-org/fuzzybits/issues/17)/[#30](https://github.com/fuzzybit-org/fuzzybits/issues/30);
+  OpenMP CPU is the working backend. Built on GitHub-hosted `macos-26`.
+
+Wheels are built with `MALLOC_TYPE=malloc` — no `LD_PRELOAD`.
 
 Publishing to PyPI is [#36](https://github.com/fuzzybit-org/fuzzybits/issues/36)
 and is gated on a legal review. Until then, install a locally built wheel.
@@ -28,7 +38,9 @@ Variants follow [#29](https://github.com/fuzzybit-org/fuzzybits/issues/29):
 | `generic` (default) | `fuzzybits._native_generic` | SSCP JIT | sm_86 / sm_120 / CPU |
 | `cuda-sm70` | `fuzzybits._native_cuda_sm70` | clang CUDA SMCP AOT + embedded PTX | Volta (V100) |
 
-Metal is out of scope here ([#30](https://github.com/fuzzybit-org/fuzzybits/issues/30)).
+macOS Metal is an experimental extra wheel ([#87](https://github.com/fuzzybit-org/fuzzybits/issues/87));
+`backend="metal"` is accepted and should raise a Python exception until
+[#30](https://github.com/fuzzybit-org/fuzzybits/issues/30) lands.
 
 Import selection (override with `fuzzybits.init(variant=...)` or
 `FUZZYBITS_VARIANT`): **cuda-sm70** if that extension is installed *and* an
@@ -43,7 +55,7 @@ if both `.so` files are present (future `fuzzybits-native-*` split).
 ```python
 import fuzzybits
 
-fuzzybits.init(backend="auto")          # "cuda" | "omp" | "auto"; also FUZZYBITS_BACKEND
+fuzzybits.init(backend="auto")          # "cuda" | "omp" | "metal" | "auto"; also FUZZYBITS_BACKEND
 print(fuzzybits.__version__)
 print(fuzzybits.list_devices())
 
@@ -139,6 +151,22 @@ docker --context xerxes build -f docker/wheel.Dockerfile \
 `--exclude libcuda.so.1`. Approximate wheel sizes (cp312, x86_64):
 `generic` and `cuda-sm70` are both ~66 MB, dominated by `libLLVM.so.20.1`
 (~153 MB uncompressed) for SSCP JIT.
+
+macOS 26 arm64 (GitHub-hosted `macos-26`; Intel Macs cannot produce this
+wheel). Host compiler is AppleClang; LLVM 20 is AdaptiveCpp's
+`CLANG_EXECUTABLE_PATH`. Override pyproject's Linux `clang-20` compilers:
+
+```bash
+export MACOSX_DEPLOYMENT_TARGET=26.0
+pip wheel . -w dist --no-deps \
+  --config-settings=cmake.define.CMAKE_C_COMPILER=/usr/bin/clang \
+  --config-settings=cmake.define.CMAKE_CXX_COMPILER=/usr/bin/clang++ \
+  --config-settings=cmake.define.ACPP_TARGETS=generic \
+  --config-settings=cmake.define.AdaptiveCpp_DIR=$ACPP_PREFIX/lib/cmake/AdaptiveCpp
+delocate-wheel --lib-sdir lib --require-archs arm64 -w dist wheelhouse/fuzzybits-*.whl
+```
+
+Hosted path: `scripts/ci/macos-wheel-build.sh` + `scripts/ci/macos-smoke.py`.
 
 ## Tests
 
