@@ -131,13 +131,15 @@ case "${cmd}" in
     ccache -z || true
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y --no-install-recommends python3-venv python3-pip python3-dev patchelf >/dev/null
+    apt-get install -y --no-install-recommends \
+      python3-venv python3-pip python3-dev patchelf libatomic1 >/dev/null
     python3 -m venv /tmp/wheel-venv
     /tmp/wheel-venv/bin/pip install -U pip >/dev/null
-    /tmp/wheel-venv/bin/pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build packaging
-    mkdir -p /src/dist
+    /tmp/wheel-venv/bin/pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build packaging auditwheel
+    mkdir -p /src/dist /tmp/wheelhouse
     export CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache
-    PATH="/tmp/wheel-venv/bin:${PATH}" FUZZYBITS_VARIANT=generic /src/docker/pip-wheel.sh /src/dist
+    PATH="/tmp/wheel-venv/bin:${PATH}" FUZZYBITS_VARIANT=generic /src/docker/pip-wheel.sh /tmp/wheelhouse
+    PATH="/tmp/wheel-venv/bin:${PATH}" /src/docker/auditwheel-repair.sh /tmp/wheelhouse /src/dist
     ls -lah /src/dist
     ;;
   trim)

@@ -5,7 +5,8 @@ set -euo pipefail
 cd /src
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y --no-install-recommends python3 python3-venv python3-pip libgomp1 libstdc++6 >/dev/null
+apt-get install -y --no-install-recommends \
+  python3 python3-venv python3-pip libgomp1 libstdc++6 libatomic1 libomp5 >/dev/null
 shopt -s nullglob
 whls=(dist/fuzzybits-*.whl)
 if [[ ${#whls[@]} -eq 0 ]]; then
