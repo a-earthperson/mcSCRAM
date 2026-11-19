@@ -123,7 +123,10 @@ if(WIN32)
   # FetchContent Boost + AdaptiveCpp produce command lines that exceed
   # CreateProcess's 32767-char limit unless Ninja uses response files.
   set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON)
-  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
+  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _ALLOW_COMPILER_VERSION_MISMATCH)
+  # windows-2025 STL (MSVC 14.52+) gates on Clang 22; LLVM 20 is the AdaptiveCpp pin.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH")
 endif()
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
