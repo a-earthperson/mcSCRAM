@@ -25,8 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from mcscram_server.config import server_engine
-from mcscram_server.native import compile_pcfb_to_cache, watch_names_from_options
+from fuzzybits_server.config import server_engine
+from fuzzybits_server.native import compile_pcfb_to_cache, watch_names_from_options
 
 from .tally import NodeCounters, PassObservation
 

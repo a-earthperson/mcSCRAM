@@ -5,9 +5,9 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from mcscram_server.config import CalculationConfig, parse_watch_value
-from mcscram_server.event_hub import EventHub
-from mcscram_server.fault_tree_payload import (
+from fuzzybits_server.config import CalculationConfig, parse_watch_value
+from fuzzybits_server.event_hub import EventHub
+from fuzzybits_server.fault_tree_payload import (
     build_dag_bundle_payload,
     build_dag_payload,
     build_execution_plan_payload,
@@ -18,8 +18,8 @@ from mcscram_server.fault_tree_payload import (
     list_aralia_xml_inputs,
     resolve_model_xml_path,
 )
-from mcscram_server.native import InvalidPcfbError, resolve_uploaded_pcfb, store_uploaded_pcfb
-from mcscram_server.supervisor import CalculationSupervisor
+from fuzzybits_server.native import InvalidPcfbError, resolve_uploaded_pcfb, store_uploaded_pcfb
+from fuzzybits_server.supervisor import CalculationSupervisor
 
 
 class SamplingControlBody(BaseModel):

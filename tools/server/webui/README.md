@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # tools/server/webui
 
-CSR Vite/React UI served by `mcscram-server` at `/`.
+CSR Vite/React UI served by `fuzzybits-server` at `/`.
 
 ```bash
 npm ci
