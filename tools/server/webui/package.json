@@ -20,7 +20,7 @@
     "react-dom": "^19.2.6",
     "react-router": "^7.18.2",
     "three": "^0.137.5",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/culori": "^4.0.1",
