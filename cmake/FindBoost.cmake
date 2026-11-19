@@ -14,6 +14,59 @@ if(TARGET Boost::headers)
     return()
 endif()
 
+# Prefer a CMake-package Boost (the #33 toolchain image installs 1.89 into
+# /usr/local) over FetchContent. CONFIG + min version so Ubuntu 24.04's
+# Boost 1.83 is not picked up. CONFIG mode does not re-enter this module.
+# BoostConfig only creates Boost::<lib> imported targets when COMPONENTS
+# are requested; a bare find_package(Boost CONFIG) yields Boost::headers.
+if(NOT TARGET Boost::program_options)
+    if(DEFINED FUZZYBITS_PIN_BOOST_MIN_VERSION AND FUZZYBITS_PIN_BOOST_MIN_VERSION)
+        set(_fuzzybits_boost_min "${FUZZYBITS_PIN_BOOST_MIN_VERSION}")
+    else()
+        set(_fuzzybits_boost_min "1.89")
+    endif()
+    set(_fuzzybits_boost_comps ${BOOST_INCLUDE_LIBRARIES})
+    if(_fuzzybits_boost_comps)
+        list(TRANSFORM _fuzzybits_boost_comps REPLACE "^test$" "unit_test_framework")
+        # Boost.DLL is header-only and the 1.89 CMake tarball does not install a
+        # boost_dll-config package; do not require it as a CONFIG component.
+        list(REMOVE_ITEM _fuzzybits_boost_comps dll)
+        find_package(Boost ${_fuzzybits_boost_min} CONFIG COMPONENTS ${_fuzzybits_boost_comps} QUIET)
+    else()
+        find_package(Boost ${_fuzzybits_boost_min} CONFIG QUIET)
+    endif()
+    unset(_fuzzybits_boost_min)
+    unset(_fuzzybits_boost_comps)
+endif()
+if(TARGET Boost::headers AND TARGET Boost::program_options)
+    set(Boost_FOUND TRUE)
+    get_target_property(_boost_include Boost::headers INTERFACE_INCLUDE_DIRECTORIES)
+    set(Boost_INCLUDE_DIRS ${_boost_include})
+    unset(Boost_LIBRARIES)
+    if(BOOST_INCLUDE_LIBRARIES)
+        foreach(_lib IN LISTS BOOST_INCLUDE_LIBRARIES)
+            string(STRIP "${_lib}" _lib)
+            if(_lib STREQUAL "test")
+                set(_lib unit_test_framework)
+            endif()
+            if(TARGET Boost::${_lib})
+                list(APPEND Boost_LIBRARIES Boost::${_lib})
+            endif()
+        endforeach()
+    endif()
+    # Boost.DLL is header-only; Boost 1.89's CMake package does not export
+    # Boost::dll. Synthesize it so target_link_libraries(Boost::dll) works.
+    if(NOT TARGET Boost::dll AND TARGET Boost::headers)
+        add_library(Boost::dll INTERFACE IMPORTED)
+        if(TARGET Boost::filesystem)
+            target_link_libraries(Boost::dll INTERFACE Boost::headers Boost::filesystem)
+        else()
+            target_link_libraries(Boost::dll INTERFACE Boost::headers)
+        endif()
+    endif()
+    return()
+endif()
+
 # ---------------------------------------------------------------------------
 # Fetch Boost
 # ---------------------------------------------------------------------------
