@@ -210,9 +210,12 @@ Pins:
 NVIDIA device. CUDA kernels need an NVIDIA driver at run time (`nvcuda.dll`
 is **not** bundled). Hosted `windows-2025` images flap between MSVC 14.51
 and 14.52; LLVM 20 clang-cl + the 14.52 STL hits `STL1000` (Clang 22
-required). CI prefers the 14.51 toolset when present, otherwise uses the
-image default and force-includes `_ALLOW_COMPILER_VERSION_MISMATCH`. Native
-`ctest --preset windows-generic`
+required). The hatch is `-D_ALLOW_COMPILER_VERSION_MISMATCH` on every Clang
+compile: `windows-generic` preset `CMAKE_C_FLAGS`/`CMAKE_CXX_FLAGS`,
+`CMAKE_USER_MAKE_RULES_OVERRIDE`, `CMAKE_PROJECT_INCLUDE`, and a
+`CMAKE_<LANG>_COMPILER_LAUNCHER` that inserts the define in front of Boost
+FetchContent TUs. CI still prefers toolset 14.51 when vswhere lists it.
+Native `ctest --preset windows-generic`
 still has known failures (CLI `std::system` ACCESS_VIOLATION, aiger corpus
 diagnostic, BSCU mean/sigma); the Python wheel smoke is the #76 gate.
 

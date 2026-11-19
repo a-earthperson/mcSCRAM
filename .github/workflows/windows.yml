@@ -164,15 +164,21 @@ jobs:
           $env:PATH = "$env:LLVM_PATH\bin;$env:PATH"
           $env:CC = 'clang-cl'
           $env:CXX = 'clang-cl'
+          $env:CFLAGS = '-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX'
+          $env:CXXFLAGS = $env:CFLAGS
           $cuda = ($env:CUDA_PATH -replace '\\','/')
           $build = Join-Path $tmp 'build'
           New-Item -ItemType Directory -Force -Path $build | Out-Null
           $acppSrc = Join-Path $tmp 'AdaptiveCpp'
+          $hatchOverride = (Join-Path $env:GITHUB_WORKSPACE 'cmake\windows_compiler_override.cmake') -replace '\\','/'
           cmake -S (Join-Path $tmp 'llvm\llvm') -B $build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX="$env:ACPP_PREFIX" `
             -DCMAKE_C_COMPILER=clang-cl `
             -DCMAKE_CXX_COMPILER=clang-cl `
+            -DCMAKE_C_FLAGS="-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX" `
+            -DCMAKE_CXX_FLAGS="-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX" `
+            -DCMAKE_USER_MAKE_RULES_OVERRIDE="$hatchOverride" `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache `
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
             -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" `

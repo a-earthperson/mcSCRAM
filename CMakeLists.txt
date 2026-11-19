@@ -5,11 +5,21 @@ set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# WIN32: inject the STL Clang-version hatch into every nested project()
-# (Boost FetchContent otherwise compiles boost_container without it).
+# WIN32: STL Clang-version hatch must apply to *every* nested project(),
+# including Boost FetchContent libs/*/CMakeLists.txt. CMAKE_USER_MAKE_RULES_OVERRIDE
+# runs at enable_language in each of those; CMAKE_PROJECT_INCLUDE is a second belt.
 if(WIN32)
+  set(_fb_win_override
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_compiler_override.cmake")
+  set(CMAKE_USER_MAKE_RULES_OVERRIDE "${_fb_win_override}" CACHE FILEPATH
+      "Windows Clang STL hatch" FORCE)
+  set(CMAKE_USER_MAKE_RULES_OVERRIDE_C "${_fb_win_override}" CACHE FILEPATH
+      "Windows Clang STL hatch (C)" FORCE)
+  set(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX "${_fb_win_override}" CACHE FILEPATH
+      "Windows Clang STL hatch (C++)" FORCE)
   set(CMAKE_PROJECT_INCLUDE
       "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_nested_project.cmake")
+  unset(_fb_win_override)
 endif()
 
 project(SCRAM VERSION 0.17.0 LANGUAGES C CXX)
@@ -132,8 +142,28 @@ if(WIN32)
   set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON)
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _ALLOW_COMPILER_VERSION_MISMATCH)
   # windows-2025 STL (MSVC 14.52+) gates on Clang 22; LLVM 20 is the AdaptiveCpp pin.
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH")
+  # Directory add_compile_definitions do not reach Boost's nested project();
+  # CACHE FORCE + a compiler launcher do.
+  if(NOT CMAKE_CXX_FLAGS MATCHES "_ALLOW_COMPILER_VERSION_MISMATCH")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX"
+        CACHE STRING "C++ flags" FORCE)
+  endif()
+  if(NOT CMAKE_C_FLAGS MATCHES "_ALLOW_COMPILER_VERSION_MISMATCH")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX"
+        CACHE STRING "C flags" FORCE)
+  endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(_fb_hatch_py "${PROJECT_SOURCE_DIR}/cmake/windows_clang_hatch_launcher.py")
+    find_program(_fb_hatch_python NAMES python3 python python3.12)
+    if(_fb_hatch_python AND EXISTS "${_fb_hatch_py}")
+      set(CMAKE_C_COMPILER_LAUNCHER "${_fb_hatch_python}" "${_fb_hatch_py}"
+          CACHE STRING "Windows Clang STL hatch launcher" FORCE)
+      set(CMAKE_CXX_COMPILER_LAUNCHER "${_fb_hatch_python}" "${_fb_hatch_py}"
+          CACHE STRING "Windows Clang STL hatch launcher" FORCE)
+    endif()
+    unset(_fb_hatch_py)
+    unset(_fb_hatch_python)
+  endif()
 endif()
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")

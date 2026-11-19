@@ -74,7 +74,9 @@
       "cacheVariables": {
         "ACPP_TARGETS": "generic",
         "MALLOC_TYPE": "malloc",
-        "BUILD_PYTHON_BINDINGS": "ON"
+        "BUILD_PYTHON_BINDINGS": "ON",
+        "CMAKE_C_FLAGS": "-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX",
+        "CMAKE_CXX_FLAGS": "-D_ALLOW_COMPILER_VERSION_MISMATCH -DNOMINMAX"
       }
     },
     {
