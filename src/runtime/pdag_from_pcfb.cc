@@ -535,9 +535,8 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
     info.always_true = sa->always_true();
     info.threshold = sa->threshold();
     info.name = sa->name() ? sa->name()->str() : "";
-    if (info.event_id < static_cast<std::uint32_t>(scram::core::Pdag::kVariableStartIndex)) {
-      throw RuntimeError("pdag_from_circuit: event_id " + std::to_string(info.event_id) +
-                         " collides with Constant index 1");
+    if (info.event_id == 0) {
+      throw RuntimeError("pdag_from_circuit: event_id 0 is reserved");
     }
     if (!std::isfinite(info.p) || info.p < 0.0 || info.p > 1.0) {
       throw RuntimeError("pdag_from_circuit: SAMPLE '" + info.name + "' event_id " +
@@ -554,10 +553,17 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
   }
 
   std::unordered_map<std::uint32_t, std::shared_ptr<scram::core::Variable>> vars_by_event;
+  int event_id_shift = 0;
+  if (!samples.empty() &&
+      samples.front().event_id < static_cast<std::uint32_t>(scram::core::Pdag::kVariableStartIndex)) {
+    event_id_shift =
+        scram::core::Pdag::kVariableStartIndex - static_cast<int>(samples.front().event_id);
+  }
   for (const auto &s : samples) {
-    graph->SetNextNodeIndex(static_cast<int>(s.event_id));
+    const int pdag_index = static_cast<int>(s.event_id) + event_id_shift;
+    graph->SetNextNodeIndex(pdag_index);
     auto var = std::make_shared<scram::core::Variable>(graph);
-    if (var->index() != static_cast<int>(s.event_id)) {
+    if (var->index() != pdag_index) {
       throw RuntimeError("pdag_from_circuit: failed to place variable at event_id " +
                          std::to_string(s.event_id));
     }

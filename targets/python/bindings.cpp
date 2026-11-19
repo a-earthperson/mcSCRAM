@@ -7,6 +7,7 @@
 #include <sycl/sycl.hpp>
 
 #include "compile/exact_eval.h"
+#include "compile/nombrilo.h"
 #include "compile/pcfb_writer.h"
 #include "compile/sha256.h"
 #include "initializer.h"
@@ -995,6 +996,8 @@ fuzzybits::compile::Options compile_options_from_py(const py::dict &options) {
     set_option<bool>(options, {"allow_extern", "allow-extern"}, [&](bool value) { out.allow_extern = value; });
     set_option<std::string>(options, {"target", "target_gate", "target-gate", "top", "top_event", "top-event"},
                             [&](const std::string &value) { out.target = value; });
+    set_option<std::string>(options, {"weights", "weights_file", "weights-file"},
+                            [&](const std::string &value) { out.weights_file = value; });
     if (auto value = get_option(options, {"watch", "watch_nodes", "watch-nodes"})) {
         py::object obj = *value;
         if (py::isinstance<py::bool_>(obj)) {
@@ -1260,6 +1263,58 @@ py::bytes compile_pcfb(const std::vector<std::string> &input_files, const py::di
         throw std::runtime_error("compile: " + compiled.error().message);
     }
     return py_bytes_from(compiled->bytes);
+}
+
+py::bytes nombrilo_to_pcfb_path(const std::string &path, const py::dict &options) {
+    fuzzybits::compile::NombriloCompileOptions opt;
+    if (auto value = get_option(options, {"target", "target_gate", "target-gate", "top"})) {
+        opt.target = value->cast<std::string>();
+    }
+    if (auto value = get_option(options, {"weights", "weights_file", "weights-file"})) {
+        opt.weights_file = value->cast<std::string>();
+    }
+    auto compiled = fuzzybits::compile::compile_nombrilo_file(path, opt);
+    if (!compiled) {
+        throw std::runtime_error("nombrilo_to_pcfb: " + compiled.error().message);
+    }
+    return py_bytes_from(compiled->bytes);
+}
+
+py::bytes pcfb_to_nombrilo_bytes(const py::bytes &data, bool extras) {
+    auto owned = bytes_from_py(data);
+    auto circuit = pcfb::io::from_bytes(owned);
+    if (!circuit) {
+        throw std::runtime_error("pcfb_to_nombrilo: " + circuit.error().message);
+    }
+    fuzzybits::compile::NombriloExportOptions opt;
+    opt.extras = extras;
+    auto nombrilo = fuzzybits::compile::pcfb_to_nombrilo(*circuit, opt);
+    if (!nombrilo) {
+        throw std::runtime_error("pcfb_to_nombrilo: " + nombrilo.error().message);
+    }
+    auto bytes = fuzzybits::compile::write_nombrilo(*nombrilo);
+    if (!bytes) {
+        throw std::runtime_error("pcfb_to_nombrilo: " + bytes.error().message);
+    }
+    return py_bytes_from(*bytes);
+}
+
+py::bytes pcfb_to_nombrilo_path(const std::string &path, bool extras) {
+    auto circuit = pcfb::io::read(path);
+    if (!circuit) {
+        throw std::runtime_error("pcfb_to_nombrilo: " + circuit.error().message);
+    }
+    fuzzybits::compile::NombriloExportOptions opt;
+    opt.extras = extras;
+    auto nombrilo = fuzzybits::compile::pcfb_to_nombrilo(*circuit, opt);
+    if (!nombrilo) {
+        throw std::runtime_error("pcfb_to_nombrilo: " + nombrilo.error().message);
+    }
+    auto bytes = fuzzybits::compile::write_nombrilo(*nombrilo);
+    if (!bytes) {
+        throw std::runtime_error("pcfb_to_nombrilo: " + bytes.error().message);
+    }
+    return py_bytes_from(*bytes);
 }
 
 py::dict inspect_pcfb_bytes(const py::bytes &data) {
@@ -1710,14 +1765,46 @@ Returns:
         py::arg("input_files"),
         py::arg("options") = py::dict(),
         R"pbdoc(
-Compile OpenPSA/MEF XML into a pcfb 1.1 buffer.
+Compile OpenPSA/MEF XML or nombrilo.circuit into a pcfb 1.1 buffer.
 
 Args:
-    input_files: MEF XML paths.
-    options: `compilation_level` / `pdag_c`, `no_kn`, `no_xor`, `ccf`, `target`.
+    input_files: MEF XML paths or a single nombrilo.circuit safetensors path.
+    options: `compilation_level` / `pdag_c`, `no_kn`, `no_xor`, `ccf`, `target`,
+        `weights` (nombrilo variant weights file).
 
 Returns:
     bytes of a validated core-1.1 `.pcfb`.
+)pbdoc");
+
+    m.def(
+        "nombrilo_to_pcfb_path",
+        &nombrilo_to_pcfb_path,
+        py::arg("path"),
+        py::arg("options") = py::dict(),
+        R"pbdoc(
+Translate a nombrilo.circuit safetensors file into a pcfb 1.1 buffer.
+
+Options: `target` (query name), `weights` (variant weights file).
+)pbdoc");
+
+    m.def(
+        "pcfb_to_nombrilo_bytes",
+        &pcfb_to_nombrilo_bytes,
+        py::arg("data"),
+        py::arg("extras") = true,
+        R"pbdoc(
+Translate an in-memory `.pcfb` into a nombrilo.circuit safetensors buffer.
+
+`extras=False` writes strict plain nombrilo (no `fuzzybits.pcfb.*` keys).
+)pbdoc");
+
+    m.def(
+        "pcfb_to_nombrilo_path",
+        &pcfb_to_nombrilo_path,
+        py::arg("path"),
+        py::arg("extras") = true,
+        R"pbdoc(
+Translate a `.pcfb` file into a nombrilo.circuit safetensors buffer.
 )pbdoc");
 
     m.def(

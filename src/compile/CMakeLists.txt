@@ -1,6 +1,7 @@
 # Host-only OpenPSA → pcfb lowering. No SYCL.
 add_library(fuzzybits_compile STATIC
   pcfb_writer.cc
+  nombrilo.cc
   exact_eval.cc
   sha256.cc
 )

@@ -1,4 +1,5 @@
 #include "compile/exact_eval.h"
+#include "compile/nombrilo.h"
 #include "compile/pcfb_writer.h"
 #include "compile/sha256.h"
 #include "version.h"
@@ -32,7 +33,8 @@ namespace {
 void print_root_usage(std::ostream &out) {
   out << "Usage: fzb <command> [options]\n\n"
       << "Commands:\n"
-      << "  compile   OpenPSA/MEF XML → preprocessed PDAG → .pcfb\n"
+      << "  compile   OpenPSA/MEF XML or nombrilo.circuit → .pcfb\n"
+      << "  export    .pcfb → nombrilo.circuit (.safetensors)\n"
       << "  inspect   Summarise, validate, or exactly evaluate a .pcfb\n"
       << "  run       Monte Carlo a .pcfb (estimate and CI per query)\n";
 }
@@ -407,8 +409,9 @@ int cmd_compile(int argc, char **argv) {
       ("keep-null", "keep NULL/pass-through gates")
       ("ccf", "expand common-cause failure groups")
       ("allow-extern", "**UNSAFE** allow external libraries")
-      ("target", po::value<std::string>(), "top-event / gate id")
-      ("input-file", po::value<std::vector<std::string>>(), "MEF input files");
+      ("target", po::value<std::string>(), "top-event / gate / nombrilo name")
+      ("weights", po::value<std::string>(), "nombrilo variant weights file")
+      ("input-file", po::value<std::vector<std::string>>(), "MEF XML or nombrilo.circuit file");
 
   po::positional_options_description pos;
   pos.add("input-file", -1);
@@ -422,7 +425,9 @@ int cmd_compile(int argc, char **argv) {
     return 1;
   }
   if (vm.count("help")) {
-    std::cout << "Usage: fzb compile model.xml [-c N] [--no-kn] [-o model.pcfb]\n\n" << desc << std::endl;
+    std::cout << "Usage: fzb compile model.xml|model.safetensors [-c N] [--no-kn] "
+                 "[--target NAME] [--weights FILE] [-o model.pcfb]\n\n"
+              << desc << std::endl;
     return 0;
   }
   if (!vm.count("input-file")) {
@@ -449,6 +454,9 @@ int cmd_compile(int argc, char **argv) {
   opt.allow_extern = vm.count("allow-extern") > 0;
   if (vm.count("target")) {
     opt.target = vm["target"].as<std::string>();
+  }
+  if (vm.count("weights")) {
+    opt.weights_file = vm["weights"].as<std::string>();
   }
 
   const auto files = vm["input-file"].as<std::vector<std::string>>();
@@ -549,6 +557,80 @@ int cmd_inspect(int argc, char **argv) {
   return rc;
 }
 
+int cmd_export(int argc, char **argv) {
+  po::options_description desc("fzb export options");
+  desc.add_options()
+      ("help,h", "display this help message")
+      ("to", po::value<std::string>(), "target format (nombrilo)")
+      ("output,o", po::value<std::string>(), "output path")
+      ("strict", "omit fuzzybits.pcfb.* extras (plain nombrilo)")
+      ("input-file", po::value<std::string>(), ".pcfb file");
+
+  po::positional_options_description pos;
+  pos.add("input-file", 1);
+
+  po::variables_map vm;
+  try {
+    po::store(po::command_line_parser(argc, argv).options(desc).positional(pos).run(), vm);
+    po::notify(vm);
+  } catch (const std::exception &ex) {
+    std::cerr << "Option error: " << ex.what() << "\n\n" << desc << std::endl;
+    return 1;
+  }
+  if (vm.count("help")) {
+    std::cout << "Usage: fzb export --to nombrilo model.pcfb -o out.safetensors [--strict]\n\n"
+              << desc << std::endl;
+    return 0;
+  }
+  if (!vm.count("input-file")) {
+    std::cerr << "fzb export: missing .pcfb file\n\n" << desc << std::endl;
+    return 1;
+  }
+  const std::string to = vm.count("to") ? vm["to"].as<std::string>() : std::string();
+  if (to != "nombrilo" && to != "nombrilo.circuit") {
+    std::cerr << "fzb export: --to nombrilo is required\n\n" << desc << std::endl;
+    return 1;
+  }
+
+  auto circuit = pcfb::io::read(vm["input-file"].as<std::string>());
+  if (!circuit) {
+    std::cerr << "fzb export: " << circuit.error().message << std::endl;
+    return 1;
+  }
+  fuzzybits::compile::NombriloExportOptions opt;
+  opt.extras = vm.count("strict") == 0;
+  auto nombrilo = fuzzybits::compile::pcfb_to_nombrilo(*circuit, opt);
+  if (!nombrilo) {
+    std::cerr << "fzb export: " << nombrilo.error().message << std::endl;
+    return 1;
+  }
+  auto bytes = fuzzybits::compile::write_nombrilo(*nombrilo);
+  if (!bytes) {
+    std::cerr << "fzb export: " << bytes.error().message << std::endl;
+    return 1;
+  }
+
+  std::filesystem::path out_path;
+  if (vm.count("output")) {
+    out_path = vm["output"].as<std::string>();
+  } else {
+    out_path = std::filesystem::path(vm["input-file"].as<std::string>()).stem();
+    out_path += ".safetensors";
+  }
+  std::ofstream out(out_path, std::ios::binary);
+  if (!out) {
+    std::cerr << "fzb export: cannot write " << out_path << std::endl;
+    return 1;
+  }
+  out.write(reinterpret_cast<const char *>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
+  if (!out) {
+    std::cerr << "fzb export: write failed: " << out_path << std::endl;
+    return 1;
+  }
+  std::cerr << "wrote " << out_path << " (" << bytes->size() << " bytes)" << std::endl;
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -567,6 +649,9 @@ int main(int argc, char **argv) {
   }
   if (cmd == "compile") {
     return cmd_compile(argc - 1, argv + 1);
+  }
+  if (cmd == "export") {
+    return cmd_export(argc - 1, argv + 1);
   }
   if (cmd == "inspect") {
     return cmd_inspect(argc - 1, argv + 1);
