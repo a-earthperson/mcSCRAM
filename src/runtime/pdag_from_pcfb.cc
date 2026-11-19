@@ -535,6 +535,10 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
       throw RuntimeError("pdag_from_circuit: event_id " + std::to_string(info.event_id) +
                          " collides with Constant index 1");
     }
+    if (!std::isfinite(info.p) || info.p < 0.0 || info.p > 1.0) {
+      throw RuntimeError("pdag_from_circuit: SAMPLE '" + info.name + "' event_id " +
+                         std::to_string(info.event_id) + " has probability outside [0, 1]");
+    }
     samples.push_back(std::move(info));
   }
   std::sort(samples.begin(), samples.end(),

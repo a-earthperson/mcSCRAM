@@ -36,6 +36,30 @@ def das9201_xml() -> Path:
 
 
 @pytest.fixture(scope="session")
+def smalltree_xml() -> Path:
+    repo = Path(__file__).resolve().parents[2]
+    path = _first_existing(
+        DATA / "SmallTree.xml",
+        repo / "input" / "SmallTree" / "SmallTree.xml",
+    )
+    if path is None:
+        pytest.skip("SmallTree.xml not found in the source tree")
+    return path
+
+
+@pytest.fixture(scope="session")
+def bscu_xml() -> Path:
+    repo = Path(__file__).resolve().parents[2]
+    path = _first_existing(
+        DATA / "BSCU.xml",
+        repo / "input" / "BSCU" / "BSCU.xml",
+    )
+    if path is None:
+        pytest.skip("BSCU.xml not found in the source tree")
+    return path
+
+
+@pytest.fixture(scope="session")
 def chinese_xml() -> Path:
     repo = Path(__file__).resolve().parents[2]
     path = _first_existing(

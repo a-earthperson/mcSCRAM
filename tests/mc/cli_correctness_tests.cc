@@ -103,3 +103,12 @@ TEST_CASE("MC isp9601 vs BDD reference within 4 sigma", "[mc][isp9601]") {
 TEST_CASE("MC baobab2 vs BDD reference within 4 sigma", "[mc][baobab2]") {
   check_model("baobab2", "input/Aralia/baobab2.xml", 7.13018e-4);
 }
+
+TEST_CASE("MC SmallTree vs exponential point-value formula within 4 sigma", "[mc][small_tree]") {
+  // 1-(1-p1 p2)(1-p3 p4) with p_i = 1-exp(-lambda_i * 8760), lambda means.
+  check_model("small_tree", "input/SmallTree/SmallTree.xml", 0.026776830672032736);
+}
+
+TEST_CASE("MC BSCU vs XFTA point probability within 4 sigma", "[mc][bscu]") {
+  check_model("bscu", "input/BSCU/BSCU.xml", 0.1124087);
+}

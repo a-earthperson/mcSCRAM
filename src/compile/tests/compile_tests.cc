@@ -6,6 +6,7 @@
 #include <cmath>
 #include <filesystem>
 #include <iomanip>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,32 @@ namespace {
 
 std::string aralia(const char *name) {
   return (std::filesystem::path(PROJECT_SOURCE_DIR) / "input" / "Aralia" / name).string();
+}
+
+std::string repo_input(const char *relative) {
+  return (std::filesystem::path(PROJECT_SOURCE_DIR) / relative).string();
+}
+
+double exp_unreliability(double lambda, double mission_hours = 8760.0) {
+  return 1.0 - std::exp(-lambda * mission_hours);
+}
+
+std::map<std::string, double> sample_probabilities(const pcfb::ir::Circuit &circuit) {
+  std::map<std::string, double> out;
+  REQUIRE(circuit.subcircuits());
+  REQUIRE(circuit.subcircuits()->size() > 0);
+  const auto *sc = circuit.subcircuits()->Get(0);
+  REQUIRE(sc);
+  REQUIRE(sc->operators());
+  for (const auto *op : *sc->operators()) {
+    if (!op || op->opcode() != pcfb::OpCode::SAMPLE) {
+      continue;
+    }
+    const auto *sa = op->args_as_SampleArgs();
+    REQUIRE(sa);
+    out[sa->name() ? sa->name()->str() : std::string()] = sa->probability();
+  }
+  return out;
 }
 
 double rel_err(double got, double ref) {
@@ -146,6 +173,46 @@ TEST_CASE("compile writes fuzzybits origins and compile.level metadata", "[compi
   REQUIRE(saw_origins);
   REQUIRE(saw_level);
   REQUIRE(saw_expand);
+}
+
+TEST_CASE("SmallTree SAMPLE probabilities are exponential point values", "[compile][smalltree]") {
+  // Default mission time is 8760 h. lambda1=lambda3=2e-5, lambda2=lambda4=1e-5
+  // (lognormal-deviate *mean*; uncertainty sampling is out of scope).
+  auto compiled = must_compile(repo_input("input/SmallTree/SmallTree.xml"));
+  auto circuit = pcfb::io::from_bytes(compiled.bytes);
+  REQUIRE(circuit);
+  REQUIRE(pcfb::validate(*circuit).empty());
+  const auto samples = sample_probabilities(*circuit);
+  REQUIRE(samples.size() == 4);
+  const double p12 = exp_unreliability(2.0e-5);
+  const double p_e2 = exp_unreliability(1.0e-5);
+  REQUIRE(std::abs(samples.at("e1") - p12) < 1e-12);
+  REQUIRE(std::abs(samples.at("e2") - p_e2) < 1e-12);
+  REQUIRE(std::abs(samples.at("e3") - p12) < 1e-12);
+  REQUIRE(std::abs(samples.at("e4") - p_e2) < 1e-12);
+}
+
+TEST_CASE("BSCU expression probabilities lower to SAMPLE in [0, 1]", "[compile][bscu]") {
+  auto compiled = must_compile(repo_input("input/BSCU/BSCU.xml"));
+  auto circuit = pcfb::io::from_bytes(compiled.bytes);
+  REQUIRE(circuit);
+  REQUIRE(pcfb::validate(*circuit).empty());
+  const auto samples = sample_probabilities(*circuit);
+  REQUIRE(samples.size() >= 1);
+  for (const auto &[name, p] : samples) {
+    INFO("SAMPLE " << name << " p=" << std::scientific << std::setprecision(16) << p);
+    REQUIRE(std::isfinite(p));
+    REQUIRE(p >= 0.0);
+    REQUIRE(p <= 1.0);
+    REQUIRE(p > 0.0);  // every BSCU event has a positive mean rate
+  }
+}
+
+TEST_CASE("compile rejects a basic event with no probability expression", "[compile][error]") {
+  auto compiled =
+      fuzzybits::compile::compile_files({repo_input("tests/input/fta/missing_expression.xml")}, {});
+  REQUIRE_FALSE(compiled);
+  REQUIRE(compiled.error().message.find("no probability expression") != std::string::npos);
 }
 
 TEST_CASE("compile watch emits an extra PROBABILITY query", "[compile][watch]") {

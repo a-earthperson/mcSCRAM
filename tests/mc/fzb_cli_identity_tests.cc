@@ -79,15 +79,13 @@ HitsN parse_fzb_json(const std::string &json) {
   return out;
 }
 
-void check_n(std::uint64_t requested) {
-  const auto src = std::filesystem::path(PROJECT_SOURCE_DIR);
-  const auto xml = src / "input" / "Aralia" / "chinese.xml";
+void check_n(const std::filesystem::path &xml, std::uint64_t requested) {
   REQUIRE(std::filesystem::exists(xml));
 
   const auto tmp = std::filesystem::temp_directory_path() /
-                   ("fuzzybits-cli-id-" + std::to_string(requested));
+                   ("fuzzybits-cli-id-" + xml.stem().string() + "-" + std::to_string(requested));
   std::filesystem::create_directories(tmp);
-  const auto pcfb = tmp / "chinese.pcfb";
+  const auto pcfb = tmp / (xml.stem().string() + ".pcfb");
   const auto report = tmp / "report.xml";
   const auto json_path = tmp / "fzb.json";
   const auto csv = tmp / "convergence.csv";
@@ -128,11 +126,19 @@ void check_n(std::uint64_t requested) {
 }  // namespace
 
 TEST_CASE("fzb run matches scram-cli hits on chinese at 65536", "[mc][bit-identity][cli][n65536]") {
-  check_n(65536);
+  check_n(std::filesystem::path(PROJECT_SOURCE_DIR) / "input" / "Aralia" / "chinese.xml", 65536);
 }
 
 TEST_CASE("fzb run matches scram-cli hits on chinese at 2^24", "[mc][bit-identity][cli][n2p24]") {
-  check_n(1ull << 24);
+  check_n(std::filesystem::path(PROJECT_SOURCE_DIR) / "input" / "Aralia" / "chinese.xml", 1ull << 24);
+}
+
+TEST_CASE("fzb run matches scram-cli hits on SmallTree at 65536", "[mc][bit-identity][cli][smalltree]") {
+  check_n(std::filesystem::path(PROJECT_SOURCE_DIR) / "input" / "SmallTree" / "SmallTree.xml", 65536);
+}
+
+TEST_CASE("fzb run matches scram-cli hits on BSCU at 65536", "[mc][bit-identity][cli][bscu]") {
+  check_n(std::filesystem::path(PROJECT_SOURCE_DIR) / "input" / "BSCU" / "BSCU.xml", 65536);
 }
 
 TEST_CASE("fzb run rejects a non-default --seed", "[mc][cli][seed]") {

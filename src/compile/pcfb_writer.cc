@@ -14,13 +14,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <iomanip>
 #include <span>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -241,6 +244,37 @@ pcfb::Result<void> set_bool_meta(pcfb::builder &b, std::string_view key, bool va
   return b.set(key, static_cast<std::int64_t>(value ? 1 : 0));
 }
 
+/// Bernoulli p stored on a pcfb SAMPLE: the point/mean value the legacy MC
+/// path uses (`BasicEvent::p()` → `Expression::value()`). Exponential with
+/// `<system-mission-time/>` and lognormal (or other) deviate *means* are in
+/// scope; per-trial `Expression::Sample()` uncertainty analysis is not.
+/// Unsupported or out-of-range results must fail here rather than feed a
+/// NaN/Inf threshold into the sampler (hosted SIGILL / `__builtin_trap`).
+pcfb::Result<double> sample_point_probability(const scram::mef::BasicEvent *event, int pdag_index) {
+  if (!event) {
+    return std::unexpected(compile_error("PDAG variable index " + std::to_string(pdag_index) +
+                                         " is not bound to a MEF basic event"));
+  }
+  const std::string name = event->id();
+  if (!event->HasExpression()) {
+    return std::unexpected(compile_error("basic event " + name + " has no probability expression"));
+  }
+  double p = 0.0;
+  try {
+    p = event->p();
+  } catch (const std::exception &ex) {
+    return std::unexpected(
+        compile_error("basic event " + name + ": cannot evaluate point probability: " + ex.what()));
+  }
+  if (!std::isfinite(p) || p < 0.0 || p > 1.0) {
+    std::ostringstream os;
+    os << std::scientific << std::setprecision(16) << "basic event " << name << ": point probability "
+       << p << " is not in [0, 1]";
+    return std::unexpected(compile_error(os.str()));
+  }
+  return p;
+}
+
 }  // namespace
 
 std::string Options::to_cli_string() const {
@@ -405,14 +439,12 @@ pcfb::Result<std::vector<std::byte>> pdag_to_pcfb(scram::core::Pdag &pdag, const
         // variables are basic events (SampleSource::BASIC_EVENT). Module collapse
         // (COLLAPSED_MODULE, compile.exact_root) is deferred to fuzzybits#21.
         const scram::mef::BasicEvent *event = basic_event_for_variable(pdag, var->index());
-        const std::string name = event ? event->id() : ("x" + std::to_string(var->index()));
-        double p = 0.0;
-        if (event && event->HasExpression()) {
-          p = event->p();
-        } else if (event) {
-          return std::unexpected(compile_error("basic event " + name + " has no probability expression"));
+        auto p = sample_point_probability(event, var->index());
+        if (!p) {
+          return std::unexpected(p.error());
         }
-        auto t = b.add_sample(p, name, static_cast<std::uint32_t>(var->index()),
+        const std::string name = event->id();
+        auto t = b.add_sample(*p, name, static_cast<std::uint32_t>(var->index()),
                               pcfb::SampleSource::BASIC_EVENT);
         if (!t) {
           return std::unexpected(t.error());
