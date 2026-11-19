@@ -39,6 +39,7 @@
 #include <exception>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <unordered_map>
 #include <vector>
 
@@ -63,8 +64,15 @@ namespace scram::log::layers {
 namespace scram::mc::queue {
 
 /// AdaptiveCpp's default async handler prints the error list and std::terminate()s.
-/// Metal SSCP JIT currently fails on `double` (#17/#30); surface that as a C++
-/// exception so Python `fuzzybits.run(..., backend="metal")` can catch it.
+/// Do not throw from the queue handler: `wait_and_throw` / `~queue` both invoke
+/// it, so a throw from `wait_and_throw` plus a second throw from `~queue` during
+/// unwind calls std::terminate. Record the message and rethrow on `wait()`.
+inline thread_local std::string g_sycl_async_error;
+
+inline std::string &sycl_async_error_slot() {
+    return g_sycl_async_error;
+}
+
 inline sycl::queue make_throwing_sycl_queue() {
     return sycl::queue{[](sycl::exception_list errors) {
         if (errors.empty()) {
@@ -88,8 +96,24 @@ inline sycl::queue make_throwing_sycl_queue() {
                 msg += "unknown SYCL asynchronous error";
             }
         }
-        throw std::runtime_error(msg.empty() ? "SYCL asynchronous error" : msg);
+        auto &slot = sycl_async_error_slot();
+        if (!slot.empty()) {
+            slot += "; ";
+        }
+        slot += msg.empty() ? "SYCL asynchronous error" : msg;
     }};
+}
+
+inline void wait_sycl_queue(sycl::queue &queue) {
+    queue.wait();
+    queue.throw_asynchronous();
+    auto &slot = sycl_async_error_slot();
+    if (slot.empty()) {
+        return;
+    }
+    std::string msg = std::move(slot);
+    slot.clear();
+    throw std::runtime_error(msg);
 }
 
 struct range3_description {
