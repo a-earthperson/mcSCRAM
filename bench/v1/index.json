@@ -1,8 +1,636 @@
 {
   "schema_version": 1,
   "dataset": "v1",
-  "generated_utc": "2026-11-19T23:23:57Z",
+  "generated_utc": "2026-11-19T23:38:23Z",
   "source_url": "https://fuzzybit-org.github.io/fuzzybits/bench/v1/index.json",
-  "n_points": 0,
-  "points": []
+  "n_points": 1,
+  "points": [
+    {
+      "version": "v0.17.0",
+      "channel": "release",
+      "target": "v100s",
+      "dataset": "v1",
+      "created_utc": "2026-11-19T23:35:41Z",
+      "path": "results/v0.17.0/v100s/2026-11-19T23-35-41Z.json",
+      "runner": "fzb-xerxes-5",
+      "runner_name": "fzb-xerxes-5",
+      "device": "Tesla V100S-PCIE-32GB",
+      "driver": "580.178.04",
+      "image": "ghcr.io/fuzzybit-org/fuzzybits-runtime@sha256:06f78f14a08a0b367b6ad493a7fc0b5093b5f8e91e6d0848ee0b114eee41915e",
+      "image_tag": "ghcr.io/fuzzybit-org/fuzzybits-runtime:v0.17.0-generic",
+      "image_digest": "sha256:06f78f14a08a0b367b6ad493a7fc0b5093b5f8e91e6d0848ee0b114eee41915e",
+      "image_pin_source": "registry",
+      "recipe": "docker/runtime.Dockerfile --target runtime",
+      "commit": "89911a108f91fdbb3cfcec131f4bebe5fef94e58",
+      "backend": "cuda",
+      "verdict": "pass",
+      "flags": {
+        "recipe_changed": false,
+        "driver_changed": false,
+        "runner_changed": false,
+        "image_changed": false
+      },
+      "models": [
+        {
+          "id": "baobab1",
+          "accuracy": {
+            "z": -0.009130020286897543,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.0001016855239868164,
+            "n": 16777216,
+            "hits": 1706,
+            "expected_hits": 1706.377084928,
+            "p_ref": 0.000101708
+          }
+        },
+        {
+          "id": "baobab2",
+          "accuracy": {
+            "z": -0.2415238653249944,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.0007085800170898438,
+            "n": 2097152,
+            "hits": 1486,
+            "expected_hits": 1495.307124736,
+            "p_ref": 0.000713018
+          }
+        },
+        {
+          "id": "baobab3",
+          "accuracy": {
+            "z": 1.0008053367369705,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.0022878646850585938,
+            "n": 1048576,
+            "hits": 2399,
+            "expected_hits": 2350.03707392,
+            "p_ref": 0.00224117
+          }
+        },
+        {
+          "id": "cea9601",
+          "accuracy": {
+            "z": -0.20808941821507893,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.001476287841796875,
+            "n": 1048576,
+            "hits": 1548,
+            "expected_hits": 1556.18115584,
+            "p_ref": 0.00148409
+          }
+        },
+        {
+          "id": "chinese",
+          "accuracy": {
+            "z": 0.8341928998817467,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.0011987686157226562,
+            "n": 1048576,
+            "hits": 1257,
+            "expected_hits": 1227.44209408,
+            "p_ref": 0.00117058
+          },
+          "perf": {
+            "gpu_total_ms": 9.860002,
+            "gpu_kernel_ms": 8.6074,
+            "cpu_sample_s": null,
+            "wall_s": 1.2915026859845966,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        },
+        {
+          "id": "das9201",
+          "accuracy": {
+            "z": -0.4227917692211889,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.013376235961914062,
+            "n": 1048576,
+            "hits": 14026,
+            "expected_hits": 14075.73581365248,
+            "p_ref": 0.01342366773
+          },
+          "perf": {
+            "gpu_total_ms": 42.241645,
+            "gpu_kernel_ms": 37.677,
+            "cpu_sample_s": null,
+            "wall_s": 1.3628785509499721,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        },
+        {
+          "id": "das9202",
+          "accuracy": {
+            "z": 0.012237192700452862,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.0101165771484375,
+            "n": 1048576,
+            "hits": 10608,
+            "expected_hits": 10606.74602008576,
+            "p_ref": 0.01011538126
+          }
+        },
+        {
+          "id": "das9203",
+          "accuracy": {
+            "z": -1.8354179591774167,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.0012845993041992188,
+            "n": 1048576,
+            "hits": 1347,
+            "expected_hits": 1414.3193088,
+            "p_ref": 0.0013488
+          }
+        },
+        {
+          "id": "das9204",
+          "accuracy": {
+            "z": null,
+            "verdict": "infeasible",
+            "status": "infeasible",
+            "estimate": 0.0,
+            "n": 100663296,
+            "hits": 0,
+            "expected_hits": 0.0021838096760832,
+            "p_ref": 2.16942e-11
+          }
+        },
+        {
+          "id": "das9205",
+          "accuracy": {
+            "z": null,
+            "verdict": "infeasible",
+            "status": "infeasible",
+            "estimate": 0.0,
+            "n": 100663296,
+            "hits": 0,
+            "expected_hits": 1.3932605472768,
+            "p_ref": 1.38408e-08
+          }
+        },
+        {
+          "id": "das9206",
+          "accuracy": {
+            "z": -1.9505068350779453,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.22888660430908203,
+            "n": 1048576,
+            "hits": 240005,
+            "expected_hits": 240844.105842688,
+            "p_ref": 0.229686838
+          }
+        },
+        {
+          "id": "das9207",
+          "accuracy": {
+            "z": 0.3467676017192065,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.34685707092285156,
+            "n": 1048576,
+            "hits": 363706,
+            "expected_hits": 363536.9878749184,
+            "p_ref": 0.3466958884
+          }
+        },
+        {
+          "id": "das9208",
+          "accuracy": {
+            "z": -2.624164293307666,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.012730598449707031,
+            "n": 1048576,
+            "hits": 13349,
+            "expected_hits": 13650.25428078592,
+            "p_ref": 0.01301789692
+          }
+        },
+        {
+          "id": "das9209",
+          "accuracy": {
+            "z": null,
+            "verdict": "infeasible",
+            "status": "infeasible",
+            "estimate": 0.0,
+            "n": 100663296,
+            "hits": 0,
+            "expected_hits": 1.06501767168e-05,
+            "p_ref": 1.058e-13
+          }
+        },
+        {
+          "id": "das9601",
+          "accuracy": {
+            "z": 2.898085184889966,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.004422187805175781,
+            "n": 1048576,
+            "hits": 4637,
+            "expected_hits": 4440.0902144,
+            "p_ref": 0.0042344
+          }
+        },
+        {
+          "id": "das9701",
+          "accuracy": {
+            "z": 1.3665650465603456,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.07482051849365234,
+            "n": 1048576,
+            "hits": 78455,
+            "expected_hits": 78086.8255744,
+            "p_ref": 0.0744694
+          },
+          "perf": {
+            "gpu_total_ms": 217.05491,
+            "gpu_kernel_ms": 81.713,
+            "cpu_sample_s": null,
+            "wall_s": 1.7869057229836471,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        },
+        {
+          "id": "edf9201",
+          "accuracy": {
+            "z": 0.24441845772752185,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.3247032165527344,
+            "n": 1048576,
+            "hits": 340476,
+            "expected_hits": 340358.8008148992,
+            "p_ref": 0.3245914467
+          }
+        },
+        {
+          "id": "edf9202",
+          "accuracy": {
+            "z": -1.6778530071983924,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.7806243896484375,
+            "n": 1048576,
+            "hits": 818544,
+            "expected_hits": 819254.9991743488,
+            "p_ref": 0.7813024513
+          }
+        },
+        {
+          "id": "edf9203",
+          "accuracy": {
+            "z": -0.8523627224161481,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.5991811752319336,
+            "n": 1048576,
+            "hits": 628287,
+            "expected_hits": 628714.7377098752,
+            "p_ref": 0.5995890977
+          },
+          "perf": {
+            "gpu_total_ms": 149.81974,
+            "gpu_kernel_ms": 108.02,
+            "cpu_sample_s": null,
+            "wall_s": 1.7682309499941766,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        },
+        {
+          "id": "edf9204",
+          "accuracy": {
+            "z": 0.40312530473345315,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.5255708694458008,
+            "n": 1048576,
+            "hits": 551101,
+            "expected_hits": 550894.869938176,
+            "p_ref": 0.5253742885
+          }
+        },
+        {
+          "id": "edf9205",
+          "accuracy": {
+            "z": -0.682823798030109,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.20907974243164062,
+            "n": 1048576,
+            "hits": 219236,
+            "expected_hits": 219520.3354001408,
+            "p_ref": 0.2093509058
+          }
+        },
+        {
+          "id": "edf9206",
+          "accuracy": {
+            "z": null,
+            "verdict": "infeasible",
+            "status": "infeasible",
+            "estimate": 0.0,
+            "n": 100663296,
+            "hits": 0,
+            "expected_hits": 0.0008672142950400001,
+            "p_ref": 8.615e-12
+          }
+        },
+        {
+          "id": "edfpa14b",
+          "accuracy": {
+            "z": -0.37149411793659454,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.2954540252685547,
+            "n": 1048576,
+            "hits": 309806,
+            "expected_hits": 309979.5607519232,
+            "p_ref": 0.2956195457
+          }
+        },
+        {
+          "id": "edfpa14o",
+          "accuracy": {
+            "z": -0.31837649211885927,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.29691505432128906,
+            "n": 1048576,
+            "hits": 311338,
+            "expected_hits": 311486.9570142208,
+            "p_ref": 0.2970571108
+          }
+        },
+        {
+          "id": "edfpa14p",
+          "accuracy": {
+            "z": 0.22474601898699798,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.0807657241821289,
+            "n": 1048576,
+            "hits": 84689,
+            "expected_hits": 84626.29262589951,
+            "p_ref": 0.08070592177
+          }
+        },
+        {
+          "id": "edfpa14q",
+          "accuracy": {
+            "z": -0.96401903371715,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.29547595977783203,
+            "n": 1048576,
+            "hits": 309829,
+            "expected_hits": 310279.3960259584,
+            "p_ref": 0.2959054909
+          }
+        },
+        {
+          "id": "edfpa14r",
+          "accuracy": {
+            "z": 1.4328993197476327,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.02119922637939453,
+            "n": 1048576,
+            "hits": 22229,
+            "expected_hits": 22017.64000432128,
+            "p_ref": 0.02099765778
+          }
+        },
+        {
+          "id": "edfpa15b",
+          "accuracy": {
+            "z": -0.5745172262654349,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.36246681213378906,
+            "n": 1048576,
+            "hits": 380074,
+            "expected_hits": 380356.8059449344,
+            "p_ref": 0.3627365169
+          }
+        },
+        {
+          "id": "edfpa15o",
+          "accuracy": {
+            "z": -0.6172186789138626,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.36266613006591797,
+            "n": 1048576,
+            "hits": 380283,
+            "expected_hits": 380586.8617367552,
+            "p_ref": 0.3629559152
+          }
+        },
+        {
+          "id": "edfpa15p",
+          "accuracy": {
+            "z": -1.3599079332759378,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.07328414916992188,
+            "n": 1048576,
+            "hits": 76844,
+            "expected_hits": 77206.90068226049,
+            "p_ref": 0.07363023823
+          }
+        },
+        {
+          "id": "edfpa15q",
+          "accuracy": {
+            "z": -0.9768619547725973,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.3622779846191406,
+            "n": 1048576,
+            "hits": 379876,
+            "expected_hits": 380356.8059449344,
+            "p_ref": 0.3627365169
+          }
+        },
+        {
+          "id": "edfpa15r",
+          "accuracy": {
+            "z": 0.5232678462315135,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.019044876098632812,
+            "n": 1048576,
+            "hits": 19970,
+            "expected_hits": 19896.76180176896,
+            "p_ref": 0.01897503071
+          }
+        },
+        {
+          "id": "elf9601",
+          "accuracy": {
+            "z": -2.048121468092845,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.0960397720336914,
+            "n": 1048576,
+            "hits": 100705,
+            "expected_hits": 101322.95363067904,
+            "p_ref": 0.09662909854
+          }
+        },
+        {
+          "id": "ftr10",
+          "accuracy": {
+            "z": 0.5692645772769963,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.44895362854003906,
+            "n": 1048576,
+            "hits": 470762,
+            "expected_hits": 470472.0594665472,
+            "p_ref": 0.4486771197
+          }
+        },
+        {
+          "id": "isp9601",
+          "accuracy": {
+            "z": 0.4609033747191765,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.057229042053222656,
+            "n": 1048576,
+            "hits": 60009,
+            "expected_hits": 59899.37207836672,
+            "p_ref": 0.05712449272
+          }
+        },
+        {
+          "id": "isp9602",
+          "accuracy": {
+            "z": 1.2811118549475482,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.017408370971679688,
+            "n": 1048576,
+            "hits": 18254,
+            "expected_hits": 18082.42555486208,
+            "p_ref": 0.01724474483
+          }
+        },
+        {
+          "id": "isp9603",
+          "accuracy": {
+            "z": -1.2927255130343784,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.003162384033203125,
+            "n": 1048576,
+            "hits": 3316,
+            "expected_hits": 3390.323437862912,
+            "p_ref": 0.003233264387
+          }
+        },
+        {
+          "id": "isp9604",
+          "accuracy": {
+            "z": -0.02793913895809072,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.14274120330810547,
+            "n": 1048576,
+            "hits": 149675,
+            "expected_hits": 149685.0079154176,
+            "p_ref": 0.1427507476
+          }
+        },
+        {
+          "id": "isp9605",
+          "accuracy": {
+            "z": 0.09791635443920638,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 1.3756752014160157e-05,
+            "n": 83886080,
+            "hits": 1154,
+            "expected_hits": 1150.673747968,
+            "p_ref": 1.37171e-05
+          }
+        },
+        {
+          "id": "isp9606",
+          "accuracy": {
+            "z": -0.26243237465014047,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.054259300231933594,
+            "n": 1048576,
+            "hits": 56895,
+            "expected_hits": 56955.87521396736,
+            "p_ref": 0.05431735536
+          }
+        },
+        {
+          "id": "isp9607",
+          "accuracy": {
+            "z": -0.48019918341654283,
+            "verdict": "pass (low power)",
+            "status": "pass (low power)",
+            "estimate": 9.040037790934244e-07,
+            "n": 100663296,
+            "hits": 91,
+            "expected_hits": 95.58080618496001,
+            "p_ref": 9.4951e-07
+          }
+        },
+        {
+          "id": "jbd9601",
+          "accuracy": {
+            "z": -0.7465686690366559,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 0.7547769546508789,
+            "n": 1048576,
+            "hits": 791441,
+            "expected_hits": 791769.8968190976,
+            "p_ref": 0.7550906151
+          }
+        },
+        {
+          "id": "nus9601",
+          "accuracy": {
+            "z": -1.1604797090860999,
+            "verdict": "pass",
+            "status": "pass",
+            "estimate": 9.586413701375326e-06,
+            "n": 100663296,
+            "hits": 965,
+            "expected_hits": 1001.0494901000601,
+            "p_ref": 9.94453321e-06
+          },
+          "perf": {
+            "gpu_total_ms": 619.29666,
+            "gpu_kernel_ms": 458.63,
+            "cpu_sample_s": null,
+            "wall_s": 2.3279040699708275,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        }
+      ]
+    }
+  ]
 }
