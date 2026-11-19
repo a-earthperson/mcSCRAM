@@ -1,5 +1,5 @@
 # pcfb is public. Default: FetchContent the pinned v1.1 implementation
-# (fuzzybit-org/pcfb@6b1af8bb) anonymously. Optional local override:
+# (fuzzybit-org/pcfb@facae790) anonymously. Optional local override:
 #   -DFUZZYBITS_PCFB_SOURCE_DIR=/path/to/pcfb
 # (Dockerfile.fzb still accepts --build-context pcfb=… for offline builds.)
 #
@@ -12,7 +12,7 @@ set(FUZZYBITS_PCFB_SOURCE_DIR "" CACHE PATH
 if(DEFINED FUZZYBITS_PIN_PCFB_GIT_TAG AND NOT FUZZYBITS_PIN_PCFB_GIT_TAG STREQUAL "")
   set(_pcfb_git_tag_default "${FUZZYBITS_PIN_PCFB_GIT_TAG}")
 else()
-  set(_pcfb_git_tag_default "6b1af8bb4bb9af3d217a33317c006f0ff9516cf1")
+  set(_pcfb_git_tag_default "facae79077e49cfdbc3f691c4628999ab16f89b4")
 endif()
 set(FUZZYBITS_PCFB_GIT_TAG "${_pcfb_git_tag_default}" CACHE STRING
     "Pinned pcfb git revision (v1.1)")
