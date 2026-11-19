@@ -139,6 +139,22 @@ TEST_CASE("Session streams the same first-pass hits as run_graph on chinese", "[
   REQUIRE(session.closed());
 }
 
+TEST_CASE("extra watch queries do not replace the PDAG root", "[runtime][mc][watch]") {
+  fuzzybits::compile::Options opt = no_kn();
+  opt.watch = {"g1"};
+  auto compiled = fuzzybits::compile::compile_files({aralia("chinese.xml")}, opt);
+  REQUIRE(compiled);
+  auto circuit = pcfb::io::from_bytes(compiled->bytes);
+  REQUIRE(circuit);
+  auto reconstructed = fuzzybits::runtime::pdag_from_circuit(*circuit);
+  REQUIRE(reconstructed.queries.size() >= 2);
+  REQUIRE(reconstructed.graph->root_ptr());
+  REQUIRE(reconstructed.graph->root_ptr()->index() == reconstructed.queries.front().node_index);
+  REQUIRE_FALSE(reconstructed.meta.target.empty());
+  const auto watched = fuzzybits::runtime::Session::resolve_watch(reconstructed, {"g1"});
+  REQUIRE(watched.size() == 1);
+}
+
 TEST_CASE("fzb run chinese.pcfb small-N estimate is in (0,1) on CPU", "[runtime][mc]") {
   auto compiled = fuzzybits::compile::compile_files({aralia("chinese.xml")}, no_kn());
   REQUIRE(compiled);

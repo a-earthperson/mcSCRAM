@@ -10,8 +10,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <limits>
+#include <optional>
 #include <sstream>
+#include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -23,20 +27,307 @@ constexpr double kTwoTo32 = 4294967296.0;  // 2^32
 struct TensorBinding {
   std::shared_ptr<scram::core::Variable> variable;
   std::shared_ptr<scram::core::Gate> gate;
+  bool is_constant = false;
+  bool constant_true = true;
 
-  [[nodiscard]] bool empty() const { return !variable && !gate; }
+  [[nodiscard]] bool empty() const { return !variable && !gate && !is_constant; }
 };
 
 std::string sanitize_name(std::string name, std::uint32_t event_id) {
   if (name.empty()) {
     name = "e" + std::to_string(event_id);
   }
-  for (char &c : name) {
-    if (c == '.') {
-      c = '_';
+  if (name.find('.') != std::string::npos) {
+    for (char &c : name) {
+      if (c == '.') {
+        c = '_';
+      }
     }
   }
   return name;
+}
+
+std::optional<std::string> meta_string(const pcfb::ir::Circuit &circuit, std::string_view key) {
+  const auto *fb = circuit.get();
+  if (!fb || !fb->metadata()) {
+    return std::nullopt;
+  }
+  for (const auto *kv : *fb->metadata()) {
+    if (!kv || !kv->key() || kv->key()->str() != key) {
+      continue;
+    }
+    if (const auto *s = kv->value_as_StringValue(); s && s->value()) {
+      return s->value()->str();
+    }
+    if (const auto *i = kv->value_as_IntValue()) {
+      return std::to_string(i->value());
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::int64_t> meta_int(const pcfb::ir::Circuit &circuit, std::string_view key) {
+  const auto *fb = circuit.get();
+  if (!fb || !fb->metadata()) {
+    return std::nullopt;
+  }
+  for (const auto *kv : *fb->metadata()) {
+    if (!kv || !kv->key() || kv->key()->str() != key) {
+      continue;
+    }
+    if (const auto *i = kv->value_as_IntValue()) {
+      return i->value();
+    }
+  }
+  return std::nullopt;
+}
+
+std::string json_unescape(std::string_view s) {
+  std::string out;
+  out.reserve(s.size());
+  for (std::size_t i = 0; i < s.size(); ++i) {
+    if (s[i] != '\\' || i + 1 >= s.size()) {
+      out += s[i];
+      continue;
+    }
+    const char n = s[++i];
+    switch (n) {
+      case 'n':
+        out += '\n';
+        break;
+      case 'r':
+        out += '\r';
+        break;
+      case 't':
+        out += '\t';
+        break;
+      case '"':
+        out += '"';
+        break;
+      case '\\':
+        out += '\\';
+        break;
+      default:
+        out += n;
+        break;
+    }
+  }
+  return out;
+}
+
+std::optional<std::string> json_string_field(std::string_view obj, std::string_view key) {
+  const std::string pat = "\"" + std::string(key) + "\":\"";
+  const auto pos = obj.find(pat);
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  std::size_t i = pos + pat.size();
+  std::string raw;
+  while (i < obj.size()) {
+    if (obj[i] == '\\' && i + 1 < obj.size()) {
+      raw += obj[i];
+      raw += obj[i + 1];
+      i += 2;
+      continue;
+    }
+    if (obj[i] == '"') {
+      break;
+    }
+    raw += obj[i];
+    ++i;
+  }
+  return json_unescape(raw);
+}
+
+std::optional<int> json_int_field(std::string_view obj, std::string_view key) {
+  const std::string pat = "\"" + std::string(key) + "\":";
+  const auto pos = obj.find(pat);
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  std::size_t i = pos + pat.size();
+  while (i < obj.size() && (obj[i] == ' ' || obj[i] == '\t')) {
+    ++i;
+  }
+  const bool neg = i < obj.size() && obj[i] == '-';
+  if (neg) {
+    ++i;
+  }
+  if (i >= obj.size() || obj[i] < '0' || obj[i] > '9') {
+    return std::nullopt;
+  }
+  int v = 0;
+  while (i < obj.size() && obj[i] >= '0' && obj[i] <= '9') {
+    v = v * 10 + (obj[i] - '0');
+    ++i;
+  }
+  return neg ? -v : v;
+}
+
+std::vector<OriginRecord> parse_origins(std::string_view json) {
+  std::vector<OriginRecord> out;
+  std::size_t i = 0;
+  while (i < json.size()) {
+    const auto start = json.find('{', i);
+    if (start == std::string_view::npos) {
+      break;
+    }
+    const auto end = json.find('}', start + 1);
+    if (end == std::string_view::npos) {
+      break;
+    }
+    const auto obj = json.substr(start, end - start + 1);
+    OriginRecord rec;
+    if (auto idx = json_int_field(obj, "index")) {
+      rec.pdag_index = *idx;
+    }
+    rec.kind = json_string_field(obj, "kind").value_or("");
+    rec.id = json_string_field(obj, "id").value_or("");
+    rec.name = json_string_field(obj, "name").value_or("");
+    rec.label = json_string_field(obj, "label").value_or("");
+    rec.full_path = json_string_field(obj, "full_path").value_or("");
+    if (rec.pdag_index != 0 || !rec.id.empty() || !rec.name.empty()) {
+      out.push_back(std::move(rec));
+    }
+    i = end + 1;
+  }
+  return out;
+}
+
+std::unordered_map<std::uint32_t, int> parse_tensor_pdag(std::string_view s) {
+  std::unordered_map<std::uint32_t, int> out;
+  std::size_t i = 0;
+  while (i < s.size()) {
+    std::uint32_t tid = 0;
+    int pdag = 0;
+    while (i < s.size() && s[i] >= '0' && s[i] <= '9') {
+      tid = tid * 10 + static_cast<std::uint32_t>(s[i] - '0');
+      ++i;
+    }
+    if (i >= s.size() || s[i] != ':') {
+      break;
+    }
+    ++i;
+    const bool neg = i < s.size() && s[i] == '-';
+    if (neg) {
+      ++i;
+    }
+    while (i < s.size() && s[i] >= '0' && s[i] <= '9') {
+      pdag = pdag * 10 + (s[i] - '0');
+      ++i;
+    }
+    out[tid] = neg ? -pdag : pdag;
+    if (i < s.size() && s[i] == ',') {
+      ++i;
+    }
+  }
+  return out;
+}
+
+std::vector<std::string> split_lines(std::string_view s) {
+  std::vector<std::string> out;
+  std::size_t i = 0;
+  while (i < s.size()) {
+    auto nl = s.find('\n', i);
+    if (nl == std::string_view::npos) {
+      out.emplace_back(s.substr(i));
+      break;
+    }
+    out.emplace_back(s.substr(i, nl - i));
+    i = nl + 1;
+  }
+  return out;
+}
+
+GraphMeta graph_meta_from_circuit(const pcfb::ir::Circuit &circuit) {
+  GraphMeta meta;
+  if (auto v = meta_string(circuit, "general.model_name")) {
+    meta.model_name = *v;
+  }
+  if (auto v = meta_string(circuit, "fuzzybits.source")) {
+    meta.source = *v;
+  }
+  if (auto v = meta_string(circuit, "fuzzybits.input_files")) {
+    meta.input_files = split_lines(*v);
+  } else if (!meta.source.empty()) {
+    meta.input_files = {meta.source};
+  }
+  if (auto v = meta_string(circuit, "fuzzybits.target")) {
+    meta.target = *v;
+  }
+  if (auto v = meta_string(circuit, "fuzzybits.target_name")) {
+    meta.target_name = *v;
+  }
+  if (auto v = meta_int(circuit, "compile.level")) {
+    meta.compilation_level = static_cast<int>(*v);
+    meta.has_compilation = true;
+  }
+  if (auto v = meta_int(circuit, "compile.ccf")) {
+    meta.ccf = *v != 0;
+    meta.has_compilation = true;
+  }
+  if (auto v = meta_int(circuit, "compile.expand_atleast_gates")) {
+    meta.expand_atleast_gates = *v != 0;
+    meta.has_compilation = true;
+  }
+  if (auto v = meta_int(circuit, "compile.expand_xor_gates")) {
+    meta.expand_xor_gates = *v != 0;
+    meta.has_compilation = true;
+  }
+  if (auto v = meta_int(circuit, "compile.recognize_atleast_groups")) {
+    meta.recognize_atleast_groups = *v != 0;
+    meta.has_compilation = true;
+  }
+  if (auto v = meta_int(circuit, "compile.recognize_xor_groups")) {
+    meta.recognize_xor_groups = *v != 0;
+    meta.has_compilation = true;
+  }
+  if (auto v = meta_int(circuit, "compile.keep_null_gates")) {
+    meta.keep_null_gates = *v != 0;
+    meta.has_compilation = true;
+  }
+  return meta;
+}
+
+std::unique_ptr<scram::mef::Gate> make_origin_gate(std::string name, const OriginRecord *rec) {
+  if (name.empty() && rec) {
+    name = rec->name.empty() ? rec->id : rec->name;
+  }
+  if (name.empty()) {
+    return nullptr;
+  }
+  std::string base;
+  auto role = scram::mef::RoleSpecifier::kPublic;
+  if (name.find('.') != std::string::npos) {
+    const auto pos = name.rfind('.');
+    base = name.substr(0, pos);
+    name = name.substr(pos + 1);
+    if (!base.empty() && base.front() == '.') {
+      base.erase(base.begin());
+    }
+    if (!base.empty()) {
+      role = scram::mef::RoleSpecifier::kPrivate;
+    }
+  } else if (rec && rec->id != rec->name && !rec->full_path.empty() && rec->full_path.front() != '.') {
+    const auto pos = rec->full_path.rfind('.');
+    if (pos != std::string::npos && pos > 0) {
+      base = rec->full_path.substr(0, pos);
+      role = scram::mef::RoleSpecifier::kPrivate;
+    }
+  }
+  try {
+    auto gate = std::make_unique<scram::mef::Gate>(name, base, role);
+    if (rec && !rec->label.empty()) {
+      gate->label(rec->label);
+    }
+    return gate;
+  } catch (const std::exception &) {
+    try {
+      return std::make_unique<scram::mef::Gate>(sanitize_name(std::move(name), 0));
+    } catch (const std::exception &) {
+      return nullptr;
+    }
+  }
 }
 
 std::string threshold_note(double p, std::uint64_t spec_threshold, bool always_true) {
@@ -72,7 +363,13 @@ scram::core::Connective connective_for(pcfb::OpCode op) {
   }
 }
 
-void add_arg(const std::shared_ptr<scram::core::Gate> &parent, const TensorBinding &binding, bool complement) {
+void add_arg(scram::core::Pdag *graph, const std::shared_ptr<scram::core::Gate> &parent,
+             const TensorBinding &binding, bool complement) {
+  if (binding.is_constant) {
+    const bool want_false = binding.constant_true ? complement : !complement;
+    parent->AddArg(graph->constant(), want_false);
+    return;
+  }
   if (binding.variable) {
     parent->AddArg(binding.variable, complement);
   } else if (binding.gate) {
@@ -94,16 +391,16 @@ xor_fold(scram::core::Pdag *graph, const std::vector<std::pair<TensorBinding, bo
   }
   if (args.size() == 1) {
     auto g = make_gate(graph, args.front().second ? scram::core::kNot : scram::core::kNull);
-    add_arg(g, args.front().first, false);
+    add_arg(graph, g, args.front().first, false);
     return g;
   }
   auto acc = make_gate(graph, scram::core::kXor);
-  add_arg(acc, args[0].first, args[0].second);
-  add_arg(acc, args[1].first, args[1].second);
+  add_arg(graph, acc, args[0].first, args[0].second);
+  add_arg(graph, acc, args[1].first, args[1].second);
   for (std::size_t i = 2; i < args.size(); ++i) {
     auto next = make_gate(graph, scram::core::kXor);
     next->AddArg(acc, false);
-    add_arg(next, args[i].first, args[i].second);
+    add_arg(graph, next, args[i].first, args[i].second);
     acc = std::move(next);
   }
   return acc;
@@ -144,6 +441,18 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
 
   ReconstructedPdag out;
   out.graph = std::make_unique<scram::core::Pdag>();
+  out.meta = graph_meta_from_circuit(circuit);
+  if (auto origins = meta_string(circuit, "fuzzybits.origins")) {
+    out.origins = parse_origins(*origins);
+  }
+  std::unordered_map<int, const OriginRecord *> origin_by_index;
+  for (const auto &rec : out.origins) {
+    origin_by_index[rec.pdag_index] = &rec;
+  }
+  std::unordered_map<std::uint32_t, int> tensor_pdag;
+  if (auto map = meta_string(circuit, "fuzzybits.tensor_pdag")) {
+    tensor_pdag = parse_tensor_pdag(*map);
+  }
   auto *graph = out.graph.get();
 
   const auto *ops = sc->operators();
@@ -153,23 +462,45 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
     tensors.resize(sc->tensors()->size());
   }
 
-  std::shared_ptr<scram::core::Variable> ones_var;
-  std::shared_ptr<scram::core::Variable> zeros_var;
-
-  auto ensure_const_var = [&](bool value) -> std::shared_ptr<scram::core::Variable> & {
-    auto &slot = value ? ones_var : zeros_var;
-    if (slot) {
-      return slot;
+  auto place_gate = [&](scram::core::Connective type, std::uint32_t output) {
+    auto it = tensor_pdag.find(output);
+    if (it != tensor_pdag.end() && it->second > graph->last_node_index()) {
+      try {
+        graph->SetNextNodeIndex(it->second);
+      } catch (const std::exception &) {
+      }
     }
-    auto expr = std::make_unique<scram::mef::ConstantExpression>(value ? 1.0 : 0.0);
-    const char *name = value ? "pcfb_ones" : "pcfb_zeros";
-    auto event = std::make_unique<scram::mef::BasicEvent>(name);
-    event->expression(expr.get());
-    slot = std::make_shared<scram::core::Variable>(graph);
-    graph->SetBasicEvent(slot->index(), event.get());
-    out.expressions.push_back(std::move(expr));
-    out.events.push_back(std::move(event));
-    return slot;
+    return make_gate(graph, type);
+  };
+
+  auto attach_origin = [&](const std::shared_ptr<scram::core::Gate> &gate, const pcfb::Op *op,
+                           std::uint32_t output) {
+    if (!gate) {
+      return;
+    }
+    const OriginRecord *rec = nullptr;
+    auto pdag_it = tensor_pdag.find(output);
+    if (pdag_it != tensor_pdag.end()) {
+      auto rec_it = origin_by_index.find(pdag_it->second);
+      if (rec_it != origin_by_index.end()) {
+        rec = rec_it->second;
+      }
+    }
+    std::string name;
+    if (op && op->name() && op->name()->size()) {
+      name = op->name()->str();
+    } else if (rec) {
+      name = rec->id.empty() ? rec->name : rec->id;
+    }
+    if (name.empty() || name == "true" || name == "root_complement") {
+      return;
+    }
+    auto origin = make_origin_gate(name, rec);
+    if (!origin) {
+      return;
+    }
+    gate->mef_origin_ptr(origin.get());
+    out.origin_gates.push_back(std::move(origin));
   };
 
   // Pass 1: place SAMPLE variables at event_id so Philox pdag_idx matches compile.
@@ -269,7 +600,7 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
   };
 
   auto emit_simple = [&](pcfb::OpCode opcode, const std::vector<std::pair<TensorBinding, bool>> &args,
-                         std::uint32_t k) -> std::shared_ptr<scram::core::Gate> {
+                         std::uint32_t k, std::uint32_t output) -> std::shared_ptr<scram::core::Gate> {
     if (opcode == pcfb::OpCode::BITWISE_XOR || opcode == pcfb::OpCode::BITWISE_XNOR) {
       auto g = xor_fold(graph, args);
       if (opcode == pcfb::OpCode::BITWISE_XNOR) {
@@ -283,7 +614,7 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
       auto inner = make_gate(graph, scram::core::kAtleast);
       inner->min_number(static_cast<int>(k + 1));
       for (const auto &[b, inv] : args) {
-        add_arg(inner, b, inv);
+        add_arg(graph, inner, b, inv);
       }
       auto neg = make_gate(graph, scram::core::kNot);
       neg->AddArg(inner, false);
@@ -295,8 +626,8 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
       auto atleast_next = make_gate(graph, scram::core::kAtleast);
       atleast_next->min_number(static_cast<int>(k + 1));
       for (const auto &[b, inv] : args) {
-        add_arg(atleast, b, inv);
-        add_arg(atleast_next, b, inv);
+        add_arg(graph, atleast, b, inv);
+        add_arg(graph, atleast_next, b, inv);
       }
       auto not_next = make_gate(graph, scram::core::kNot);
       not_next->AddArg(atleast_next, false);
@@ -306,12 +637,12 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
       return both;
     }
 
-    auto g = make_gate(graph, connective_for(opcode));
+    auto g = place_gate(connective_for(opcode), output);
     if (opcode == pcfb::OpCode::BITWISE_ATLEAST) {
       g->min_number(static_cast<int>(k));
     }
     for (const auto &[b, inv] : args) {
-      add_arg(g, b, inv);
+      add_arg(graph, g, b, inv);
     }
     return g;
   };
@@ -331,15 +662,24 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
         bind_output(output, std::move(b));
         break;
       }
-      case pcfb::OpCode::BITWISE_ONES: {
-        TensorBinding b;
-        b.variable = ensure_const_var(true);
-        bind_output(output, std::move(b));
-        break;
-      }
+      case pcfb::OpCode::BITWISE_ONES:
       case pcfb::OpCode::BITWISE_ZEROS: {
+        const bool is_true = op->opcode() == pcfb::OpCode::BITWISE_ONES;
+        const std::string name = (op->name() && op->name()->size()) ? op->name()->str() : std::string();
+        TensorBinding constant;
+        constant.is_constant = true;
+        constant.constant_true = is_true;
+        // Anonymous ONES ("true") stay as the PDAG Constant. Named fills are
+        // constant-folded gates and must remain addressable DAG nodes.
+        if (name.empty() || name == "true") {
+          bind_output(output, std::move(constant));
+          break;
+        }
+        auto g = place_gate(scram::core::kNull, output);
+        add_arg(graph, g, constant, false);
+        attach_origin(g, op, output);
         TensorBinding b;
-        b.variable = ensure_const_var(false);
+        b.gate = std::move(g);
         bind_output(output, std::move(b));
         break;
       }
@@ -349,7 +689,8 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
             (op->args_type() == pcfb::OpArgs::KofNArgs && op->args_as_KofNArgs()) ? op->args_as_KofNArgs()->k()
                                                                                   : 0;
         TensorBinding b;
-        b.gate = emit_simple(op->opcode(), args, k);
+        b.gate = emit_simple(op->opcode(), args, k, output);
+        attach_origin(b.gate, op, output);
         bind_output(output, std::move(b));
         break;
       }
@@ -368,8 +709,18 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
       rq.node = binding.gate;
       rq.node_index = binding.gate->index();
     } else if (binding.variable) {
+      if (qi == 0) {
+        auto wrap = make_gate(graph, scram::core::kNull);
+        wrap->AddArg(binding.variable, false);
+        rq.node = wrap;
+        rq.node_index = wrap->index();
+      } else {
+        rq.node = binding.variable;
+        rq.node_index = binding.variable->index();
+      }
+    } else if (binding.is_constant) {
       auto wrap = make_gate(graph, scram::core::kNull);
-      wrap->AddArg(binding.variable, false);
+      add_arg(graph, wrap, binding, false);
       rq.node = wrap;
       rq.node_index = wrap->index();
     } else {
@@ -385,19 +736,89 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
   if (!root_gate) {
     throw RuntimeError("pdag_from_circuit: query node is not a gate");
   }
-  if (out.queries.size() > 1) {
-    auto dummy = make_gate(graph, scram::core::kAnd);
-    for (const auto &q : out.queries) {
-      auto g = std::dynamic_pointer_cast<scram::core::Gate>(q.node);
-      if (!g) {
-        throw RuntimeError("pdag_from_circuit: query node is not a gate");
-      }
-      dummy->AddArg(g, false);
-    }
-    root_gate = dummy;
-  }
   graph->root(root_gate);
+  if (out.meta.target.empty() && !out.queries.empty()) {
+    out.meta.target = out.queries.front().name;
+  }
+  if (out.meta.target_name.empty()) {
+    out.meta.target_name = out.meta.target;
+  }
+  if (out.meta.model_name.empty()) {
+    out.meta.model_name = out.meta.target_name;
+  }
   return out;
+}
+
+namespace {
+
+void collect_named_nodes(const std::shared_ptr<scram::core::Gate> &gate,
+                         std::unordered_map<int, std::shared_ptr<scram::core::Node>> &nodes) {
+  if (!gate || !nodes.emplace(gate->index(), gate).second) {
+    return;
+  }
+  for (const auto &arg : gate->args<scram::core::Gate>()) {
+    collect_named_nodes(arg.second, nodes);
+  }
+  for (const auto &arg : gate->args<scram::core::Variable>()) {
+    nodes.emplace(arg.second->index(), arg.second);
+  }
+}
+
+bool origin_matches(std::string_view want, const scram::mef::Id &id) {
+  return id.id() == want || id.name() == want || id.full_path() == want;
+}
+
+}  // namespace
+
+std::vector<int> Session::resolve_watch(const ReconstructedPdag &reconstructed,
+                                        const std::vector<std::string> &names) {
+  if (names.empty()) {
+    return {};
+  }
+  if (!reconstructed.graph || !reconstructed.graph->root_ptr()) {
+    throw RuntimeError("watch: reconstructed PDAG has no root");
+  }
+  std::unordered_map<int, std::shared_ptr<scram::core::Node>> nodes;
+  collect_named_nodes(reconstructed.graph->root_ptr(), nodes);
+  std::vector<int> indices;
+  indices.reserve(names.size());
+  for (const auto &want : names) {
+    if (want.empty()) {
+      continue;
+    }
+    std::optional<int> found;
+    for (const auto &[index, node] : nodes) {
+      if (std::to_string(index) == want) {
+        found = index;
+        break;
+      }
+      if (auto gate = std::dynamic_pointer_cast<scram::core::Gate>(node)) {
+        if (const auto *origin = gate->mef_origin_ptr(); origin && origin_matches(want, *origin)) {
+          found = index;
+          break;
+        }
+      } else if (auto var = std::dynamic_pointer_cast<scram::core::Variable>(node)) {
+        const auto *event = reconstructed.graph->basic_events()[var->index()];
+        if (event && origin_matches(want, *event)) {
+          found = index;
+          break;
+        }
+      }
+    }
+    if (!found) {
+      for (const auto &q : reconstructed.queries) {
+        if (q.name == want) {
+          found = q.node_index;
+          break;
+        }
+      }
+    }
+    if (!found) {
+      throw RuntimeError("watched node not in reconstructed PDAG: " + want);
+    }
+    indices.push_back(*found);
+  }
+  return indices;
 }
 
 }  // namespace fuzzybits::runtime

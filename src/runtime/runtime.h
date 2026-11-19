@@ -19,6 +19,7 @@ class Node;
 namespace scram::mef {
 class BasicEvent;
 class ConstantExpression;
+class Gate;
 }  // namespace scram::mef
 
 namespace fuzzybits::runtime {
@@ -59,6 +60,33 @@ struct ReconstructedQuery {
   std::shared_ptr<scram::core::Node> node;
 };
 
+/// Fields `Pdag.to_graph()` / the server DAG views need, restored from
+/// `compile.*` / `fuzzybits.*` metadata written at lowering.
+struct GraphMeta {
+  std::string model_name;
+  std::string source;
+  std::vector<std::string> input_files;
+  std::string target;
+  std::string target_name;
+  int compilation_level = 2;
+  bool ccf = false;
+  bool expand_atleast_gates = false;
+  bool expand_xor_gates = false;
+  bool recognize_atleast_groups = true;
+  bool recognize_xor_groups = true;
+  bool keep_null_gates = false;
+  bool has_compilation = false;
+};
+
+struct OriginRecord {
+  int pdag_index = 0;
+  std::string kind;
+  std::string id;
+  std::string name;
+  std::string label;
+  std::string full_path;
+};
+
 /// Owns the reconstructed PDAG plus the MEF objects kernel_builder reads
 /// through `Pdag::basic_events()`. Special members are out-of-line because
 /// `Pdag` / `BasicEvent` / `ConstantExpression` are incomplete here.
@@ -66,7 +94,10 @@ struct ReconstructedPdag {
   std::unique_ptr<scram::core::Pdag> graph;
   std::vector<std::unique_ptr<scram::mef::BasicEvent>> events;
   std::vector<std::unique_ptr<scram::mef::ConstantExpression>> expressions;
+  std::vector<std::unique_ptr<scram::mef::Gate>> origin_gates;
   std::vector<ReconstructedQuery> queries;
+  GraphMeta meta;
+  std::vector<OriginRecord> origins;
   /// Notes about 32-bit Bernoulli truncation (#17 is Phase 2).
   std::vector<std::string> threshold_notes;
 
@@ -133,7 +164,8 @@ struct PassResult {
 class Session {
  public:
   Session(ReconstructedPdag reconstructed, const std::string &backend = {},
-          std::size_t requested_trials_per_pass = 0);
+          std::size_t requested_trials_per_pass = 0, std::vector<std::string> watch = {},
+          std::size_t num_trials = 0);
   Session(Session &&) noexcept;
   Session &operator=(Session &&) noexcept;
   ~Session();
@@ -141,17 +173,26 @@ class Session {
   Session &operator=(const Session &) = delete;
 
   static Session from_circuit(const pcfb::ir::Circuit &circuit, const std::string &backend = {},
-                              std::size_t requested_trials_per_pass = 0);
+                              std::size_t requested_trials_per_pass = 0, std::vector<std::string> watch = {},
+                              std::size_t num_trials = 0);
   static Session from_bytes(std::span<const std::byte> bytes, const std::string &backend = {},
-                            std::size_t requested_trials_per_pass = 0);
+                            std::size_t requested_trials_per_pass = 0, std::vector<std::string> watch = {},
+                            std::size_t num_trials = 0);
   static Session from_path(const std::filesystem::path &path, const std::string &backend = {},
-                           std::size_t requested_trials_per_pass = 0);
+                           std::size_t requested_trials_per_pass = 0, std::vector<std::string> watch = {},
+                           std::size_t num_trials = 0);
 
   [[nodiscard]] scram::core::Pdag &pdag();
   [[nodiscard]] const scram::core::Pdag &pdag() const;
   [[nodiscard]] const std::vector<ReconstructedQuery> &queries() const;
+  [[nodiscard]] const GraphMeta &meta() const;
   [[nodiscard]] SampleShape sample_shape() const;
   [[nodiscard]] bool closed() const;
+
+  /// Resolve extra watch names (id / name / full_path / decimal PDAG index)
+  /// against the reconstructed graph. Unknown names throw `RuntimeError`.
+  [[nodiscard]] static std::vector<int> resolve_watch(const ReconstructedPdag &reconstructed,
+                                                      const std::vector<std::string> &names);
 
   PassResult step();
   void close();

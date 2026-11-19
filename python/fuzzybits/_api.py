@@ -230,6 +230,19 @@ def _pcfb_bytes(pcfb: bytes | str | os.PathLike[str]) -> bytes:
     return path.read_bytes()
 
 
+def _as_watch(value: Any) -> list[str]:
+    """Coerce ``watch`` into MEF names / PDAG indices. Booleans are watch_mode, not a list."""
+    if value is None or value is False or value is True:
+        return []
+    if isinstance(value, (bytes, bytearray)):
+        raise TypeError("watch must be a name, index, or sequence of names")
+    if isinstance(value, str):
+        return [part.strip() for part in value.replace(";", ",").split(",") if part.strip()]
+    if isinstance(value, (int, float)):
+        return [str(int(value))]
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
 def _mask_backend(backend: str | None) -> str:
     """Translate Python ``backend=`` to the C++ ``apply_backend_mask`` argument."""
     chosen = "auto" if backend is None else str(backend).lower()
@@ -247,6 +260,7 @@ def compile(  # noqa: A001 - public API name
     *,
     pdag_c: int = 2,
     no_kn: bool = True,
+    watch: Any = None,
     **options: Any,
 ) -> bytes:
     """Compile OpenPSA/MEF XML to a pcfb 1.1 buffer.
@@ -259,6 +273,10 @@ def compile(  # noqa: A001 - public API name
         PDAG compilation level (``-c`` / ``compilation_level``).
     no_kn:
         Match the CLI ``--no-kn`` flag (expand k-out-of-n to AND/OR).
+    watch:
+        Extra MEF gate / event names (or PDAG indices) emitted as additional
+        ``PROBABILITY`` queries so :class:`Session` tallies them. Boolean
+        ``True``/``False`` is ignored (that is ``watch_mode``).
     """
     _reject_seed(options.pop("seed", None) if "seed" in options else None, options)
     native = _runtime.native()
@@ -267,6 +285,13 @@ def compile(  # noqa: A001 - public API name
         "no_kn": no_kn,
     }
     opts.update(options)
+    names = _as_watch(watch)
+    if not names:
+        names = _as_watch(opts.pop("watch", None))
+    else:
+        opts.pop("watch", None)
+    if names:
+        opts["watch"] = names
     return bytes(native.compile_pcfb(_as_input_files(model_xml), opts))
 
 
@@ -373,11 +398,20 @@ class Session:
         backend: str = "auto",
         trials_per_pass: int | None = None,
         seed: int | None = None,
+        watch: Any = None,
+        num_trials: int | float | None = None,
     ) -> None:
         _reject_seed(seed, {})
         native = _runtime.native()
         tpp = None if trials_per_pass is None else int(trials_per_pass)
-        self._impl = native.PcfbSession(_pcfb_bytes(pcfb), _mask_backend(backend), tpp)
+        n_trials = None if num_trials is None else int(num_trials)
+        self._impl = native.PcfbSession(
+            _pcfb_bytes(pcfb),
+            _mask_backend(backend),
+            tpp,
+            _as_watch(watch),
+            n_trials,
+        )
         self._closed = False
 
     def __enter__(self) -> "Session":
@@ -405,10 +439,20 @@ class Session:
         self._require_open()
         return dict(self._impl.graph())
 
+    def kernel_graph(self) -> dict[str, Any]:
+        """JSON-able kernel DAG (same keys as ``Pdag.to_kernel_graph``)."""
+        self._require_open()
+        return dict(self._impl.kernel_graph())
+
     def execution_plan(self) -> dict[str, Any]:
         """JSON-able DirectEval execution plan (same shape as ``Pdag.to_execution_plan``)."""
         self._require_open()
         return dict(self._impl.execution_plan())
+
+    def step(self) -> PassResult:
+        """Run exactly one device pass (same payload as one :meth:`passes` yield)."""
+        self._require_open()
+        return _pass_from_native(self._impl.step())
 
     def passes(self, max_passes: int | None = None) -> Iterator[PassResult]:
         """Yield one :class:`PassResult` per device pass until ``max_passes`` or :meth:`close`."""
