@@ -11,8 +11,10 @@ x-server: &server
   # The published images are linux/amd64 only; Apple Silicon runs them emulated.
   platform: linux/amd64
   environment:
-    FUZZYBITS_SERVER_UI: "1"
-    ACPP_VISIBILITY_MASK: omp
+    FUZZYBITS_SERVER_UI: 1
+    ACPP_VISIBILITY_MASK: ""
+    ACPP_ADAPTIVITY_LEVEL: 1
+    ACPP_PERSISTENT_RUNTIME: 1
   volumes:
     # Public OpenPSA/Aralia models from this checkout; the catalog scans /data recursively.
     - ./input:/data:ro
@@ -30,7 +32,7 @@ services:
     <<: *server
     image: ${FUZZYBITS_SERVER_IMAGE:-ghcr.io/fuzzybit-org/fuzzybits-server}:${FUZZYBITS_SERVER_TAG:-nightly-generic}
     ports:
-      - "${FUZZYBITS_SERVER_BIND:-127.0.0.1}:${FUZZYBITS_SERVER_PORT:-8000}:8000"
+      - "8000:8000"
 
   server-dev:
     <<: *server
