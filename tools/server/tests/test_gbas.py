@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 from scipy.special import gammaincinv
 
-from mcscram_server.convergence import (
+from fuzzybits_server.convergence import (
     BayesPolicy,
     BernoulliSampler,
     ConvergenceConfig,
@@ -29,7 +29,7 @@ from mcscram_server.convergence import (
     gbas,
     special,
 )
-from mcscram_server.convergence.tally import NodeCounters, NodeState, RunContext
+from fuzzybits_server.convergence.tally import NodeCounters, NodeState, RunContext
 
 
 # --------------------------------------------------------------------------- #
@@ -269,7 +269,7 @@ def test_runner_gbas_stopping_uses_exact_estimate() -> None:
 def test_native_options_strip_host_only_policy() -> None:
     # The native compiler validates ci-policy against {wald, bayes} and rejects
     # host-only values like "gbas"; the host engine must not forward them.
-    from mcscram_server.convergence.sampling import _native_options
+    from fuzzybits_server.convergence.sampling import _native_options
 
     native = _native_options(
         {
@@ -303,6 +303,6 @@ def test_config_and_registry_allow_gbas() -> None:
     assert config.stopping_policy == "gbas"
     assert {"wald", "bayes", "gbas"} <= set(config.policies)
 
-    from mcscram_server.convergence.policies import make_policy
+    from fuzzybits_server.convergence.policies import make_policy
 
     assert isinstance(make_policy("gbas"), GBASPolicy)

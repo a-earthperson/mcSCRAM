@@ -8,6 +8,12 @@
 # native: same suite with -m native inside the published runtime image so
 # import mcscram_native works. GHCR packages are public: no login, fork PRs
 # pull anonymously. Base image is nightly-generic.
+#
+# uv sync --no-install-package fuzzybits: the engine is unpublished; lock
+# resolves it from this checkout's static metadata ([tool.uv.sources]).
+# uv run --no-sync: do not let `uv run` try to compile fuzzybits afterwards.
+# wheel-smoke: webui CSR build -> fuzzybits-server wheel -> install --no-deps
+# in nightly-generic (plus pure deps) and hit UI + healthz + chinese.
 name: Server
 
 on:
@@ -74,8 +80,8 @@ jobs:
       - name: Test
         working-directory: tools/server
         run: |
-          uv sync --frozen --extra dev
-          uv run pytest -m "not native" --tb=short -q
+          uv sync --frozen --extra dev --no-install-package fuzzybits
+          uv run --no-sync pytest -m "not native" --tb=short -q
 
   native:
     name: pytest-native
@@ -119,10 +125,117 @@ jobs:
           cd /work/tools/server
           python3 -c "import fuzzybits, mcscram_native; print(fuzzybits.__file__)"
           uv venv --system-site-packages
-          uv sync --frozen --extra dev
+          uv sync --frozen --extra dev --no-install-package fuzzybits
           venv_site="$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
           sys_site="$(python3 -c 'import fuzzybits, pathlib; p=pathlib.Path(fuzzybits.__file__).resolve(); print(p.parent if p.name != "__init__.py" else p.parent.parent)')"
           printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"
           .venv/bin/python -c "import mcscram_native, fuzzybits"
-          timeout 120 uv run pytest -m native --tb=short -q
+          timeout 120 uv run --no-sync pytest -m native --tb=short -q
+          EOS
+
+  wheel:
+    name: wheel-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tools/server/webui/package-lock.json
+
+      - name: CSR UI
+        working-directory: tools/server/webui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: tools/server/uv.lock
+
+      - name: Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Build fuzzybits-server wheel
+        env:
+          COPYFILE_DISABLE: "1"
+        run: |
+          set -euo pipefail
+          (cd tools/server && uv build --wheel --out-dir ../../dist-server)
+          test -f dist-server/fuzzybits_server-0.17.0-py3-none-any.whl
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          p = Path("dist-server/fuzzybits_server-0.17.0-py3-none-any.whl")
+          z = zipfile.ZipFile(p)
+          names = z.namelist()
+          ui = [n for n in names if n.startswith("fuzzybits_server/webui/")]
+          print(f"wheel_bytes={p.stat().st_size}")
+          print(f"ui_files={len(ui)}")
+          for n in ui:
+              print(n)
+          assert any(n.endswith("index.html") for n in ui), ui
+          assert any("/assets/" in n for n in ui), ui
+          meta_name = next(n for n in names if n.endswith(".dist-info/METADATA"))
+          meta = z.read(meta_name).decode()
+          assert "Requires-Dist: fuzzybits==0.17.0" in meta, meta
+          print("Requires-Dist: fuzzybits==0.17.0  ok")
+          PY
+
+      - name: Install wheel in runtime image and smoke
+        env:
+          RUNTIME_IMAGE: ${{ env.FUZZYBITS_RUNTIME_IMAGE }}
+        run: |
+          set -euo pipefail
+          docker pull "${RUNTIME_IMAGE}"
+          docker pull ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
+          docker create --name uvbin ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
+          docker cp uvbin:/uv "${RUNNER_TEMP}/uv"
+          docker rm uvbin
+          chmod +x "${RUNNER_TEMP}/uv"
+          docker run --rm -i \
+            --user root \
+            -e ACPP_VISIBILITY_MASK=omp \
+            -e ACPP_DEBUG_LEVEL=0 \
+            -e ACPP_APPDB_DIR=/tmp/acpp-appdb \
+            -e UV_LINK_MODE=copy \
+            -e OMP_NUM_THREADS=2 \
+            -e SMOKE_N=1e6 \
+            -e SMOKE_TPP=100000 \
+            -e SMOKE_TIMEOUT=90 \
+            -e SMOKE_Z_MAX=4 \
+            -v "${GITHUB_WORKSPACE}:/src:ro" \
+            -v "${GITHUB_WORKSPACE}/dist-server:/wheel:ro" \
+            -v "${RUNNER_TEMP}/uv:/usr/local/bin/uv:ro" \
+            -w /tmp \
+            --entrypoint bash \
+            "${RUNTIME_IMAGE}" \
+            -s <<'EOS'
+          set -euo pipefail
+          mkdir -p /tmp/acpp-appdb
+          python3 -c "import fuzzybits, mcscram_native; print(fuzzybits.__file__)"
+          whl="$(echo /wheel/fuzzybits_server-0.17.0-py3-none-any.whl)"
+          test -f "${whl}"
+          uv venv --system-site-packages /tmp/smoke-venv
+          # --no-deps: fuzzybits is not on PyPI; the runtime image already has it.
+          uv pip install --python /tmp/smoke-venv/bin/python --no-deps "${whl}"
+          uv pip install --python /tmp/smoke-venv/bin/python \
+            "fastapi>=0.115" "numpy>=2.4.6" "platformdirs>=4.0" "scipy>=1.17.1" "uvicorn[standard]>=0.30"
+          venv_site="$(/tmp/smoke-venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+          sys_site="$(python3 -c 'import fuzzybits, pathlib; p=pathlib.Path(fuzzybits.__file__).resolve(); print(p.parent if p.name != "__init__.py" else p.parent.parent)')"
+          printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"
+          /tmp/smoke-venv/bin/python -c "import fuzzybits, mcscram_native, fuzzybits_server"
+          export PATH="/tmp/smoke-venv/bin:${PATH}"
+          timeout 180 bash /src/tools/server/scripts/wheel-smoke.sh /src/input/Aralia
           EOS

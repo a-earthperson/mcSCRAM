@@ -22,7 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-from mcscram_server.config import parse_watch_value, pcfb_cache_dir, server_engine
+from fuzzybits_server.config import parse_watch_value, pcfb_cache_dir, server_engine
 
 
 class CompileProduct(str, Enum):
@@ -119,7 +119,7 @@ def run_probability_call(
 
     Intended for the dedicated calculation subprocess only. Device failures may
     still abort this process; the API server stays isolated via
-    :mod:`mcscram_server.worker`.
+    :mod:`fuzzybits_server.worker`.
     """
     native = import_native()
     return native.run_probability(input_files, options, on_progress)
@@ -472,7 +472,7 @@ class NativeCompileBroker:
         self._worker = self._ctx.Process(
             target=_persistent_compile_worker,
             args=(self._request_queue, self._response_queue),
-            name="mcscram-native-compile",
+            name="fuzzybits-native-compile",
         )
         self._worker.start()
         return self._worker.is_alive()

@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from mcscram_server.convergence import special
+from fuzzybits_server.convergence import special
 
 
 def test_normal_quantile_known_values() -> None:

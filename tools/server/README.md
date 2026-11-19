@@ -17,13 +17,22 @@ The `MCSCRAM_CONVERGENCE_ENGINE=native` `run_probability` fallback is unchanged.
 
 ```bash
 cd tools/server
-uv sync --extra dev
-uv run mcscram-server          # HOST=0.0.0.0 PORT=8000  (playground at /)
-uv run mcscram-server --no-ui  # headless API; GET / is a JSON pointer to /api/v1
+uv sync --extra dev --no-install-package fuzzybits
+uv run --no-sync fuzzybits-server --data-dir ../../input/Aralia
+uv run --no-sync fuzzybits-server --no-ui          # headless API; GET / is a JSON pointer to /api/v1
+# alias for one release: uv run --no-sync mcscram-server
 ```
 
-Compile / sampling endpoints need the native module. Install a `fuzzybits`
-wheel built from this repo (not on PyPI; [#36](https://github.com/fuzzybit-org/fuzzybits/issues/36)):
+CLI defaults to `127.0.0.1:8000`. Flags: `--host`, `--port`, `--data-dir`,
+`--cache-dir` (platformdirs), `--backend auto|cuda|omp|metal`,
+`--engine pcfb|legacy`, `--no-ui`, `--open`.
+
+Compile / sampling endpoints need the native module. The published
+`fuzzybits-server` wheel depends on `fuzzybits==0.17.0`. Until that engine
+wheel is on PyPI ([#36](https://github.com/fuzzybit-org/fuzzybits/issues/36)),
+`uv.lock` resolves it from this checkout's static metadata and CI/Docker skip
+installing it (`uv sync --no-install-package fuzzybits`) so the runtime image
+or a locally built wheel can supply the engine:
 
 ```bash
 uv pip install ../../dist/fuzzybits-*.whl
@@ -34,6 +43,25 @@ Without the wheel the process still starts: `/api/v1/healthz` works, model
 listing is empty, and native compile returns an install error instead of
 aborting the interpreter.
 
+### PyPI wheel
+
+```bash
+pip install fuzzybits-server
+fuzzybits-server --data-dir ./models
+```
+
+The wheel is `py3-none-any` and bundles the CSR playground. Build contract
+(from a clean checkout, after the UI is built):
+
+```bash
+export COPYFILE_DISABLE=1   # macOS: keep AppleDouble files out of archives
+(cd tools/server/webui && npm ci && npm run build) &&   (cd tools/server && uv build --wheel --out-dir ../../dist-server)
+# -> dist-server/fuzzybits_server-0.17.0-py3-none-any.whl
+```
+
+An sdist is optional; if produced, it includes `webui/dist` so building a
+wheel from the sdist does not need Node.
+
 ## Test
 
 The imported pytest suite is pure Python (BernoulliSampler, numpy, scipy)
@@ -42,8 +70,8 @@ test is marked `@pytest.mark.native`.
 
 ```bash
 cd tools/server
-uv sync --frozen --extra dev
-uv run pytest -m "not native"
+uv sync --frozen --extra dev --no-install-package fuzzybits
+uv run --no-sync pytest -m "not native"
 ```
 
 Mark future engine tests `@pytest.mark.native`. `tests/conftest.py` skips
@@ -68,11 +96,12 @@ npm run dev              # Vite + proxy to FUZZYBITS_SERVER_URL (default :8000)
 | Variable | Role | Default |
 | --- | --- | --- |
 | `FUZZYBITS_SERVER_UI` | `1` serve UI, `0`/`--no-ui` disable | `1` |
-| `FUZZYBITS_SERVER_UI_DIR` | Directory with `index.html` + `assets/` | `tools/server/webui/dist` |
+| `FUZZYBITS_SERVER_UI_DIR` | Directory with `index.html` + `assets/` | packaged `fuzzybits_server/webui`, else `tools/server/webui/dist` |
 
 With the UI disabled, `GET /` returns `{"service":"fuzzybits-server","api":"/api/v1","ui":false}`.
-The image copies `webui/dist` in; a later wheel (#86) can point
-`FUZZYBITS_SERVER_UI_DIR` at package data.
+When `FUZZYBITS_SERVER_UI_DIR` is unset the server uses the copy bundled in
+the wheel (`importlib.resources`), then `tools/server/webui/dist` for a
+source checkout or the Docker image.
 
 ## Data (Aralia XML + optional bench CSVs)
 

@@ -5,12 +5,12 @@ import queue
 import threading
 from typing import Any
 
-from mcscram_server.config import CalculationConfig
-from mcscram_server.event_hub import EventHub
-from mcscram_server.event_log import emit
-from mcscram_server.fault_tree_payload import build_fault_tree_payload
-from mcscram_server.state import CalculationState
-from mcscram_server.worker import calculation_main
+from fuzzybits_server.config import CalculationConfig
+from fuzzybits_server.event_hub import EventHub
+from fuzzybits_server.event_log import emit
+from fuzzybits_server.fault_tree_payload import build_fault_tree_payload
+from fuzzybits_server.state import CalculationState
+from fuzzybits_server.worker import calculation_main
 
 
 class CalculationSupervisor:
@@ -37,7 +37,7 @@ class CalculationSupervisor:
         self._process = self._ctx.Process(
             target=calculation_main,
             args=(config, events),
-            name="mcscram-calculation",
+            name="fuzzybits-calculation",
         )
         self._process.start()
         process = self._process

@@ -1,7 +1,7 @@
 """Subprocess entry point for mcSCRAM probability calculations.
 
 By default the convergence loop and all statistics run **on the host in Python**
-(:mod:`mcscram_server.convergence`); the native engine is used only to produce
+(:mod:`fuzzybits_server.convergence`); the native engine is used only to produce
 raw per-pass popcounts.  Set ``MCSCRAM_CONVERGENCE_ENGINE=native`` to fall back
 to the legacy in-engine C++ convergence loop (``mcscram_native.run_probability``).
 """
@@ -13,10 +13,10 @@ import os
 import time
 from typing import Any
 
-from mcscram_server.config import CalculationConfig
-from mcscram_server.convergence import run_calculation
-from mcscram_server.event_log import emit
-from mcscram_server.native import format_native_exception, run_probability_call
+from fuzzybits_server.config import CalculationConfig
+from fuzzybits_server.convergence import run_calculation
+from fuzzybits_server.event_log import emit
+from fuzzybits_server.native import format_native_exception, run_probability_call
 
 
 def _convergence_engine() -> str:

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,8 @@ SERVER_UI_DIR_ENV = "FUZZYBITS_SERVER_UI_DIR"
 _LEGACY_DEFAULT_INPUT = Path("/app/input/SmallTree.xml")
 _BOOLEAN_TRUE = {"1", "true", "yes", "on"}
 _BOOLEAN_FALSE = {"0", "false", "no", "off"}
+_BACKENDS = ("auto", "cuda", "omp", "metal")
+_ENGINES = ("pcfb", "legacy")
 
 
 def env_bool(name: str, default: bool) -> bool:
@@ -38,7 +42,7 @@ def parse_watch_value(raw: Any) -> tuple[bool | None, list[str]]:
 
     ``MCSCRAM_WATCH=1`` is the C++ progress-bar flag. Any other non-boolean
     string is a comma-separated MEF name / PDAG-index list, matching how
-    :mod:`mcscram_server.convergence.sampling` registers extra tally nodes.
+    :mod:`fuzzybits_server.convergence.sampling` registers extra tally nodes.
     """
     if raw is None or raw is False:
         return None, []
@@ -59,13 +63,16 @@ def parse_watch_value(raw: Any) -> tuple[bool | None, list[str]]:
     return None, [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
 
 
+def default_cache_dir() -> Path:
+    """Per-user cache root (platformdirs); used when ``FUZZYBITS_SERVER_CACHE_DIR`` is unset."""
+    from platformdirs import user_cache_path
+
+    return user_cache_path("fuzzybits", "fuzzybit-org") / "server"
+
+
 def pcfb_cache_dir() -> Path:
     raw = os.getenv(SERVER_CACHE_DIR_ENV, "").strip()
-    if raw:
-        path = Path(raw).expanduser()
-    else:
-        data = server_data_dir()
-        path = (data / ".pcfb-cache") if data is not None else Path.home() / ".cache" / "fuzzybits" / "server-pcfb"
+    path = Path(raw).expanduser() if raw else default_cache_dir()
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -189,36 +196,96 @@ def options_from_env() -> dict[str, Any]:
     return options
 
 
+def parse_server_cli(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="fuzzybits-server",
+        description="Serve the fuzzybits API and playground UI on one port.",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
+    parser.add_argument("--data-dir", default=None, metavar="DIR", help="OpenPSA/Aralia XML root (FUZZYBITS_SERVER_DATA_DIR)")
+    parser.add_argument(
+        "--cache-dir",
+        default=None,
+        metavar="DIR",
+        help=f"compiled .pcfb cache (default: {default_cache_dir()})",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=_BACKENDS,
+        default="auto",
+        help="AdaptiveCpp visibility: auto (default), cuda, omp, or metal",
+    )
+    parser.add_argument(
+        "--engine",
+        choices=_ENGINES,
+        default=None,
+        help="compile/sample engine: pcfb (default) or legacy in-memory PDAG",
+    )
+    parser.add_argument("--no-ui", action="store_true", help="disable the playground UI; GET / returns an API pointer")
+    parser.add_argument("--open", action="store_true", help="open the UI in a browser")
+    return parser.parse_args(argv)
 
-def apply_server_cli(argv: list[str] | None = None) -> None:
-    """Honor ``--no-ui`` by setting ``FUZZYBITS_SERVER_UI=0``."""
-    import argparse
 
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--no-ui", action="store_true")
-    args, _unknown = parser.parse_known_args(argv)
+def apply_server_cli(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI flags and apply them to the process environment."""
+    args = parse_server_cli(argv)
+    os.environ["HOST"] = args.host
+    os.environ["PORT"] = str(args.port)
+    if args.data_dir:
+        os.environ[SERVER_DATA_DIR_ENV] = str(Path(args.data_dir).expanduser())
+    if args.cache_dir:
+        os.environ[SERVER_CACHE_DIR_ENV] = str(Path(args.cache_dir).expanduser())
+    if args.backend != "auto":
+        os.environ["ACPP_VISIBILITY_MASK"] = args.backend
+        os.environ["FUZZYBITS_BACKEND"] = args.backend
+    if args.engine:
+        os.environ[SERVER_ENGINE_ENV] = args.engine
     if args.no_ui:
         os.environ[SERVER_UI_ENV] = "0"
+    return args
 
 
 def server_ui_enabled() -> bool:
     return env_bool(SERVER_UI_ENV, True)
 
 
+def _ui_index(path: Path) -> Path | None:
+    index = path / "index.html"
+    return path if path.is_dir() and index.is_file() else None
+
+
+def packaged_ui_dir() -> Path | None:
+    """CSR build shipped in the wheel at ``fuzzybits_server/webui/``."""
+    try:
+        traversable = files("fuzzybits_server") / "webui"
+    except (ModuleNotFoundError, FileNotFoundError, TypeError, AttributeError, NotADirectoryError):
+        return None
+    try:
+        if not traversable.is_dir() or not (traversable / "index.html").is_file():
+            return None
+    except (FileNotFoundError, OSError, TypeError, NotADirectoryError):
+        return None
+    path = Path(traversable) if isinstance(traversable, Path) else Path(str(traversable))
+    return _ui_index(path)
+
+
+def source_ui_dir() -> Path | None:
+    """``tools/server/webui/dist`` next to a src checkout or the Docker image copy."""
+    return _ui_index(Path(__file__).resolve().parents[2] / "webui" / "dist")
+
+
 def server_ui_dir() -> Path | None:
     """Directory of the CSR playground build (``index.html`` + ``assets/``).
 
-    ``FUZZYBITS_SERVER_UI_DIR`` wins. Otherwise ``tools/server/webui/dist``
-    relative to this source tree (repo checkout and the server image). A
-    later wheel (#86) can point the env at package data.
+    ``FUZZYBITS_SERVER_UI_DIR`` wins. Otherwise the copy bundled in the wheel
+    (``importlib.resources``), then ``tools/server/webui/dist`` for a source
+    checkout or the server image.
     """
     raw = os.getenv(SERVER_UI_DIR_ENV, "").strip()
     if raw:
-        path = Path(raw).expanduser()
-    else:
-        path = Path(__file__).resolve().parents[2] / "webui" / "dist"
-    index = path / "index.html"
-    return path if path.is_dir() and index.is_file() else None
+        return _ui_index(Path(raw).expanduser())
+    return packaged_ui_dir() or source_ui_dir()
 
 
 @dataclass(frozen=True)

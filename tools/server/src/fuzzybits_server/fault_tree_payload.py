@@ -9,8 +9,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from mcscram_server.config import server_data_dir
-from mcscram_server.native import CompileProduct, native_import_error, run_compile_isolated
+from fuzzybits_server.config import server_data_dir
+from fuzzybits_server.native import CompileProduct, native_import_error, run_compile_isolated
 
 
 DAG_NODE_TYPES: tuple[str, ...] = (
