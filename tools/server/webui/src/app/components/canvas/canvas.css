@@ -1,0 +1,168 @@
+/* Fault-tree canvas viewer (FaultTreeDiagram) */
+
+.fault-tree-frame {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 680px;
+  overflow: hidden;
+  border: 1px solid var(--rule-faint);
+  background: transparent;
+
+  /* ── Canvas 2D tokens (read by drawFaultTree.ts via getComputedStyle) ── */
+  --ft-cull-pad: 120px;
+  --ft-label-min-scale: 0.38;
+
+  --ft-stroke: var(--ink);
+  --ft-edge-stroke-width-min: 0.5;
+  --ft-edge-stroke-width-scale: 1.1;
+  --ft-edge-source-anchor: 32px;
+  --ft-edge-target-anchor: 34px;
+
+  --ft-node-stroke-width-min: 0.8;
+  --ft-node-stroke-width-scale: 1.1;
+
+  --ft-gate-width: 84px;
+  --ft-gate-height: 56px;
+  --ft-basic-event-radius: 28px;
+  --ft-gate-corner-radius-min: 2px;
+  --ft-gate-corner-radius-scale: 3;
+
+  --ft-fill-basic-event: color-mix(in srgb, var(--pigment-ochre) 18%, transparent);
+  --ft-fill-and: color-mix(in srgb, var(--pigment-indigo) 16%, transparent);
+  --ft-fill-nand: color-mix(in srgb, var(--pigment-indigo) 66%, transparent);
+  --ft-fill-or: color-mix(in srgb, var(--pigment-madder) 16%, transparent);
+  --ft-fill-nor: color-mix(in srgb, var(--pigment-madder) 66%, transparent);
+  --ft-fill-xor: color-mix(in srgb, var(--pigment-sage) 16%, transparent);
+  --ft-fill-xnor: color-mix(in srgb, var(--pigment-sage) 66%, transparent);
+  --ft-fill-atleast: color-mix(in srgb, var(--pigment-sage) 18%, transparent);
+  --ft-fill-not: color-mix(in srgb, var(--pigment-sage) 66%, transparent);
+  --ft-fill-house-event: color-mix(in srgb, var(--pigment-ochre) 42%, transparent);
+  --ft-fill-gate-default: color-mix(in srgb, var(--paper) 72%, transparent);
+
+  --ft-label-color: var(--ink);
+  --ft-label-font-family: var(--mono);
+  --ft-label-font-size: 12px;
+  --ft-label-font-size-min: 8px;
+  --ft-label-offset-y: -5px;
+  --ft-label-max-width-min: 42px;
+  --ft-label-max-width-scale: 72px;
+
+  --ft-connective-color: var(--ink-mute);
+  --ft-connective-font-family: var(--sans);
+  --ft-connective-font-weight: 700;
+  --ft-connective-font-size: 9px;
+  --ft-connective-font-size-min: 7px;
+  --ft-connective-offset-y: 13px;
+}
+
+.fault-tree-frame:fullscreen,
+.fault-tree-frame:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  background: var(--paper);
+}
+
+.dag-webgl-frame {
+  margin-top: 0;
+}
+
+.dag-webgl-canvas {
+    mix-blend-mode: exclusion;
+    filter: var(--paper-acid-wash);
+}
+
+.fault-tree-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 14px;
+  border-top: 1px solid var(--rule-faint);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-mute);
+}
+
+.fault-tree-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  column-gap: 0;
+  row-gap: 8px;
+}
+
+.fault-tree-control-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fault-tree-control-group + .fault-tree-control-group {
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--rule-faint);
+}
+
+.fault-tree-control {
+  --tree-control-pigment: var(--accent);
+  --tree-control-wash: var(--accent-soft);
+  min-width: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--tree-control-pigment);
+  background: transparent;
+  color: var(--tree-control-pigment);
+  font-family: var(--sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.fault-tree-control:hover {
+  background: var(--tree-control-wash);
+}
+
+.fault-tree-control.fit {
+  --tree-control-pigment: var(--pigment-indigo-deep);
+  --tree-control-wash: var(--wash-control-indigo);
+}
+
+.fault-tree-control.zoom {
+  --tree-control-pigment: var(--pigment-sage);
+  --tree-control-wash: var(--wash-control-sage);
+}
+
+.fault-tree-control.pan {
+  --tree-control-pigment: var(--pigment-ochre);
+  --tree-control-wash: var(--wash-control-ochre);
+}
+
+.fault-tree-control.reset-view {
+  --tree-control-pigment: var(--pigment-madder);
+  --tree-control-wash: var(--wash-control-madder);
+}
+
+.fault-tree-control.zen {
+  --tree-control-pigment: var(--pigment-zen);
+  --tree-control-wash: var(--wash-control-zen);
+}
+
+.fault-tree-canvas {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  background: var(--parchment-background);
+  cursor: grab;
+  touch-action: none;
+}
+
+.fault-tree-canvas:active {
+  cursor: grabbing;
+}
