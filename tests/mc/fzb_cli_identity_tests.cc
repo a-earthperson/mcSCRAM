@@ -26,7 +26,13 @@ struct HitsN {
 };
 
 int run_cmd(const std::string &cmd) {
+#ifdef _WIN32
+  // MSVC std::system is cmd.exe /C; a command that starts with a quote is
+  // parsed as the executable name. /S /C "..." takes the whole string.
+  return std::system(("cmd /S /C \"" + cmd + "\"").c_str());
+#else
   return std::system(cmd.c_str());
+#endif
 }
 
 std::string shell_quote(const std::string &s) {

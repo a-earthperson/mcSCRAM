@@ -288,6 +288,7 @@ jobs:
           "cpu_ctest_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build generic wheel
+        if: always() && steps.product.outcome == 'success'
         id: wheel
         shell: pwsh
         run: |
@@ -334,6 +335,7 @@ jobs:
           "wheel_build_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Upload wheel
+        if: always() && steps.wheel.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fuzzybits-cp312-win_amd64
@@ -342,6 +344,7 @@ jobs:
           retention-days: 14
 
       - name: Smoke tests (clean venv)
+        if: always() && steps.wheel.outcome == 'success'
         timeout-minutes: 15
         shell: pwsh
         run: |

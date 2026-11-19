@@ -43,7 +43,11 @@ int run_scram(const std::filesystem::path &model, const std::filesystem::path &r
       << " --seed 372 --no-indent -V 0"
       << " -o " << shell_quote(report.string())
       << " " << shell_quote(model.string());
+#ifdef _WIN32
+  return std::system(("cmd /S /C \"" + cmd.str() + "\"").c_str());
+#else
   return std::system(cmd.str().c_str());
+#endif
 }
 
 double parse_p_hat(const std::filesystem::path &report) {
