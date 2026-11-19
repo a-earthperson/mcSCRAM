@@ -26,7 +26,7 @@ target_include_directories(mc_cli_correctness_tests PRIVATE
 )
 add_dependencies(mc_cli_correctness_tests scram-cli)
 
-foreach(_model chinese das9201 isp9601 baobab2)
+foreach(_model chinese das9201 isp9601 baobab2 small_tree bscu)
   add_test(NAME mc.cli.${_model} COMMAND mc_cli_correctness_tests "[${_model}]")
   set_tests_properties(mc.cli.${_model} PROPERTIES
     LABELS "mc"
@@ -43,7 +43,7 @@ target_compile_definitions(mc_fzb_cli_identity_tests PRIVATE
   PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
 add_dependencies(mc_fzb_cli_identity_tests scram-cli fzb)
-foreach(_case n65536 n2p24 seed)
+foreach(_case n65536 n2p24 seed smalltree bscu)
   add_test(NAME mc.fzb_cli_identity.${_case} COMMAND mc_fzb_cli_identity_tests "[${_case}]")
   set_tests_properties(mc.fzb_cli_identity.${_case} PROPERTIES
     LABELS "mc"

@@ -138,6 +138,45 @@ def test_bit_identity_das9201(das9201_xml: Path):
     assert len(pcfb) == K_PASSES
 
 
+def test_bit_identity_smalltree(smalltree_xml: Path):
+    pcfb, mem = _identity_stream(smalltree_xml)
+    assert pcfb == mem
+    assert len(pcfb) == K_PASSES
+
+
+def test_compile_inspect_run_smalltree(smalltree_xml: Path):
+    blob = fuzzybits.compile(smalltree_xml, pdag_c=2, no_kn=True)
+    summary = fuzzybits.inspect(blob)
+    assert summary["diagnostics"] == []
+    assert summary["samples"] == 4
+    results = fuzzybits.run(blob, trials=ONESHOT_TRIALS, backend="omp")
+    assert len(results) == 1
+    row = results[0]
+    # Point-value formula 1-(1-p1 p2)(1-p3 p4) ≈ 0.02678 at t=8760 h.
+    ref = 0.026776830672032736
+    sigma = (row.estimate * (1.0 - row.estimate) / row.n) ** 0.5
+    assert sigma > 0.0
+    assert abs(row.estimate - ref) <= 4.0 * sigma
+    with fuzzybits.Session(blob, backend="omp", trials_per_pass=TRIALS_PER_PASS) as session:
+        first = next(session.passes(max_passes=1))
+        tally = first.nodes[first.target_index]
+        assert tally.total_bits == first.trials_per_pass
+
+
+def test_compile_inspect_run_bscu(bscu_xml: Path):
+    blob = fuzzybits.compile(bscu_xml, pdag_c=2, no_kn=True)
+    summary = fuzzybits.inspect(blob)
+    assert summary["diagnostics"] == []
+    assert summary["samples"] >= 1
+    results = fuzzybits.run(blob, trials=ONESHOT_TRIALS, backend="omp")
+    assert len(results) == 1
+    row = results[0]
+    ref = 0.1124087  # XFTA / bench_bscu_tests.cc (not rare-event)
+    sigma = (row.estimate * (1.0 - row.estimate) / row.n) ** 0.5
+    assert sigma > 0.0
+    assert abs(row.estimate - ref) <= 4.0 * sigma
+
+
 def test_compile_seed_rejected(tiny_xml: Path):
     with pytest.raises(NotImplementedError, match="deterministic"):
         fuzzybits.compile(tiny_xml, seed=7)

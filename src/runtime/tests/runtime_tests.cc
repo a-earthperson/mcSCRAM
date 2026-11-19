@@ -22,11 +22,53 @@ std::string aralia(const char *name) {
   return (std::filesystem::path(PROJECT_SOURCE_DIR) / "input" / "Aralia" / name).string();
 }
 
+std::string repo_input(const char *relative) {
+  return (std::filesystem::path(PROJECT_SOURCE_DIR) / relative).string();
+}
+
 fuzzybits::compile::Options no_kn() {
   fuzzybits::compile::Options opt;
   opt.compilation_level = 2;
   opt.expand_atleast_gates = true;
   return opt;
+}
+
+void check_pcfb_matches_memory(const std::string &xml, std::uint64_t trials) {
+  fuzzybits::runtime::RunOptions opt;
+  opt.trials = trials;
+  opt.backend = "omp";
+  opt.seed = 372;
+
+  auto live = fuzzybits::compile::compile_to_graph({xml}, no_kn());
+  REQUIRE(live);
+  REQUIRE(live->graph);
+
+  fuzzybits::runtime::ReconstructedQuery q;
+  q.name = live->target_id;
+  q.node = live->graph->root_ptr();
+  q.node_index = live->graph->root_ptr()->index();
+  const auto in_memory = fuzzybits::runtime::run_graph(*live->graph, {q}, opt);
+  REQUIRE(in_memory.size() == 1);
+
+  auto compiled = fuzzybits::compile::pdag_to_pcfb(*live->graph, no_kn(), live->model_name, live->target_id, {});
+  REQUIRE(compiled);
+  auto circuit = pcfb::io::from_bytes(*compiled);
+  REQUIRE(circuit);
+  REQUIRE(pcfb::validate(*circuit).empty());
+  const auto from_pcfb = fuzzybits::runtime::run_pcfb(*circuit, opt);
+  REQUIRE(from_pcfb.size() == 1);
+
+  INFO("in-memory hits=" << in_memory[0].hits << " n=" << in_memory[0].n);
+  INFO("pcfb hits=" << from_pcfb[0].hits << " n=" << from_pcfb[0].n);
+  REQUIRE(from_pcfb[0].hits == in_memory[0].hits);
+  REQUIRE(from_pcfb[0].n == in_memory[0].n);
+  REQUIRE(from_pcfb[0].n >= trials);
+}
+
+double z_score(double p_hat, double p_ref, std::uint64_t n) {
+  const double sigma = std::sqrt(p_hat * (1.0 - p_hat) / static_cast<double>(n));
+  REQUIRE(sigma > 0.0);
+  return (p_hat - p_ref) / sigma;
 }
 
 }  // namespace
@@ -153,6 +195,34 @@ TEST_CASE("extra watch queries do not replace the PDAG root", "[runtime][mc][wat
   REQUIRE_FALSE(reconstructed.meta.target.empty());
   const auto watched = fuzzybits::runtime::Session::resolve_watch(reconstructed, {"g1"});
   REQUIRE(watched.size() == 1);
+}
+
+TEST_CASE("fzb run SmallTree.pcfb is bit-identical to the in-memory PDAG path", "[runtime][mc][bit-identity][smalltree]") {
+  check_pcfb_matches_memory(repo_input("input/SmallTree/SmallTree.xml"), 65536);
+}
+
+TEST_CASE("fzb run BSCU.pcfb is bit-identical to the in-memory PDAG path", "[runtime][mc][bit-identity][bscu]") {
+  check_pcfb_matches_memory(repo_input("input/BSCU/BSCU.xml"), 65536);
+}
+
+TEST_CASE("fzb run SmallTree.pcfb matches the exponential point-value formula |z|<=4",
+          "[runtime][mc][smalltree]") {
+  constexpr std::uint64_t kTrials = 1 << 16;
+  constexpr double kRef = 0.026776830672032736;  // 1-(1-p1 p2)(1-p3 p4), t=8760 h
+  auto compiled = fuzzybits::compile::compile_files({repo_input("input/SmallTree/SmallTree.xml")}, no_kn());
+  REQUIRE(compiled);
+  auto circuit = pcfb::io::from_bytes(compiled->bytes);
+  REQUIRE(circuit);
+  REQUIRE(pcfb::validate(*circuit).empty());
+  fuzzybits::runtime::RunOptions opt;
+  opt.trials = kTrials;
+  opt.backend = "omp";
+  const auto results = fuzzybits::runtime::run_pcfb(*circuit, opt);
+  REQUIRE(results.size() == 1);
+  REQUIRE(results[0].n >= kTrials);
+  const double z = z_score(results[0].estimate, kRef, results[0].n);
+  INFO("p_hat=" << results[0].estimate << " p_ref=" << kRef << " z=" << z);
+  REQUIRE(std::abs(z) <= 4.0);
 }
 
 TEST_CASE("fzb run chinese.pcfb small-N estimate is in (0,1) on CPU", "[runtime][mc]") {

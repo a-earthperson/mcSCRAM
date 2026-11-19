@@ -75,8 +75,11 @@
 #include <sycl/sycl.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 
 namespace scram::mc::queue {
@@ -291,7 +294,17 @@ namespace scram::mc::queue {
             // Retrieve the mef::BasicEvent for this variable
             const core::Pdag::IndexMap<const mef::BasicEvent*>& events = variable->graph().basic_events();
             const mef::BasicEvent* event = events.at(var_unique_index_in_pdag_index_map);
+            if (event == nullptr || !event->HasExpression()) {
+                throw std::runtime_error("basic event kernel: PDAG index " +
+                                         std::to_string(var_unique_index) +
+                                         " has no point probability expression");
+            }
             const double p = event->expression().value();
+            if (!std::isfinite(p) || p < 0.0 || p > 1.0) {
+                throw std::runtime_error("basic event kernel: PDAG index " +
+                                         std::to_string(var_unique_index) +
+                                         " point probability is not in [0, 1]");
+            }
 
             indexed_probabilities.push_back(std::pair<index_t_, prob_t_>{var_unique_index, static_cast<prob_t_>(p)});
         }
@@ -764,6 +777,10 @@ namespace scram::mc::queue {
                 case core::kNull:
                     kernel = build_kernel_for_gates_of_type<core::kNull, index_t_, prob_t_, bitpack_t_, size_t_>(gates_, queue_, sample_shape_, queueables_, queueables_by_index_, allocated_basic_events_by_index_, allocated_gates_by_index_, device_gate_blocks_, device_atleast_gate_blocks_, execution_partitions_, execution_dependency_edges_, partition_ids_by_queueable_, layer_index_);
                     break;
+                default:
+                    // clang emits `ud2` for an unhandled Connective; throw instead.
+                    throw std::runtime_error("unhandled PDAG connective in kernel builder: " +
+                                             std::to_string(static_cast<int>(gate_type)));
             }
             // Build exactly one kernel for gates of this type in the layer
             if (kernel) {
