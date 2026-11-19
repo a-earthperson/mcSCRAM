@@ -25,7 +25,9 @@ Publishing uses PyPI trusted publishing (OIDC), so there are no API tokens or se
    - `testpypi` and `testpypi-server`: no reviewer.
 
    The server is uploaded only after the engine upload for the same version succeeds.
-3. Optional: once PyPI raises the per-file limit, set the repository variable `PYPI_MAX_FILE_MB` (see Limits).
+3. Optional repository variables:
+   - `RELEASE_INCLUDE_WINDOWS=true` builds the Windows wheel in releases. It is off by default until Windows CI is reliable (#108, #109).
+   - `PYPI_MAX_FILE_MB`: set this once PyPI raises the per-file limit (see Limits).
 
 ## Rehearse on TestPyPI
 
