@@ -41,9 +41,11 @@
  * ------------------------
  * `reduce_over_group` on uint32 in the 3-D tally launch still produced
  * `hits=0` while `total_bits` (plain store) and isolated 64-bit `fetch_add`
- * were host-visible (runs 44629827202, 44635268590, 44636412806). The Metal
- * path therefore skips the group reduction and has every in-bounds work-item
- * `fetch_add` its popcount. Native keeps one atomic per group.
+ * were host-visible (runs 44629827202, 44635268590, 44636412806). Per-item
+ * 64-bit `fetch_add` hung the hosted Metal ctest (lock-table contention
+ * inside AdaptiveCpp's atomic64 emulation). The Metal path therefore has
+ * the group leader serially popcount the group's bitpacks and issue one
+ * `fetch_add`. Native keeps `reduce_over_group` plus one atomic per group.
  */
 
 #pragma once
@@ -135,9 +137,9 @@ template <typename Group>
     atomic_one_bits.fetch_add(group_sum);
 }
 
-/// Tally popcount + accumulate. Metal: no group reduction (see file comment);
-/// every in-bounds item atomics its popcount. Native: original early-return,
-/// `reduce_over_group` on `std::size_t`, group-leader atomic.
+/// Tally popcount + accumulate. Metal: group-leader serial popcount plus one
+/// atomic (see file comment). Native: original early-return, size_t group
+/// reduction, group-leader atomic.
 template <typename Item, typename Tally, typename Shape>
 [[gnu::always_inline]] [[gnu::flatten]] inline void count_and_add(const Item &item, Tally *tallies,
                                                                   const std::size_t tally_count,
@@ -170,16 +172,36 @@ template <typename Item, typename Tally, typename Shape>
     };
 
     auto metal = [&]() {
-        if (tally_idx >= tally_count || batch_idx >= sample_shape.batch_size ||
-            bitpack_id >= sample_shape.bitpacks_per_batch) {
+        if (item.get_local_linear_id() != 0) {
             return;
         }
-        const std::size_t idx = batch_idx * sample_shape.bitpacks_per_batch + bitpack_id;
-        const std::size_t local_sum = sycl::popcount(tallies[tally_idx].buffer[idx]);
-        add_hits(tallies[tally_idx].num_one_bits, local_sum);
-        if (item.get_local_linear_id() == 0) {
-            write_total_bits();
+        const auto lr = item.get_local_range();
+        const std::size_t g0 = item.get_group(0) * lr[0];
+        const std::size_t g1 = item.get_group(1) * lr[1];
+        const std::size_t g2 = item.get_group(2) * lr[2];
+        std::size_t sum = 0;
+        for (std::size_t lx = 0; lx < lr[0]; ++lx) {
+            const std::size_t t = g0 + lx;
+            if (t >= tally_count) {
+                continue;
+            }
+            for (std::size_t ly = 0; ly < lr[1]; ++ly) {
+                const std::size_t b = g1 + ly;
+                if (b >= sample_shape.batch_size) {
+                    continue;
+                }
+                for (std::size_t lz = 0; lz < lr[2]; ++lz) {
+                    const std::size_t p = g2 + lz;
+                    if (p >= sample_shape.bitpacks_per_batch) {
+                        continue;
+                    }
+                    const std::size_t idx = b * sample_shape.bitpacks_per_batch + p;
+                    sum += static_cast<std::size_t>(sycl::popcount(tallies[t].buffer[idx]));
+                }
+            }
         }
+        write_total_bits();
+        add_hits(tallies[tally_idx].num_one_bits, sum);
     };
 
     __acpp_if_target_sscp(namespace jit = sycl::AdaptiveCpp_jit;
