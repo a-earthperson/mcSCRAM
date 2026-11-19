@@ -1,0 +1,36 @@
+{
+  "name": "fuzzybits-webui",
+  "version": "1.0.0",
+  "description": "CSR UI served at / by fuzzybits-server: catalog, compile, sample.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc -b",
+    "dev": "vite --mode development",
+    "build": "npm run typecheck && vite build --mode production",
+    "preview": "vite preview --mode production"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "mathbox": "^2.3.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router": "^7.17.0",
+    "three": "^0.137.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/culori": "^4.0.1",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.137.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "culori": "^4.0.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.12"
+  }
+}

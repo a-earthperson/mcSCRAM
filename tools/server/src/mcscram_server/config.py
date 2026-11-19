@@ -11,6 +11,8 @@ from typing import Any
 SERVER_DATA_DIR_ENV = "FUZZYBITS_SERVER_DATA_DIR"
 SERVER_ENGINE_ENV = "FUZZYBITS_SERVER_ENGINE"
 SERVER_CACHE_DIR_ENV = "FUZZYBITS_SERVER_CACHE_DIR"
+SERVER_UI_ENV = "FUZZYBITS_SERVER_UI"
+SERVER_UI_DIR_ENV = "FUZZYBITS_SERVER_UI_DIR"
 _LEGACY_DEFAULT_INPUT = Path("/app/input/SmallTree.xml")
 _BOOLEAN_TRUE = {"1", "true", "yes", "on"}
 _BOOLEAN_FALSE = {"0", "false", "no", "off"}
@@ -185,6 +187,38 @@ def options_from_env() -> dict[str, Any]:
         options.update(parsed)
 
     return options
+
+
+
+def apply_server_cli(argv: list[str] | None = None) -> None:
+    """Honor ``--no-ui`` by setting ``FUZZYBITS_SERVER_UI=0``."""
+    import argparse
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--no-ui", action="store_true")
+    args, _unknown = parser.parse_known_args(argv)
+    if args.no_ui:
+        os.environ[SERVER_UI_ENV] = "0"
+
+
+def server_ui_enabled() -> bool:
+    return env_bool(SERVER_UI_ENV, True)
+
+
+def server_ui_dir() -> Path | None:
+    """Directory of the CSR playground build (``index.html`` + ``assets/``).
+
+    ``FUZZYBITS_SERVER_UI_DIR`` wins. Otherwise ``tools/server/webui/dist``
+    relative to this source tree (repo checkout and the server image). A
+    later wheel (#86) can point the env at package data.
+    """
+    raw = os.getenv(SERVER_UI_DIR_ENV, "").strip()
+    if raw:
+        path = Path(raw).expanduser()
+    else:
+        path = Path(__file__).resolve().parents[2] / "webui" / "dist"
+    index = path / "index.html"
+    return path if path.is_dir() and index.is_file() else None
 
 
 @dataclass(frozen=True)
