@@ -8,14 +8,8 @@
     "doc": "docs"
   },
   "scripts": {
-    "backend:build:adaptivecpp:metal": "bash scripts/build-adaptivecpp-metal.sh",
-    "backend:build:cli": "bash scripts/build-cli.sh",
-    "backend:build:cli:debug": "bash scripts/build-cli-debug.sh",
-    "backend:build:native": "bash scripts/build-native.sh",
-    "backend:dev": "bash scripts/dev-server.sh",
-    "backend:dev:native": "npm run backend:build:native && npm run backend:dev",
+    "backend:dev": "docker compose --env-file fuzzybits.env up --no-build server",
     "dev:server": "npm run backend:dev",
-    "dev:server:native": "npm run backend:dev:native",
     "data:build": "python3 site/scripts/build_data.py",
     "data:ensure": "test -f docs/data/summary.json || npm run data:build",
     "frontend:build:csr": "vite build --mode production",
@@ -35,7 +29,8 @@
     "prod:ssr": "npm run build:ssr && npm run start:ssr",
     "preview:csr": "npm run prod:csr",
     "preview:ssr": "npm run prod:ssr",
-    "preview": "npm run preview:ssr"
+    "preview": "npm run preview:ssr",
+    "e2e": "bash scripts/e2e-smoke.sh"
   },
   "keywords": [],
   "author": "",

@@ -1,6 +1,6 @@
 /**
  * DirectEval `compilation_level` (0–8) as implemented in
- * `src/mcSCRAM/src/mc/core/preprocessor.cc`. Levels are cumulative: Cn runs
+ * `src/mc/core/preprocessor.cc` in fuzzybit-org/fuzzybits. Levels are cumulative: Cn runs
  * every pass in C0…Cn−1, then the additions for n.
  */
 
