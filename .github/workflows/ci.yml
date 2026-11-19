@@ -41,11 +41,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+
+      # uv brings its own Python: self-hosted hosts may lack python3-venv.
       - name: Self-hosted reachability
-        run: |
-          python3 -m venv .lint-venv
-          .lint-venv/bin/pip install pyyaml
-          .lint-venv/bin/python scripts/ci/check-self-hosted-reachability.py
+        run: uv run --no-project --python 3.12 --with pyyaml python scripts/ci/check-self-hosted-reachability.py
 
       - name: actionlint
         env:
@@ -80,13 +81,14 @@ jobs:
       - name: Tracked non-LFS files must be ≤ 5 MiB
         run: bash scripts/ci/check-tracked-file-sizes.sh
 
+      - name: uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+
       - name: REUSE/SPDX report (informational)
         continue-on-error: true
         run: |
-          python3 -m venv .reuse-venv
-          .reuse-venv/bin/pip install reuse
           echo "REUSE is non-blocking until SPDX headers exist (#38)."
-          .reuse-venv/bin/reuse lint || true
+          uvx --python 3.12 reuse lint || true
 
   linux-generic:
     name: linux-generic
