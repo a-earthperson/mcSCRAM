@@ -1,9 +1,10 @@
 # Slim runtime images → GHCR. Public repo.
 #
 # Publish: GitHub-hosted ubuntu-24.04 only (packages:write).
-# Smoke: self-hosted GPUs, trusted triggers only, public image pull, no login.
-# Never pull_request / pull_request_target / workflow_run — self-hosted jobs
-# in this file must not be reachable from PR code (#34).
+# Smoke: self-hosted GPUs, trusted triggers only. Until the package is public
+# (#35), GHCR_PULL_AUTH logs in with the job GITHUB_TOKEN into a job-private
+# Docker config (packages:read). Never pull_request / pull_request_target /
+# workflow_run — self-hosted jobs must not be reachable from PR code (#34).
 name: Runtime images
 
 on:
@@ -22,6 +23,8 @@ env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/fuzzybit-org/fuzzybits-runtime
   TOOLCHAIN_REPO: ghcr.io/fuzzybit-org/fuzzybits-toolchain
+  # TODO(#35): set to "false" once fuzzybits-runtime is public (owner UI flip).
+  GHCR_PULL_AUTH: "true"
 
 jobs:
   gate:
@@ -316,12 +319,13 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      packages: read
     env:
       DOCKER_GPUS: ${{ matrix.docker_gpus }}
       VARIANT: ${{ matrix.variant }}
       SMOKE_NAME: fuzzybits-runtime-smoke-${{ github.run_id }}-${{ matrix.name }}-${{ github.run_attempt }}
     steps:
-      - name: Resolve public image tag
+      - name: Resolve image tag
         run: |
           set -euo pipefail
           SHA12="${GITHUB_SHA:0:12}"
@@ -336,6 +340,13 @@ jobs:
           echo "RUNTIME_IMAGE=${IMAGE}:${TAG}" >> "${GITHUB_ENV}"
           echo "RUNTIME_IMAGE=${IMAGE}:${TAG}"
 
+      - name: Job-private Docker config
+        run: |
+          set -euo pipefail
+          cfg="${RUNNER_TEMP}/docker-config"
+          mkdir -p "${cfg}"
+          echo "DOCKER_CONFIG=${cfg}" >> "${GITHUB_ENV}"
+
       - name: GPU mapping probe
         run: |
           set -euo pipefail
@@ -346,7 +357,14 @@ jobs:
           docker run --rm --gpus "${DOCKER_GPUS}" --entrypoint bash \
             nvidia/cuda:12.8.1-base-ubuntu24.04 -lc 'nvidia-smi -L'
 
-      - name: Pull public runtime image
+      # TODO(#35): remove the GHCR login once fuzzybits-runtime is public
+      - name: Log in to GHCR (job-private config)
+        if: env.GHCR_PULL_AUTH == 'true'
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull runtime image
         run: |
           set -euo pipefail
           docker pull "${RUNTIME_IMAGE}"
@@ -367,3 +385,10 @@ jobs:
       - name: Remove pulled runtime image
         if: always()
         run: docker rmi "${RUNTIME_IMAGE}" || true
+
+      - name: Drop job-private GHCR credentials
+        if: always()
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io || true
+          rm -rf "${RUNNER_TEMP}/docker-config"

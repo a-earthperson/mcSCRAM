@@ -2,7 +2,9 @@
 
 Slim runtime images published to GHCR by [`.github/workflows/images.yml`](../.github/workflows/images.yml) (#35). They replace the manually built `ghcr.io/a-earthperson/mcscram:latest` (14.4 GB, oneAPI/L0/ROCm).
 
-Image: **`ghcr.io/fuzzybit-org/fuzzybits-runtime`** (public). Packages are linked to this repo via `org.opencontainers.image.source`.
+Image: **`ghcr.io/fuzzybit-org/fuzzybits-runtime`** (intended public; first
+push is private until an org owner flips visibility in the UI). Packages
+are linked to this repo via `org.opencontainers.image.source`.
 
 Compiler toolchain (private, not this image): [`docs/ci-toolchain.md`](ci-toolchain.md).
 
@@ -74,14 +76,20 @@ docker pull ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-cuda12.8-sm70
 docker pull ghcr.io/fuzzybit-org/fuzzybits-runtime:sha-<sha12>-generic
 ```
 
-The package is public; no `docker login` is required. Self-hosted smoke jobs
-pull this way (no `GITHUB_TOKEN`, no `packages: write`).
+The package is **intended public**. There is no REST API to flip org
+container-package visibility; the first push creates a private package.
+Until an org owner sets
+https://github.com/orgs/fuzzybit-org/packages/container/package/fuzzybits-runtime
+to Public, anonymous `docker pull` returns `unauthorized`.
 
-If a freshly created GHCR package is still private, flip
-`ghcr.io/fuzzybit-org/fuzzybits-runtime` to public in the org package
-settings (Danger Zone → Change visibility). There is **no** REST API for
-org container-package visibility; the first push always creates a private
-package. Subsequent pushes keep whatever visibility you set.
+**Interim (#35):** self-hosted smoke jobs set `GHCR_PULL_AUTH: "true"` and
+log in with the job's ephemeral `GITHUB_TOKEN` (`packages: read` only) into
+`$RUNNER_TEMP/docker-config` (`DOCKER_CONFIG`), so the runner host's Docker
+credentials are never touched. `if: always()` logout + `rm -rf` that
+directory. This is the only exception to "no secrets on self-hosted", and
+only for workflow refs `public-ci` allowlists (`images.yml@ci/images`,
+later `@develop`). Set `GHCR_PULL_AUTH: "false"` (and drop the login step)
+once the package is public. `# TODO(#35)`.
 
 Measured uncompressed sizes (`docker image inspect`, `ci/images`
 `f1f760a4ead0`): **generic 0.71 GiB**, **cuda12.8-sm70 0.44 GiB**.
@@ -139,7 +147,7 @@ Jobs:
 |---|---|---|
 | `gate` | `ubuntu-24.04` | `contents: read` |
 | `publish-<variant>` | `ubuntu-24.04` | `contents: read`, `packages: write`, `id-token: write`, `attestations: write` |
-| `smoke-*` | self-hosted `[self-hosted, nvidia, sm_70\|sm_86\|sm_120]` | `contents: read` only; no login, no secrets used |
+| `smoke-*` | self-hosted `[self-hosted, nvidia, sm_70\|sm_86\|sm_120]` | `contents: read`, `packages: read`; job-private `GITHUB_TOKEN` login while `GHCR_PULL_AUTH=true` (#35) |
 
 Publish uses `docker/build-push-action` with `--sbom=true --provenance=mode=max`
 and registry cache `ghcr.io/fuzzybit-org/fuzzybits-runtime:buildcache-<variant>`.
