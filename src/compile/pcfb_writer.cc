@@ -5,12 +5,16 @@
 #include <libxml/parser.h>
 #include <libxml/xmlversion.h>
 
+#include "error.h"
 #include "initializer.h"
 #include "model.h"
 #include "pdag.h"
 #include "preprocessor.h"
 #include "settings.h"
 #include "version.h"
+
+#include <boost/exception/errinfo_at_line.hpp>
+#include <boost/exception/get_error_info.hpp>
 
 #include <algorithm>
 #include <array>
@@ -33,6 +37,24 @@ namespace {
 
 pcfb::Error compile_error(std::string message) {
   return pcfb::Error{pcfb::Error::Code::BuilderError, std::move(message)};
+}
+
+std::string mef_initialize_error(const scram::Error &ex) {
+  std::ostringstream msg;
+  msg << "MEF initialize: " << ex.what();
+  auto append = [&](const char *label, const auto *value) {
+    if (value) {
+      msg << "; " << label << "=" << *value;
+    }
+  };
+  append("reference", boost::get_error_info<scram::mef::errinfo_reference>(ex));
+  append("element_id", boost::get_error_info<scram::mef::errinfo_element_id>(ex));
+  append("element_type", boost::get_error_info<scram::mef::errinfo_element_type>(ex));
+  append("base_path", boost::get_error_info<scram::mef::errinfo_base_path>(ex));
+  if (const auto *line = boost::get_error_info<boost::errinfo_at_line>(ex)) {
+    msg << "; line=" << *line;
+  }
+  return msg.str();
 }
 
 void initialize_xml_once() {
@@ -648,6 +670,8 @@ pcfb::Result<CompiledGraph> compile_to_graph(const std::vector<std::string> &inp
   std::unique_ptr<scram::mef::Model> model;
   try {
     model = scram::mef::Initializer(input_files, settings, options.allow_extern).model();
+  } catch (const scram::Error &ex) {
+    return std::unexpected(compile_error(mef_initialize_error(ex)));
   } catch (const std::exception &ex) {
     return std::unexpected(compile_error(std::string("MEF initialize: ") + ex.what()));
   }

@@ -79,6 +79,7 @@
         },
         "expected_hits_accuracy": { "type": ["number", "null"], "minimum": 0 },
         "compile": { "$ref": "#/$defs/compile" },
+        "compat": { "$ref": "#/$defs/compat" },
         "time_budget_s": {
           "type": "object",
           "additionalProperties": { "type": "integer", "minimum": 1 },
@@ -103,6 +104,15 @@
         "reason": { "type": ["string", "null"] }
       }
     },
+    "compat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shim", "version"],
+      "properties": {
+        "shim": { "type": "string", "enum": ["generic_pwr"] },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
     "compile": {
       "type": "object",
       "additionalProperties": false,
@@ -110,7 +120,7 @@
       "properties": {
         "expected": {
           "type": "string",
-          "enum": ["ok", "undefined_element"]
+          "enum": ["ok", "undefined_element", "validity_error"]
         },
         "missing_elements": {
           "type": "array",

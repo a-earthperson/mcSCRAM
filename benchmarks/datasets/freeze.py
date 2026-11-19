@@ -36,52 +36,27 @@ from ..loader import (
     repo_root,
     sha256_file,
 )
+from .compat import SHIM_ID, SHIM_VERSION
 
 GATE_RE = re.compile(r'<define-gate\s+name="([^"]+)"')
 FT_RE = re.compile(r'<define-fault-tree\s+name="([^"]+)"')
 PWR_NAME_RE = re.compile(r"converted_(.+)_et_(Grp-\d+)_")
 
-# Converter defects in generic-pwr-model OpenPSA XML (submodule ce2ef006…).
-# Not an engine loader bug: MEF correctly rejects out-of-scope / missing names.
-# fzb only prints "Undefined Element Error" because compile_error uses ex.what()
-# and drops boost::errinfo (element name). Keep them visible in v1.
+# Remaining PWR files that the dataset-side generic_pwr shim cannot reconstruct.
+# Shim v1 compiles EQK-BIN4/Grp-5 (G10/G3) and EQK-BIN5/Grp-2 (F44→FE44 + G3).
+# Grp-6 still fails after G3 clones: cyclic FE56/FE57 fork nesting.
 KNOWN_COMPILE_FAILURES: dict[str, dict] = {
-    "EQK-BIN4/Grp-5": {
-        "expected": "undefined_element",
-        "missing_elements": ["G3", "G10"],
-        "reason": (
-            "MEF initialize: Undefined Element Error. FT42 and FT44 define-gate "
-            "G300 (private) reference <gate name=\"G3\"/>, but G3 is not defined "
-            "in this file; it is define-gate G3 role=private inside FT3 of sibling "
-            "converted_EQK-BIN4 Grp-1/2/6. FT51 define-gate G227 references "
-            "<gate name=\"G10\"/>, and G10 is not defined in any of the 95 converted "
-            "OpenPSA XMLs. The SAPHIRE→OpenPSA split dropped those gates. Dataset "
-            "(generic-pwr-model converter), not the engine."
-        ),
-    },
     "EQK-BIN4/Grp-6": {
-        "expected": "undefined_element",
-        "missing_elements": ["G3"],
+        "expected": "validity_error",
+        "missing_elements": ["FE56", "FE57"],
         "reason": (
-            "MEF initialize: Undefined Element Error. G3 is define-gate role=private "
-            "in FT3 of this same file, but G300 in FT4, FT26, FT42, FT44, FT55, FT56, "
-            "FT57 and FT121 references <gate name=\"G3\"/> without a path. OpenPSA "
-            "private gates are fault-tree local; the engine correctly rejects the "
-            "cross-tree use. Sibling EQK-BIN4/Grp-2 compiles because those FTs do "
-            "not reference G3. Converter cloned G300 into every FT without cloning "
-            "G3. Dataset, not the engine."
-        ),
-    },
-    "EQK-BIN5/Grp-2": {
-        "expected": "undefined_element",
-        "missing_elements": ["F44", "G3"],
-        "reason": (
-            "MEF initialize: Undefined Element Error. Event-tree fork uses "
-            "functional-event=\"F44\" (line 163 of converted_EQK-BIN5_et_Grp-2_…xml); "
-            "the defined name is FE44 (label LPR-FT). Sibling groups use FE44. Also "
-            "the same cross-FT private G3 reference as EQK-BIN4/Grp-6 (G300 in FT4/"
-            "26/42/44/55/56/57/121, G3 private to FT3). Dataset (typo + converter "
-            "clone), not the engine."
+            "After cloning private G3 into referencing fault trees, MEF initialize "
+            "raises ValidityError: Functional event FE56 must appear after "
+            "functional event FE57 in event tree fork paths. The exported event "
+            "tree nests FE56 then FE57 on some paths and FE57 then FE56 on others, "
+            "so no define-functional-event reorder can satisfy "
+            "CheckFunctionalEventOrder. Not reconstructable from JSInp gate/BE "
+            "data without rewriting the event tree. Dataset, not the engine."
         ),
     },
 }
@@ -213,7 +188,10 @@ def freeze(root: Path | None = None) -> Path:
         notes = (
             "v1 is compile/size/throughput only. SAPHIRE MCS probabilities "
             "are mostly 1e-10 to 1e-6 (README); values below 2.3e-10 "
-            "quantize to zero (#17). Revisit accuracy with #92, #17, #6."
+            "quantize to zero (#17). Revisit accuracy with #92, #17, #6. "
+            f"The generic_pwr shim v{SHIM_VERSION} rewrites a cached MEF copy "
+            "from the matching SAPHSOLVE JSInp (and BE CSV); the submodule XML "
+            "is not modified."
         )
         if known:
             notes = notes + " Known compile failure: " + known["reason"]
@@ -248,6 +226,7 @@ def freeze(root: Path | None = None) -> Path:
                 "gpu_perf": DEFAULT_GPU_PERF_S,
                 "cpu_compile": DEFAULT_CPU_COMPILE_S,
             },
+            "compat": {"shim": SHIM_ID, "version": SHIM_VERSION},
         }
         if known:
             model_row["compile"] = {

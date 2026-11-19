@@ -10,6 +10,14 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from xml.etree import ElementTree as ET  # noqa: E402
+
+from benchmarks.datasets.compat import (  # noqa: E402
+    SHIM_ID,
+    SHIM_VERSION,
+    matching_jsinp,
+    patch_generic_pwr,
+)
 from benchmarks.loader import (  # noqa: E402
     NUS9601_REF,
     NUS9601_REF_SOURCE,
@@ -17,6 +25,7 @@ from benchmarks.loader import (  # noqa: E402
     accuracy_trials,
     expected_hits,
     load_manifest,
+    sha256_file,
     validate_manifest,
 )
 
@@ -80,21 +89,95 @@ def test_accuracy_trials_match_target_hits_or_are_hard():
             assert n == accuracy_trials(p)
 
 
-def test_pwr_known_compile_failures_stay_visible():
+def test_pwr_models_use_generic_pwr_shim():
     manifest = load_manifest(root=ROOT)
-    expected = {
-        "EQK-BIN4/Grp-5": ("G3", "G10"),
-        "EQK-BIN4/Grp-6": ("G3",),
-        "EQK-BIN5/Grp-2": ("F44", "G3"),
-    }
-    for model_id, missing in expected.items():
+    pwr = [m for m in manifest.models if m.source == "pwr"]
+    assert len(pwr) == 95
+    for model in pwr:
+        assert model.compat_shim == SHIM_ID
+        assert model.compat_version == SHIM_VERSION
+    for model_id in ("EQK-BIN4/Grp-5", "EQK-BIN5/Grp-2"):
         model = manifest.by_id(model_id)
-        assert model.known_compile_failure
-        assert model.compile_expected == "undefined_element"
-        assert tuple(model.compile_missing) == missing
-        assert model.compile_reason
-        assert "Undefined Element" in model.compile_reason
-    assert sum(1 for m in manifest.models if m.known_compile_failure) == 3
+        assert not model.known_compile_failure
+        assert model.compile_expected == "ok"
+    remaining = manifest.by_id("EQK-BIN4/Grp-6")
+    assert remaining.known_compile_failure
+    assert remaining.compile_expected == "validity_error"
+    assert "FE56" in remaining.compile_missing
+    assert "FE57" in remaining.compile_missing
+    assert "fork paths" in remaining.compile_reason
+    assert sum(1 for m in manifest.models if m.known_compile_failure) == 1
+
+
+def test_generic_pwr_shim_injects_g10_into_eqk_bin4_grp5(tmp_path):
+    xml = ROOT / (
+        "input/generic-pwr-model/data/openpsa/"
+        "converted_EQK-BIN4_et_Grp-5_24-02-26_15-58-09.xml"
+    )
+    assert xml.is_file()
+    before = sha256_file(xml)
+    result = patch_generic_pwr(xml, cache_dir=tmp_path)
+    assert xml.is_file()
+    assert sha256_file(xml) == before
+    assert result.original == xml
+    assert result.path != xml
+    assert result.path.is_file()
+    assert "FT51.G10" in result.injected_gates
+    assert any(name.endswith(".G3") for name in result.injected_gates)
+    root_el = ET.parse(result.path).getroot()
+    ft51 = next(el for el in root_el.findall("define-fault-tree") if el.attrib.get("name") == "FT51")
+    gates = {el.attrib["name"]: el for el in ft51.findall("define-gate")}
+    assert "G10" in gates
+    children = [c.attrib["name"] for c in gates["G10"].find("or").findall("gate")]
+    assert children == ["G15", "G19", "G24", "G27", "G39", "G40"]
+    # Children already existed; the shim must not drop private clones.
+    for name in children:
+        assert name in gates
+    jsinp = matching_jsinp(xml)
+    assert jsinp.name.endswith(".JSInp")
+    cached = patch_generic_pwr(xml, cache_dir=tmp_path)
+    assert cached.path == result.path
+
+
+def test_generic_pwr_shim_rewrites_f44_and_clones_g3(tmp_path):
+    grp2 = ROOT / (
+        "input/generic-pwr-model/data/openpsa/"
+        "converted_EQK-BIN5_et_Grp-2_24-02-26_15-58-15.xml"
+    )
+    result = patch_generic_pwr(grp2, cache_dir=tmp_path)
+    assert ("F44", "FE44") in result.rewritten_functional_events
+    forks = [
+        el.attrib.get("functional-event")
+        for el in ET.parse(result.path).getroot().iter("fork")
+    ]
+    assert "F44" not in forks
+    assert "FE44" in forks
+    grp6 = ROOT / (
+        "input/generic-pwr-model/data/openpsa/"
+        "converted_EQK-BIN4_et_Grp-6_24-02-26_15-58-10.xml"
+    )
+    cloned = patch_generic_pwr(grp6, cache_dir=tmp_path)
+    assert any(name.endswith(".G3") and not name.startswith("FT3.") for name in cloned.injected_gates)
+    root_el = ET.parse(cloned.path).getroot()
+    ft4 = next(el for el in root_el.findall("define-fault-tree") if el.attrib.get("name") == "FT4")
+    assert any(el.attrib.get("name") == "G3" for el in ft4.findall("define-gate"))
+
+
+
+def test_generic_pwr_shim_leaves_existing_private_clones(tmp_path):
+    xml = ROOT / (
+        "input/generic-pwr-model/data/openpsa/"
+        "converted_EQK-BIN4_et_Grp-3_24-02-26_15-58-03.xml"
+    )
+    before = ET.parse(xml).getroot()
+    n_g43 = sum(1 for el in before.iter("define-gate") if el.attrib.get("name") == "G43")
+    assert n_g43 > 1
+    result = patch_generic_pwr(xml, cache_dir=tmp_path)
+    after = ET.parse(result.path).getroot()
+    n_after = sum(1 for el in after.iter("define-gate") if el.attrib.get("name") == "G43")
+    assert n_after == n_g43
+    extra_g43 = [name for name in result.injected_gates if name.endswith(".G43")]
+    assert extra_g43 == []
 
 
 def test_rare_events_are_infeasible_not_vacuous_pass():

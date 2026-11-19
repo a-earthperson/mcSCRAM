@@ -234,6 +234,8 @@ class Model:
     compile_expected: str = "ok"
     compile_missing: tuple[str, ...] = ()
     compile_reason: str | None = None
+    compat_shim: str | None = None
+    compat_version: int | None = None
 
     @property
     def known_compile_failure(self) -> bool:
@@ -406,9 +408,27 @@ def _parse_model(raw: Mapping[str, Any], *, index: int) -> Model:
     compile_expected = "ok"
     compile_missing: tuple[str, ...] = ()
     compile_reason: str | None = None
+    compat_shim: str | None = None
+    compat_version: int | None = None
+    compat_raw = raw.get("compat")
+    if isinstance(compat_raw, Mapping):
+        compat_shim = str(compat_raw.get("shim") or "") or None
+        ver = compat_raw.get("version")
+        compat_version = None if ver is None else int(ver)
+        if source == "pwr":
+            if compat_shim != "generic_pwr":
+                raise ManifestError(
+                    f"{where}: PWR compat.shim must be 'generic_pwr', got {compat_shim!r}"
+                )
+            if compat_version is None or compat_version < 1:
+                raise ManifestError(f"{where}: PWR compat.version must be >= 1")
+    elif compat_raw is not None:
+        raise ManifestError(f"{where}: compat must be an object")
+    elif source == "pwr":
+        raise ManifestError(f"{where}: PWR models require compat.shim")
     if isinstance(compile_raw, Mapping):
         compile_expected = str(compile_raw.get("expected") or "ok")
-        if compile_expected not in {"ok", "undefined_element"}:
+        if compile_expected not in {"ok", "undefined_element", "validity_error"}:
             raise ManifestError(f"{where}: compile.expected {compile_expected!r} is not valid")
         missing_raw = compile_raw.get("missing_elements") or []
         if not isinstance(missing_raw, list):
@@ -440,6 +460,8 @@ def _parse_model(raw: Mapping[str, Any], *, index: int) -> Model:
         compile_expected=compile_expected,
         compile_missing=compile_missing,
         compile_reason=compile_reason,
+        compat_shim=compat_shim,
+        compat_version=compat_version,
     )
 
 
