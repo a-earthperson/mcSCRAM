@@ -54,10 +54,16 @@ that (gate name, input name, or a name on a negated literal). A negated target
 appends one `NOT` after the gates so gate tensor indices stay put.
 
 Names are stored losslessly in `nombrilo.names` (JSON `{names, lits}`),
-including several names per variable and names on negated literals. The original
-`operators` / `offsets` / `children` arrays are also snapshotted under
-`nombrilo.operators`, `nombrilo.offsets`, `nombrilo.children` so child order
-(which pcfb splits into `inputs` vs `inverted_inputs`) round-trips exactly.
+including several names per variable and names on negated literals. Gate
+`operators` / `offsets` / `children` are **derived** from the pcfb ops on
+export (tensor index = variable index). pcfb splits each gate into `inputs` vs
+`inverted_inputs`, so the only extra state is the interleaving of those two
+lists: `nombrilo.child_order` is a sparse `{gate_index: [1,0,1,…]}` polarity
+sequence (1 = from `inputs`, 0 = from `inverted_inputs`), omitted when every
+gate is already canonical (all `inputs` first, then `inverted_inputs`). A
+stale or inconsistent `child_order` is ignored with a warning and canonical
+order is emitted. There are no `nombrilo.operators` / `offsets` / `children`
+snapshots.
 
 Variant files record `nombrilo.weights_source = "inherited"` and omit `weights`
 on the way back. Inline files record `"inline"` and keep bit-identical
@@ -82,12 +88,15 @@ nombrilo has fewer concepts than pcfb. Structural conversion:
 | `NAND` / `NOR` / `XNOR` | AND / OR / XOR referenced through a negated literal |
 | `ATMOST k` | `not ATLEAST(k+1)` |
 | `EXACTLY k` | `ATLEAST(k) AND not ATLEAST(k+1)` (adds gates) |
-| `ZEROS` / `ONES` | constant literals 0 / 1 |
+| `ZEROS` / `ONES` at tensor 0 | constant literals 0 / 1 |
+| `ONES` / `ZEROS` at a gate tensor | empty AND / empty OR (empty XOR and at-least-k with `k > n` lower to `ZEROS` and therefore export as empty OR) |
 | SAMPLE order | inputs are always variables 1..B; interleaved SAMPLEs are pulled forward |
 
-When the pcfb was produced from nombrilo (`general.source_format =
-nombrilo.circuit-1` plus the snapshots above), arrays are restored exactly
-instead of being reconstructed.
+When the pcfb is 1:1 nombrilo (tensor 0 = `ONES`, tensors 1..B = `SAMPLE`,
+tensor `B+1+i` = gate *i*), arrays are derived from those ops, with
+`nombrilo.child_order` restoring non-canonical child interleaving. A tool
+that edits a pcfb op is visible on export; a stale `child_order` cannot
+override the derived children.
 
 ### What has no home in nombrilo
 

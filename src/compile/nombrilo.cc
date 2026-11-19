@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <unordered_map>
@@ -612,6 +613,138 @@ pcfb::Result<std::vector<std::uint32_t>> parse_u32_array_text(std::string_view j
   return out;
 }
 
+void child_order_warn(std::string_view detail) {
+  std::fprintf(stderr, "pcfb_to_nombrilo: ignoring nombrilo.child_order (%.*s); using canonical child order\n",
+               static_cast<int>(detail.size()), detail.data());
+}
+
+bool children_are_canonical(std::span<const std::uint32_t> kids) {
+  bool saw_neg = false;
+  for (auto lit : kids) {
+    if (!lit_pos(lit)) {
+      saw_neg = true;
+    } else if (saw_neg) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string dump_child_order(const NombriloCircuit &c) {
+  std::string out = "{";
+  bool any = false;
+  for (std::size_t i = 0; i < c.operators.size(); ++i) {
+    const auto lo = c.offsets[i];
+    const auto hi = c.offsets[i + 1];
+    const auto kids = std::span<const std::uint32_t>(c.children.data() + lo, hi - lo);
+    if (children_are_canonical(kids)) {
+      continue;
+    }
+    std::vector<std::uint32_t> pol;
+    pol.reserve(kids.size());
+    for (auto lit : kids) {
+      pol.push_back(lit_pos(lit) ? 1u : 0u);
+    }
+    if (any) {
+      out += ',';
+    }
+    any = true;
+    out += json_string(std::to_string(i));
+    out += ':';
+    out += json_u32_array(pol);
+  }
+  out += '}';
+  return any ? out : std::string{};
+}
+
+pcfb::Result<std::map<std::uint32_t, std::vector<std::uint32_t>>> parse_child_order_object(std::string_view json) {
+  JsonCursor c{json, 0};
+  if (auto r = expect(c, '{', "child_order object"); !r) {
+    return std::unexpected(r.error());
+  }
+  std::map<std::uint32_t, std::vector<std::uint32_t>> out;
+  if (c.peek() == '}') {
+    c.eat('}');
+    return out;
+  }
+  for (;;) {
+    auto key = parse_json_string(c);
+    if (!key) {
+      return std::unexpected(key.error());
+    }
+    if (auto r = expect(c, ':', "':'"); !r) {
+      return std::unexpected(r.error());
+    }
+    auto pol = parse_json_u64_array(c);
+    if (!pol) {
+      return std::unexpected(pol.error());
+    }
+    char *end = nullptr;
+    const auto idx = std::strtoul(key->c_str(), &end, 10);
+    if (end == key->c_str() || *end != '\0' || idx > std::numeric_limits<std::uint32_t>::max()) {
+      return std::unexpected(nombrilo_error("child_order key is not a gate index"));
+    }
+    std::vector<std::uint32_t> bits;
+    bits.reserve(pol->size());
+    for (auto v : *pol) {
+      if (v > 1) {
+        return std::unexpected(nombrilo_error("child_order polarity must be 0 or 1"));
+      }
+      bits.push_back(static_cast<std::uint32_t>(v));
+    }
+    out[static_cast<std::uint32_t>(idx)] = std::move(bits);
+    if (c.eat('}')) {
+      return out;
+    }
+    if (auto r = expect(c, ',', "',' or '}'"); !r) {
+      return std::unexpected(r.error());
+    }
+  }
+}
+
+std::vector<std::uint32_t> apply_child_order(const std::vector<std::uint32_t> &pos,
+                                            const std::vector<std::uint32_t> &neg,
+                                            const std::vector<std::uint32_t> *order, std::uint32_t gate) {
+  std::vector<std::uint32_t> canonical;
+  canonical.reserve(pos.size() + neg.size());
+  canonical.insert(canonical.end(), pos.begin(), pos.end());
+  canonical.insert(canonical.end(), neg.begin(), neg.end());
+  if (!order) {
+    return canonical;
+  }
+  if (order->size() != canonical.size()) {
+    child_order_warn("gate " + std::to_string(gate) + " length mismatch");
+    return canonical;
+  }
+  std::vector<std::uint32_t> out;
+  out.reserve(order->size());
+  std::size_t ip = 0;
+  std::size_t in = 0;
+  for (auto bit : *order) {
+    if (bit == 1) {
+      if (ip >= pos.size()) {
+        child_order_warn("gate " + std::to_string(gate) + " too many positive slots");
+        return canonical;
+      }
+      out.push_back(pos[ip++]);
+    } else if (bit == 0) {
+      if (in >= neg.size()) {
+        child_order_warn("gate " + std::to_string(gate) + " too many inverted slots");
+        return canonical;
+      }
+      out.push_back(neg[in++]);
+    } else {
+      child_order_warn("gate " + std::to_string(gate) + " polarity not 0/1");
+      return canonical;
+    }
+  }
+  if (ip != pos.size() || in != neg.size()) {
+    child_order_warn("gate " + std::to_string(gate) + " unused inputs");
+    return canonical;
+  }
+  return out;
+}
+
 struct NamesBlob {
   std::vector<std::string> names;
   std::vector<std::uint32_t> lits;
@@ -951,6 +1084,28 @@ pcfb::Result<void> set_meta(pcfb::builder &b, std::string_view key, std::string_
   return b.set(key, value);
 }
 
+pcfb::Result<void> write_nombrilo_side_meta(pcfb::builder &b, const NombriloCircuit &circuit, bool inherited) {
+  if (auto r = set_meta(b, "nombrilo.names", names_blob_json(circuit)); !r) {
+    return r;
+  }
+  if (auto order = dump_child_order(circuit); !order.empty()) {
+    if (auto r = set_meta(b, "nombrilo.child_order", order); !r) {
+      return r;
+    }
+  }
+  if (auto r = set_meta(b, "nombrilo.weights_source", inherited ? "inherited" : "inline"); !r) {
+    return r;
+  }
+  if (inherited) {
+    if (auto file = meta_get(circuit, "nombrilo.weights_file"); !file.empty()) {
+      if (auto r = set_meta(b, "nombrilo.weights_file", file); !r) {
+        return r;
+      }
+    }
+  }
+  return {};
+}
+
 std::optional<std::string> pcfb_meta_string(const pcfb::ir::Circuit &circuit, std::string_view key) {
   if (!circuit.get() || !circuit.get()->metadata()) {
     return std::nullopt;
@@ -1089,7 +1244,8 @@ pcfb::Result<void> restore_pcfb_metadata(pcfb::builder &b, std::string_view json
     } else {
       c.eat('}');
     }
-    if (!key.empty()) {
+    if (!key.empty() && key != "nombrilo.operators" && key != "nombrilo.offsets" &&
+        key != "nombrilo.children") {
       if (t == "i") {
         char *end = nullptr;
         const auto n = std::strtoll(v.c_str(), &end, 10);
@@ -1821,27 +1977,8 @@ pcfb::Result<Compiled> nombrilo_to_pcfb(const NombriloCircuit &src, const Nombri
       return std::unexpected(r.error());
     }
   }
-  if (auto r = set_meta(b, "nombrilo.names", names_blob_json(circuit)); !r) {
+  if (auto r = write_nombrilo_side_meta(b, circuit, inherited); !r) {
     return std::unexpected(r.error());
-  }
-  if (auto r = set_meta(b, "nombrilo.operators", json_u32_array(circuit.operators)); !r) {
-    return std::unexpected(r.error());
-  }
-  if (auto r = set_meta(b, "nombrilo.offsets", json_u32_array(circuit.offsets)); !r) {
-    return std::unexpected(r.error());
-  }
-  if (auto r = set_meta(b, "nombrilo.children", json_u32_array(circuit.children)); !r) {
-    return std::unexpected(r.error());
-  }
-  if (auto r = set_meta(b, "nombrilo.weights_source", inherited ? "inherited" : "inline"); !r) {
-    return std::unexpected(r.error());
-  }
-  if (inherited) {
-    if (auto file = meta_get(circuit, "nombrilo.weights_file"); !file.empty()) {
-      if (auto r = set_meta(b, "nombrilo.weights_file", file); !r) {
-        return std::unexpected(r.error());
-      }
-    }
   }
 
   if (auto extras = meta_get(circuit, "fuzzybits.pcfb.event_ids"); !extras.empty()) {
@@ -2029,19 +2166,7 @@ pcfb::Result<Compiled> nombrilo_to_pcfb(const NombriloCircuit &src, const Nombri
           return std::unexpected(r.error());
         }
       }
-      if (auto r = set_meta(b2, "nombrilo.names", names_blob_json(circuit)); !r) {
-        return std::unexpected(r.error());
-      }
-      if (auto r = set_meta(b2, "nombrilo.operators", json_u32_array(circuit.operators)); !r) {
-        return std::unexpected(r.error());
-      }
-      if (auto r = set_meta(b2, "nombrilo.offsets", json_u32_array(circuit.offsets)); !r) {
-        return std::unexpected(r.error());
-      }
-      if (auto r = set_meta(b2, "nombrilo.children", json_u32_array(circuit.children)); !r) {
-        return std::unexpected(r.error());
-      }
-      if (auto r = set_meta(b2, "nombrilo.weights_source", inherited ? "inherited" : "inline"); !r) {
+      if (auto r = write_nombrilo_side_meta(b2, circuit, inherited); !r) {
         return std::unexpected(r.error());
       }
       bytes = b2.finish();
@@ -2131,6 +2256,198 @@ std::uint32_t opcode_to_nombrilo(pcfb::OpCode op, std::uint32_t k, bool *negate_
   }
 }
 
+bool is_1to1_gate_opcode(pcfb::OpCode op) {
+  switch (op) {
+    case pcfb::OpCode::BITWISE_AND:
+    case pcfb::OpCode::BITWISE_OR:
+    case pcfb::OpCode::BITWISE_XOR:
+    case pcfb::OpCode::BITWISE_ATLEAST:
+    case pcfb::OpCode::BITWISE_ONES:
+    case pcfb::OpCode::BITWISE_ZEROS:
+      return true;
+    default:
+      return false;
+  }
+}
+
+void split_op_lits(const pcfb::Op *op, std::vector<std::uint32_t> &pos, std::vector<std::uint32_t> &neg) {
+  pos.clear();
+  neg.clear();
+  if (op->inputs()) {
+    for (auto id : *op->inputs()) {
+      pos.push_back(make_lit(id, true));
+    }
+  }
+  if (op->inverted_inputs()) {
+    for (auto id : *op->inverted_inputs()) {
+      neg.push_back(make_lit(id, false));
+    }
+  }
+}
+
+std::optional<NombriloCircuit> try_derive_1to1(const pcfb::ir::Circuit &circuit, const NombriloExportOptions &options) {
+  if (!circuit.valid() || !circuit.subcircuits() || circuit.subcircuits()->size() == 0) {
+    return std::nullopt;
+  }
+  const auto *sc = circuit.subcircuits()->Get(0);
+  if (!sc || !sc->operators()) {
+    return std::nullopt;
+  }
+  const auto *ops = sc->operators();
+  if (!ops || ops->size() == 0) {
+    return std::nullopt;
+  }
+  const auto *op0 = ops->Get(0);
+  if (!op0 || op0->opcode() != pcfb::OpCode::BITWISE_ONES || op0->output() != 0) {
+    return std::nullopt;
+  }
+
+  NombriloCircuit out;
+  std::vector<double> weights;
+  std::size_t i = 1;
+  while (i < ops->size()) {
+    const auto *op = ops->Get(i);
+    if (!op || op->opcode() != pcfb::OpCode::SAMPLE || op->output() != i) {
+      break;
+    }
+    const auto *sa = op->args_as_SampleArgs();
+    if (!sa) {
+      return std::nullopt;
+    }
+    weights.push_back(sa->probability());
+    ++i;
+  }
+  const auto B = static_cast<std::uint32_t>(weights.size());
+  out.base_count = B;
+
+  std::size_t gate_begin = i;
+  std::uint32_t expected = B + 1;
+  while (i < ops->size()) {
+    const auto *op = ops->Get(i);
+    if (!op) {
+      return std::nullopt;
+    }
+    const auto oc = op->opcode();
+    if (oc == pcfb::OpCode::BITWISE_NOT || oc == pcfb::OpCode::BITWISE_NO_OP) {
+      break;
+    }
+    if (!is_1to1_gate_opcode(oc) || op->output() != expected) {
+      return std::nullopt;
+    }
+    ++expected;
+    ++i;
+  }
+  const auto n_gates = static_cast<std::uint32_t>(i - gate_begin);
+  while (i < ops->size()) {
+    const auto *op = ops->Get(i);
+    if (!op) {
+      return std::nullopt;
+    }
+    const auto oc = op->opcode();
+    if (oc != pcfb::OpCode::BITWISE_NOT && oc != pcfb::OpCode::BITWISE_NO_OP) {
+      return std::nullopt;
+    }
+    ++i;
+  }
+
+  std::map<std::uint32_t, std::vector<std::uint32_t>> order_map;
+  if (auto raw = pcfb_meta_string(circuit, "nombrilo.child_order")) {
+    auto parsed = parse_child_order_object(*raw);
+    if (!parsed) {
+      child_order_warn(parsed.error().message);
+    } else {
+      order_map = std::move(*parsed);
+    }
+  }
+
+  out.operators.reserve(n_gates);
+  out.offsets.push_back(0);
+  for (std::uint32_t g = 0; g < n_gates; ++g) {
+    const auto *op = ops->Get(gate_begin + g);
+    const auto oc = op->opcode();
+    std::uint32_t code = kNombriloAnd;
+    std::vector<std::uint32_t> pos;
+    std::vector<std::uint32_t> neg;
+    if (oc == pcfb::OpCode::BITWISE_ONES) {
+      code = kNombriloAnd;
+    } else if (oc == pcfb::OpCode::BITWISE_ZEROS) {
+      code = kNombriloOr;
+    } else {
+      split_op_lits(op, pos, neg);
+      if (oc == pcfb::OpCode::BITWISE_AND) {
+        code = kNombriloAnd;
+      } else if (oc == pcfb::OpCode::BITWISE_OR) {
+        code = kNombriloOr;
+      } else if (oc == pcfb::OpCode::BITWISE_XOR) {
+        code = kXorCode;
+      } else {
+        const auto *kn = op->args_as_KofNArgs();
+        code = kn ? kn->k() : 0;
+      }
+    }
+    const std::vector<std::uint32_t> *pol = nullptr;
+    if (auto it = order_map.find(g); it != order_map.end()) {
+      pol = &it->second;
+    }
+    auto kids = apply_child_order(pos, neg, pol, g);
+    out.operators.push_back(code);
+    out.children.insert(out.children.end(), kids.begin(), kids.end());
+    out.offsets.push_back(static_cast<std::uint32_t>(out.children.size()));
+  }
+
+  if (auto names_json = pcfb_meta_string(circuit, "nombrilo.names")) {
+    auto names = parse_names_blob(*names_json);
+    if (!names) {
+      return std::nullopt;
+    }
+    out.names = std::move(names->names);
+    out.name_lits = std::move(names->lits);
+  } else {
+    std::unordered_set<std::string> used;
+    auto add = [&](std::string name, std::uint32_t lit) {
+      if (name.empty()) {
+        return;
+      }
+      name = unique_name(std::move(name), used);
+      out.names.push_back(std::move(name));
+      out.name_lits.push_back(lit);
+    };
+    for (std::size_t s = 1; s <= B; ++s) {
+      const auto *op = ops->Get(s);
+      const auto *sa = op->args_as_SampleArgs();
+      if (sa && sa->name()) {
+        add(sa->name()->str(), make_lit(static_cast<std::uint32_t>(s), true));
+      }
+    }
+    for (std::uint32_t g = 0; g < n_gates; ++g) {
+      const auto *op = ops->Get(gate_begin + g);
+      if (op->name() && op->name()->size()) {
+        add(op->name()->str(), make_lit(B + 1 + g, true));
+      }
+    }
+  }
+
+  const auto wsrc = pcfb_meta_string(circuit, "nombrilo.weights_source").value_or("inline");
+  if (wsrc != "inherited") {
+    out.weights = std::move(weights);
+  }
+  out.metadata["format"] = kNombriloFormat;
+  out.metadata["version"] = kNombriloVersion;
+  out.metadata["base_count"] = std::to_string(out.base_count);
+  if (options.extras) {
+    for (const char *key : {"fuzzybits.pcfb.queries", "fuzzybits.pcfb.event_ids", "fuzzybits.pcfb.sources",
+                            "fuzzybits.pcfb.metadata"}) {
+      if (auto v = pcfb_meta_string(circuit, key)) {
+        out.metadata[key] = *v;
+      }
+    }
+  }
+  if (auto r = validate_circuit(out); !r) {
+    return std::nullopt;
+  }
+  return out;
+}
+
 }  // namespace
 
 pcfb::Result<NombriloCircuit> pcfb_to_nombrilo(const pcfb::ir::Circuit &circuit, const NombriloExportOptions &options) {
@@ -2142,75 +2459,11 @@ pcfb::Result<NombriloCircuit> pcfb_to_nombrilo(const pcfb::ir::Circuit &circuit,
     return std::unexpected(nombrilo_error("pcfb subcircuit missing operators"));
   }
 
-  const auto source_format = pcfb_meta_string(circuit, "general.source_format").value_or("");
-  const auto ops_json = pcfb_meta_string(circuit, "nombrilo.operators");
-  const auto off_json = pcfb_meta_string(circuit, "nombrilo.offsets");
-  const auto ch_json = pcfb_meta_string(circuit, "nombrilo.children");
-  const auto names_json = pcfb_meta_string(circuit, "nombrilo.names");
-  const bool have_snapshot = ops_json && off_json && ch_json;
-
-  NombriloCircuit out;
-  if (have_snapshot && source_format == kNombriloSourceFormat) {
-    auto operators = parse_u32_array_text(*ops_json);
-    if (!operators) {
-      return std::unexpected(operators.error());
-    }
-    auto offsets = parse_u32_array_text(*off_json);
-    if (!offsets) {
-      return std::unexpected(offsets.error());
-    }
-    auto children = parse_u32_array_text(*ch_json);
-    if (!children) {
-      return std::unexpected(children.error());
-    }
-    out.operators = std::move(*operators);
-    out.offsets = std::move(*offsets);
-    out.children = std::move(*children);
-    if (names_json) {
-      auto names = parse_names_blob(*names_json);
-      if (!names) {
-        return std::unexpected(names.error());
-      }
-      out.names = std::move(names->names);
-      out.name_lits = std::move(names->lits);
-    }
-    std::uint32_t n_sample = 0;
-    std::vector<double> weights;
-    if (sc->operators()) {
-      for (const auto *op : *sc->operators()) {
-        if (!op || op->opcode() != pcfb::OpCode::SAMPLE) {
-          continue;
-        }
-        const auto *sa = op->args_as_SampleArgs();
-        if (!sa) {
-          return std::unexpected(nombrilo_error("SAMPLE without SampleArgs"));
-        }
-        ++n_sample;
-        weights.push_back(sa->probability());
-      }
-    }
-    out.base_count = n_sample;
-    const auto wsrc = pcfb_meta_string(circuit, "nombrilo.weights_source").value_or("inline");
-    if (wsrc != "inherited") {
-      out.weights = std::move(weights);
-    }
-    out.metadata["format"] = kNombriloFormat;
-    out.metadata["version"] = kNombriloVersion;
-    out.metadata["base_count"] = std::to_string(out.base_count);
-    if (options.extras) {
-      for (const char *key : {"fuzzybits.pcfb.queries", "fuzzybits.pcfb.event_ids", "fuzzybits.pcfb.sources",
-                              "fuzzybits.pcfb.metadata"}) {
-        if (auto v = pcfb_meta_string(circuit, key)) {
-          out.metadata[key] = *v;
-        }
-      }
-    }
-    if (auto r = validate_circuit(out); !r) {
-      return std::unexpected(r.error());
-    }
-    return out;
+  if (auto derived = try_derive_1to1(circuit, options)) {
+    return std::move(*derived);
   }
 
+  NombriloCircuit out;
   const auto n_tensors = sc->tensors() ? sc->tensors()->size() : 0;
   std::vector<std::optional<std::uint32_t>> lit_of(n_tensors);
   std::vector<std::uint32_t> sample_order;

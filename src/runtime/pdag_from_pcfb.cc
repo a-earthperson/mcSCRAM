@@ -553,6 +553,8 @@ ReconstructedPdag pdag_from_circuit(const pcfb::ir::Circuit &circuit) {
   }
 
   std::unordered_map<std::uint32_t, std::shared_ptr<scram::core::Variable>> vars_by_event;
+  // MEF-compiled pcfb uses event_id = PDAG index (>= kVariableStartIndex = 2), so
+  // shift stays 0. Nombrilo SAMPLE event_id starts at 1 and is shifted up by 1.
   int event_id_shift = 0;
   if (!samples.empty() &&
       samples.front().event_id < static_cast<std::uint32_t>(scram::core::Pdag::kVariableStartIndex)) {

@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <cstring>
@@ -12,6 +13,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -118,6 +120,19 @@ TEST_CASE("nombrilo AND/OR/XOR/ATLEAST and negation compile to valid pcfb", "[no
   REQUIRE(fuzzybits::compile::random_sample_count(*circuit) == 3);
 }
 
+std::optional<std::string> pcfb_meta(const pcfb::ir::Circuit &circuit, std::string_view key) {
+  if (!circuit.get() || !circuit.get()->metadata()) {
+    return std::nullopt;
+  }
+  for (const auto *kv : *circuit.get()->metadata()) {
+    if (kv && kv->key() && kv->key()->str() == key && kv->value_as_StringValue() &&
+        kv->value_as_StringValue()->value()) {
+      return kv->value_as_StringValue()->value()->str();
+    }
+  }
+  return std::nullopt;
+}
+
 TEST_CASE("empty AND becomes ONES, empty OR/XOR become ZEROS, k>n becomes ZEROS", "[nombrilo][edge]") {
   auto c = make_circuit(1, {0, 1, 0xFFFFFFFFu, 5}, {{}, {}, {}, {lit(1)}},
                         {{"x", lit(1)}, {"r1", lit(5)}}, std::vector<double>{0.3});
@@ -132,8 +147,10 @@ TEST_CASE("empty AND becomes ONES, empty OR/XOR become ZEROS, k>n becomes ZEROS"
   REQUIRE(ops->Get(5)->opcode() == pcfb::OpCode::BITWISE_ZEROS);   // atleast-5 of 1
   auto back = fuzzybits::compile::pcfb_to_nombrilo(*circuit, NombriloExportOptions{false});
   REQUIRE(back);
-  REQUIRE(back->operators == c.operators);
-  REQUIRE(back->children == c.children);
+  // Lowered constants are derived from the pcfb op: ONES → empty AND, ZEROS → empty OR.
+  // Empty XOR and k>n are not distinguishable from empty OR after lowering.
+  REQUIRE(back->operators == std::vector<std::uint32_t>{0, 1, 1, 1});
+  REQUIRE(back->children.empty());
 }
 
 TEST_CASE("constant children and complementary literals are valid pcfb", "[nombrilo][edge]") {
@@ -355,9 +372,80 @@ TEST_CASE("nombrilo metadata records source format and no compile.* keys", "[nom
     if (key.rfind("compile.", 0) == 0) {
       saw_compile = true;
     }
+    REQUIRE(key != "nombrilo.operators");
+    REQUIRE(key != "nombrilo.offsets");
+    REQUIRE(key != "nombrilo.children");
   }
   REQUIRE(saw_source);
   REQUIRE_FALSE(saw_compile);
+  REQUIRE(pcfb_meta(*circuit, "nombrilo.names"));
+  REQUIRE_FALSE(pcfb_meta(*circuit, "nombrilo.child_order"));
+}
+
+TEST_CASE("interleaved children round-trip via child_order, not array snapshots", "[nombrilo]") {
+  auto c = make_circuit(2, {0}, {{lit(1), lit(2, false), lit(1)}},
+                        {{"x", lit(1)}, {"y", lit(2)}, {"r1", lit(3)}},
+                        std::vector<double>{0.2, 0.3});
+  auto compiled = must_to_pcfb(c);
+  auto circuit = pcfb::io::from_bytes(compiled.bytes);
+  REQUIRE(circuit);
+  REQUIRE_FALSE(pcfb_meta(*circuit, "nombrilo.operators"));
+  REQUIRE(pcfb_meta(*circuit, "nombrilo.child_order"));
+  auto back = fuzzybits::compile::pcfb_to_nombrilo(*circuit, NombriloExportOptions{false});
+  REQUIRE(back);
+  REQUIRE(back->operators == c.operators);
+  REQUIRE(back->children == c.children);
+}
+
+TEST_CASE("tampered child_order is ignored and canonical order is emitted", "[nombrilo]") {
+  pcfb::builder b;
+  REQUIRE(b.add_op(pcfb::OpCode::BITWISE_ONES, {}, {}, std::nullopt, "true"));
+  REQUIRE(b.add_sample(0.2, "x", 1));
+  REQUIRE(b.add_sample(0.3, "y", 2));
+  const std::array<std::uint32_t, 1> ins{1};
+  const std::array<std::uint32_t, 1> inv{2};
+  REQUIRE(b.add_op(pcfb::OpCode::BITWISE_AND, ins, inv, std::nullopt, "g"));
+  REQUIRE(b.add_query(3, pcfb::QueryKind::PROBABILITY, "g"));
+  REQUIRE(b.set("general.source_format", fuzzybits::compile::kNombriloSourceFormat));
+  REQUIRE(b.set("nombrilo.names", R"({"names":["x","y","g"],"lits":[3,5,7]})"));
+  REQUIRE(b.set("nombrilo.weights_source", "inline"));
+  REQUIRE(b.set("nombrilo.child_order", R"({"0":[1,1]})"));
+  auto bytes = b.finish();
+  REQUIRE(bytes);
+  auto circuit = pcfb::io::from_bytes(*bytes);
+  REQUIRE(circuit);
+  auto back = fuzzybits::compile::pcfb_to_nombrilo(*circuit, NombriloExportOptions{false});
+  REQUIRE(back);
+  REQUIRE(back->children == std::vector<std::uint32_t>{lit(1), lit(2, false)});
+}
+
+TEST_CASE("export reflects an edited pcfb opcode, not a stale snapshot", "[nombrilo]") {
+  auto c = make_circuit(2, {0}, {{lit(1), lit(2)}},
+                        {{"x", lit(1)}, {"y", lit(2)}, {"r1", lit(3)}},
+                        std::vector<double>{0.2, 0.3});
+  auto compiled = must_to_pcfb(c);
+  REQUIRE(compiled.bytes.size() > 0);
+  pcfb::builder b;
+  REQUIRE(b.add_op(pcfb::OpCode::BITWISE_ONES, {}, {}, std::nullopt, "true"));
+  REQUIRE(b.add_sample(0.2, "x", 1));
+  REQUIRE(b.add_sample(0.3, "y", 2));
+  const std::array<std::uint32_t, 2> ins{1, 2};
+  REQUIRE(b.add_op(pcfb::OpCode::BITWISE_OR, ins, {}, std::nullopt, "r1"));
+  REQUIRE(b.add_query(3, pcfb::QueryKind::PROBABILITY, "r1"));
+  REQUIRE(b.set("general.source_format", fuzzybits::compile::kNombriloSourceFormat));
+  REQUIRE(b.set("nombrilo.names", R"({"names":["x","y","r1"],"lits":[3,5,7]})"));
+  REQUIRE(b.set("nombrilo.weights_source", "inline"));
+  REQUIRE(b.set("nombrilo.operators", "[0]"));
+  REQUIRE(b.set("nombrilo.offsets", "[0,2]"));
+  REQUIRE(b.set("nombrilo.children", "[3,5]"));
+  auto bytes = b.finish();
+  REQUIRE(bytes);
+  auto circuit = pcfb::io::from_bytes(*bytes);
+  REQUIRE(circuit);
+  auto back = fuzzybits::compile::pcfb_to_nombrilo(*circuit, NombriloExportOptions{false});
+  REQUIRE(back);
+  REQUIRE(back->operators == std::vector<std::uint32_t>{1});
+  REQUIRE(back->children == std::vector<std::uint32_t>{lit(1), lit(2)});
 }
 
 TEST_CASE("dataset nombrilo → pcfb → nombrilo is array-exact", "[nombrilo][dataset]") {
@@ -381,6 +469,16 @@ TEST_CASE("dataset nombrilo → pcfb → nombrilo is array-exact", "[nombrilo][d
     auto circuit = pcfb::io::from_bytes(compiled->bytes);
     REQUIRE(circuit);
     REQUIRE(pcfb::validate(*circuit).empty());
+    REQUIRE_FALSE(pcfb_meta(*circuit, "nombrilo.operators"));
+    REQUIRE_FALSE(pcfb_meta(*circuit, "nombrilo.offsets"));
+    REQUIRE_FALSE(pcfb_meta(*circuit, "nombrilo.children"));
+    if (entry.path().filename() == "das9701.f1.safetensors") {
+      const auto order = pcfb_meta(*circuit, "nombrilo.child_order");
+      const auto names = pcfb_meta(*circuit, "nombrilo.names");
+      UNSCOPED_INFO("das9701.f1 child_order bytes=" << (order ? order->size() : 0)
+                                                    << " names bytes=" << (names ? names->size() : 0)
+                                                    << " pcfb bytes=" << compiled->bytes.size());
+    }
     auto back = fuzzybits::compile::pcfb_to_nombrilo(*circuit, NombriloExportOptions{false});
     REQUIRE(back);
     REQUIRE(back->operators == orig->operators);
@@ -447,6 +545,8 @@ void mef_extras_roundtrip(const std::filesystem::path &xml) {
   std::vector<double> p0s, p1s;
   collect_sample_ids(*circuit, ids0, p0s);
   collect_sample_ids(*rc, ids1, p1s);
+  REQUIRE_FALSE(ids0.empty());
+  REQUIRE(*std::min_element(ids0.begin(), ids0.end()) >= 2);
   REQUIRE(ids0 == ids1);
   REQUIRE(p0s.size() == p1s.size());
   for (std::size_t i = 0; i < p0s.size(); ++i) {
