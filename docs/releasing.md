@@ -38,8 +38,9 @@ pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pyp
 1. Set the version everywhere and commit it to `develop` (via a PR):
    ```bash
    scripts/ci/release-version.sh apply 0.18.0
+   (cd tools/server && uv lock)
    ```
-   This updates `pyproject.toml`, `python/fuzzybits/__init__.py` and, for the server, `tools/server/pyproject.toml` (`version` and the `fuzzybits==` pin).
+   This updates `pyproject.toml`, `python/fuzzybits/__init__.py` and, for the server, `tools/server/pyproject.toml` (`version` and the `fuzzybits==` pin). `uv lock` refreshes `tools/server/uv.lock`, which records both versions.
 2. Tag that commit and push the tag:
    ```bash
    git tag -a v0.18.0 -m "fuzzybits 0.18.0" && git push origin v0.18.0
