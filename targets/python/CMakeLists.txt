@@ -44,11 +44,7 @@ target_include_directories(${FUZZYBITS_NATIVE_MODULE}
 )
 
 if(SKBUILD)
-  set_target_properties(${FUZZYBITS_NATIVE_MODULE} PROPERTIES
-    INSTALL_RPATH "$ORIGIN:$ORIGIN/lib"
-    BUILD_WITH_INSTALL_RPATH ON
-    INSTALL_RPATH_USE_LINK_PATH FALSE
-  )
+  fuzzybits_set_wheel_rpath(${FUZZYBITS_NATIVE_MODULE})
 endif()
 
 install(

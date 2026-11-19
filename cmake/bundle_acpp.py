@@ -14,6 +14,14 @@ Layout (AdaptiveCpp v25.10 plugin discovery):
       <dest>/hipSYCL/ext/llvm/bin/{opt,llc,ld.lld}
       <dest>/hipSYCL/ext/bitcode/ptx/libdevice.10.bc
 
+    Darwin (Metal + OpenMP SSCP):
+      <dest>/libacpp-rt.dylib
+      <dest>/hipSYCL/librt-backend-{metal,omp}.dylib
+      <dest>/hipSYCL/llvm-to-backend/libllvm-to-{backend,host,metal}.dylib
+      <dest>/hipSYCL/ext/llvm/bin/{opt,llc,ld.lld,ld64.lld}
+      <dest>/libLLVM.dylib
+      <dest>/libomp.dylib
+
     Windows (AdaptiveCpp linked into LLVM; DLLs live in prefix/bin):
       <dest>/acpp-rt.dll
       <dest>/hipSYCL/rt-backend-{cuda,omp}.dll
@@ -81,7 +89,7 @@ def _copy_tree(src_dir: Path, dest_dir: Path, copied: list[str]) -> None:
         print(f"skip missing tree {src_dir}")
         return
     for src in src_dir.rglob("*"):
-        if not src.is_file():
+        if not src.is_file() and not src.is_symlink():
             continue
         if src.name.lower() in DRIVER_NAMES:
             print(f"skip driver {src}")
@@ -95,8 +103,152 @@ def _copy_tree(src_dir: Path, dest_dir: Path, copied: list[str]) -> None:
             copied.append(str(out))
 
 
+def _homebrew_prefix(formula: str) -> Path | None:
+    import shutil
+    import subprocess
+
+    brew = shutil.which("brew")
+    if brew is None:
+        return None
+    result = subprocess.run(
+        [brew, "--prefix", formula],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    prefix = Path(result.stdout.strip())
+    return prefix if prefix.is_dir() else None
+
+
+def _bundle_darwin(acpp_prefix: Path, dest: Path) -> None:
+    """Darwin AdaptiveCpp (Metal + OpenMP, Homebrew llvm@20)."""
+    lib = acpp_prefix / "lib"
+    copied: list[str] = []
+
+    def record(src: Path, dest_dir: Path) -> None:
+        out = _copy_file(src, dest_dir)
+        if out is None:
+            print(f"skip missing {src}")
+        else:
+            print(f"copy {src} -> {out}")
+            copied.append(str(out))
+
+    for pattern in ("libacpp-rt*.dylib", "libacpp-common*.dylib"):
+        hits = _copy_glob(lib, pattern, dest)
+        if not hits:
+            print(f"skip missing {pattern}")
+        else:
+            for hit in hits:
+                copied.append(str(hit))
+                print(f"copy {hit}")
+
+    hipsycl_src = lib / "hipSYCL"
+    if hipsycl_src.is_dir():
+        _copy_tree(hipsycl_src, dest / "hipSYCL", copied)
+    else:
+        print(f"skip missing tree {hipsycl_src}")
+    # Executables install to prefix/bin/hipSYCL on Darwin.
+    hipsycl_bin = acpp_prefix / "bin" / "hipSYCL"
+    if hipsycl_bin.is_dir():
+        _copy_tree(hipsycl_bin, dest / "hipSYCL", copied)
+
+    llvm_prefix = Path(os.environ.get("LLVM_PREFIX") or "")
+    if not llvm_prefix.is_dir():
+        llvm_prefix = _homebrew_prefix("llvm@20") or Path("/opt/homebrew/opt/llvm@20")
+
+    llvm_bin_dst = dest / "hipSYCL" / "ext" / "llvm" / "bin"
+    llvm_bin = llvm_prefix / "bin"
+    for tool in ("opt", "llc"):
+        record(_first_existing([llvm_bin / tool]) or (llvm_bin / tool), llvm_bin_dst)
+
+    lld_candidates = [
+        llvm_bin / "ld64.lld",
+        llvm_bin / "ld.lld",
+    ]
+    if os.environ.get("ACPP_LLD_PATH"):
+        lld_candidates.insert(0, Path(os.environ["ACPP_LLD_PATH"]))
+    lld = _first_existing(lld_candidates)
+    brew_lld = _homebrew_prefix("lld@20") or _homebrew_prefix("lld")
+    if lld is None and brew_lld is not None:
+        lld = _first_existing([brew_lld / "bin" / "ld64.lld", brew_lld / "bin" / "ld.lld"])
+    if lld is not None:
+        record(lld, llvm_bin_dst)
+        alias = llvm_bin_dst / ("ld.lld" if lld.name != "ld.lld" else "ld64.lld")
+        if not alias.exists() and (llvm_bin_dst / lld.name).exists():
+            src_copied = llvm_bin_dst / lld.name
+            print(f"copy {src_copied} -> {alias}")
+            shutil.copy2(src_copied, alias)
+            copied.append(str(alias))
+        lld_lib = lld.resolve().parent.parent / "lib"
+        if not lld_lib.is_dir() and brew_lld is not None:
+            lld_lib = brew_lld / "lib"
+        if lld_lib.is_dir():
+            lld_libs = _copy_glob(lld_lib, "liblld*.dylib", dest)
+            if not lld_libs:
+                print(f"skip missing {lld_lib}/liblld*.dylib")
+            else:
+                for hit in lld_libs:
+                    copied.append(str(hit))
+                    print(f"copy {hit}")
+    else:
+        print("skip missing ld.lld / ld64.lld")
+
+    llvm_lib = llvm_prefix / "lib"
+    llvm_files = [llvm_lib / "libLLVM.dylib", *sorted(llvm_lib.glob("libLLVM.[0-9]*.dylib"))]
+    llvm_copied = False
+    for src in llvm_files:
+        if src.is_file() or src.is_symlink():
+            record(src, dest)
+            llvm_copied = True
+    if not llvm_copied:
+        print("skip missing libLLVM.dylib")
+
+    omp_prefix = Path(os.environ.get("OMP_PREFIX") or "")
+    if not omp_prefix.is_dir():
+        omp_prefix = _homebrew_prefix("libomp") or Path("/opt/homebrew/opt/libomp")
+    omp = _first_existing(
+        [
+            omp_prefix / "lib" / "libomp.dylib",
+            llvm_lib / "libomp.dylib",
+        ]
+    )
+    if omp is not None:
+        record(omp, dest)
+    else:
+        print("skip missing libomp.dylib")
+
+    for tool_dir in (dest / "hipSYCL" / "ext" / "llvm" / "bin", dest / "hipSYCL" / "llvm-to-backend"):
+        if not tool_dir.is_dir():
+            continue
+        for tool in tool_dir.iterdir():
+            if tool.is_file():
+                tool.chmod(tool.stat().st_mode | 0o111)
+
+    metal = dest / "hipSYCL" / "librt-backend-metal.dylib"
+    omp_be = dest / "hipSYCL" / "librt-backend-omp.dylib"
+    rt = dest / "libacpp-rt.dylib"
+    lld_ok = (llvm_bin_dst / "ld64.lld").is_file() or (llvm_bin_dst / "ld.lld").is_file()
+    lld_libs_ok = any(dest.glob("liblld*.dylib"))
+    if not rt.is_file():
+        raise SystemExit(f"bundle failed: {rt} missing")
+    if not omp_be.is_file():
+        raise SystemExit(f"bundle failed: {omp_be} missing")
+    if not metal.is_file():
+        raise SystemExit(f"bundle failed: {metal} missing")
+    if not lld_ok:
+        raise SystemExit(f"bundle failed: {llvm_bin_dst}/ld.lld missing")
+    if not lld_libs_ok:
+        raise SystemExit(f"bundle failed: {dest}/liblld*.dylib missing (Homebrew lld@20)")
+    print(f"bundled {len(copied)} AdaptiveCpp artefacts into {dest}")
+
+
 def bundle(acpp_prefix: Path, dest: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "darwin":
+        _bundle_darwin(acpp_prefix, dest)
+        return
     if os.name == "nt":
         _bundle_windows(acpp_prefix, dest)
         return

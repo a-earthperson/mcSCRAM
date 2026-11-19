@@ -1,5 +1,5 @@
 # Labels on org runners enabled for this repo (gpu-runners + Default).
-# macos.yml is parked (#30); ignore its pre-existing shellcheck style hits.
+# macos.yml still trips shellcheck style; ignore those hits.
 paths:
   .github/workflows/macos.yml:
     ignore:

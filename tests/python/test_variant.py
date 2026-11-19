@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from fuzzybits._runtime import _select_backend, _select_variant
@@ -39,6 +41,10 @@ def test_backend_auto_cuda_if_nvidia(monkeypatch):
     monkeypatch.setattr(rt, "has_cuda_device", lambda: True)
     assert _select_backend("auto") == "cuda"
     monkeypatch.setattr(rt, "has_cuda_device", lambda: False)
-    assert _select_backend("auto") == "omp"
+    if sys.platform == "darwin":
+        assert _select_backend("auto") == ""
+    else:
+        assert _select_backend("auto") == "omp"
     assert _select_backend("omp") == "omp"
     assert _select_backend("cuda") == "cuda"
+    assert _select_backend("metal") == "metal"

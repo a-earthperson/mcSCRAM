@@ -322,3 +322,264 @@ jobs:
           } | tee -a "${GITHUB_STEP_SUMMARY}"
           ccache -s || true
           df -h /
+
+  # Artifact-only cp312 macosx arm64 wheel. Not a required check; publishing is #36.
+  macos-wheel:
+    name: macos-wheel
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      ACPP_PREFIX: ${{ github.workspace }}/.cache/acpp-prefix
+      BOOST_PREFIX: ${{ github.workspace }}/.cache/boost-prefix
+      METAL_CPP_DIR: ${{ github.workspace }}/.cache/metal-cpp
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPILERCHECK: content
+      CCACHE_COMPILERTYPE: clang
+      CCACHE_NOHASHDIR: 1
+      MACOSX_DEPLOYMENT_TARGET: "26.0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Require arm64
+        run: |
+          set -euo pipefail
+          echo "uname -m=$(uname -m) ImageOS=${ImageOS:-} ImageVersion=${ImageVersion:-}"
+          test "$(uname -m)" = "arm64"
+          sw_vers
+          df -h /
+
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          {
+            echo "ACPP_REPO=${ACPP_REPO}"
+            echo "ACPP_REF_METAL=${ACPP_REF_METAL}"
+            echo "METAL_CPP_VERSION=${METAL_CPP_VERSION}"
+            echo "LLVM_VERSION=${LLVM_VERSION}"
+            echo "BOOST_VERSION=${BOOST_VERSION}"
+            echo "BOOST_URL=${BOOST_URL}"
+            echo "BOOST_SHA256=${BOOST_SHA256}"
+            echo "BOOST_INCLUDE_LIBRARIES=program_options;filesystem;system;random;range;exception;multi_index;accumulators;multiprecision;icl;math;dll;regex;test"
+          } >> "${GITHUB_ENV}"
+          test "${ACPP_REF_METAL}" != "TBD"
+          test "${METAL_CPP_VERSION}" != "TBD"
+
+      - name: Install Homebrew deps
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
+        run: |
+          set -euo pipefail
+          brew install llvm@20 libomp ninja ccache coreutils cmake
+          brew install lld@20 || brew install lld || true
+          LLVM_PREFIX="$(brew --prefix llvm@20)"
+          OMP_PREFIX="$(brew --prefix libomp)"
+          LLD_BIN=""
+          for c in \
+              "$(brew --prefix lld@20 2>/dev/null)/bin/ld64.lld" \
+              "$(brew --prefix lld 2>/dev/null)/bin/ld64.lld" \
+              "${LLVM_PREFIX}/bin/ld64.lld"; do
+            if [[ -x "${c}" ]]; then
+              LLD_BIN="${c}"
+              break
+            fi
+          done
+          test -n "${LLD_BIN}"
+          echo "${LLVM_PREFIX}/bin" >> "${GITHUB_PATH}"
+          echo "LLVM_PREFIX=${LLVM_PREFIX}" >> "${GITHUB_ENV}"
+          echo "OMP_PREFIX=${OMP_PREFIX}" >> "${GITHUB_ENV}"
+          echo "ACPP_LLD_PATH=${LLD_BIN}" >> "${GITHUB_ENV}"
+          ccache -z || true
+          df -h /
+
+      - name: Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Cache AdaptiveCpp install
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        id: acpp-cache
+        with:
+          path: ${{ env.ACPP_PREFIX }}
+          key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-${{ env.METAL_CPP_VERSION }}
+          restore-keys: |
+            acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-
+
+      - name: Cache Boost 1.89 install
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        id: boost-cache
+        with:
+          path: ${{ env.BOOST_PREFIX }}
+          key: boost-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.BOOST_VERSION }}-${{ env.BOOST_SHA256 }}
+
+      - name: Cache ccache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-macos-wheel-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-macos-wheel-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-
+            ccache-macos-metal-${{ env.ACPP_REF_METAL }}-llvm${{ env.LLVM_VERSION }}-
+            ccache-macos-metal-
+
+      - name: Build Boost 1.89
+        if: steps.boost-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          mkdir -p "${BOOST_PREFIX}" "${RUNNER_TEMP}/boost"
+          curl -fsSL -o "${RUNNER_TEMP}/boost/boost.tar.gz" "${BOOST_URL}"
+          echo "${BOOST_SHA256}  ${RUNNER_TEMP}/boost/boost.tar.gz" | shasum -a 256 -c
+          mkdir -p "${RUNNER_TEMP}/boost/src"
+          tar -xzf "${RUNNER_TEMP}/boost/boost.tar.gz" -C "${RUNNER_TEMP}/boost/src" --strip-components=1
+          cmake -S "${RUNNER_TEMP}/boost/src" -B "${RUNNER_TEMP}/boost/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${BOOST_PREFIX}" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBOOST_INCLUDE_LIBRARIES="${BOOST_INCLUDE_LIBRARIES}"
+          cmake --build "${RUNNER_TEMP}/boost/build"
+          cmake --install "${RUNNER_TEMP}/boost/build"
+          mkdir -p "${BOOST_PREFIX}/include/boost"
+          cp -a "${RUNNER_TEMP}/boost/src/libs/dll/include/boost/dll.hpp" \
+            "${BOOST_PREFIX}/include/boost/dll.hpp"
+          cp -a "${RUNNER_TEMP}/boost/src/libs/dll/include/boost/dll" \
+            "${BOOST_PREFIX}/include/boost/dll"
+          rm -rf "${RUNNER_TEMP}/boost"
+          echo "boost_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+          df -h /
+
+      - name: Fetch metal-cpp
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${METAL_CPP_DIR}/Metal/Metal.hpp" ]]; then
+            rm -rf "${METAL_CPP_DIR}"
+            git clone --depth 1 --branch "${METAL_CPP_VERSION}" \
+              https://github.com/apple/metal-cpp.git "${METAL_CPP_DIR}"
+          fi
+          test -f "${METAL_CPP_DIR}/Metal/Metal.hpp"
+          git -C "${METAL_CPP_DIR}" rev-parse HEAD
+
+      - name: Build AdaptiveCpp (Metal + OpenMP SSCP)
+        id: acpp-build
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          acpp_ok=0
+          if [[ -x "${ACPP_PREFIX}/bin/acpp-info" ]]; then
+            if DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}" \
+                 "${ACPP_PREFIX}/bin/acpp-info" >/dev/null 2>&1; then
+              acpp_ok=1
+            fi
+          fi
+          if [[ "${acpp_ok}" -eq 1 ]]; then
+            echo "AdaptiveCpp cache hit at ${ACPP_PREFIX}"
+            echo "cache=hit" >> "${GITHUB_OUTPUT}"
+            echo "acpp_build_seconds=0" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+          echo "cache=miss" >> "${GITHUB_OUTPUT}"
+          rm -rf "${ACPP_PREFIX}"
+          mkdir -p "${ACPP_PREFIX}" "${RUNNER_TEMP}/acpp"
+          git clone --filter=blob:none "${ACPP_REPO}" "${RUNNER_TEMP}/acpp/src"
+          git -C "${RUNNER_TEMP}/acpp/src" fetch --depth 1 origin "${ACPP_REF_METAL}"
+          git -C "${RUNNER_TEMP}/acpp/src" checkout --detach FETCH_HEAD
+          got=$(git -C "${RUNNER_TEMP}/acpp/src" rev-parse HEAD)
+          test "${got}" = "${ACPP_REF_METAL}"
+          cmake -S "${RUNNER_TEMP}/acpp/src" -B "${RUNNER_TEMP}/acpp/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=/usr/bin/clang \
+            -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCLANG_EXECUTABLE_PATH="${LLVM_PREFIX}/bin/clang++" \
+            -DLLVM_DIR="${LLVM_PREFIX}/lib/cmake/llvm" \
+            -DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)" \
+            -DCMAKE_INSTALL_PREFIX="${ACPP_PREFIX}" \
+            -DWITH_OPENCL_BACKEND=OFF \
+            -DWITH_CUDA_BACKEND=OFF \
+            -DWITH_ROCM_BACKEND=OFF \
+            -DWITH_LEVEL_ZERO_BACKEND=OFF \
+            -DWITH_METAL_BACKEND=ON \
+            -DACPP_COMPILER_FEATURE_PROFILE=full \
+            -DACPP_LLD_PATH="${ACPP_LLD_PATH}" \
+            -DMETAL_INCLUDE_DIR="${METAL_CPP_DIR}" \
+            -DSEQUENTIAL_LINK_LINE="${OMP_PREFIX}/lib/libomp.dylib" \
+            "-DOMP_LINK_LINE=-fopenmp ${OMP_PREFIX}/lib/libomp.dylib -L${OMP_PREFIX}/lib/" \
+            "-DOMP_CXX_FLAGS=-fopenmp -D_ENABLE_EXTENDED_ALIGNED_STORAGE -I${OMP_PREFIX}/include"
+          cmake --build "${RUNNER_TEMP}/acpp/build"
+          cmake --install "${RUNNER_TEMP}/acpp/build"
+          rm -rf "${RUNNER_TEMP}/acpp"
+          echo "acpp_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+          df -h /
+
+      - name: Build cp312 arm64 wheel
+        id: wheel
+        timeout-minutes: 40
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          python -m pip install -U pip
+          python -m pip install 'scikit-build-core>=0.10' 'pybind11>=2.13' ninja cmake build 'delocate>=0.13'
+          chmod +x scripts/ci/macos-wheel-build.sh scripts/ci/macos-delocate.sh
+          scripts/ci/macos-wheel-build.sh dist wheelhouse
+          echo "wheel_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+          df -h /
+          ccache -s || true
+
+      - name: Upload wheel
+        if: always() && steps.wheel.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp312-macosx_arm64
+          path: dist/fuzzybits-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Smoke in a clean venv
+        if: always() && steps.wheel.outcome == 'success'
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          shopt -s nullglob
+          whls=(dist/fuzzybits-*.whl)
+          test "${#whls[@]}" -gt 0
+          python -m venv "${RUNNER_TEMP}/fb-venv"
+          "${RUNNER_TEMP}/fb-venv/bin/python" -m pip install -U pip
+          "${RUNNER_TEMP}/fb-venv/bin/python" -m pip install "${whls[0]}" pytest
+          "${RUNNER_TEMP}/fb-venv/bin/python" scripts/ci/macos-smoke.py \
+            --wheel "${whls[0]}" \
+            --repo "${GITHUB_WORKSPACE}"
+          echo "smoke_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+
+      - name: Record timings
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## macos-wheel timings"
+            echo "- AdaptiveCpp cache: ${{ steps.acpp-build.outputs.cache || 'n/a' }}"
+            echo "- AdaptiveCpp build seconds: ${acpp_build_seconds:-n/a}"
+            echo "- Boost build seconds: ${boost_build_seconds:-n/a (cache)}"
+            echo "- wheel build seconds: ${wheel_build_seconds:-n/a}"
+            echo "- smoke seconds: ${smoke_seconds:-n/a}"
+            echo "- ACPP_REF_METAL: ${ACPP_REF_METAL}"
+            echo "- METAL_CPP_VERSION: ${METAL_CPP_VERSION}"
+            echo "- MACOSX_DEPLOYMENT_TARGET: ${MACOSX_DEPLOYMENT_TARGET}"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
+          ls -lah dist || true
+          ccache -s || true
+          df -h /
