@@ -111,13 +111,6 @@ jobs:
           if [[ -z "${VERSION}" ]]; then
             VERSION="develop"
           fi
-          if [[ -n "${IMAGE_OVERRIDE}" ]]; then
-            IMAGE="${IMAGE_OVERRIDE}"
-          elif [[ "${VERSION}" == "develop" || "${VERSION}" == "nightly" ]]; then
-            IMAGE="${IMAGE_REPO}:nightly-generic"
-          else
-            IMAGE="${IMAGE_REPO}:${VERSION}-generic"
-          fi
           if [[ "${VERSION}" == "develop" || "${VERSION}" == "nightly" ]]; then
             git fetch --no-tags origin develop:refs/remotes/origin/develop || true
             COMMIT="$(git rev-parse origin/develop 2>/dev/null || echo "${GITHUB_SHA}")"
@@ -126,6 +119,21 @@ jobs:
           else
             git fetch --tags origin "${VERSION}" || true
             COMMIT="$(git rev-parse "refs/tags/${VERSION}" 2>/dev/null || echo "${GITHUB_SHA}")"
+          fi
+          SHA12="${COMMIT:0:12}"
+          if [[ -n "${IMAGE_OVERRIDE}" ]]; then
+            IMAGE="${IMAGE_OVERRIDE}"
+          elif [[ "${VERSION}" == "develop" || "${VERSION}" == "nightly" ]]; then
+            IMAGE="${IMAGE_REPO}:nightly-generic"
+          else
+            IMAGE="${IMAGE_REPO}:${VERSION}-generic"
+            if ! docker buildx imagetools inspect "${IMAGE}" >/dev/null 2>&1; then
+              if docker buildx imagetools inspect "${IMAGE_REPO}:${VERSION}" >/dev/null 2>&1; then
+                IMAGE="${IMAGE_REPO}:${VERSION}"
+              elif docker buildx imagetools inspect "${IMAGE_REPO}:sha-${SHA12}-generic" >/dev/null 2>&1; then
+                IMAGE="${IMAGE_REPO}:sha-${SHA12}-generic"
+              fi
+            fi
           fi
           {
             echo "version=${VERSION}"
