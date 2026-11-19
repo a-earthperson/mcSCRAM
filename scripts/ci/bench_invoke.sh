@@ -5,13 +5,22 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "${root}"
+job="${GITHUB_JOB:-local}"
+export FUZZYBITS_BENCH_INPUT="${FUZZYBITS_BENCH_INPUT:-/tmp/fuzzybits-bench/${job}/input}"
+export FUZZYBITS_BENCH_WORK="${FUZZYBITS_BENCH_WORK:-/tmp/fuzzybits-bench/${job}/work}"
 bash scripts/ci/bench-stage-input.sh
 
 out="${OUT}"
 md="${MD:-${out%.json}.md}"
 mkdir -p "$(dirname "${out}")"
 
-ctx=(--docker-context default --skip-validate)
+ctx=(
+  --docker-context default
+  --skip-validate
+  --models-dir "${FUZZYBITS_BENCH_INPUT}"
+  --work-dir "${FUZZYBITS_BENCH_WORK}"
+  --guard-retries "${GUARD_RETRIES:-12}"
+)
 if [[ "${MODE}" == "accuracy" ]]; then
   python3 -m benchmarks run \
     --target cpu \

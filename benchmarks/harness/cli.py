@@ -372,6 +372,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     target = dict(TARGETS[args.target])
     if args.docker_context:
         target["docker_context"] = args.docker_context
+    if getattr(args, "models_dir", None):
+        target["models_dir"] = args.models_dir
+    if getattr(args, "work_dir", None):
+        target["work_dir"] = args.work_dir
     if args.image is None:
         raise SystemExit("run: --image is required (build with `ab --build` or pass nightly-generic)")
     try:
@@ -394,10 +398,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     cpuset = target.get("cpuset_cpus")
     lock_held = False
     try:
-        if target.get("lock_path") and not args.no_lock:
-            acquire_lock(host, target["lock_path"])
-            lock_held = True
         try:
+            if target.get("lock_path") and not args.no_lock:
+                acquire_lock(
+                    host,
+                    target["lock_path"],
+                    retries=args.guard_retries,
+                )
+                lock_held = True
             load_before = wait_for_idle(
                 context=context,
                 gpus=gpus,
@@ -655,6 +663,10 @@ def cmd_ab(args: argparse.Namespace) -> int:
     target = dict(TARGETS[args.target])
     if args.docker_context:
         target["docker_context"] = args.docker_context
+    if getattr(args, "models_dir", None):
+        target["models_dir"] = args.models_dir
+    if getattr(args, "work_dir", None):
+        target["work_dir"] = args.work_dir
     context = target["docker_context"]
     backend = args.backend or target["backend"]
     gpus = target["gpus"]
@@ -718,10 +730,14 @@ def cmd_ab(args: argparse.Namespace) -> int:
 
     lock_held = False
     try:
-        if target.get("lock_path") and not args.no_lock:
-            acquire_lock(host, target["lock_path"])
-            lock_held = True
         try:
+            if target.get("lock_path") and not args.no_lock:
+                acquire_lock(
+                    host,
+                    target["lock_path"],
+                    retries=args.guard_retries,
+                )
+                lock_held = True
             load_before = wait_for_idle(
                 context=context,
                 gpus=gpus,
@@ -1194,6 +1210,8 @@ def _parser() -> argparse.ArgumentParser:
         p.add_argument("--skip-validate", action="store_true")
         p.add_argument("--guard-retries", type=int, default=6)
         p.add_argument("--commit", default=None)
+        p.add_argument("--models-dir", default=None)
+        p.add_argument("--work-dir", default=None)
 
     p_run = sub.add_parser("run", help="run a dataset against one image")
     add_common(p_run)

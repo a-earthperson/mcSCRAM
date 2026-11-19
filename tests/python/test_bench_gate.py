@@ -58,16 +58,16 @@ def test_runtime_host_is_local_for_default_docker_context():
 
 def test_local_gpu_lock_roundtrip(tmp_path: Path):
     lock = tmp_path / "gpu-lock-xerxes-0"
-    acquire_lock(None, str(lock))
+    acquire_lock(None, str(lock), retries=0)
     assert lock.is_dir()
     try:
-        acquire_lock(None, str(lock))
+        acquire_lock(None, str(lock), retries=0)
         assert False, "second acquire must fail"
     except Exception as exc:
         assert "already held" in str(exc)
     release_lock(None, str(lock))
     assert not lock.exists()
-    acquire_lock(None, str(lock))
+    acquire_lock(None, str(lock), retries=0)
     release_lock(None, str(lock))
 
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Copy dataset models onto the docker host path the harness mounts.
+# Copy Aralia models onto the docker host path the harness mounts.
+# Per-job dest (FUZZYBITS_BENCH_INPUT) so V100S and RTX 3070 on the same
+# xerxes host do not race on /tmp/fuzzybits-bench/input.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 dest="${FUZZYBITS_BENCH_INPUT:-/tmp/fuzzybits-bench/input}"
@@ -11,8 +13,4 @@ if [[ ! -d "${root}/input/Aralia" ]]; then
 fi
 rm -rf "${dest}/Aralia"
 cp -a "${root}/input/Aralia" "${dest}/Aralia"
-if [[ -d "${root}/input/generic-pwr-model" ]]; then
-  rm -rf "${dest}/generic-pwr-model"
-  cp -a "${root}/input/generic-pwr-model" "${dest}/generic-pwr-model"
-fi
-echo "staged ${dest} (Aralia + optional generic-pwr-model)"
+echo "staged ${dest}/Aralia"

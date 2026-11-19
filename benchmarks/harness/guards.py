@@ -93,14 +93,7 @@ def gpu_compute_apps(
     return rows
 
 
-def acquire_lock(host: str | None, path: str) -> None:
-    """``mkdir`` a directory lock. Local when ``host`` is empty; otherwise ssh.
-
-    CI jobs run on the GPU host itself (``--docker-context default``) and
-    take ``/tmp/gpu-lock-xerxes-{0,1}`` locally so they interlock with
-    developer sessions that acquire the same path over ssh. A laptop driving
-    xerxes over a docker context still ssh's.
-    """
+def _acquire_lock_once(host: str | None, path: str) -> None:
     if not host:
         try:
             Path(path).mkdir(mode=0o700)
@@ -119,6 +112,33 @@ def acquire_lock(host: str | None, path: str) -> None:
         raise GuardError(
             f"could not acquire {host}:{path}: {proc.stderr.strip() or proc.stdout.strip()}"
         )
+
+
+def acquire_lock(
+    host: str | None,
+    path: str,
+    *,
+    retries: int = 0,
+    retry_s: float = DEFAULT_RETRY_S,
+) -> None:
+    """``mkdir`` a directory lock. Local when ``host`` is empty; else ssh.
+
+    CI jobs run on the GPU host itself (``--docker-context default``) and
+    take ``/tmp/gpu-lock-xerxes-{0,1}`` locally so they interlock with
+    developer sessions that acquire the same path over ssh. Retry when the
+    lock is held; do not steal it.
+    """
+    last: GuardError | None = None
+    for attempt in range(retries + 1):
+        try:
+            _acquire_lock_once(host, path)
+            return
+        except GuardError as exc:
+            last = exc
+            if attempt < retries:
+                time.sleep(retry_s)
+    assert last is not None
+    raise last
 
 
 def release_lock(host: str | None, path: str) -> None:
