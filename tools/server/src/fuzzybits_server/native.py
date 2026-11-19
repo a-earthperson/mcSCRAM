@@ -1,4 +1,4 @@
-"""Isolated wrappers around mcscram_native calls.
+"""Isolated wrappers around the fuzzybits native extension.
 
 AdaptiveCpp and CUDA failures can abort the interpreter via ``std::terminate``,
 which Python exception handlers cannot catch. Compilation therefore runs in a
@@ -99,14 +99,20 @@ def format_native_exception(exc: BaseException) -> str:
 
 
 def import_native() -> Any:
-    import mcscram_native  # type: ignore[import-not-found]
+    import fuzzybits
 
-    return mcscram_native
+    return fuzzybits.native()
 
 
 def native_import_error() -> str | None:
-    if importlib.util.find_spec("mcscram_native") is None:
-        return "mcscram_native extension is not installed"
+    if importlib.util.find_spec("fuzzybits") is None:
+        return "fuzzybits is not installed"
+    try:
+        import fuzzybits
+
+        fuzzybits.native()
+    except Exception as exc:
+        return f"fuzzybits native extension is not available: {exc}"
     return None
 
 

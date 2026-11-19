@@ -32,12 +32,11 @@ def test_version_and_init():
     assert "omp" in backends or any(d.get("type") == "cpu" for d in devices)
 
 
-def test_mcscram_native_shim():
-    import mcscram_native
-
-    assert hasattr(mcscram_native, "run_probability")
-    assert hasattr(mcscram_native, "list_devices")
-    assert mcscram_native.list_devices()
+def test_native_module_via_fuzzybits():
+    native = fuzzybits.native()
+    assert hasattr(native, "run_probability")
+    assert hasattr(native, "list_devices")
+    assert native.list_devices()
 
 
 def test_probability_tiny(tiny_xml: Path):

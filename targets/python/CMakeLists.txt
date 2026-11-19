@@ -1,21 +1,18 @@
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-# Non-wheel installs keep the historical module name so existing Docker images
-# and PYTHONPATH=/usr/local/lib/python3.12/dist-packages keep working.
-# Wheels ship one distinctly named extension per variant so generic and
-# cuda-sm70 can coexist on sys.path (see python/fuzzybits/_runtime.py).
+# Wheels (and non-wheel builds) ship one distinctly named extension per variant
+# so generic and cuda-sm70 can coexist on sys.path (python/fuzzybits/_runtime.py).
+if(ACPP_TARGETS MATCHES "cuda:sm_70")
+  set(FUZZYBITS_NATIVE_MODULE _native_cuda_sm70)
+else()
+  set(FUZZYBITS_NATIVE_MODULE _native_generic)
+endif()
 if(SKBUILD)
-  if(ACPP_TARGETS MATCHES "cuda:sm_70")
-    set(FUZZYBITS_NATIVE_MODULE _native_cuda_sm70)
-  else()
-    set(FUZZYBITS_NATIVE_MODULE _native_generic)
-  endif()
   set(MCSCRAM_PYTHON_INSTALL_DIR "fuzzybits" CACHE PATH
     "Directory where the fuzzybits native Python extension is installed")
 else()
-  set(FUZZYBITS_NATIVE_MODULE mcscram_native)
   set(MCSCRAM_PYTHON_INSTALL_DIR "${Python3_SITEARCH}" CACHE PATH
-    "Directory where the mcscram_native Python extension is installed")
+    "Directory where the fuzzybits native Python extension is installed")
 endif()
 
 pybind11_add_module(${FUZZYBITS_NATIVE_MODULE} MODULE bindings.cpp)
@@ -59,11 +56,6 @@ if(SKBUILD)
     DESTINATION fuzzybits
     COMPONENT scram
     FILES_MATCHING PATTERN "*.py"
-  )
-  install(
-    FILES "${PROJECT_SOURCE_DIR}/python/mcscram_native.py"
-    DESTINATION "."
-    COMPONENT scram
   )
   include("${PROJECT_SOURCE_DIR}/cmake/BundleAdaptiveCpp.cmake")
 endif()

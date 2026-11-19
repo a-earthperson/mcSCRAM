@@ -2,11 +2,11 @@
 # GitHub-hosted runners only.
 #
 # pytest: pure Python (BernoulliSampler / numpy / scipy / cache helpers) and
-# does not import mcscram_native. Native-dependent tests are marked
+# does not import fuzzybits. Native-dependent tests are marked
 # @pytest.mark.native and skipped when the wheel is absent.
 #
 # native: same suite with -m native inside the published runtime image so
-# import mcscram_native works. GHCR packages are public: no login, fork PRs
+# import fuzzybits works. GHCR packages are public: no login, fork PRs
 # pull anonymously. Base image is nightly-generic.
 #
 # uv sync --no-install-package fuzzybits: the engine is unpublished; lock
@@ -123,13 +123,13 @@ jobs:
           mkdir -p /tmp/acpp-appdb
           cp -a /src /work
           cd /work/tools/server
-          python3 -c "import fuzzybits, mcscram_native; print(fuzzybits.__file__)"
+          python3 -c "import fuzzybits; print(fuzzybits.__file__)"
           uv venv --system-site-packages
           uv sync --frozen --extra dev --no-install-package fuzzybits
           venv_site="$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
           sys_site="$(python3 -c 'import fuzzybits, pathlib; p=pathlib.Path(fuzzybits.__file__).resolve(); print(p.parent if p.name != "__init__.py" else p.parent.parent)')"
           printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"
-          .venv/bin/python -c "import mcscram_native, fuzzybits"
+          .venv/bin/python -c "import fuzzybits; fuzzybits.native()"
           timeout 120 uv run --no-sync pytest -m native --tb=short -q
           EOS
 
@@ -224,7 +224,7 @@ jobs:
             -s <<'EOS'
           set -euo pipefail
           mkdir -p /tmp/acpp-appdb
-          python3 -c "import fuzzybits, mcscram_native; print(fuzzybits.__file__)"
+          python3 -c "import fuzzybits; print(fuzzybits.__file__)"
           whl="$(echo /wheel/fuzzybits_server-0.17.0-py3-none-any.whl)"
           test -f "${whl}"
           uv venv --system-site-packages /tmp/smoke-venv
@@ -235,7 +235,7 @@ jobs:
           venv_site="$(/tmp/smoke-venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
           sys_site="$(python3 -c 'import fuzzybits, pathlib; p=pathlib.Path(fuzzybits.__file__).resolve(); print(p.parent if p.name != "__init__.py" else p.parent.parent)')"
           printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"
-          /tmp/smoke-venv/bin/python -c "import fuzzybits, mcscram_native, fuzzybits_server"
+          /tmp/smoke-venv/bin/python -c "import fuzzybits, fuzzybits_server; fuzzybits.native()"
           export PATH="/tmp/smoke-venv/bin:${PATH}"
           timeout 180 bash /src/tools/server/scripts/wheel-smoke.sh /src/input/Aralia
           EOS

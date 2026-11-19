@@ -171,8 +171,14 @@ RUN ls -lh /usr/local/bin /usr/local/lib && \
        /usr/local/lib/libacpp-rt.so* /usr/local/lib/libacpp-common.so* \
        /usr/local/lib/libxml2.so*
 
-RUN python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
+# The fuzzybits wheel ships an `fzb` console script. Restore the native CLI
+# afterwards so /usr/local/bin/fzb stays the AdaptiveCpp binary.
+RUN native_fzb="$(mktemp)" && \
+    cp -a /usr/local/bin/fzb "${native_fzb}" && \
+    python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
     rm -rf /tmp/wheels && \
+    cp -a "${native_fzb}" /usr/local/bin/fzb && \
+    rm -f "${native_fzb}" && \
     apt-get purge -y python3-pip python3-venv && \
     apt-get autoremove -y && \
     printf '%s\n' /usr/local/lib /usr/local/cuda/lib64 > /etc/ld.so.conf.d/fuzzybits.conf && \
@@ -184,7 +190,9 @@ RUN python3 -m pip install --no-cache-dir /tmp/wheels/*.whl && \
       /usr/local/bin/scram-or-fzb-entrypoint && \
     test -x /usr/local/bin/scram-cli && \
     test -x /usr/local/bin/fzb && \
-    python3 -c "import fuzzybits, importlib.util; assert importlib.util.find_spec('mcscram_native')" && \
+    python3 -c "p=open('/usr/local/bin/fzb','rb'); assert p.read(4)==b'\\x7fELF', '/usr/local/bin/fzb is not the native ELF'" && \
+    python3 -m fuzzybits._cli --help >/dev/null && \
+    python3 -c "import fuzzybits; assert hasattr(fuzzybits, 'compile')" && \
     test -z "${PYTHONPATH:-}" && \
     test -z "${LD_PRELOAD:-}" && \
     missing="$(ldd /usr/local/lib/hipSYCL/librt-backend-omp.so \

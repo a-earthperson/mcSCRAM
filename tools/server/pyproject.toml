@@ -23,7 +23,6 @@ dev = [
 
 [project.scripts]
 fuzzybits-server = "fuzzybits_server.app:main"
-mcscram-server = "fuzzybits_server.app:main"
 
 [project.urls]
 Homepage = "https://github.com/fuzzybit-org/fuzzybits"
@@ -43,7 +42,7 @@ build-backend = "hatchling.build"
 fuzzybits = { path = "../.." }
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/fuzzybits_server", "src/mcscram_server"]
+packages = ["src/fuzzybits_server"]
 
 # CSR UI (`webui/dist`) is gitignored. hatch_build.py force-includes it into
 # the wheel (`fuzzybits_server/webui`) and sdist (`webui/dist`) so a wheel
@@ -65,5 +64,5 @@ path = "hatch_build.py"
 pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
-    "native: requires the fuzzybits wheel (mcscram_native shim)",
+    "native: requires the fuzzybits wheel",
 ]

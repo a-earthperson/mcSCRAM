@@ -2,7 +2,7 @@
 
 > **Status:** partial — verified 2026-11-18 manually (`scram-cli --monte-carlo --probability --pdag` on the Aralia models against BDD references on V100S, RTX 3070 and RTX 5060 Ti; no CI yet).
 > **Fate:** stays — the fuzzybits monorepo (formerly mcSCRAM): compiler, runtime, CLI, Python and server.
-> **What works today:** OpenPSA MEF → PDAG preprocessing and Monte Carlo probability estimation on GPU/CPU through `scram-cli` and the `mcscram_native` Python module; no `.pcfb` I/O yet (#43, #44).
+> **What works today:** OpenPSA MEF → PDAG preprocessing and Monte Carlo probability estimation on GPU/CPU through `scram-cli`, native `fzb`, and the `fuzzybits` Python package (including an `fzb` console script on the wheel).
 
 The repository was renamed from mcSCRAM to fuzzybits on 2026-11-18; the binary is still `scram-cli`.
 
@@ -136,7 +136,7 @@ for (auto i = 0; i < num_inputs; ++i) {
 
 ## Build and Installation
 
-Python: `pip install` a Linux x86_64 wheel (see [`docs/python.md`](docs/python.md)). The import name is **`fuzzybits`**; `import mcscram_native` remains a compatibility shim. Wheels bundle AdaptiveCpp (`MALLOC_TYPE=malloc`, no `LD_PRELOAD` / `PYTHONPATH`). Variants are `generic` (default, SSCP JIT) and `cuda-sm70`. `fuzzybits.run("model.pcfb")` is reserved for [#44](https://github.com/fuzzybit-org/fuzzybits/issues/44).
+Python: `pip install` a Linux x86_64 wheel (see [`docs/python.md`](docs/python.md)). The import name is **`fuzzybits`**; the wheel also installs an `fzb` console script matching the native CLI. Wheels bundle AdaptiveCpp (`MALLOC_TYPE=malloc`, no `LD_PRELOAD` / `PYTHONPATH`). Variants are `generic` (default, SSCP JIT) and `cuda-sm70`.
 
 ### Container-based Development (Recommended)
 

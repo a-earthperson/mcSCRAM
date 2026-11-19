@@ -223,6 +223,16 @@ def main() -> int:
     if not xml.is_file():
         raise SystemExit(f"missing {xml}")
     check_wheel(whl)
+    fzb = Path(sys.executable).parent / "fzb"
+    if not fzb.is_file():
+        fzb = Path(sys.executable).resolve().parent / "fzb"
+    help_proc = subprocess.run([str(fzb), "--help"], text=True, capture_output=True, check=False)
+    sys.stdout.write(help_proc.stdout)
+    sys.stderr.write(help_proc.stderr)
+    if help_proc.returncode != 0:
+        raise SystemExit(f"fzb --help failed rc={help_proc.returncode}")
+    if "Usage: fzb" not in help_proc.stdout:
+        raise SystemExit("fzb --help did not print the native-style usage")
     smoke_devices()
     smoke_chinese(xml)
     smoke_metal(xml)

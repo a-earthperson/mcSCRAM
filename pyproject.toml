@@ -30,6 +30,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.scripts]
+fzb = "fuzzybits._cli:main"
+
 [project.optional-dependencies]
 # cuda-sm70 is a distinct wheel (same distribution name, different native
 # extension), not a PyPI extra. Kept so `pip install 'fuzzybits[cuda-sm70]'`
@@ -52,7 +55,6 @@ ninja.make-fallback = true
 # python/fuzzybits as the import path python.fuzzybits.
 wheel.packages = []
 sdist.include = [
-    "python/mcscram_native.py",
     "python/fuzzybits/**",
     "cmake/**",
     "src/**",

@@ -6,6 +6,7 @@
 
 #include <sycl/sycl.hpp>
 
+#include "compile/exact_eval.h"
 #include "compile/pcfb_writer.h"
 #include "compile/sha256.h"
 #include "initializer.h"
@@ -1278,6 +1279,23 @@ py::dict inspect_pcfb_path(const std::string &path) {
     return inspect_circuit(*circuit);
 }
 
+double exact_pcfb_bytes(const py::bytes &data, std::uint32_t query_index) {
+    auto owned = bytes_from_py(data);
+    auto circuit = pcfb::io::from_bytes(owned);
+    if (!circuit) {
+        throw std::runtime_error("inspect: " + circuit.error().message);
+    }
+    return fuzzybits::compile::exact_probability(*circuit, query_index);
+}
+
+double exact_pcfb_path(const std::string &path, std::uint32_t query_index) {
+    auto circuit = pcfb::io::read(path);
+    if (!circuit) {
+        throw std::runtime_error("inspect: " + circuit.error().message);
+    }
+    return fuzzybits::compile::exact_probability(*circuit, query_index);
+}
+
 py::list query_results_to_py(const std::vector<fuzzybits::runtime::QueryResult> &results) {
     py::list out;
     for (const auto &r : results) {
@@ -1549,7 +1567,7 @@ struct PyPcfbSession {
 } // namespace
 
 #ifndef FUZZYBITS_NATIVE_MODULE
-#define FUZZYBITS_NATIVE_MODULE mcscram_native
+#define FUZZYBITS_NATIVE_MODULE _native_generic
 #endif
 
 PYBIND11_MODULE(FUZZYBITS_NATIVE_MODULE, m) {
@@ -1716,6 +1734,24 @@ Summarise an in-memory `.pcfb` (same keys as `fzb inspect --json`, plus `diagnos
         py::arg("path"),
         R"pbdoc(
 Summarise a `.pcfb` file (same keys as `fzb inspect --json`, plus `diagnostics`).
+)pbdoc");
+
+    m.def(
+        "exact_pcfb_bytes",
+        &exact_pcfb_bytes,
+        py::arg("data"),
+        py::arg("query_index") = 0,
+        R"pbdoc(
+Exhaustive exact P(query) for a small in-memory `.pcfb` (≤ 30 random SAMPLE events).
+)pbdoc");
+
+    m.def(
+        "exact_pcfb_path",
+        &exact_pcfb_path,
+        py::arg("path"),
+        py::arg("query_index") = 0,
+        R"pbdoc(
+Exhaustive exact P(query) for a small `.pcfb` file (≤ 30 random SAMPLE events).
 )pbdoc");
 
     m.def(
