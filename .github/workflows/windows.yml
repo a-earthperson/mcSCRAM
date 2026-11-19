@@ -105,6 +105,7 @@ jobs:
         with:
           path: ${{ env.ACPP_PREFIX }}
           key: acpp-${{ env.ImageOS }}-${{ runner.arch }}-${{ env.ACPP_REF_WINDOWS }}-${{ env.LLVM_REF_WINDOWS }}-cuda${{ env.CUDA_VERSION }}-llvm${{ env.LLVM_VERSION }}-clangcl20-x86-64
+          save-always: true
 
       - name: Build AdaptiveCpp into LLVM (CUDA + OpenMP SSCP)
         id: acpp-build
@@ -219,7 +220,9 @@ jobs:
             -DBUILD_TESTING=ON `
             -DBUILD_PYTHON_BINDINGS=ON `
             -DMALLOC_TYPE=malloc
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed ($LASTEXITCODE)" }
           cmake --build --preset windows-generic
+          if ($LASTEXITCODE -ne 0) { throw "cmake --build failed ($LASTEXITCODE)" }
           $secs = [int]((Get-Date) - $start).TotalSeconds
           "fuzzybits_build_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -245,6 +248,7 @@ jobs:
           $env:PATH = "$env:ACPP_PREFIX\bin;$env:PATH"
           $start = Get-Date
           ctest --preset windows-generic --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { throw "ctest failed ($LASTEXITCODE)" }
           $secs = [int]((Get-Date) - $start).TotalSeconds
           "cpu_ctest_seconds=$secs" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -276,6 +280,7 @@ jobs:
             --config-settings=cmake.define.CMAKE_PREFIX_PATH="$env:CMAKE_PREFIX_PATH" `
             --config-settings=cmake.define.CMAKE_C_COMPILER_LAUNCHER=sccache `
             --config-settings=cmake.define.CMAKE_CXX_COMPILER_LAUNCHER=sccache
+          if ($LASTEXITCODE -ne 0) { throw "pip wheel failed ($LASTEXITCODE)" }
           $whl = Get-ChildItem wheelhouse\fuzzybits-*.whl | Select-Object -First 1
           if (-not $whl) { throw "no wheel in wheelhouse" }
           python -m delvewheel repair `

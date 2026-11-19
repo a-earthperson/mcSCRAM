@@ -208,14 +208,16 @@ NVIDIA device. CUDA kernels need an NVIDIA driver at run time (`nvcuda.dll`
 is **not** bundled).
 
 ```powershell
-# Host compiler: MSVC cl.exe (VS 2025 STL). Product clang is the
-# AdaptiveCpp-linked clang.exe from this install (MSVC ABI).
+# Host compiler: LLVM 20 clang-cl (MSVC ABI + GNU __atomic_* builtins).
+# Product clang is the AdaptiveCpp-linked clang.exe from this install.
 # LLVM 19 clang-cl cannot parse the windows-2025 / VS 2025 STL.
+# MSVC cl.exe cannot compile AdaptiveCpp (missing __atomic_load_n).
+# ACPP_HOST_FORCE_MCPU_TARGET: clang-cl rejects -mcpu=native.
 cmake ../llvm-project/llvm -G Ninja `
   -DCMAKE_BUILD_TYPE=Release `
   -DCMAKE_INSTALL_PREFIX=C:/acpp `
-  -DCMAKE_C_COMPILER=cl `
-  -DCMAKE_CXX_COMPILER=cl `
+  -DCMAKE_C_COMPILER=clang-cl `
+  -DCMAKE_CXX_COMPILER=clang-cl `
   -DLLVM_ENABLE_EH=ON `
   -DLLVM_ENABLE_RTTI=ON `
   -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" `
@@ -223,6 +225,7 @@ cmake ../llvm-project/llvm -G Ninja `
   -DLLVM_EXTERNAL_PROJECTS=AdaptiveCpp `
   -DLLVM_EXTERNAL_ADAPTIVECPP_SOURCE_DIR=C:/src/AdaptiveCpp `
   -DLLVM_ADAPTIVECPP_LINK_INTO_TOOLS=ON `
+  -DACPP_HOST_FORCE_MCPU_TARGET=x86-64 `
   -DWITH_CUDA_BACKEND=ON `
   -DWITH_OPENCL_BACKEND=OFF `
   -DWITH_ROCM_BACKEND=OFF `
