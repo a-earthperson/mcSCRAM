@@ -131,6 +131,16 @@ template <typename Group>
 
 /// Group-leader hit accumulator. Native `atomic_ref<std::size_t>::fetch_add`
 /// on every backend: the atomic64 canary is host-visible on Metal.
+/// Drain the queue on Metal only. AdaptiveCpp Metal `depends_on` does not
+/// make prior USM stores visible to the next kernel (tally sees zeros while
+/// a host memcpy after wait, as in bitpack_identity, sees the bits). No-op
+/// on every other backend (host compares `get_backend()` to 5).
+[[gnu::always_inline]] inline void wait_if_metal(sycl::queue &queue) {
+    if (static_cast<int>(queue.get_device().get_backend()) == kMetalRuntimeBackendId) {
+        queue.wait();
+    }
+}
+
 [[gnu::always_inline]] [[gnu::flatten]] inline void add_hits(std::size_t &num_one_bits, const std::size_t group_sum) {
     auto atomic_one_bits = sycl::atomic_ref<std::size_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
                                             sycl::access::address_space::global_space>(num_one_bits);

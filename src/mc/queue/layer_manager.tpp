@@ -478,6 +478,7 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
 [[gnu::always_inline]] sycl::queue layer_manager<bitpack_t_, prob_t_, size_t_>::single_pass() {
     for (const auto &queueable : queueables_) {
         queueable->submit();
+        scram::mc::compat::wait_if_metal(queue_);
     }
     return queue_;
 }
