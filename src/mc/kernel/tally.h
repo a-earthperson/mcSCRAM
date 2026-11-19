@@ -256,46 +256,10 @@ namespace scram::mc::kernel {
          * @endcode
          */
         void operator()(const sycl::nd_item<3> &item, const uint32_t iteration) const {
-            // Map global IDs to (tally_idx, batch_idx, bitpack_id)
-            const size_t tally_idx = item.get_global_id(0);
-            const size_t batch_idx = item.get_global_id(1);
-            const size_t bitpack_id = item.get_global_id(2);
-
-            // Bounds check. Metal must still join the group reduction (simd_sum
-            // is undefined under divergent return). Native keeps the early return.
-            const bool in_bounds = tally_idx < tallies_block_.count &&
-                                   batch_idx < sample_shape_.batch_size &&
-                                   bitpack_id < sample_shape_.bitpacks_per_batch;
-            if (!compat::join_group_sum(in_bounds)) {
-                return;
-            }
-
-            // Each work-item processes exactly one bitpack for this tally.
-            // OOB Metal lanes contribute 0 and do not load.
-            const std::size_t idx = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_id;
-            const std::size_t local_sum =
-                in_bounds ? static_cast<std::size_t>(sycl::popcount(tallies_block_.data[tally_idx].buffer[idx]))
-                          : 0;
-
-            // Intra-group reduction: Metal uint32 (compat::group_sum), native size_t.
-            const std::size_t group_sum = compat::group_sum(item.get_group(), local_sum);
-
-            // Have the group leader accumulate bit counts in global memory
-            if (item.get_local_linear_id() == 0) {
-
-                static constexpr std::size_t num_bits_in_dtype_ = sizeof(bitpack_t_) * 8;
-                const auto total_bits = static_cast<std::size_t>(iteration)
-                                  * static_cast<std::size_t>(sample_shape_.batch_size)
-                                  * static_cast<std::size_t>(sample_shape_.bitpacks_per_batch)
-                                  * static_cast<std::size_t>(num_bits_in_dtype_);
-
-
-                tallies_block_.data[tally_idx].total_bits = total_bits;
-                compat::add_hits(tallies_block_.data[tally_idx].num_one_bits, group_sum);
-            }
-
-            // Host-side stats (populate_point_estimates). Device IR must stay
-            // free of double: LLVMToMetal rejects it.
+            // Metal vs native bodies live in compat::count_and_add so this
+            // translation unit has no Metal conditionals. Host-side stats
+            // (populate_point_estimates) keep device IR free of double.
+            compat::count_and_add(item, tallies_block_.data, tallies_block_.count, sample_shape_, iteration);
         }
     };
 

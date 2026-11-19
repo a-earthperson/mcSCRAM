@@ -113,3 +113,9 @@ set_tests_properties(mc.metal_canary.atomic64 PROPERTIES
   LABELS "mc"
   TIMEOUT ${MC_TEST_TIMEOUT}
 )
+
+add_test(NAME mc.metal_reduce32_3d COMMAND mc_metal_canary_tests "[reduce32-3d]")
+set_tests_properties(mc.metal_reduce32_3d PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)

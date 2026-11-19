@@ -45,6 +45,25 @@ TEST_CASE("native double in a Metal kernel", "[metal-canary][double]") {
     sycl::free(out, queue);
 }
 
+TEST_CASE("uint32 reduce_over_group in a 3-D nd_range", "[mc][reduce32-3d]") {
+    sycl::queue queue;
+    auto *out = sycl::malloc_shared<std::uint32_t>(1, queue);
+    REQUIRE(out != nullptr);
+    *out = 0;
+    queue.submit([&](sycl::handler &cgh) {
+        cgh.parallel_for(sycl::nd_range<3>({1, 8, 8}, {1, 8, 8}), [=](sycl::nd_item<3> item) {
+            const std::uint32_t local = 1;
+            const std::uint32_t sum = sycl::reduce_over_group(item.get_group(), local, sycl::plus<>());
+            if (item.get_local_linear_id() == 0) {
+                *out = sum;
+            }
+        });
+    });
+    queue.wait_and_throw();
+    REQUIRE(*out == 64);
+    sycl::free(out, queue);
+}
+
 TEST_CASE("native 64-bit fetch_add on Metal", "[metal-canary][atomic64]") {
     sycl::queue queue;
     auto *out = sycl::malloc_shared<std::size_t>(1, queue);

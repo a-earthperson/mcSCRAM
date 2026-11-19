@@ -34,9 +34,16 @@
  *      soft-double (canary `mc.metal_canary.double` flips). Then restore
  *      named `double` fields on `event::tally` if desired.
  *
- * 64-bit atomics are **not** shimmed. `mc.metal_canary.atomic64` (not xfail)
- * passed on the hosted macos-26 paravirtual device: eight work-groups each
- * `fetch_add(1)` on `atomic_ref<std::size_t>` and the host saw 8.
+ * 64-bit atomics are **not** shimmed. `mc.metal_canary.atomic64` passed on
+ * the hosted macos-26 paravirtual device (eight groups, host saw 8).
+ *
+ * Metal tally accumulation
+ * ------------------------
+ * `reduce_over_group` on uint32 in the 3-D tally launch still produced
+ * `hits=0` while `total_bits` (plain store) and isolated 64-bit `fetch_add`
+ * were host-visible (runs 44629827202, 44635268590, 44636412806). The Metal
+ * path therefore skips the group reduction and has every in-bounds work-item
+ * `fetch_add` its popcount. Native keeps one atomic per group.
  */
 
 #pragma once
@@ -44,6 +51,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <type_traits>
 #include <sycl/sycl.hpp>
 
 namespace scram::mc::compat {
@@ -125,6 +133,61 @@ template <typename Group>
     auto atomic_one_bits = sycl::atomic_ref<std::size_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
                                             sycl::access::address_space::global_space>(num_one_bits);
     atomic_one_bits.fetch_add(group_sum);
+}
+
+/// Tally popcount + accumulate. Metal: no group reduction (see file comment);
+/// every in-bounds item atomics its popcount. Native: original early-return,
+/// `reduce_over_group` on `std::size_t`, group-leader atomic.
+template <typename Item, typename Tally, typename Shape>
+[[gnu::always_inline]] [[gnu::flatten]] inline void count_and_add(const Item &item, Tally *tallies,
+                                                                  const std::size_t tally_count,
+                                                                  const Shape &sample_shape,
+                                                                  const std::uint32_t iteration) {
+    using bitpack_t = std::remove_pointer_t<decltype(Tally::buffer)>;
+    static constexpr std::size_t num_bits_in_dtype_ = sizeof(bitpack_t) * 8;
+    const std::size_t tally_idx = item.get_global_id(0);
+    const std::size_t batch_idx = item.get_global_id(1);
+    const std::size_t bitpack_id = item.get_global_id(2);
+
+    auto write_total_bits = [&]() {
+        const auto total_bits = static_cast<std::size_t>(iteration) * static_cast<std::size_t>(sample_shape.batch_size) *
+                                static_cast<std::size_t>(sample_shape.bitpacks_per_batch) * num_bits_in_dtype_;
+        tallies[tally_idx].total_bits = total_bits;
+    };
+
+    auto native = [&]() {
+        if (tally_idx >= tally_count || batch_idx >= sample_shape.batch_size ||
+            bitpack_id >= sample_shape.bitpacks_per_batch) {
+            return;
+        }
+        const std::size_t idx = batch_idx * sample_shape.bitpacks_per_batch + bitpack_id;
+        const std::size_t local_sum = sycl::popcount(tallies[tally_idx].buffer[idx]);
+        const std::size_t group_sum = detail::group_sum_native(item.get_group(), local_sum);
+        if (item.get_local_linear_id() == 0) {
+            write_total_bits();
+            add_hits(tallies[tally_idx].num_one_bits, group_sum);
+        }
+    };
+
+    auto metal = [&]() {
+        if (tally_idx >= tally_count || batch_idx >= sample_shape.batch_size ||
+            bitpack_id >= sample_shape.bitpacks_per_batch) {
+            return;
+        }
+        const std::size_t idx = batch_idx * sample_shape.bitpacks_per_batch + bitpack_id;
+        const std::size_t local_sum = sycl::popcount(tallies[tally_idx].buffer[idx]);
+        add_hits(tallies[tally_idx].num_one_bits, local_sum);
+        if (item.get_local_linear_id() == 0) {
+            write_total_bits();
+        }
+    };
+
+    __acpp_if_target_sscp(namespace jit = sycl::AdaptiveCpp_jit;
+                          jit::compile_if_else(
+                              jit::reflect<jit::reflection_query::runtime_backend>() == kMetalRuntimeBackendId, metal,
+                              native);
+                          return;);
+    native();
 }
 
 } // namespace scram::mc::compat
