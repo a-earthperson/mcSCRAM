@@ -353,6 +353,7 @@ namespace scram::mc::event {
     struct basic_event_block : public node_block<basic_event<prob_t_, bitpack_t_, index_t_>> {
         bitpack_t_  *buffers            = nullptr;   ///< single contiguous device allocation
         std::size_t  bitpacks_per_event = 0;         ///< stride between successive event buffers
+        std::uint8_t *tie_slots         = nullptr;   ///< high-word tie records (`kernel::tie_slot_layout`), owned
     };
 
     /**
@@ -410,6 +411,10 @@ namespace scram::mc::event {
         if (blk.buffers) {
             sycl::free(blk.buffers, queue);
             blk.buffers = nullptr;
+        }
+        if (blk.tie_slots) {
+            sycl::free(blk.tie_slots, queue);
+            blk.tie_slots = nullptr;
         }
         if (blk.data) {
             sycl::free(blk.data, queue);

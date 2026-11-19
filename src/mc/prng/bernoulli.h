@@ -71,7 +71,7 @@ pack_four_bits_hi(const state128 &hi, const bernoulli_threshold &t,
     bitpack_t_ out_bits = b(0);
 #pragma unroll
     for (int lane = 0; lane < 4; ++lane) {
-        const bool hit = t.always_true != 0 || hi.x[lane] < t.hi;
+        const bool hit = (t.always_true != 0) | (hi.x[lane] < t.hi);
         out_bits |= (hit ? b(1) : b(0)) << bitpack_t_(bit_offset + static_cast<std::uint32_t>(lane));
     }
     return out_bits;
@@ -105,6 +105,14 @@ pack_four_bits(const state128 &hi, const state128 &lo,
         }
     }
     return false;
+}
+
+/// Branch-free `∃ lane: u_hi == T_hi`, without the `always_true` mask (the
+/// caller applies it once per pack). Must stay free of control flow so the
+/// host JIT keeps the sampler loop vectorized.
+[[gnu::always_inline]] static inline bool high_word_tie_any(const state128 &hi,
+                                                            const bernoulli_threshold &t) {
+    return (hi.x[0] == t.hi) | (hi.x[1] == t.hi) | (hi.x[2] == t.hi) | (hi.x[3] == t.hi);
 }
 
 }  // namespace scram::mc::prng

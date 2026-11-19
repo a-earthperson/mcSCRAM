@@ -54,13 +54,6 @@ namespace scram::mc::prng::philox {
     *results = counters;
 }
 
-/// Out-of-line so the inlined high-word Philox does not pay the second
-/// 10-round generate's registers on the ~1−2^-32 taken path.
-[[gnu::noinline]] [[gnu::cold]]
-static void generate_tie_low(const state128 *seeds, state128 *results, const uint8_t generation) {
-    generate(seeds, results, generation);
-}
-
 /**
  * @brief Bernoulli-sample four bits using the Philox 4x32-10 counter-based PRNG.
  *
@@ -76,7 +69,7 @@ template <typename bitpack_t_>
 
     prng::state128 lo{};
     if (any_high_word_tie(hi, threshold)) [[unlikely]] {
-        generate_tie_low(seeds, &lo, static_cast<uint8_t>(generation + kLowWordGenerationBase));
+        generate(seeds, &lo, static_cast<uint8_t>(generation + kLowWordGenerationBase));
     }
 
     static constexpr std::uint32_t bernoulli_bits_per_generation = 4;
@@ -84,42 +77,67 @@ template <typename bitpack_t_>
     return pack_four_bits<bitpack_t_>(hi, lo, threshold, bernoulli_bits_offset);
 }
 
+/**
+ * @brief High-word-only pack: bit = `always_true ∨ u_hi < T_hi`, plus a flag
+ * for `∃ draw: u_hi == T_hi`.
+ *
+ * Same shape as the 32-bit sampler (`T_hi == floor(p·2^32)`): unrolled, one
+ * Philox block per generation, no control flow. Tied draws come back as
+ * misses; `patch_high_word_ties` (run from a separate fix-up kernel on the
+ * device) turns them into the exact two-word result.
+ */
 template <typename bitpack_t_>
-[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base,
-                                                             const bernoulli_threshold &p_threshold) {
+[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws_hi(const state128 &seed_base,
+                                                                const bernoulli_threshold &p_threshold,
+                                                                bool &any_tie) {
     static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
     static constexpr std::uint8_t num_generations = sizeof(bitpack_t_) * 8 / bernoulli_bits_per_generation;
     using tie_check_ = tie_stream_independence<bitpack_t_>;
     static_assert(tie_check_::num_generations == static_cast<std::uint32_t>(num_generations));
 
-    // Fast path is unrolled and hi-word-only — the same shape as the old
-    // 32-bit sampler (`T_hi == floor(p·2^32)`). The lo-word generate lives
-    // in a second, rolled loop so it does not inflate the unrolled live
-    // range (a noinline call here doubled kernel time; inlining it into the
-    // unrolled loop hit 128 regs).
     bitpack_t_ bitpacked_sample = bitpack_t_(0);
-    std::uint32_t tie_mask = 0;
+    bool tie = false;
 #pragma unroll
     for (std::uint32_t i = 0; i < num_generations; ++i) {
         prng::state128 hi{};
         generate(&seed_base, &hi, static_cast<uint8_t>(i));
         bitpacked_sample |= pack_four_bits_hi<bitpack_t_>(hi, p_threshold, i * bernoulli_bits_per_generation);
-        if (any_high_word_tie(hi, p_threshold)) {
-            tie_mask |= (1u << i);
-        }
+        tie |= high_word_tie_any(hi, p_threshold);
     }
-    if (tie_mask != 0) [[unlikely]] {
-        for (std::uint32_t i = 0; i < num_generations; ++i) {
-            if ((tie_mask & (1u << i)) == 0) {
-                continue;
-            }
-            prng::state128 hi{};
-            prng::state128 lo{};
-            generate(&seed_base, &hi, static_cast<uint8_t>(i));
-            generate(&seed_base, &lo, static_cast<uint8_t>(i + kLowWordGenerationBase));
-            bitpacked_sample |= pack_four_bits<bitpack_t_>(hi, lo, p_threshold, i * bernoulli_bits_per_generation);
+    any_tie = tie & (p_threshold.always_true == 0);
+    return bitpacked_sample;
+}
+
+/// OR the `u_lo < T_lo` bits of every tied draw into a high-word-only pack.
+/// Rolled on purpose: this is the rare path and must not be unrolled into
+/// the sampler's live range.
+template <typename bitpack_t_>
+static bitpack_t_ patch_high_word_ties(const state128 &seed_base, const bernoulli_threshold &p_threshold,
+                                       bitpack_t_ bitpacked_sample) {
+    static constexpr std::uint8_t bernoulli_bits_per_generation = 4;
+    static constexpr std::uint8_t num_generations = sizeof(bitpack_t_) * 8 / bernoulli_bits_per_generation;
+    for (std::uint32_t i = 0; i < num_generations; ++i) {
+        prng::state128 hi{};
+        generate(&seed_base, &hi, static_cast<uint8_t>(i));
+        if (!any_high_word_tie(hi, p_threshold)) {
+            continue;
         }
+        prng::state128 lo{};
+        generate(&seed_base, &lo, static_cast<uint8_t>(i + kLowWordGenerationBase));
+        bitpacked_sample |= pack_four_bits<bitpack_t_>(hi, lo, p_threshold, i * bernoulli_bits_per_generation);
     }
     return bitpacked_sample;
+}
+
+/// Exact two-word pack: `pack_bernoulli_draws_hi` followed by the tie patch.
+template <typename bitpack_t_>
+[[gnu::always_inline]] static bitpack_t_ pack_bernoulli_draws(const state128 &seed_base,
+                                                             const bernoulli_threshold &p_threshold) {
+    bool any_tie = false;
+    const bitpack_t_ hi_only = pack_bernoulli_draws_hi<bitpack_t_>(seed_base, p_threshold, any_tie);
+    if (any_tie) [[unlikely]] {
+        return patch_high_word_ties<bitpack_t_>(seed_base, p_threshold, hi_only);
+    }
+    return hi_only;
 }
 } // namespace scram::mc::prng
