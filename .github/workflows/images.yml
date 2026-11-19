@@ -291,24 +291,22 @@ jobs:
       matrix:
         include:
           # xerxes Docker: physical GPU 0 = Tesla V100S (shared by sm_70 runners).
-          - name: sm70-generic
-            variant: generic
-            runs_on: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
-            concurrency_group: gpu-xerxes-v100s
-            docker_gpus: device=0
-          - name: sm70-cuda12.8-sm70
-            variant: cuda12.8-sm70
+          # Both variants in one job: two matrix rows with the same
+          # concurrency group cancel each other as "higher priority waiting
+          # request" before either starts.
+          - name: sm70
+            variants: "generic cuda12.8-sm70"
             runs_on: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
             concurrency_group: gpu-xerxes-v100s
             docker_gpus: device=0
           # physical GPU 1 = RTX 3070
-          - name: sm86-generic
-            variant: generic
+          - name: sm86
+            variants: generic
             runs_on: [self-hosted, Linux, X64, nvidia, sm_86, rtx_3070]
             concurrency_group: gpu-xerxes-3070
             docker_gpus: device=1
-          - name: sm120-generic
-            variant: generic
+          - name: sm120
+            variants: generic
             runs_on: [self-hosted, Linux, X64, nvidia, fast, sm_120, rtx_5060ti_8gb]
             concurrency_group: gpu-shelly-5060ti
             docker_gpus: device=0
@@ -322,23 +320,26 @@ jobs:
       packages: read
     env:
       DOCKER_GPUS: ${{ matrix.docker_gpus }}
-      VARIANT: ${{ matrix.variant }}
-      SMOKE_NAME: fuzzybits-runtime-smoke-${{ github.run_id }}-${{ matrix.name }}-${{ github.run_attempt }}
+      VARIANTS: ${{ matrix.variants }}
+      SMOKE_PREFIX: fuzzybits-runtime-smoke-${{ github.run_id }}-${{ matrix.name }}-${{ github.run_attempt }}
     steps:
-      - name: Resolve image tag
+      - name: Resolve image tags
         run: |
           set -euo pipefail
           SHA12="${GITHUB_SHA:0:12}"
-          VARIANT="${VARIANT}"
-          if [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
-            TAG="ci-${SHA12}-${VARIANT}"
-          elif [[ "${GITHUB_REF_TYPE}" == tag ]]; then
-            TAG="${GITHUB_REF_NAME}-${VARIANT}"
-          else
-            TAG="sha-${SHA12}-${VARIANT}"
-          fi
-          echo "RUNTIME_IMAGE=${IMAGE}:${TAG}" >> "${GITHUB_ENV}"
-          echo "RUNTIME_IMAGE=${IMAGE}:${TAG}"
+          images=()
+          for VARIANT in ${VARIANTS}; do
+            if [[ "${GITHUB_REF}" == refs/heads/ci/* ]]; then
+              TAG="ci-${SHA12}-${VARIANT}"
+            elif [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+              TAG="${GITHUB_REF_NAME}-${VARIANT}"
+            else
+              TAG="sha-${SHA12}-${VARIANT}"
+            fi
+            images+=("${IMAGE}:${TAG}")
+            echo "RUNTIME_IMAGE_${VARIANT}=${IMAGE}:${TAG}"
+          done
+          echo "RUNTIME_IMAGES=${images[*]}" >> "${GITHUB_ENV}"
 
       - name: Job-private Docker config
         run: |
@@ -364,27 +365,41 @@ jobs:
           set -euo pipefail
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Pull runtime image
+      - name: Pull runtime images
         run: |
           set -euo pipefail
-          docker pull "${RUNTIME_IMAGE}"
-          docker image inspect "${RUNTIME_IMAGE}" --format '{{.Id}} {{.Size}}' \
-            | awk '{printf "id=%s uncompressed_bytes=%s uncompressed_GiB=%.2f\n", $1, $2, $2/1024/1024/1024}'
+          for RUNTIME_IMAGE in ${RUNTIME_IMAGES}; do
+            docker pull "${RUNTIME_IMAGE}"
+            docker image inspect "${RUNTIME_IMAGE}" --format '{{.Id}} {{.Size}}' \
+              | awk '{printf "id=%s uncompressed_bytes=%s uncompressed_GiB=%.2f\n", $1, $2, $2/1024/1024/1024}'
+          done
 
       - name: Image smoke (mcscram-smoke + fzb compile/run)
         run: |
           set -euo pipefail
-          docker run --rm --name "${SMOKE_NAME}" --gpus "${DOCKER_GPUS}" \
-            --entrypoint fuzzybits-image-smoke \
-            "${RUNTIME_IMAGE}"
+          for RUNTIME_IMAGE in ${RUNTIME_IMAGES}; do
+            tag="${RUNTIME_IMAGE##*:}"
+            name="${SMOKE_PREFIX}-${tag}"
+            echo "::group::smoke ${RUNTIME_IMAGE}"
+            docker run --rm --name "${name}" --gpus "${DOCKER_GPUS}" \
+              --entrypoint fuzzybits-image-smoke \
+              "${RUNTIME_IMAGE}"
+            echo "::endgroup::"
+          done
 
-      - name: Drop this job's container
+      - name: Drop this job's containers
         if: always()
-        run: docker rm -f "${SMOKE_NAME}" || true
+        run: |
+          for RUNTIME_IMAGE in ${RUNTIME_IMAGES}; do
+            docker rm -f "${SMOKE_PREFIX}-${RUNTIME_IMAGE##*:}" || true
+          done
 
-      - name: Remove pulled runtime image
+      - name: Remove pulled runtime images
         if: always()
-        run: docker rmi "${RUNTIME_IMAGE}" || true
+        run: |
+          for RUNTIME_IMAGE in ${RUNTIME_IMAGES}; do
+            docker rmi "${RUNTIME_IMAGE}" || true
+          done
 
       - name: Drop job-private GHCR credentials
         if: always()
