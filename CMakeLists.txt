@@ -350,7 +350,7 @@ add_subdirectory(src/ir)
 add_subdirectory(src/io)
 
 # pcfb is public; FetchContent uses toolchain.env PCFB_GIT_TAG
-# (currently 6b1af8bb4bb9af3d217a33317c006f0ff9516cf1). Override with
+# (currently facae79077e49cfdbc3f691c4628999ab16f89b4). Override with
 # FUZZYBITS_PCFB_SOURCE_DIR for a local checkout (cmake/FuzzybitsPcfb.cmake).
 # Built for both the wheel (SKBUILD) and the in-tree fzb CLI.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsPcfb.cmake")
