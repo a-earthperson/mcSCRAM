@@ -54,12 +54,33 @@ jobs:
           test "${ACPP_REF_WINDOWS}" != "TBD"
           test "${LLVM_REF_WINDOWS}" != "TBD"
 
-      - name: MSVC developer command prompt
+      - name: Detect MSVC toolset
+        id: msvc
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -property installationPath
+          $msvc = Join-Path $vs 'VC\Tools\MSVC'
+          $vers = @(Get-ChildItem $msvc -Directory | ForEach-Object { $_.Name })
+          $vers | ForEach-Object { Write-Host "MSVC $_" }
+          $v1451 = $vers | Where-Object { $_ -like '14.51*' } | Select-Object -First 1
+          if ($v1451) {
+            'toolset=14.51' | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "prefer toolset 14.51 ($v1451) for LLVM 20"
+          } else {
+            'toolset=default' | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "14.51 missing; default toolset + _ALLOW_COMPILER_VERSION_MISMATCH"
+          }
+
+      - name: MSVC developer command prompt (14.51)
+        if: steps.msvc.outputs.toolset == '14.51'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
-          # LLVM 20 AdaptiveCpp clang cannot use MSVC 14.52 STL (STL1000 wants
-          # Clang 22). Pin the 14.51 toolset still shipped on windows-2025.
           toolset: "14.51"
+
+      - name: MSVC developer command prompt (default)
+        if: steps.msvc.outputs.toolset != '14.51'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
       - name: Bootstrap LLVM 20 (clang-cl)
         uses: KyleMayes/install-llvm-action@a7a1a882e2d06ebe05d5bb97c3e1f8c984ae96fc # v2.0.7
@@ -391,5 +412,5 @@ jobs:
             "- CUDA_VERSION: $env:CUDA_VERSION",
             "- CUDA_PATH: $env:CUDA_PATH"
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          sccache --show-stats
+          if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --show-stats }
           Get-PSDrive -PSProvider FileSystem
