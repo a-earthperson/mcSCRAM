@@ -34,7 +34,10 @@ jobs:
     steps:
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
-        run: docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
 
       - name: Checkout
         if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
@@ -97,7 +100,10 @@ jobs:
     steps:
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
-        run: docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
 
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -409,7 +415,10 @@ jobs:
     steps:
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
-        run: docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
 
       - name: Resolve image tag
         run: |

@@ -105,4 +105,7 @@ fi
 # --rm so a job timeout does not leave a GPU-resident container. Inner MC
 # runs still use `timeout 60` (CTest TIMEOUT / smoke.sh / spine.sh) inside
 # the container.
+# Runner cancellation signals this script, not the container; without the
+# trap a cancelled job leaves the container writing into the workspace.
+trap 'docker rm -f "${name}" >/dev/null 2>&1 || true' INT TERM
 docker run "${run_args[@]}" "${image}" "$@"
