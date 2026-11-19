@@ -1,13 +1,17 @@
 fuzzybits
 =========
 
-fuzzybits estimates the probability of fault tree top events by Monte
-Carlo sampling. Models are OpenPSA MEF XML files. It runs on the CPU,
-or on an NVIDIA GPU if one is available.
+fuzzybits compiles a whole PRA model, its fault trees and event trees,
+into one probabilistic directed acyclic graph (PDAG) and estimates
+probabilities on that single graph by Monte Carlo sampling. Shared
+basic events and gates are evaluated once, for every query at the same
+time. Models are OpenPSA MEF XML files. It runs on the CPU, or on an
+NVIDIA GPU if one is available.
 
 Status: alpha (0.17.0). Every result comes with a 95% confidence
-interval. Only the top event of the first fault tree in a model is
-computed; event trees are not supported yet (issue #92).
+interval. In this release the compiled query is the top event of the
+first fault tree in the model; event-tree sequences are next
+(issue #92).
 
 
 Install
