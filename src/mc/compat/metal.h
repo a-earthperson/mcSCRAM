@@ -17,6 +17,14 @@
  * integer to `kMetalRuntimeBackendId` and compiles on both pins. OMP inside
  * a Metal AdaptiveCpp build reflects `omp` (4) and keeps the native path.
  *
+ * `compile_if_else` usage
+ * -----------------------
+ * Match AdaptiveCpp `memory_streaming.hpp`: void lambdas that assign into an
+ * outer variable. Do not use the documented T() return value; on Metal it
+ * lowered, but the returned integer was 0 (tally `n` was host-visible,
+ * `hits` stayed 0; `mc.metal_canary.atomic64` showed 64-bit fetch_add itself
+ * is host-visible).
+ *
  * Removal
  * -------
  * Delete this header and the call sites in `kernel/tally.h` when all of:
@@ -25,18 +33,10 @@
  *   2. LLVMToMetal accepts `double` in device IR, or AdaptiveCpp provides
  *      soft-double (canary `mc.metal_canary.double` flips). Then restore
  *      named `double` fields on `event::tally` if desired.
- *   3. Native `atomic_ref<std::size_t>::fetch_add` is host-visible on Metal
- *      (canary `mc.metal_canary.atomic64` flips). Then `add_hits` can drop
- *      the uint32 path.
  *
- * Evidence for the 64-bit atomic shim (macos-metal 44629827202, hosted
- * macos-26 paravirtual device): after the double fields left device IR, the
- * tally kernel completed and a plain store of `total_bits` was host-visible
- * (`n=65536`) but `num_one_bits` stayed 0. AdaptiveCpp emulates atomic64 with
- * a hashed lock table and 32-bit half stores; host-device atomics are not
- * guaranteed (install-metal.md). Metal `add_hits` therefore uses a native
- * 32-bit `fetch_add` on the low word. A group sum is ≤ 2^17, and CI trial
- * counts keep the running total well below 2^32.
+ * 64-bit atomics are **not** shimmed. `mc.metal_canary.atomic64` (not xfail)
+ * passed on the hosted macos-26 paravirtual device: eight work-groups each
+ * `fetch_add(1)` on `atomic_ref<std::size_t>` and the host saw 8.
  */
 
 #pragma once
@@ -62,8 +62,6 @@ static_assert(kMaxBitpackBits * kMaxTallyLocalSize <= std::numeric_limits<std::u
               "Metal uint32 group-sum cannot overflow for the supported pack width");
 static_assert(kMaxBitpackBits * kMaxTallyLocalSize <= (std::size_t{1} << 17),
               "group-sum bound is bits(bitpack) x local_size <= 2^17");
-static_assert(sizeof(std::size_t) >= sizeof(std::uint32_t),
-              "Metal add_hits overlays the low 32 bits of std::size_t");
 
 /// Host-only floating-point overlay of `event::tally` (mean, std_err, ci[4]).
 /// Stored as six `uint64_t` so the device struct type contains no `double`.
@@ -92,23 +90,6 @@ template <typename Group>
     return static_cast<std::size_t>(group32);
 }
 
-[[gnu::always_inline]] [[gnu::flatten]] inline void add_hits_native(std::size_t &num_one_bits,
-                                                                    const std::size_t group_sum) {
-    auto atomic_one_bits = sycl::atomic_ref<std::size_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
-                                            sycl::access::address_space::global_space>(num_one_bits);
-    atomic_one_bits.fetch_add(group_sum);
-}
-
-/// Native 32-bit atomic on the low word of `num_one_bits`. Little-endian
-/// overlay; wraps at 2^32 (above any `ctest -L mc` trial count).
-[[gnu::always_inline]] [[gnu::flatten]] inline void add_hits_metal(std::size_t &num_one_bits,
-                                                                   const std::size_t group_sum) {
-    auto *low = reinterpret_cast<std::uint32_t *>(&num_one_bits);
-    auto atomic_low = sycl::atomic_ref<std::uint32_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
-                                       sycl::access::address_space::global_space>(*low);
-    atomic_low.fetch_add(static_cast<std::uint32_t>(group_sum));
-}
-
 } // namespace detail
 
 /// Intra-group popcount reduction. Metal path: uint32 then widen. Native path:
@@ -118,10 +99,10 @@ template <typename Group>
                                                                      const std::size_t local_sum) {
     std::size_t result = 0;
     __acpp_if_target_sscp(namespace jit = sycl::AdaptiveCpp_jit;
-                          result = jit::compile_if_else(
+                          jit::compile_if_else(
                               jit::reflect<jit::reflection_query::runtime_backend>() == kMetalRuntimeBackendId,
-                              [&]() { return detail::group_sum_metal(group, local_sum); },
-                              [&]() { return detail::group_sum_native(group, local_sum); });
+                              [&]() { result = detail::group_sum_metal(group, local_sum); },
+                              [&]() { result = detail::group_sum_native(group, local_sum); });
                           return result;);
     return detail::group_sum_native(group, local_sum);
 }
@@ -131,23 +112,19 @@ template <typename Group>
 [[gnu::always_inline]] [[gnu::flatten]] inline bool join_group_sum(const bool in_bounds) {
     bool join = in_bounds;
     __acpp_if_target_sscp(namespace jit = sycl::AdaptiveCpp_jit;
-                          join = jit::compile_if_else(
+                          jit::compile_if_else(
                               jit::reflect<jit::reflection_query::runtime_backend>() == kMetalRuntimeBackendId,
-                              [&]() { return true; }, [&]() { return in_bounds; });
+                              [&]() { join = true; }, [&]() { join = in_bounds; });
                           return join;);
     return in_bounds;
 }
 
-/// Group-leader hit accumulator. Native `atomic_ref<std::size_t>::fetch_add`.
-/// Metal: uint32 `fetch_add` on the low word (see file comment).
+/// Group-leader hit accumulator. Native `atomic_ref<std::size_t>::fetch_add`
+/// on every backend: the atomic64 canary is host-visible on Metal.
 [[gnu::always_inline]] [[gnu::flatten]] inline void add_hits(std::size_t &num_one_bits, const std::size_t group_sum) {
-    __acpp_if_target_sscp(namespace jit = sycl::AdaptiveCpp_jit;
-                          jit::compile_if_else(
-                              jit::reflect<jit::reflection_query::runtime_backend>() == kMetalRuntimeBackendId,
-                              [&]() { detail::add_hits_metal(num_one_bits, group_sum); },
-                              [&]() { detail::add_hits_native(num_one_bits, group_sum); });
-                          return;);
-    detail::add_hits_native(num_one_bits, group_sum);
+    auto atomic_one_bits = sycl::atomic_ref<std::size_t, sycl::memory_order::relaxed, sycl::memory_scope::device,
+                                            sycl::access::address_space::global_space>(num_one_bits);
+    atomic_one_bits.fetch_add(group_sum);
 }
 
 } // namespace scram::mc::compat

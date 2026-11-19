@@ -90,8 +90,8 @@ target_include_directories(mc_metal_canary_tests PRIVATE
 )
 add_sycl_to_target(TARGET mc_metal_canary_tests SOURCES metal_canary_tests.cc)
 
-set(_metal_canaries reduce64 double atomic64)
-foreach(_canary IN LISTS _metal_canaries)
+set(_metal_xfail_canaries reduce64 double)
+foreach(_canary IN LISTS _metal_xfail_canaries)
   if(APPLE)
     add_test(NAME mc.metal_canary.${_canary}
       COMMAND ${CMAKE_COMMAND}
@@ -106,3 +106,10 @@ foreach(_canary IN LISTS _metal_canaries)
     TIMEOUT ${MC_TEST_TIMEOUT}
   )
 endforeach()
+
+# 64-bit fetch_add is host-visible on the hosted Metal device; not a shim.
+add_test(NAME mc.metal_canary.atomic64 COMMAND mc_metal_canary_tests "[atomic64]")
+set_tests_properties(mc.metal_canary.atomic64 PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)
