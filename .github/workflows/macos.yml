@@ -8,6 +8,17 @@ on:
   push:
     branches: [develop, "ci/**"]
   workflow_dispatch:
+  # release.yml builds the macOS wheel through this workflow.
+  workflow_call:
+    inputs:
+      version_override:
+        description: Rewrite package versions before building (TestPyPI rehearsals).
+        type: string
+        default: ""
+      wheel_only:
+        description: Skip macos-metal and build only the wheel.
+        type: boolean
+        default: false
 
 concurrency:
   group: macos-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -19,6 +30,7 @@ permissions:
 jobs:
   macos-metal:
     name: macos-metal
+    if: ${{ !inputs.wheel_only }}
     runs-on: macos-26
     timeout-minutes: 90
     env:
@@ -344,6 +356,12 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+
+      - name: Apply version override
+        if: ${{ inputs.version_override }}
+        env:
+          VERSION: ${{ inputs.version_override }}
+        run: bash scripts/ci/release-version.sh apply "${VERSION}"
 
       - name: Require arm64
         run: |

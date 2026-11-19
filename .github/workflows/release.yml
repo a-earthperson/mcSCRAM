@@ -1,0 +1,414 @@
+# Build and publish the `fuzzybits` wheels and the `fuzzybits-server` wheel (#36).
+#
+#   workflow_dispatch: TestPyPI rehearsal; versions become X.Y.Z.dev<run number>.
+#   push tag vX.Y.Z:   PyPI, then a GitHub Release with every wheel attached.
+#
+# Publishing uses PyPI trusted publishing (OIDC): no tokens. Each project has
+# its own environment because PyPI allows one pending publisher per
+# (repo, workflow, environment): `fuzzybits` uses `pypi` / `testpypi`,
+# `fuzzybits-server` uses `pypi-server` / `testpypi-server`. See docs/releasing.md.
+#
+# The publish jobs must stay in this file: PyPI does not accept a reusable
+# workflow as the trusted publisher.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      override: ${{ steps.v.outputs.override }}
+      server: ${{ steps.v.outputs.server }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Resolve version
+        id: v
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT}" == push ]]; then
+            bash scripts/ci/release-version.sh check "${REF_NAME}" > check.out
+          else
+            bash scripts/ci/release-version.sh check > check.out
+          fi
+          cat check.out
+          base="$(sed -n 's/^version=//p' check.out)"
+          server="$(sed -n 's/^server=//p' check.out)"
+          if [[ "${EVENT}" == push ]]; then
+            version="${base}"
+            override=""
+          else
+            version="${base}.dev${RUN_NUMBER}"
+            override="${version}"
+          fi
+          {
+            echo "version=${version}"
+            echo "override=${override}"
+            echo "server=${server}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "release version ${version} (server wheel: ${server})"
+
+  linux-wheel:
+    name: linux-wheel
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read
+    env:
+      PRESET: generic
+      BUILD_TESTING: "OFF"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Apply version override
+        if: ${{ needs.version.outputs.override }}
+        env:
+          VERSION: ${{ needs.version.outputs.override }}
+        run: bash scripts/ci/release-version.sh apply "${VERSION}"
+
+      - name: Load toolchain pins
+        run: |
+          set -eu
+          set -a
+          # shellcheck disable=SC1091
+          . ./toolchain.env
+          set +a
+          sha="$(sha256sum toolchain.env | cut -c1-12)"
+          {
+            echo "ACPP_REF=${ACPP_REF}"
+            echo "CLANG_VERSION=${CLANG_VERSION}"
+            echo "TOOLCHAIN_SHA=${sha}"
+            echo "TOOLCHAIN_IMAGE=ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-generic-${sha}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Free disk
+        run: |
+          set -eux
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Ruby \
+            /usr/lib/jvm \
+            /usr/share/miniconda || true
+          sudo docker system prune -af || true
+          df -h /
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build generic wheel (auditwheel-repaired)
+        run: scripts/ci/docker-toolchain-run.sh -- scripts/ci/inner-build.sh generic wheel
+
+      - name: pip install + pytest (clean Ubuntu 24.04)
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            ubuntu:24.04 \
+            bash scripts/ci/python-pytest.sh
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-cp312-manylinux_x86_64
+          path: dist/fuzzybits-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-wheel:
+    name: macos
+    needs: version
+    uses: ./.github/workflows/macos.yml
+    with:
+      version_override: ${{ needs.version.outputs.override }}
+      wheel_only: true
+
+  windows-wheel:
+    name: windows
+    needs: version
+    uses: ./.github/workflows/windows.yml
+    with:
+      version_override: ${{ needs.version.outputs.override }}
+
+  server-wheel:
+    name: server-wheel
+    needs: version
+    if: ${{ needs.version.outputs.server == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Apply version override
+        if: ${{ needs.version.outputs.override }}
+        env:
+          VERSION: ${{ needs.version.outputs.override }}
+        run: bash scripts/ci/release-version.sh apply "${VERSION}"
+
+      - name: Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+
+      - name: Build web UI and server wheel
+        run: |
+          set -euo pipefail
+          (cd tools/server/webui && npm ci && npm run build)
+          (cd tools/server && uv build --wheel --out-dir ../../dist-server)
+          ls -la dist-server
+
+      - name: Check wheel metadata and bundled UI
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          whl="dist-server/fuzzybits_server-${VERSION}-py3-none-any.whl"
+          [[ -f "${whl}" ]] || { echo "::error::missing ${whl}"; exit 1; }
+          meta="$(unzip -p "${whl}" "fuzzybits_server-${VERSION}.dist-info/METADATA")"
+          grep -qx "Requires-Dist: fuzzybits==${VERSION}" <<<"${meta}" \
+            || { echo "::error::${whl} does not require fuzzybits==${VERSION}"; exit 1; }
+          unzip -l "${whl}" | grep -E 'fuzzybits_server/webui/index\.html$' \
+            || { echo "::error::${whl} has no bundled web UI"; exit 1; }
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzybits-server-py3-none-any
+          path: dist-server/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+  # `pip install` of the released wheels (engine + server) in a clean
+  # container: the server must start, serve the UI and sample chinese.
+  server-smoke:
+    name: server-smoke
+    needs: [version, linux-wheel, server-wheel]
+    if: ${{ needs.version.outputs.server == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Download wheels
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-*
+          path: wheels
+          merge-multiple: true
+
+      - name: Install and smoke (clean Ubuntu 24.04)
+        run: docker run --rm -v "$PWD:/src" -w /src ubuntu:24.04 bash scripts/ci/release-server-smoke.sh
+
+  publish-testpypi:
+    name: publish-testpypi
+    needs: [version, linux-wheel, macos-wheel, windows-wheel, server-wheel, server-smoke]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'workflow_dispatch'
+      && needs.linux-wheel.result == 'success'
+      && needs.macos-wheel.result == 'success'
+      && needs.windows-wheel.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.server-wheel.result)
+      && contains(fromJSON('["success", "skipped"]'), needs.server-smoke.result) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/fuzzybits/${{ needs.version.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Download engine wheels
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-cp*
+          path: dist
+          merge-multiple: true
+
+      - name: Hold back files over the PyPI size limit
+        env:
+          MAX_MB: ${{ vars.PYPI_MAX_FILE_MB || '100' }}
+        run: bash scripts/ci/release-size-gate.sh dist oversize "${MAX_MB}"
+
+      - name: Publish fuzzybits to TestPyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          packages-dir: dist/
+
+  # Separate environment: PyPI allows one pending publisher per
+  # (repo, workflow, environment), and the server must follow its engine.
+  publish-testpypi-server:
+    name: publish-testpypi-server
+    needs: [version, publish-testpypi]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'workflow_dispatch'
+      && needs.version.outputs.server == 'true'
+      && needs.publish-testpypi.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: testpypi-server
+      url: https://test.pypi.org/project/fuzzybits-server/${{ needs.version.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download server wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-server-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish fuzzybits-server to TestPyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          packages-dir: dist/
+
+  publish-pypi:
+    name: publish-pypi
+    needs: [version, linux-wheel, macos-wheel, windows-wheel, server-wheel, server-smoke]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push'
+      && needs.linux-wheel.result == 'success'
+      && needs.macos-wheel.result == 'success'
+      && needs.windows-wheel.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.server-wheel.result)
+      && contains(fromJSON('["success", "skipped"]'), needs.server-smoke.result) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: pypi
+      url: https://pypi.org/project/fuzzybits/${{ needs.version.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Download engine wheels
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-cp*
+          path: dist
+          merge-multiple: true
+
+      - name: Hold back files over the PyPI size limit
+        env:
+          MAX_MB: ${{ vars.PYPI_MAX_FILE_MB || '100' }}
+        run: bash scripts/ci/release-size-gate.sh dist oversize "${MAX_MB}"
+
+      - name: Publish fuzzybits to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist/
+
+  # Separate environment: PyPI allows one pending publisher per
+  # (repo, workflow, environment), and the server must follow its engine.
+  publish-pypi-server:
+    name: publish-pypi-server
+    needs: [version, publish-pypi]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push'
+      && needs.version.outputs.server == 'true'
+      && needs.publish-pypi.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: pypi-server
+      url: https://pypi.org/project/fuzzybits-server/${{ needs.version.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download server wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-server-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish fuzzybits-server to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist/
+
+  github-release:
+    name: github-release
+    needs: [version, publish-pypi, publish-pypi-server]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push'
+      && needs.publish-pypi.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.publish-pypi-server.result) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download wheels
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: fuzzybits-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create release with every wheel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          gh release create "${TAG}" dist/*.whl --repo "${REPO}" --verify-tag --generate-notes --title "${TAG}"

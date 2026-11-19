@@ -9,6 +9,13 @@ on:
   push:
     branches: [develop, "ci/**"]
   workflow_dispatch:
+  # release.yml builds the Windows wheel through this workflow.
+  workflow_call:
+    inputs:
+      version_override:
+        description: Rewrite package versions before building (TestPyPI rehearsals).
+        type: string
+        default: ""
 
 concurrency:
   group: windows-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -31,6 +38,13 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+
+      - name: Apply version override
+        if: ${{ inputs.version_override }}
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version_override }}
+        run: bash scripts/ci/release-version.sh apply "${VERSION}"
 
       - name: Load toolchain pins
         shell: bash
