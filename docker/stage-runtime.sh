@@ -27,7 +27,13 @@ stage() {
     return 0
   fi
   mkdir -p "$(dirname "${dest}")"
-  cp -a "${src}" "${dest}"
+  # libLLVM.so.20.1 is a symlink into the LLVM tree. cp -a would copy a
+  # dangling link; dereference files so the runtime image has the bytes.
+  if [[ -L "${src}" && ! -d "${src}" ]]; then
+    cp -aL "${src}" "${dest}"
+  else
+    cp -a "${src}" "${dest}"
+  fi
   echo "copy ${src} -> ${dest}"
 }
 
