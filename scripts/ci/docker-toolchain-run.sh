@@ -50,12 +50,14 @@ image="${TOOLCHAIN_IMAGE:-ghcr.io/fuzzybit-org/fuzzybits-toolchain:${ACPP_REF}-g
 echo "toolchain image=${image}"
 ensure_image() {
   local ref="$1"
-  if docker pull "${ref}"; then
+  # Prefer a local copy: later pulls in the same job can 401 even after
+  # docker/login-action (token lifetime / rate), and GHCR is private.
+  if docker image inspect "${ref}" >/dev/null 2>&1; then
+    echo "using local ${ref}"
     image="${ref}"
     return 0
   fi
-  if docker image inspect "${ref}" >/dev/null 2>&1; then
-    echo "registry pull failed; using local ${ref}"
+  if docker pull "${ref}"; then
     image="${ref}"
     return 0
   fi

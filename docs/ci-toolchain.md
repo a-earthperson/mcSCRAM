@@ -175,6 +175,22 @@ is not accepted.
 
 macOS / `metal` is parked; see [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30).
 
+## GPU device mapping (xerxes / shelly)
+
+xerxes exposes **two** physical GPUs to Docker. Runners do not isolate
+`CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES` (both unset). `gpu.yml`
+selects devices with `docker run --rm --gpus device=<n>`:
+
+| Job | Runner labels | `--gpus` | Device inside the container |
+| --- | --- | --- | --- |
+| `sm70` (generic then cuda-sm70) | `sm_70`, `v100s` (`fzb-xerxes-1/2/5`) | `device=0` | Tesla V100S-PCIE-32GB |
+| `sm86-generic` | `sm_86`, `rtx_3070` (`fzb-xerxes-3`) | `device=1` | NVIDIA GeForce RTX 3070 |
+| `sm120-generic` | `sm_120`, `fast`, `rtx_5060ti_8gb` (`shelly-1`) | `device=0` | NVIDIA GeForce RTX 5060 Ti |
+| sm_75 / `fzb-xerxes-4` | excluded | — | runner never picked up jobs |
+
+Concurrency groups are per physical GPU (`gpu-xerxes-v100s`,
+`gpu-xerxes-3070`, `gpu-shelly-5060ti`) with `cancel-in-progress: false`.
+
 ## How to bump pins
 
 1. Edit [`toolchain.env`](../toolchain.env) only. Do not fork versions into
