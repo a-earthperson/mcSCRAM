@@ -157,9 +157,13 @@ jobs:
       version_override: ${{ needs.version.outputs.override }}
       wheel_only: true
 
+  # Off unless the repository variable RELEASE_INCLUDE_WINDOWS is `true`:
+  # windows.yml rebuilds LLVM on a cache miss and fails on MSVC-14.52-only
+  # images (#108, #109), and the ~270 MB wheel exceeds PyPI's default limit (#101).
   windows-wheel:
     name: windows
     needs: version
+    if: ${{ vars.RELEASE_INCLUDE_WINDOWS == 'true' }}
     uses: ./.github/workflows/windows.yml
     with:
       version_override: ${{ needs.version.outputs.override }}
@@ -249,7 +253,7 @@ jobs:
       ${{ !cancelled() && github.event_name == 'workflow_dispatch'
       && needs.linux-wheel.result == 'success'
       && needs.macos-wheel.result == 'success'
-      && needs.windows-wheel.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.windows-wheel.result)
       && contains(fromJSON('["success", "skipped"]'), needs.server-wheel.result)
       && contains(fromJSON('["success", "skipped"]'), needs.server-smoke.result) }}
     runs-on: ubuntu-24.04
@@ -322,7 +326,7 @@ jobs:
       ${{ !cancelled() && github.event_name == 'push'
       && needs.linux-wheel.result == 'success'
       && needs.macos-wheel.result == 'success'
-      && needs.windows-wheel.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.windows-wheel.result)
       && contains(fromJSON('["success", "skipped"]'), needs.server-wheel.result)
       && contains(fromJSON('["success", "skipped"]'), needs.server-smoke.result) }}
     runs-on: ubuntu-24.04
