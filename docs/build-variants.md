@@ -35,6 +35,7 @@ invoked directly.
 | `generic` | `generic` | `malloc` | Release | ON | `OPTIMIZE_FOR_NATIVE=OFF` |
 | `cuda-sm70` | `cuda:sm_70` | `malloc` | Release | ON | `ACPP_USE_ACCELERATED_CPU=off`, `ACPP_STDPAR=off`, `ACPP_EXTRA_COMPILE_OPTIONS=--cuda-include-ptx=sm_70`; Linux-only |
 | `metal` | `generic` | `malloc` | Release | ON | Darwin-only (Apple Silicon required at run time) |
+| `metal-cpu` | (test preset) | | | | `ctest --preset metal-cpu`: same metal build, `ACPP_VISIBILITY_MASK=omp` |
 | `debug` | `generic` | `malloc` | Debug | ON | `OPTIMIZE_FOR_NATIVE=ON`, `ACPP_DEBUG_LEVEL=4` |
 
 Option names (from `CMakeLists.txt` / `cmake/Find_adaptivecpp.cmake`):
@@ -63,7 +64,7 @@ changing preset names.
 | `CLANG_VERSION` / `LLVM_VERSION` | `20` | `llvm.sh`, `clang-20`, Docker `ARG CLANG_VERSION` |
 | `CUDA_DEVEL_IMAGE` / `CUDA_RUNTIME_IMAGE` | `nvidia/cuda:12.8.1-{devel,runtime}-ubuntu24.04` | Docker `ARG`s |
 | `BOOST_VERSION` | `1.89.0` (≥ `BOOST_MIN_VERSION=1.89`) | `cmake/FindBoost.cmake` FetchContent URL |
-| `METAL_CPP_VERSION` / `ACPP_REF_METAL` | `TBD` | [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30) — metal-cpp is not referenced in-tree; AdaptiveCpp Metal (`WITH_METAL_BACKEND`) landed after v25.10.0 (upstream `94e1749`) |
+| `METAL_CPP_VERSION` / `ACPP_REF_METAL` | `release/metal-cpp_macOS26_iOS26` / `96c7d17a9d029a5660ac06d7519b3763e9823ab6` | [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30) — AdaptiveCpp Metal (`WITH_METAL_BACKEND`) landed after v25.10.0 (upstream `94e1749`); no tagged AdaptiveCpp release yet. metal-cpp tag is AdaptiveCpp's FetchContent default |
 
 CMake loads the file via `cmake/ToolchainPins.cmake` (`FUZZYBITS_PIN_<KEY>`).
 Shell: `set -a && . ./toolchain.env && set +a`. Docker/CI: pass matching keys
@@ -140,23 +141,53 @@ preset; `minimal` cannot compile `generic`.
 
 ### `metal`
 
-macOS 26, Apple Silicon only. LLVM must include the AArch64 target; AdaptiveCpp
-docs recommend a 2-stage LLVM build. metal-cpp headers are **not** in this
-repository (`METAL_CPP_VERSION=TBD`, [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30)).
+macOS 26, Apple Silicon only. Homebrew `llvm@20` (AArch64 target) is enough
+for the GitHub-hosted attempt; AdaptiveCpp docs still recommend a 2-stage LLVM
+build for a fully working generic SSCP compiler. Pins:
+`ACPP_REF_METAL=96c7d17a9d029a5660ac06d7519b3763e9823ab6` (develop SHA after
+upstream `94e1749`; no Metal-capable tagged release yet),
+`METAL_CPP_VERSION=release/metal-cpp_macOS26_iOS26` (AdaptiveCpp's metal-cpp
+FetchContent `GIT_TAG` when `Metal/Metal.hpp` is absent). Hosted CI lives in
+[`.github/workflows/macos.yml`](../.github/workflows/macos.yml) (`macos-26`
+arm64). Device-code gaps (no `double`, emulated 64-bit atomics) stay on
+[#30](https://github.com/fuzzybit-org/fuzzybits/issues/30).
 
 ```bash
+# llvm@20 / lld@20 / libomp from Homebrew. AppleClang is the AdaptiveCpp
+# *host* compiler; LLVM 20 is CLANG_EXECUTABLE_PATH (matches upstream
+# macos-metal.yml).
+LLVM_PREFIX="$(brew --prefix llvm@20)"
+LLD_PREFIX="$(brew --prefix lld@20)"
+OMP_PREFIX="$(brew --prefix libomp)"
+
 cmake -S AdaptiveCpp -B AdaptiveCpp/build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=/usr/bin/clang \
+  -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
+  -DCLANG_EXECUTABLE_PATH="${LLVM_PREFIX}/bin/clang++" \
+  -DLLVM_DIR="${LLVM_PREFIX}/lib/cmake/llvm" \
+  -DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)" \
   -DCMAKE_INSTALL_PREFIX=/your/install/path \
-  -DLLVM_DIR=/path/to/llvm/lib/cmake/llvm \
   -DACPP_COMPILER_FEATURE_PROFILE=full \
   -DWITH_METAL_BACKEND=ON \
-  -DMETAL_INCLUDE_DIR=/path/to/metal-cpp
+  -DWITH_OPENCL_BACKEND=OFF \
+  -DWITH_CUDA_BACKEND=OFF \
+  -DWITH_ROCM_BACKEND=OFF \
+  -DWITH_LEVEL_ZERO_BACKEND=OFF \
+  -DACPP_LLD_PATH="${LLD_PREFIX}/bin/ld64.lld" \
+  -DMETAL_INCLUDE_DIR=/path/to/metal-cpp \
+  -DSEQUENTIAL_LINK_LINE="${OMP_PREFIX}/lib/libomp.dylib" \
+  "-DOMP_LINK_LINE=-fopenmp ${OMP_PREFIX}/lib/libomp.dylib -L${OMP_PREFIX}/lib/" \
+  "-DOMP_CXX_FLAGS=-fopenmp -D_ENABLE_EXTENDED_ALIGNED_STORAGE -I${OMP_PREFIX}/include"
 ```
 
-fuzzybits: `ACPP_TARGETS=generic` (Metal is an SSCP runtime backend, not an
-AOT `--acpp-targets` value). `v25.10.0` does **not** contain the Metal
-backend; `ACPP_REF_METAL` stays TBD until #30 pins a post-`94e1749` ref.
+If `METAL_INCLUDE_DIR` is omitted, AdaptiveCpp FetchContent-clones
+`apple/metal-cpp` at `METAL_CPP_VERSION`. fuzzybits: `ACPP_TARGETS=generic`
+(Metal is an SSCP runtime backend, not an AOT `--acpp-targets` value).
+
+CPU tests on a metal build: `ctest --preset metal-cpu` (`ACPP_VISIBILITY_MASK=omp`).
+Metal device tests: `ctest --preset metal` (or `ctest -L mc` with
+`ACPP_VISIBILITY_MASK=metal`).
 
 ## `ACPP_VISIBILITY_MASK` / device selection
 
@@ -167,7 +198,7 @@ exposes every compiled-in backend.
 |---|---|---|---|
 | `generic` | `cuda` | `CUDA_VISIBLE_DEVICES` for the NVIDIA device; OpenMP host is always present | without a GPU, `acpp-info -l` lists only the OpenMP host device — that is expected |
 | `cuda-sm70` | `cuda` | `CUDA_VISIBLE_DEVICES`; binary only contains sm_70 SASS (+ embedded PTX) | PTX driver-JIT can run the image on newer archs; sm_70 SASS will not |
-| `metal` | `metal` | AdaptiveCpp auto-detects the Apple GPU; `omp` remains the CPU fallback | `metal` is accepted by AdaptiveCpp's backend loader; it is not yet listed in upstream `env_variables.md`. Unset the mask to let auto-detect pick Metal |
+| `metal` | `metal` (device) / `omp` (`metal-cpu` preset) | AdaptiveCpp auto-detects the Apple GPU; `omp` remains the CPU fallback | `metal` is accepted by AdaptiveCpp's backend loader; it is not yet listed in upstream `env_variables.md`. GitHub-hosted `macos-26` exposes a paravirtual GPU (`Mac2`/`Common3`), not `Apple7`. Unset the mask to let auto-detect pick Metal |
 
 Other runtime defaults used by the test presets: `ACPP_DEBUG_LEVEL=0`,
 `ACPP_PERSISTENT_RUNTIME=1`. Production CLI containers may also set

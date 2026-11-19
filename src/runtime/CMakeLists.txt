@@ -24,13 +24,23 @@ target_link_libraries(fuzzybits_runtime_host
   PUBLIC
     scram
     pcfb
+    Boost::headers
 )
 
-# Device-side Monte Carlo: append to libmc (already add_sycl_to_target'd).
+# Device-side Monte Carlo.
 # RULE_LAUNCH_COMPILE / CUDA SMCP apply to every source of mc. PRIVATE link
 # of the host archive so its objects land in libmc.so once (fzb / tests
 # must not also pull the .a, or pdag_from_circuit is defined twice).
-if(NOT APPLE)
+#
+# Darwin has no separate libmc.dylib (INTERFACE mc → libscram). Linking
+# fuzzybits_runtime_host into scram would cycle (the .a PUBLIC-links scram),
+# so compile the TUs into libscram instead.
+if(APPLE)
+  # run.cc / pdag_from_pcfb.cc are compiled into libscram in src/CMakeLists.txt
+  # (add_sycl_to_target must run in the directory that found AdaptiveCpp).
+  target_link_libraries(scram PRIVATE pcfb)
+  target_link_libraries(mc INTERFACE pcfb)
+else()
   target_sources(mc PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/run.cc")
   target_link_libraries(mc PRIVATE fuzzybits_runtime_host)
   target_link_libraries(mc PUBLIC pcfb)
