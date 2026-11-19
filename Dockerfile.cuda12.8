@@ -30,6 +30,10 @@
 # Source toolchain.env and pass --build-arg ACPP_REF / CLANG_VERSION / CUDA_*
 # rather than forking those versions here.
 #
+# CI toolchain images (#33): docker/toolchain.Dockerfile copies the
+# base → adaptivecpp-clang recipe with ACPP_COMPILER_FEATURE_PROFILE=full
+# (one image serves cmake --preset generic and cuda-sm70). See docs/ci-toolchain.md.
+#
 # Example:
 #   docker --context xerxes build -f Dockerfile.cuda12.8 \
 #     --build-arg ACPP_TARGETS=cuda:sm_86 --target scramruntime \

@@ -30,6 +30,7 @@ image uses `ACPP_COMPILER_FEATURE_PROFILE=full`.
 | `Dockerfile` | generic production image (SSCP, AdaptiveCpp `v25.10.0`) |
 | `Dockerfile.cuda12.8` | CUDA-only SMCP (and optional generic SSCP), slim runtime + profiler |
 | `Dockerfile.cuda` | CUDA 13.5 experiment; fails unless `--build-arg EXPERIMENTAL=1` |
+| `docker/toolchain.Dockerfile` | CI compiler image (`--target toolchain`); see [ci-toolchain.md](ci-toolchain.md) |
 | `docker/acpp-cuda-config.py` | resolves `ACPP_TARGETS` + `CUDA_EMBED_PTX` into clang flags |
 | `docker/smoke.sh` | installed as `/usr/local/bin/mcscram-smoke` |
 | `docker/inputs/` | `chinese.xml`, `baobab1.xml`, `das9201.xml` |
@@ -39,6 +40,11 @@ image uses `ACPP_COMPILER_FEATURE_PROFILE=full`.
 `base` → `minimal` → `llvm-clang` → `adaptivecpp-clang` → `builder` →
 `devimage` / `ssh-devimage`, then slim `scramruntime` (from
 `nvidia/cuda:12.8.1-runtime`) and `profiler` / `scramruntime-prof`.
+
+CI compiler images reuse the `base` → `adaptivecpp-clang` recipe with
+`ACPP_COMPILER_FEATURE_PROFILE=full` (`docker/toolchain.Dockerfile`,
+`--target toolchain`) and publish `ghcr.io/fuzzybit-org/fuzzybits-toolchain`.
+Tags, consumption, and pin bumps: [ci-toolchain.md](ci-toolchain.md).
 
 ```bash
 # SMCP AOT for a single arch (production on Volta: cuda:sm_70)
