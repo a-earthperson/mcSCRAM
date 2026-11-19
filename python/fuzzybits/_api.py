@@ -249,9 +249,18 @@ def _mask_backend(backend: str | None) -> str:
     if chosen in {"", "auto"}:
         _runtime.native()
         return ""
-    if chosen not in {"cuda", "omp"}:
-        raise ValueError(f"backend must be 'auto', 'cuda', or 'omp' (got {backend!r})")
-    _runtime.init(backend=chosen)  # type: ignore[arg-type]
+    if chosen not in {"cuda", "omp", "metal"}:
+        raise ValueError(f"backend must be 'auto', 'cuda', 'omp', or 'metal' (got {backend!r})")
+    if not _runtime.is_initialized():
+        _runtime.init(backend=chosen)  # type: ignore[arg-type]
+        return chosen
+    active = _runtime.active_backend()
+    if active not in {None, "", chosen} and chosen != active:
+        raise RuntimeError(
+            "fuzzybits.init() already ran; AdaptiveCpp cannot switch "
+            f"backend after import (active backend={active!r}). "
+            f"Start a new interpreter to use backend={chosen!r}."
+        )
     return chosen
 
 
@@ -333,8 +342,9 @@ def run(
 ) -> list[QueryResult]:
     """One-shot Monte Carlo of a compiled ``.pcfb``. Same numbers as ``fzb run``.
 
-    ``seed`` is rejected (#65). ``backend`` is ``"auto"``, ``"cuda"``, or
-    ``"omp"``; ``"auto"`` keeps the mask :func:`fuzzybits.init` already applied.
+    ``seed`` is rejected (#65). ``backend`` is ``"auto"``, ``"cuda"``,
+    ``"omp"``, or ``"metal"``; ``"auto"`` keeps the mask :func:`fuzzybits.init`
+    already applied. Metal SSCP currently rejects ``double`` until #17/#30.
     """
     _reject_seed(seed, options)
     if options:

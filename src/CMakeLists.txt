@@ -107,11 +107,7 @@ install(
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 if(SKBUILD)
-  set_target_properties(scram PROPERTIES
-    INSTALL_RPATH "$ORIGIN:$ORIGIN/lib"
-    BUILD_WITH_INSTALL_RPATH ON
-    INSTALL_RPATH_USE_LINK_PATH FALSE
-  )
+  fuzzybits_set_wheel_rpath(scram)
 endif()
 
 # add mc (SYCL). Host-only `fzb compile` sets FUZZYBITS_WITH_MC=OFF.

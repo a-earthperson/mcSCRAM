@@ -51,14 +51,15 @@ option(BUILD_PYTHON_BINDINGS "Build the native Python extension module" ON)
 option(FUZZYBITS_WITH_MC "Build the SYCL Monte Carlo engine (libmc, scram-cli, Python)" ON)
 
 if(SKBUILD)
-  # pip/scikit-build-core: skip Catch2 and bake $ORIGIN RPATH into the
-  # extension + libscram/libmc so the wheel does not record the build prefix.
-  # pcfb + compile + runtime are built into the extension (statically linked);
-  # fzb / scram-cli stay out of the wheel (COMPONENT fzb / skipped below).
-  # FUZZYBITS_WITH_MC stays ON (need libmc).
+  # pip/scikit-build-core: skip Catch2 and bake $ORIGIN / @loader_path RPATH
+  # into the extension + libscram/libmc so the wheel does not record the
+  # build prefix. pcfb + compile + runtime are built into the extension
+  # (statically linked); fzb / scram-cli stay out of the wheel (COMPONENT
+  # fzb / skipped below). FUZZYBITS_WITH_MC stays ON (need libmc).
   set(BUILD_TESTS OFF CACHE BOOL "Deprecated alias of BUILD_TESTING" FORCE)
   set(BUILD_TESTING OFF CACHE BOOL "Build the testing tree." FORCE)
   set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FuzzybitsWheelRpath.cmake")
 endif()
 
 if(BUILD_PYTHON_BINDINGS AND MALLOC_TYPE STREQUAL "tcmalloc")
@@ -201,9 +202,13 @@ else()
 endif()
 
 if(SKBUILD)
-  set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/lib")
+  set(CMAKE_INSTALL_RPATH "${FUZZYBITS_WHEEL_INSTALL_RPATH}")
   set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
   set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+  if(APPLE)
+    set(CMAKE_MACOSX_RPATH ON)
+    set(CMAKE_INSTALL_NAME_DIR "@rpath")
+  endif()
 endif()
 
 ######################## End cmake configuration ################### }}}

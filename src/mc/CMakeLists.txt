@@ -160,11 +160,7 @@ add_sycl_to_target(TARGET mc SOURCES ${MC_SRC})
 # consumers can find it in the same prefix. Wheels drop headers and place
 # libmc next to the Python extension.
 if(SKBUILD)
-  set_target_properties(mc PROPERTIES
-    INSTALL_RPATH "$ORIGIN:$ORIGIN/lib"
-    BUILD_WITH_INSTALL_RPATH ON
-    INSTALL_RPATH_USE_LINK_PATH FALSE
-  )
+  fuzzybits_set_wheel_rpath(mc)
   install(
     TARGETS mc
     COMPONENT scram

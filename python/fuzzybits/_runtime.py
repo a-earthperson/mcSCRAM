@@ -11,11 +11,12 @@ import ctypes
 import importlib
 import importlib.util
 import os
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Literal
 
-Backend = Literal["auto", "cuda", "omp"]
+Backend = Literal["auto", "cuda", "omp", "metal"]
 Variant = Literal["auto", "generic", "cuda-sm70"]
 
 _NATIVE: ModuleType | None = None
@@ -29,6 +30,8 @@ _CUDA_SM70_MOD = "_native_cuda_sm70"
 
 
 def _cache_dir() -> Path:
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "fuzzybits" / "acpp"
     xdg = os.environ.get("XDG_CACHE_HOME")
     base = Path(xdg) if xdg else Path.home() / ".cache"
     return base / "fuzzybits" / "acpp"
@@ -93,7 +96,11 @@ def _discover_installed() -> dict[str, str]:
     pkg_dir = Path(__file__).resolve().parent
     found: dict[str, str] = {}
     for variant, short in (("generic", _GENERIC_MOD), ("cuda-sm70", _CUDA_SM70_MOD)):
-        so_present = any(pkg_dir.glob(f"{short}*.so"))
+        so_present = (
+            any(pkg_dir.glob(f"{short}*.so"))
+            or any(pkg_dir.glob(f"{short}*.pyd"))
+            or any(pkg_dir.glob(f"{short}*.dylib"))
+        )
         spec = importlib.util.find_spec(f"fuzzybits.{short}")
         if so_present or spec is not None:
             found[variant] = f"fuzzybits.{short}"
@@ -127,15 +134,23 @@ def _select_backend(requested: str) -> str:
         return "cuda"
     if requested == "omp":
         return "omp"
+    if requested == "metal":
+        return "metal"
     if has_cuda_device():
         return "cuda"
+    # Darwin Metal+OpenMP wheel: leave the mask unset so AdaptiveCpp enumerates
+    # every compiled-in backend (paravirtual Metal GPU + OpenMP host).
+    if sys.platform == "darwin":
+        return ""
     return "omp"
 
 
 def _apply_visibility(backend: str, device: str | int | None) -> None:
     # AdaptiveCpp always loads the OpenMP CPU backend; the mask still filters
-    # CUDA/HIP/OpenCL/Level Zero.
-    os.environ["ACPP_VISIBILITY_MASK"] = backend
+    # CUDA/HIP/OpenCL/Level Zero/Metal. An empty mask exposes every compiled-in
+    # backend.
+    if backend:
+        os.environ["ACPP_VISIBILITY_MASK"] = backend
     if device is None:
         return
     os.environ["CUDA_VISIBLE_DEVICES"] = str(device)
@@ -154,8 +169,10 @@ def init(
     Parameters
     ----------
     backend:
-        ``"cuda"``, ``"omp"``, or ``"auto"`` (CUDA if an NVIDIA device is
-        visible, otherwise OpenMP). Overrides ``FUZZYBITS_BACKEND`` /
+        ``"cuda"``, ``"omp"``, ``"metal"``, or ``"auto"``. Auto selects CUDA
+        if an NVIDIA device is visible, otherwise OpenMP on Linux; on Darwin
+        the mask is left unset so Metal and OpenMP both appear in
+        :func:`list_devices`. Overrides ``FUZZYBITS_BACKEND`` /
         ``MCSCRAM_BACKEND``.
     device:
         CUDA device ordinal or UUID forwarded to ``CUDA_VISIBLE_DEVICES``.

@@ -890,10 +890,18 @@ std::string sycl_backend_name(const sycl::device &dev) {
     const auto type = dev.get_info<sycl::info::device::device_type>();
     const auto vendor = dev.get_info<sycl::info::device::vendor>();
     const auto name = dev.get_info<sycl::info::device::name>();
-    const std::string blob = vendor + " " + name;
-    const bool nvidia = blob.find("NVIDIA") != std::string::npos || blob.find("Nvidia") != std::string::npos;
+    std::string blob = vendor + " " + name;
+    std::transform(blob.begin(), blob.end(), blob.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    const bool nvidia = blob.find("nvidia") != std::string::npos;
+    const bool metal = blob.find("metal") != std::string::npos || blob.find("apple") != std::string::npos ||
+                       blob.find("paravirtual") != std::string::npos || blob.find("mac2") != std::string::npos ||
+                       blob.find("common3") != std::string::npos;
     if (type == sycl::info::device_type::gpu && nvidia) {
         return "cuda";
+    }
+    if (type == sycl::info::device_type::gpu && metal) {
+        return "metal";
     }
     if (type == sycl::info::device_type::cpu || type == sycl::info::device_type::host) {
         return "omp";
@@ -1294,9 +1302,15 @@ py::list run_pcfb_bytes(const py::bytes &data, std::uint64_t trials, const std::
     opt.trials = trials;
     opt.backend = backend;
     std::vector<fuzzybits::runtime::QueryResult> results;
-    {
+    try {
         py::gil_scoped_release release;
         results = fuzzybits::runtime::run_pcfb(std::span<const std::byte>(owned), opt);
+    } catch (const sycl::exception &e) {
+        throw std::runtime_error(std::string("SYCL/AdaptiveCpp kernel failed: ") + e.what());
+    } catch (const fuzzybits::runtime::RuntimeError &) {
+        throw;
+    } catch (const std::exception &e) {
+        throw std::runtime_error(std::string("Monte Carlo run failed: ") + e.what());
     }
     return query_results_to_py(results);
 }
@@ -1713,8 +1727,9 @@ Summarise a `.pcfb` file (same keys as `fzb inspect --json`, plus `diagnostics`)
         R"pbdoc(
 One-shot Monte Carlo of an in-memory `.pcfb`. Same numbers as `fzb run`.
 
-Releases the GIL while the kernel runs. `backend` is `cuda`, `omp`, or empty
-(use the mask already applied by fuzzybits.init).
+Releases the GIL while the kernel runs. `backend` is `cuda`, `omp`, `metal`,
+or empty (use the mask already applied by fuzzybits.init). Metal currently
+fails JIT with a Python exception until double support lands (#17/#30).
 )pbdoc");
 
     py::class_<PyPcfbSession>(m, "PcfbSession")

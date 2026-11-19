@@ -19,6 +19,7 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU Affero General Public License v3",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
