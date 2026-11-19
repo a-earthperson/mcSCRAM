@@ -48,7 +48,12 @@ def calculation_main(config: CalculationConfig, events: mp.Queue) -> None:
         if engine == "native":
             result = run_probability_call(config.input_files, config.options, on_progress)
         else:
-            result = run_calculation(config.input_files, config.options, on_progress)
+            result = run_calculation(
+                config.input_files,
+                config.options,
+                on_progress,
+                pcfb_path=config.pcfb_path,
+            )
     except BaseException as exc:
         error = format_native_exception(exc)
         emit("calculation_failed", error=error)

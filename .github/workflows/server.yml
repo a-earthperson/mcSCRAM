@@ -1,12 +1,12 @@
 # FastAPI server tests (tools/server). Public repo: GitHub-hosted runners only.
 #
-# The imported pytest suite is pure Python (BernoulliSampler / numpy / scipy)
-# and does not import mcscram_native. Building the ~183 MB generic fuzzybits
-# wheel here (AdaptiveCpp + LLVM via docker/wheel.Dockerfile) is not justified
-# for zero native tests, and the toolchain image is a private GHCR package
-# that fork PRs cannot pull. Native-dependent tests are marked
-# @pytest.mark.native and skipped when the wheel is absent. A native job is
-# deferred until those tests exist (and can consume a published wheel).
+# The hosted job is pure Python (BernoulliSampler / numpy / scipy / cache
+# helpers) and does not import mcscram_native. Native-dependent tests are
+# marked @pytest.mark.native and skipped when the wheel is absent. Building
+# the ~183 MB generic fuzzybits wheel here (AdaptiveCpp + LLVM via
+# docker/wheel.Dockerfile) is not justified on hosted runners; the toolchain
+# image is a private GHCR package that fork PRs cannot pull. Native CI wiring
+# comes with the runtime image in step E of #46.
 name: Server
 
 on:

@@ -7,9 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 AGPL-3.0-or-later. Imported from `fuzzybit-org/fuzzybits-bench` (`src/server`)
 with history. Compile products, WebSocket sampling, and Wald/Bayes/GBAS
-convergence. Switching the engine calls to `.pcfb` / `fzb run` is a later
-step of [#46](https://github.com/fuzzybit-org/fuzzybits/issues/46); this
-package still talks to the engine through the `mcscram_native` shim.
+convergence. Default engine compiles OpenPSA/MEF to `.pcfb` once per
+`(source SHA-256s, compile options)` and samples through
+`fuzzybits.Session`. Set `FUZZYBITS_SERVER_ENGINE=legacy` for the previous
+in-memory `run_compile` path. The `MCSCRAM_CONVERGENCE_ENGINE=native`
+`run_probability` fallback is unchanged.
 
 ## Run
 
@@ -33,8 +35,9 @@ aborting the interpreter.
 
 ## Test
 
-The imported pytest suite (39 cases) is pure Python (BernoulliSampler,
-numpy, scipy). It does not import `mcscram_native`.
+The imported pytest suite is pure Python (BernoulliSampler, numpy, scipy)
+plus config/cache helpers. It does not import `mcscram_native` unless a
+test is marked `@pytest.mark.native`.
 
 ```bash
 cd tools/server
@@ -74,12 +77,47 @@ set and `/app/input` is missing, the catalog is empty and the server stays up.
 | Variable | Role |
 | --- | --- |
 | `FUZZYBITS_SERVER_DATA_DIR` | Bench data mount (CSVs + XML) |
+| `FUZZYBITS_SERVER_ENGINE` | `pcfb` (default) or `legacy` in-memory PDAG |
+| `FUZZYBITS_SERVER_CACHE_DIR` | Directory for compiled / uploaded `.pcfb` files |
 | `MCSCRAM_ARALIA_INPUT_DIR` | Extra XML search root |
 | `MCSCRAM_INPUT_FILES` | Explicit model path(s), comma/colon separated |
+| `MCSCRAM_WATCH` | Boolean watch-mode **or** comma-separated MEF names / PDAG indices to tally |
+| `MCSCRAM_WATCH_NODES` | Extra comma-separated watch names (same identification as `MCSCRAM_WATCH`) |
 | `MCSCRAM_AUTOSTART` | Start sampling on boot (default false) |
 | `HOST` / `PORT` / `LOG_LEVEL` | uvicorn |
 
 Sampling knobs (`MCSCRAM_NUM_TRIALS`, `MCSCRAM_POLICY`, …) are unchanged.
+
+## `.pcfb` upload
+
+`POST /api/v1/model/pcfb` accepts a raw `.pcfb` body (`Content-Type:
+application/octet-stream`). The server validates with `fuzzybits.inspect`
+(`pcfb::validate` diagnostics). Invalid circuits return HTTP 400:
+
+```json
+{"detail": {"error": "...", "diagnostics": [...], "inspect": {...}}}
+```
+
+Success:
+
+```json
+{"id": "<sha256>", "pcfb_id": "<sha256>", "path": "...", "inspect": {...}}
+```
+
+Start a run on the uploaded circuit:
+
+```bash
+curl -sS -X POST "$HOST/api/v1/model/pcfb" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @model.pcfb
+curl -sS -X POST "$HOST/api/v1/start" \
+  -H "Content-Type: application/json" \
+  -d '{"pcfb_id":"<sha256>","watch":["g1"]}'
+```
+
+`GET /api/v1/model/{dag,kernel-dag,sample-shape,execution-plan,dag-bundle}`
+accept `?pcfb_id=<sha256>` to serve those views from the stored circuit
+instead of compiling MEF.
 
 ## Image
 

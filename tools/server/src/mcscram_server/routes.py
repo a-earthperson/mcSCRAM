@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Body, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from mcscram_server.config import CalculationConfig
+from mcscram_server.config import CalculationConfig, parse_watch_value
 from mcscram_server.event_hub import EventHub
 from mcscram_server.fault_tree_payload import (
     build_dag_bundle_payload,
@@ -18,6 +18,7 @@ from mcscram_server.fault_tree_payload import (
     list_aralia_xml_inputs,
     resolve_model_xml_path,
 )
+from mcscram_server.native import InvalidPcfbError, resolve_uploaded_pcfb, store_uploaded_pcfb
 from mcscram_server.supervisor import CalculationSupervisor
 
 
@@ -41,6 +42,19 @@ class SamplingControlBody(BaseModel):
     # Host-side convergence policy that gates early-stop ("wald" | "bayes" | "gbas").
     policy: str | None = Field(default=None, pattern="^(wald|bayes|gbas)$")
     burn_in: float | None = Field(default=None, ge=0)
+    pcfb_id: str | None = None
+    watch: list[str] | str | None = None
+
+
+def _pcfb_path_from_id(pcfb_id: str | None) -> str | None:
+    if not pcfb_id:
+        return None
+    try:
+        return str(resolve_uploaded_pcfb(pcfb_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def _calculation_config(body: SamplingControlBody | None = None) -> CalculationConfig:
@@ -48,6 +62,9 @@ def _calculation_config(body: SamplingControlBody | None = None) -> CalculationC
     if body is None:
         return config
     input_files = config.input_files
+    pcfb_path = config.pcfb_path
+    if body.pcfb_id:
+        pcfb_path = _pcfb_path_from_id(body.pcfb_id)
     if body.model_id:
         try:
             input_files = [str(resolve_model_xml_path(body.model_id))]
@@ -82,11 +99,15 @@ def _calculation_config(body: SamplingControlBody | None = None) -> CalculationC
         overrides["policy"] = body.policy
     if body.burn_in is not None:
         overrides["burn_in"] = body.burn_in
+    if body.watch is not None:
+        _, names = parse_watch_value(body.watch)
+        if names:
+            overrides["watch"] = names
     if overrides:
         options.update(overrides)
-    if input_files == config.input_files and options == config.options:
+    if input_files == config.input_files and options == config.options and pcfb_path == config.pcfb_path:
         return config
-    return CalculationConfig(input_files=input_files, options=options)
+    return CalculationConfig(input_files=input_files, options=options, pcfb_path=pcfb_path)
 
 
 def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> APIRouter:
@@ -104,6 +125,29 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
     def xml_inputs() -> dict[str, Any]:
         return list_aralia_xml_inputs()
 
+    @router.post("/model/pcfb")
+    async def upload_pcfb(request: Request) -> dict[str, Any]:
+        """Accept a `.pcfb` circuit, validate with ``fuzzybits.inspect``, and store it.
+
+        Body: raw `.pcfb` bytes (``Content-Type: application/octet-stream``).
+        On success: ``{"id": "<sha256>", "pcfb_id": "<sha256>", "inspect": {...}}``.
+        Start a run with ``POST /api/v1/start`` and ``{"pcfb_id": "<sha256>"}``.
+        Invalid circuits return HTTP 400 with ``diagnostics`` from ``pcfb::validate``.
+        """
+        data = await request.body()
+        try:
+            digest, path, summary = store_uploaded_pcfb(data)
+        except InvalidPcfbError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": str(exc),
+                    "diagnostics": exc.diagnostics,
+                    "inspect": exc.inspect,
+                },
+            ) from exc
+        return {"id": digest, "pcfb_id": digest, "path": str(path), "inspect": summary}
+
     @router.get("/model/fault-tree")
     def fault_tree_model(model_id: str | None = Query(default=None)) -> dict[str, Any]:
         if model_id:
@@ -119,6 +163,7 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
     @router.get("/model/dag")
     def dag_model(
         model_id: str | None = Query(default=None),
+        pcfb_id: str | None = Query(default=None),
         compilation_level: int | None = Query(default=None, ge=0, le=8),
         expand_atleast_gates: bool | None = Query(default=None),
         expand_xor_gates: bool | None = Query(default=None),
@@ -138,6 +183,7 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
             ccf=ccf,
             keep_null_gates=keep_null_gates,
         )
+        pcfb_path = _pcfb_path_from_id(pcfb_id)
         if model_id:
             try:
                 path = resolve_model_xml_path(model_id)
@@ -145,8 +191,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
-            return build_dag_payload([str(path)], options)
-        return build_dag_payload(config.input_files, options)
+            return build_dag_payload([str(path)], options, pcfb_path=pcfb_path)
+        return build_dag_payload(config.input_files, options, pcfb_path=pcfb_path)
 
     @router.get("/model/source-dag")
     def source_dag_model(model_id: str | None = Query(default=None)) -> dict[str, Any]:
@@ -163,6 +209,7 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
     @router.get("/model/kernel-dag")
     def kernel_dag_model(
         model_id: str | None = Query(default=None),
+        pcfb_id: str | None = Query(default=None),
         compilation_level: int | None = Query(default=None, ge=0, le=8),
         expand_atleast_gates: bool | None = Query(default=None),
         expand_xor_gates: bool | None = Query(default=None),
@@ -189,12 +236,13 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
-            return build_kernel_dag_payload([str(path)], options)
-        return build_kernel_dag_payload(config.input_files, options)
+            return build_kernel_dag_payload([str(path)], options, pcfb_path=_pcfb_path_from_id(pcfb_id))
+        return build_kernel_dag_payload(config.input_files, options, pcfb_path=_pcfb_path_from_id(pcfb_id))
 
     @router.get("/model/sample-shape")
     def sample_shape_model(
         model_id: str | None = Query(default=None),
+        pcfb_id: str | None = Query(default=None),
         compilation_level: int | None = Query(default=None, ge=0, le=8),
         expand_atleast_gates: bool | None = Query(default=None),
         expand_xor_gates: bool | None = Query(default=None),
@@ -227,12 +275,13 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
-            return build_sample_shape_payload([str(path)], options)
-        return build_sample_shape_payload(config.input_files, options)
+            return build_sample_shape_payload([str(path)], options, pcfb_path=_pcfb_path_from_id(pcfb_id))
+        return build_sample_shape_payload(config.input_files, options, pcfb_path=_pcfb_path_from_id(pcfb_id))
 
     @router.get("/model/execution-plan")
     def execution_plan_model(
         model_id: str | None = Query(default=None),
+        pcfb_id: str | None = Query(default=None),
         compilation_level: int | None = Query(default=None, ge=0, le=8),
         expand_atleast_gates: bool | None = Query(default=None),
         expand_xor_gates: bool | None = Query(default=None),
@@ -265,12 +314,13 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
-            return build_execution_plan_payload([str(path)], options)
-        return build_execution_plan_payload(config.input_files, options)
+            return build_execution_plan_payload([str(path)], options, pcfb_path=_pcfb_path_from_id(pcfb_id))
+        return build_execution_plan_payload(config.input_files, options, pcfb_path=_pcfb_path_from_id(pcfb_id))
 
     @router.get("/model/dag-bundle")
     def dag_bundle_model(
         model_id: str | None = Query(default=None),
+        pcfb_id: str | None = Query(default=None),
         compilation_level: int | None = Query(default=None, ge=0, le=8),
         expand_atleast_gates: bool | None = Query(default=None),
         expand_xor_gates: bool | None = Query(default=None),
@@ -297,8 +347,8 @@ def create_router(supervisor: CalculationSupervisor, event_hub: EventHub) -> API
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
-            return build_dag_bundle_payload([str(path)], options)
-        return build_dag_bundle_payload(config.input_files, options)
+            return build_dag_bundle_payload([str(path)], options, pcfb_path=_pcfb_path_from_id(pcfb_id))
+        return build_dag_bundle_payload(config.input_files, options, pcfb_path=_pcfb_path_from_id(pcfb_id))
 
     @router.post("/reset")
     def reset_calculation(body: SamplingControlBody | None = Body(default=None)) -> dict[str, Any]:

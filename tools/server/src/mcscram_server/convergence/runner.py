@@ -29,7 +29,7 @@ from typing import Any, Callable, Sequence
 
 from .metrics import Metric, default_metrics
 from .policies import ConvergencePolicy, PolicyVerdict, make_policy
-from .sampling import NativeSampler, Sampler
+from .sampling import Sampler, make_sampler
 from .special import normal_quantile_two_sided
 from .tally import RunContext, RunState
 
@@ -362,18 +362,24 @@ def run_calculation(
     input_files: list[str],
     options: dict[str, Any] | None,
     on_progress: ProgressCallback | None = None,
+    *,
+    pcfb: bytes | None = None,
+    pcfb_path: str | None = None,
 ) -> dict[str, Any]:
     """Compile, sample, and converge entirely on the host; return a result dict.
 
-    This is the Python replacement for ``mcscram_native.run_probability``: the
-    native engine is used *only* to produce raw per-pass popcounts; all
+    Default engine is ``.pcfb`` / ``fuzzybits.Session``. Set
+    ``FUZZYBITS_SERVER_ENGINE=legacy`` for the in-memory ``run_compile`` path.
+    The native engine is used *only* to produce raw per-pass popcounts; all
     convergence and statistics are computed here.
     """
     config = ConvergenceConfig.from_options(options)
-    sampler = NativeSampler(
+    sampler = make_sampler(
         input_files,
         options,
         event_ids=list(config.event_ids) or None,
+        pcfb=pcfb,
+        pcfb_path=pcfb_path,
     )
     try:
         runner = ConvergenceRunner(sampler, config, on_progress=on_progress)
