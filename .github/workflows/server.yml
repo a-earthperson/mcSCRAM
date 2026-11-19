@@ -100,4 +100,11 @@ jobs:
           printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"
           .venv/bin/python -c "import mcscram_native, fuzzybits"
           mkdir -p "${ACPP_APPDB_DIR}"
-          timeout 120 uv run pytest -m native --tb=short -q
+          export UV_LINK_MODE=copy
+          export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
+          # compile_pcfb has SIGILL'd once on a hosted SKU after a green run;
+          # retry once in a fresh process.
+          if ! timeout 120 uv run pytest -m native --tb=short -q; then
+            echo "native pytest failed; retrying once"
+            timeout 120 uv run pytest -m native --tb=short -q
+          fi
