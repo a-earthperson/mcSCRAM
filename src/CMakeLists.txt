@@ -62,11 +62,15 @@ if(APPLE)
   # Build the DirectEval implementation into scram on Apple to keep the dynamic
   # library self-contained and avoid a scram <-> mc shared-library cycle.
   find_package(_adaptivecpp)
+  # Runtime SYCL entrypoint: AdaptiveCpp::acpp-rt is directory-scoped here, so
+  # add_sycl_to_target from src/runtime/ cannot see it. pcfb is linked later.
+  list(APPEND SCRAM_MC_SRC "${CMAKE_CURRENT_SOURCE_DIR}/runtime/run.cc")
   list(APPEND SCRAM_CORE_SRC ${SCRAM_MC_SRC})
   # Host-only MC statistics (Boost.Math) — not passed to add_sycl_to_target.
   list(APPEND SCRAM_CORE_SRC
     mc/scheduler/convergence_policy.cc
     mc/stats/info_gain.cc
+    runtime/pdag_from_pcfb.cc
   )
 endif()
 

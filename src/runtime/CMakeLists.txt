@@ -35,11 +35,8 @@ target_link_libraries(fuzzybits_runtime_host
 # fuzzybits_runtime_host into scram would cycle (the .a PUBLIC-links scram),
 # so compile the TUs into libscram instead.
 if(APPLE)
-  target_sources(scram PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/run.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/pdag_from_pcfb.cc"
-  )
-  add_sycl_to_target(TARGET scram SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/run.cc")
+  # run.cc / pdag_from_pcfb.cc are compiled into libscram in src/CMakeLists.txt
+  # (add_sycl_to_target must run in the directory that found AdaptiveCpp).
   target_link_libraries(scram PRIVATE pcfb)
   target_link_libraries(mc INTERFACE pcfb)
 else()
