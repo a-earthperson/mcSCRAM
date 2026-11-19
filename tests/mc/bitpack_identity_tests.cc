@@ -92,10 +92,32 @@ std::uint64_t host_checksum() {
   return fnv1a64(packs.data(), packs.size());
 }
 
-std::uint64_t device_checksum(sycl::queue &queue) {
-  using block_t = scram::mc::event::basic_event_block<prob_t, bitpack_t>;
-  using kernel_t = scram::mc::kernel::basic_event<prob_t, bitpack_t, size_t_>;
+using block_t = scram::mc::event::basic_event_block<prob_t, bitpack_t>;
+using kernel_t = scram::mc::kernel::basic_event<prob_t, bitpack_t, size_t_>;
+using fixup_t = scram::mc::kernel::basic_event_tie_fixup<prob_t, bitpack_t, size_t_>;
+using shape_t = scram::mc::event::sample_shape<size_t_>;
 
+// Sampler launch followed by the tie fix-up, as the layer manager submits them.
+void run_sampler(sycl::queue &queue, block_t &block, const shape_t &shape, const std::size_t num_events,
+                 const sycl::range<3> &local) {
+  const auto nd = kernel_t::get_range(num_events, local, shape);
+  const auto slots = kernel_t::allocate_tie_slots(queue, nd);
+  block.tie_slots = slots.data;
+  const kernel_t kernel(block, shape, slots);
+  const fixup_t fixup(block, shape, slots, nd);
+  const auto fixup_nd =
+      fixup_t::get_range(slots, queue.get_device().get_info<sycl::info::device::max_work_group_size>());
+  const auto sampled = queue.submit([&](sycl::handler &cgh) {
+    cgh.parallel_for(nd, [=](sycl::nd_item<3> item) { kernel(item, kIteration); });
+  });
+  queue.submit([&](sycl::handler &cgh) {
+    cgh.depends_on(sampled);
+    cgh.parallel_for(fixup_nd, [=](sycl::nd_item<1> item) { fixup(item, kIteration); });
+  });
+  queue.wait_and_throw();
+}
+
+std::uint64_t device_checksum(sycl::queue &queue) {
   std::vector<std::pair<std::int32_t, bernoulli_threshold>> indexed;
   indexed.reserve(kNumEvents);
   for (const auto &[event_idx, pdag_idx, p] : kEvents) {
@@ -103,17 +125,10 @@ std::uint64_t device_checksum(sycl::queue &queue) {
     indexed.emplace_back(static_cast<std::int32_t>(pdag_idx), threshold_from_probability(p));
   }
 
-  const scram::mc::event::sample_shape<size_t_> shape{kBatchSize, kBitpacksPerBatch};
+  const shape_t shape{kBatchSize, kBitpacksPerBatch};
   block_t block = scram::mc::event::create_basic_event_block<prob_t, bitpack_t>(
       queue, indexed, shape.num_bitpacks());
-
-  kernel_t kernel(block, shape);
-  const sycl::range<3> local{1, 1, 1};
-  const auto nd = kernel.get_range(kNumEvents, local, shape);
-  queue.submit([&](sycl::handler &cgh) {
-    cgh.parallel_for(nd, [=](sycl::nd_item<3> item) { kernel(item, kIteration); });
-  });
-  queue.wait_and_throw();
+  run_sampler(queue, block, shape, kNumEvents, sycl::range<3>{1, 1, 1});
 
   const std::size_t n = kNumEvents * shape.num_bitpacks();
   std::vector<bitpack_t> host(n);
@@ -196,12 +211,9 @@ TEST_CASE("p=1e-12 has a non-zero 64-bit threshold and fires on a forced high-wo
 }
 
 TEST_CASE("device stores two-word threshold for p=1e-12", "[mc][rare][device]") {
-  using block_t = scram::mc::event::basic_event_block<prob_t, bitpack_t>;
-  using kernel_t = scram::mc::kernel::basic_event<prob_t, bitpack_t, size_t_>;
-
   const auto t = threshold_from_probability(1e-12);
   std::vector<std::pair<std::int32_t, bernoulli_threshold>> indexed{{2, t}};
-  const scram::mc::event::sample_shape<size_t_> shape{1, 1};
+  const shape_t shape{1, 1};
 
   sycl::queue queue;
   block_t block = scram::mc::event::create_basic_event_block<prob_t, bitpack_t>(
@@ -210,13 +222,7 @@ TEST_CASE("device stores two-word threshold for p=1e-12", "[mc][rare][device]") 
   REQUIRE(block.data[0].probability_threshold.lo == t.lo);
   REQUIRE(block.data[0].probability_threshold.always_true == 0);
 
-  kernel_t kernel(block, shape);
-  const sycl::range<3> local{1, 1, 1};
-  const auto nd = kernel.get_range(1, local, shape);
-  queue.submit([&](sycl::handler &cgh) {
-    cgh.parallel_for(nd, [=](sycl::nd_item<3> item) { kernel(item, kIteration); });
-  });
-  queue.wait_and_throw();
+  run_sampler(queue, block, shape, 1, sycl::range<3>{1, 1, 1});
 
   bitpack_t host = 0;
   queue.memcpy(&host, block.buffers, sizeof(bitpack_t)).wait_and_throw();
@@ -224,4 +230,84 @@ TEST_CASE("device stores two-word threshold for p=1e-12", "[mc][rare][device]") 
       seed_for(0, 2, 0), t);
   CHECK(host == expected);
   scram::mc::event::destroy_basic_event_block(queue, block);
+}
+
+TEST_CASE("device tie fix-up matches the exact two-word sampler on forced ties", "[mc][rare][device][ties]") {
+  using scram::mc::prng::state128;
+  namespace philox = scram::mc::prng::philox;
+
+  // (event_idx, sample_idx, generation, lane, u_lo < T_lo). Event i has
+  // pdag_idx i + 2. With local {2, 1, 16} two events share each 32-lane
+  // sub-group, so events 2 and 3 tie inside one sub-group record.
+  struct forced_tie {
+    std::uint32_t event_idx;
+    std::uint32_t sample_idx;
+    std::uint32_t generation;
+    std::uint32_t lane;
+    bool hit;
+  };
+  constexpr std::array<forced_tie, 4> kForced{{
+      {0, 5, 0, 0, true},
+      {1, 37, 3, 2, false},
+      {2, 3, 7, 1, true},
+      {3, 12, 15, 3, true},
+  }};
+  const shape_t shape{2, 32};
+  const sycl::range<3> local{2, 1, 16};
+
+  std::vector<std::pair<std::int32_t, bernoulli_threshold>> indexed;
+  for (const auto &f : kForced) {
+    const auto seed = seed_for(f.event_idx, f.event_idx + 2, f.sample_idx);
+    state128 hi{};
+    state128 lo{};
+    philox::generate(&seed, &hi, static_cast<std::uint8_t>(f.generation));
+    philox::generate(&seed, &lo, static_cast<std::uint8_t>(f.generation + kLowWordGenerationBase));
+    REQUIRE(lo.x[f.lane] != 0xffffffffu);
+    bernoulli_threshold t{};
+    t.hi = hi.x[f.lane];
+    t.lo = f.hit ? lo.x[f.lane] + 1u : lo.x[f.lane];
+    indexed.emplace_back(static_cast<std::int32_t>(f.event_idx + 2), t);
+  }
+  // always_true never records a tie, and event 5 is out of bounds (x rounds up to 6).
+  indexed.emplace_back(6, threshold_from_probability(1.0));
+  const std::size_t num_events = indexed.size();
+
+  for (const auto &f : kForced) {
+    const auto &t = indexed[f.event_idx].second;
+    const auto seed = seed_for(f.event_idx, f.event_idx + 2, f.sample_idx);
+    bool any_tie = false;
+    const auto hi_only =
+        philox::pack_bernoulli_draws_hi<bitpack_t>(seed, scram::mc::prng::high_word_threshold(t), any_tie);
+    const auto exact = philox::pack_bernoulli_draws<bitpack_t>(seed, t);
+    const bitpack_t bit = bitpack_t(1) << (f.generation * 4 + f.lane);
+    REQUIRE(any_tie);
+    CHECK((hi_only & bit) == 0);
+    CHECK(((exact & bit) != 0) == f.hit);
+  }
+
+  sycl::queue queue;
+  INFO("device=" << queue.get_device().get_info<sycl::info::device::name>());
+  block_t block = scram::mc::event::create_basic_event_block<prob_t, bitpack_t>(
+      queue, indexed, shape.num_bitpacks());
+  run_sampler(queue, block, shape, num_events, local);
+
+  const std::size_t n = num_events * shape.num_bitpacks();
+  std::vector<bitpack_t> device(n);
+  queue.memcpy(device.data(), block.buffers, n * sizeof(bitpack_t)).wait_and_throw();
+  scram::mc::event::destroy_basic_event_block(queue, block);
+
+  std::size_t mismatches = 0;
+  for (std::uint32_t e = 0; e < num_events; ++e) {
+    for (std::uint32_t s = 0; s < shape.num_bitpacks(); ++s) {
+      const auto expected =
+          philox::pack_bernoulli_draws<bitpack_t>(seed_for(e, e + 2, s), indexed[e].second);
+      if (device[e * shape.num_bitpacks() + s] != expected) {
+        ++mismatches;
+        UNSCOPED_INFO("event=" << e << " sample=" << s << " device=0x" << std::hex
+                               << device[e * shape.num_bitpacks() + s] << " expected=0x" << expected
+                               << std::dec);
+      }
+    }
+  }
+  CHECK(mismatches == 0);
 }

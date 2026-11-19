@@ -176,6 +176,16 @@ namespace scram::mc::queue {
          */
         virtual void handle_submission(sycl::handler& cgh) = 0;
 
+        /**
+         * @brief Hook for command groups that must follow the main submission.
+         *
+         * Returns the event dependents should wait on. The default is the
+         * main submission itself.
+         */
+        virtual sycl::event after_submission(const sycl::event &submitted) { return submitted; }
+
+        [[nodiscard]] sycl::queue &target_queue() { return queue_; }
+
     public:
         /**
          * @brief Submits the queueable computation for execution
@@ -266,10 +276,11 @@ namespace scram::mc::queue {
          * @endcode
          */
         sycl::event perform_submission(const std::vector<sycl::event> &dependencies) {
-            return queue_.submit([&](sycl::handler &cgh) { // The actual queue submission is done once, here in the base class
+            const sycl::event submitted = queue_.submit([&](sycl::handler &cgh) { // The actual queue submission is done once, here in the base class
               cgh.depends_on(dependencies);
               handle_submission(cgh); // Defer to the derived class for the actual commands
             });
+            return after_submission(submitted);
         }
     };
 
@@ -729,5 +740,60 @@ namespace scram::mc::queue {
                 kernel(item, iteration_local);
             });
         }
+    };
+
+    template<typename kernel_t_> class iterable_main_kernel_name;
+    template<typename followup_t_> class iterable_followup_kernel_name;
+
+    /**
+     * @brief Iterable kernel followed by a 1-D follow-up kernel at the same iteration.
+     *
+     * Each submission enqueues `kernel(item, i)` over the main ND-range, then
+     * `followup(item, i)` over `followup_range`, ordered after it. Dependents
+     * wait on the follow-up. The next main launch waits on the previous
+     * follow-up, because both touch the same per-launch scratch.
+     */
+    template<typename kernel_t_, typename followup_t_, int n_dim_>
+    struct iterable_queueable_with_followup final : ranged_kernel<kernel_t_, n_dim_> {
+
+        std::uint32_t iteration_ = 0;
+
+        iterable_queueable_with_followup(
+                sycl::queue &queue,
+                const kernel_t_ &kernel,
+                const sycl::nd_range<n_dim_> &nd_range,
+                const followup_t_ &followup,
+                const sycl::nd_range<1> &followup_range)
+        : ranged_kernel<kernel_t_, n_dim_>(queue, kernel, nd_range),
+          followup_(followup), followup_range_(followup_range) {}
+
+        void handle_submission(sycl::handler &cgh) override {
+            if (has_followup_) {
+                cgh.depends_on(last_followup_);
+            }
+            const auto iteration_local = ++iteration_;
+            auto kernel = this->kernel_;
+            cgh.parallel_for<iterable_main_kernel_name<kernel_t_>>(
+                this->nd_range_, [=](const sycl::nd_item<n_dim_> &item) { kernel(item, iteration_local); });
+        }
+
+        sycl::event after_submission(const sycl::event &submitted) override {
+            const auto iteration_local = iteration_;
+            auto followup = followup_;
+            const auto range = followup_range_;
+            last_followup_ = this->target_queue().submit([&](sycl::handler &cgh) {
+                cgh.depends_on(submitted);
+                cgh.parallel_for<iterable_followup_kernel_name<followup_t_>>(
+                    range, [=](const sycl::nd_item<1> &item) { followup(item, iteration_local); });
+            });
+            has_followup_ = true;
+            return last_followup_;
+        }
+
+    private:
+        followup_t_ followup_;
+        sycl::nd_range<1> followup_range_;
+        sycl::event last_followup_;
+        bool has_followup_ = false;
     };
 }// namespace scram::mc::queue
