@@ -36,9 +36,11 @@
 #include <sycl/sycl.hpp>
 
 #include <cstdint>
+#include <exception>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
-#include <string>
 
 // ---------------------------------------------------------------------------
 //  Forward declarations to break circular header dependencies.
@@ -59,6 +61,36 @@ namespace scram::log::layers {
 }
 
 namespace scram::mc::queue {
+
+/// AdaptiveCpp's default async handler prints the error list and std::terminate()s.
+/// Metal SSCP JIT currently fails on `double` (#17/#30); surface that as a C++
+/// exception so Python `fuzzybits.run(..., backend="metal")` can catch it.
+inline sycl::queue make_throwing_sycl_queue() {
+    return sycl::queue{[](sycl::exception_list errors) {
+        if (errors.empty()) {
+            return;
+        }
+        std::string msg;
+        for (std::exception_ptr const &err : errors) {
+            try {
+                if (err) {
+                    std::rethrow_exception(err);
+                }
+            } catch (const std::exception &e) {
+                if (!msg.empty()) {
+                    msg += "; ";
+                }
+                msg += e.what();
+            } catch (...) {
+                if (!msg.empty()) {
+                    msg += "; ";
+                }
+                msg += "unknown SYCL asynchronous error";
+            }
+        }
+        throw std::runtime_error(msg.empty() ? "SYCL asynchronous error" : msg);
+    }};
+}
 
 struct range3_description {
     std::size_t x = 0;
@@ -192,7 +224,7 @@ class layer_manager {
     using index_t_ = std::int32_t;
 
     /// @brief SYCL queue for device operations and kernel execution
-    sycl::queue queue_;
+    sycl::queue queue_{make_throwing_sycl_queue()};
     
     /// @brief Sample shape configuration defining batch size and bitpack dimensions
     event::sample_shape<size_t_> sample_shape_;

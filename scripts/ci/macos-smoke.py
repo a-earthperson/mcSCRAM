@@ -182,7 +182,11 @@ sys.exit(2)
     env["PYTHONFAULTHANDLER"] = "1"
     proc = _run_child(script, [str(xml)], env, MC_TIMEOUT)
     sys.stdout.write(proc.stdout)
-    sys.stderr.write(proc.stderr)
+    sys.stdout.flush()
+    if proc.stderr:
+        sys.stderr.write("--- metal child stderr ---\n")
+        sys.stderr.write(proc.stderr)
+        sys.stderr.flush()
     if proc.returncode < 0:
         raise SystemExit(
             f"metal run crashed with signal {-proc.returncode} "

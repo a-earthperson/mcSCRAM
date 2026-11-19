@@ -10,7 +10,7 @@ distribution name). Wheels are self-contained:
   are not bundled; a CUDA ≥ 12.8 driver is required for GPU runs.
 - **macOS 26 Apple Silicon** (`macosx_*_arm64`): AdaptiveCpp `ACPP_REF_METAL`
   runtime with Metal + OpenMP backends and SSCP JIT (`libllvm-to-metal`,
-  `opt`/`llc`/`ld64.lld`, `libLLVM`, Homebrew `libomp`), `delocate`-repaired
+  `opt`/`llc`/`ld64.lld`, `libLLVM`, Homebrew `liblld`/`libomp`), `delocate`-repaired
   with `@loader_path` rpaths. There is no separate `libmc.dylib` (INTERFACE
   `mc` → `libscram`). Metal kernel JIT currently rejects `double` until
   [#17](https://github.com/fuzzybit-org/fuzzybits/issues/17)/[#30](https://github.com/fuzzybit-org/fuzzybits/issues/30);

@@ -199,11 +199,12 @@ AdaptiveCpp prefix as `macos-metal`. `cmake/bundle_acpp.py` copies
 `libacpp-rt.dylib` / `libacpp-common.dylib`, `hipSYCL/librt-backend-{metal,omp}.dylib`,
 `llvm-to-{backend,host,metal}` plus the SSCP redistributable
 (`hipSYCL/ext/llvm/bin/{opt,llc,ld.lld,ld64.lld}`, `libLLVM.dylib`, Homebrew
-`libomp.dylib`). `relocate_wheel_rpath.py` rewrites install names to
-`@loader_path`; `delocate-wheel --lib-sdir lib` copies leftover non-system
-deps next to `libacpp-rt` without flattening `hipSYCL/`. There is no
-`libmc.dylib`. Artifact name: `fuzzybits-cp312-macosx_arm64`. Do not publish
-from this job ([#36](https://github.com/fuzzybit-org/fuzzybits/issues/36)).
+`lld@20` `liblld*.dylib`, `libomp.dylib`). `relocate_wheel_rpath.py` rewrites
+install names to `@loader_path`; `delocate-wheel --lib-sdir lib
+--no-sanitize-rpaths` copies leftover non-system deps next to `libacpp-rt`
+without flattening `hipSYCL/`. There is no `libmc.dylib`. Artifact name:
+`fuzzybits-cp312-macosx_arm64`. Do not publish from this job
+([#36](https://github.com/fuzzybit-org/fuzzybits/issues/36)).
 
 Smoke (clean venv on the hosted runner): `import fuzzybits`;
 `list_devices()` shows the paravirtual Metal GPU and the OpenMP host;

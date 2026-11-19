@@ -551,23 +551,23 @@ stats::TallyNodeMap &layer_manager<bitpack_t_, prob_t_, size_t_>::collect_tallie
 
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
-
-    // Free allocated basic events
-    for (auto &block : device_basic_event_blocks_) {
-        event::destroy_basic_event_block(queue_, block);
-    }
-
-    // Free allocated gates
-    for (auto &block : device_gate_blocks_) {
-        event::destroy_gate_block(queue_, block);
-    }
-
-    for (auto &block : device_atleast_gate_blocks_) {
-        event::destroy_atleast_gate_block(queue_, block);
-    }
-
-    for (auto &block : device_tally_blocks_) {
-        event::destroy_tally_block(queue_, block);
+    try {
+        for (auto &block : device_basic_event_blocks_) {
+            event::destroy_basic_event_block(queue_, block);
+        }
+        for (auto &block : device_gate_blocks_) {
+            event::destroy_gate_block(queue_, block);
+        }
+        for (auto &block : device_atleast_gate_blocks_) {
+            event::destroy_atleast_gate_block(queue_, block);
+        }
+        for (auto &block : device_tally_blocks_) {
+            event::destroy_tally_block(queue_, block);
+        }
+        queue_.throw_asynchronous();
+    } catch (...) {
+        // Device free after a failed JIT (Metal double, #17/#30) can re-queue
+        // async errors. Drain them here so ~sycl::queue does not terminate.
     }
 }
 
