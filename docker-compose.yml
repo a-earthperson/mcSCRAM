@@ -1,22 +1,49 @@
+# fuzzybits server with its built-in web UI.
+#
+#   docker compose up -d                                              # CPU (OpenMP)
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d   # NVIDIA GPU
+#   docker compose --profile dev up -d --build server-dev             # build tools/server from this checkout
+#
+# Then open http://localhost:8000 (server-dev: http://localhost:8001).
+# The image tag is pinned in .env; override any value there or in the shell.
+
+x-server: &server
+  # The published images are linux/amd64 only; Apple Silicon runs them emulated.
+  platform: linux/amd64
+  environment:
+    FUZZYBITS_SERVER_UI: "1"
+    ACPP_VISIBILITY_MASK: omp
+  volumes:
+    # Public OpenPSA/Aralia models from this checkout; the catalog scans /data recursively.
+    - ./input:/data:ro
+    - fuzzybits-cache:/home/coder/.cache/fuzzybits
+  healthcheck:
+    test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz', timeout=3)"]
+    interval: 15s
+    timeout: 5s
+    start_period: 20s
+    retries: 3
+  restart: unless-stopped
+
 services:
-  ssh_debugger:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: ssh-devimage
+  server:
+    <<: *server
+    image: ${FUZZYBITS_SERVER_IMAGE:-ghcr.io/fuzzybit-org/fuzzybits-server}:${FUZZYBITS_SERVER_TAG:-nightly-generic}
     ports:
-      - "2222:22"
-    ## for intel devices, expose /dev/dri
-    ## for AMD/ROCm devices, expose /dev/kfd
-    devices:
-      - /dev/dri
-      - /dev/kfd
-    privileged: true
-    runtime: "nvidia"
-    shm_size: "1G"
-    restart: unless-stopped
-    environment:
-      ROC_ENABLE_PRE_VEGA: 1 # amd
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: all
-      AMD_VISIBLE_DEVICES: all
+      - "${FUZZYBITS_SERVER_BIND:-127.0.0.1}:${FUZZYBITS_SERVER_PORT:-8000}:8000"
+
+  server-dev:
+    <<: *server
+    profiles: ["dev"]
+    image: fuzzybits-server:dev
+    build:
+      context: tools/server
+    ports:
+      - "${FUZZYBITS_SERVER_BIND:-127.0.0.1}:${FUZZYBITS_SERVER_DEV_PORT:-8001}:8000"
+    volumes:
+      - ./input:/data:ro
+      - fuzzybits-cache-dev:/home/coder/.cache/fuzzybits
+
+volumes:
+  fuzzybits-cache:
+  fuzzybits-cache-dev:

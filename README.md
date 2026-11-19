@@ -12,6 +12,25 @@ The repository was renamed from mcSCRAM to fuzzybits on 2026-11-18; the binary i
 > **⚠️ ALPHA ** This project is under active development. The APIs are unstable, interfaces may change without notice
 > until the first release.
 
+## Quickstart: server and web UI
+
+```bash
+git clone https://github.com/fuzzybit-org/fuzzybits.git && cd fuzzybits
+docker compose up -d
+```
+
+Open http://localhost:8000, pick `chinese` and sample. The catalog lists the public models in `input/`. The server compiles the first fault tree's top event and samples it on the CPU (OpenMP); event-tree sequences are not compiled yet ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)).
+
+On a host with an NVIDIA GPU and the [NVIDIA Container Toolkit](https://github.com/NVIDIA/nvidia-container-toolkit):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+- The image tag is pinned in [`.env`](.env). The port is bound to 127.0.0.1; set `FUZZYBITS_SERVER_BIND=0.0.0.0` to expose the (unauthenticated) server.
+- `docker compose --profile dev up -d --build server-dev` builds `tools/server` from this checkout and serves it on port 8001.
+- The published image is linux/amd64 only. Apple Silicon runs it under emulation, which is untested.
+
 ## Objectives
 
 The primary goals of this project include:

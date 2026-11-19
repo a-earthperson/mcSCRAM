@@ -52,6 +52,8 @@ CMakeFiles
 cmake-build-*
 
 .env
+# Root .env holds the public docker compose image pins.
+!/.env
 
 # tools/server playground UI
 tools/server/webui/node_modules/
