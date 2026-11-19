@@ -1,18 +1,18 @@
 # FastAPI server tests (tools/server). Public repo: GitHub-hosted runners only.
 #
-# The hosted job is pure Python (BernoulliSampler / numpy / scipy / cache
-# helpers) and does not import mcscram_native. Native-dependent tests are
-# marked @pytest.mark.native and skipped when the wheel is absent. Building
-# the ~183 MB generic fuzzybits wheel here (AdaptiveCpp + LLVM via
-# docker/wheel.Dockerfile) is not justified on hosted runners; the toolchain
-# image is a private GHCR package that fork PRs cannot pull. Native CI wiring
-# comes with the runtime image in step E of #46.
+# pytest: pure Python (BernoulliSampler / numpy / scipy / cache helpers) and
+# does not import mcscram_native. Native-dependent tests are marked
+# @pytest.mark.native and skipped when the wheel is absent.
+#
+# native: same suite with -m native inside the published runtime image so
+# import mcscram_native works. Skipped for fork PRs (private GHCR). Pin
+# FUZZYBITS_RUNTIME_IMAGE; after #70 merge this can move to nightly-generic.
 name: Server
 
 on:
   pull_request:
   push:
-    branches: [develop]
+    branches: [develop, "ci/**"]
 
 concurrency:
   group: server-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -20,6 +20,11 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  # Newest published generic runtime with the Python pcfb API (#71).
+  # After #70 merge, switch to ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic.
+  FUZZYBITS_RUNTIME_IMAGE: ghcr.io/fuzzybit-org/fuzzybits-runtime:ci-a812f144f1d9-generic
 
 jobs:
   pytest:
@@ -48,3 +53,51 @@ jobs:
         run: |
           uv sync --frozen --extra dev
           uv run pytest -m "not native" --tb=short -q
+
+  native:
+    name: pytest-native
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    container:
+      # Hardcoded: `container.image` cannot read `env` context. Keep in sync
+      # with workflow `env.FUZZYBITS_RUNTIME_IMAGE` above.
+      image: ghcr.io/fuzzybit-org/fuzzybits-runtime:ci-a812f144f1d9-generic
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+      env:
+        ACPP_VISIBILITY_MASK: omp
+        ACPP_DEBUG_LEVEL: "0"
+        ACPP_APPDB_DIR: /tmp/acpp-appdb
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: tools/server/uv.lock
+
+      - name: Native tests
+        working-directory: tools/server
+        env:
+          ACPP_VISIBILITY_MASK: omp
+          ACPP_APPDB_DIR: /tmp/acpp-appdb
+        run: |
+          python3 -c "import fuzzybits, mcscram_native; print(fuzzybits.__file__)"
+          uv venv --system-site-packages
+          uv sync --frozen --extra dev
+          venv_site="$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+          sys_site="$(python3 -c 'import fuzzybits, pathlib; p=pathlib.Path(fuzzybits.__file__).resolve(); print(p.parent if p.name != "__init__.py" else p.parent.parent)')"
+          printf '%s\n' "${sys_site}" > "${venv_site}/zz-system-fuzzybits.pth"
+          .venv/bin/python -c "import mcscram_native, fuzzybits"
+          mkdir -p "${ACPP_APPDB_DIR}"
+          timeout 120 uv run pytest -m native --tb=short -q
