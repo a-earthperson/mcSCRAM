@@ -19,7 +19,7 @@ ctx=(
   --skip-validate
   --models-dir "${FUZZYBITS_BENCH_INPUT}"
   --work-dir "${FUZZYBITS_BENCH_WORK}"
-  --guard-retries "${GUARD_RETRIES:-12}"
+  --guard-retries "${GUARD_RETRIES:-20}"
 )
 if [[ "${MODE}" == "accuracy" ]]; then
   python3 -m benchmarks run \

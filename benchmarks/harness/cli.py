@@ -406,11 +406,15 @@ def cmd_run(args: argparse.Namespace) -> int:
                     retries=args.guard_retries,
                 )
                 lock_held = True
-            load_before = wait_for_idle(
-                context=context,
-                gpus=gpus,
-                retries=args.guard_retries,
-            )
+            if args.mode == "accuracy":
+                # Correctness, not a timing gate. CI runners are often busy.
+                load_before = snapshot_load(context)
+            else:
+                load_before = wait_for_idle(
+                    context=context,
+                    gpus=gpus,
+                    retries=args.guard_retries,
+                )
         except GuardError as exc:
             payload = {
                 "schema_version": 1,

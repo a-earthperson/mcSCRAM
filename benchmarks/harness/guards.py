@@ -175,7 +175,11 @@ def wait_for_idle(
             "load_fraction": load[0] / float(nproc),
             "attempt": attempt,
         }
-        busy_cpu = snapshot["load_fraction"] > load_fraction
+        # GPU jobs lock a single device. Host loadavg includes the sibling GPU
+        # (and Tdarr/Plex on xerxes); do not treat that as this device being busy.
+        busy_cpu = False
+        if not gpus:
+            busy_cpu = snapshot["load_fraction"] > load_fraction
         busy_gpu = False
         if gpus:
             apps = gpu_compute_apps(context, gpus=gpus)
