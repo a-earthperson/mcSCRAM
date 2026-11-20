@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "dataset": "v1",
-  "generated_utc": "2026-11-19T23:59:59Z",
+  "generated_utc": "2026-11-20T00:00:16Z",
   "source_url": "https://fuzzybit-org.github.io/fuzzybits/bench/v1/index.json",
-  "n_points": 6,
+  "n_points": 7,
   "points": [
     {
       "version": "v0.17.0",
@@ -1840,6 +1840,89 @@
             "gpu_kernel_ms": null,
             "cpu_sample_s": 18.221795356017537,
             "wall_s": 18.221795356017537,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        }
+      ]
+    },
+    {
+      "version": "develop",
+      "channel": "develop",
+      "target": "cpu",
+      "dataset": "v1",
+      "created_utc": "2026-11-20T00:00:15Z",
+      "path": "results/develop/cpu/2026-11-20T00-00-15Z.json",
+      "runner": "fzb-bench-gtw-1",
+      "runner_name": "fzb-bench-gtw-1",
+      "device": "cpu",
+      "driver": null,
+      "image": "ghcr.io/fuzzybit-org/fuzzybits-runtime@sha256:9adfb5c42f09189d2f1109b1c9bef60b9f75b69beb877afbd0499d2f966c08a6",
+      "image_tag": "ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic",
+      "image_digest": "sha256:9adfb5c42f09189d2f1109b1c9bef60b9f75b69beb877afbd0499d2f966c08a6",
+      "image_pin_source": "registry",
+      "recipe": "docker/runtime.Dockerfile --target runtime",
+      "commit": "54254780c360054baf66f28ba8cc7aad0373664a",
+      "backend": "omp",
+      "verdict": "pass",
+      "flags": {
+        "recipe_changed": false,
+        "driver_changed": false,
+        "runner_changed": false,
+        "image_changed": true
+      },
+      "models": [
+        {
+          "id": "chinese",
+          "perf": {
+            "gpu_total_ms": null,
+            "gpu_kernel_ms": null,
+            "cpu_sample_s": 3.243381979991682,
+            "wall_s": 3.243381979991682,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        },
+        {
+          "id": "das9201",
+          "perf": {
+            "gpu_total_ms": null,
+            "gpu_kernel_ms": null,
+            "cpu_sample_s": 4.493865128024481,
+            "wall_s": 4.493865128024481,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        },
+        {
+          "id": "das9701",
+          "perf": {
+            "gpu_total_ms": null,
+            "gpu_kernel_ms": null,
+            "cpu_sample_s": 5.106615517986938,
+            "wall_s": 5.106615517986938,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        },
+        {
+          "id": "edf9203",
+          "perf": {
+            "gpu_total_ms": null,
+            "gpu_kernel_ms": null,
+            "cpu_sample_s": 7.719625229947269,
+            "wall_s": 7.719625229947269,
+            "verdict": "pass",
+            "status": "ok"
+          }
+        },
+        {
+          "id": "nus9601",
+          "perf": {
+            "gpu_total_ms": null,
+            "gpu_kernel_ms": null,
+            "cpu_sample_s": 11.690285528078675,
+            "wall_s": 11.690285528078675,
             "verdict": "pass",
             "status": "ok"
           }
