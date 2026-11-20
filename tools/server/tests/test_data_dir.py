@@ -41,7 +41,7 @@ def test_data_dir_discovers_csv_and_xml(tmp_path: Path, monkeypatch: pytest.Monk
     assert tmp_path in roots
     catalog = list_aralia_xml_inputs()
     assert "tiny" in catalog["modelIds"]
-    assert "smalltree" in catalog["modelIds"]
+    assert "SmallTree" in catalog["modelIds"]
 
 
 def test_missing_data_dir_path_is_none(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

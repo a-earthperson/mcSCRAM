@@ -63,6 +63,21 @@ def test_catalog_lists_xml_pcfb_and_nombrilo(data_dir: Path) -> None:
     assert catalog["modelIds"] == sorted(catalog["modelIds"])
 
 
+def test_catalog_keeps_path_case(data_dir: Path) -> None:
+    sub = data_dir / "Aralia" / "OpenPSA"
+    sub.mkdir(parents=True)
+    (sub / "CEA9601.xml").write_text(_XML, encoding="utf-8")
+    _nombrilo(sub / "Baobab1.F3.safetensors")
+
+    ids = [i for i in list_aralia_xml_inputs()["modelIds"] if i.casefold().startswith("aralia/")]
+    assert ids == ["Aralia/OpenPSA/Baobab1.F3.safetensors", "Aralia/OpenPSA/CEA9601"]
+    assert resolve_model_input("Aralia/OpenPSA/CEA9601.xml").model_id == "Aralia/OpenPSA/CEA9601"
+    # lowercase ids still resolve, to the id as listed
+    lowered = resolve_model_input("aralia/openpsa/baobab1.f3.safetensors")
+    assert lowered.model_id == "Aralia/OpenPSA/Baobab1.F3.safetensors"
+    assert lowered.format == MODEL_FORMAT_NOMBRILO
+
+
 def test_resolve_model_input_keeps_formats_apart(data_dir: Path) -> None:
     (data_dir / "chinese.xml").write_text(_XML, encoding="utf-8")
     (data_dir / "chinese.pcfb").write_bytes(b"PCF1-placeholder")

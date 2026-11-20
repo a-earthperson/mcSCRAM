@@ -297,9 +297,10 @@ def _model_format_for_path(path: Path) -> str | None:
 
 
 def _normalise_model_id_token(model_id: str) -> str:
-    token = model_id.strip().lower()
-    if not token.endswith(tuple(_SUFFIX_FORMATS)):
-        token = token.removesuffix(".xml")
+    token = model_id.strip()
+    suffix = token.lower()
+    if not suffix.endswith(tuple(_SUFFIX_FORMATS)) and suffix.endswith(".xml"):
+        token = token[: -len(".xml")]
     if not token:
         raise ValueError("model_id is required")
     if any(part in {"", ".", ".."} for part in token.split("/")):
@@ -310,8 +311,21 @@ def _normalise_model_id_token(model_id: str) -> str:
 def _model_id_for_path(root: Path, path: Path) -> str:
     rel = path.relative_to(root)
     if path.suffix.lower() in _SUFFIX_FORMATS:
-        return rel.as_posix().lower()
-    return rel.with_suffix("").as_posix().lower()
+        return rel.as_posix()
+    return rel.with_suffix("").as_posix()
+
+
+def _has_exact_case(root: Path, path: Path) -> bool:
+    # case-insensitive file systems (macOS, Windows) find a file under any case
+    current = root
+    for part in path.relative_to(root).parts:
+        try:
+            if part not in os.listdir(current):
+                return False
+        except OSError:
+            return False
+        current = current / part
+    return True
 
 
 def _iter_model_files(root: Path):
@@ -327,20 +341,28 @@ def resolve_model_input(model_id: str) -> ModelInput:
     """Resolve a catalog ``model_id`` to an OpenPSA XML, ``.pcfb`` or nombrilo file."""
     token = _normalise_model_id_token(model_id)
     rel_parts = token.split("/")
+    folded = token.casefold()
+    # a case-insensitive match is the last resort, so lowercase ids keep resolving
+    fallback: ModelInput | None = None
     for root in aralia_model_search_roots():
         if not root.is_dir():
             continue
-        if token.endswith(tuple(_SUFFIX_FORMATS)):
+        if folded.endswith(tuple(_SUFFIX_FORMATS)):
             candidate = root.joinpath(*rel_parts)
         else:
             candidate = root.joinpath(*rel_parts).with_suffix(".xml")
-        if candidate.is_file():
+        if candidate.is_file() and _has_exact_case(root, candidate):
             fmt = _model_format_for_path(candidate)
             if fmt is not None:
                 return ModelInput(token, candidate, fmt)
         for path, fmt in _iter_model_files(root):
-            if _model_id_for_path(root, path) == token:
+            found = _model_id_for_path(root, path)
+            if found == token:
                 return ModelInput(token, path, fmt)
+            if fallback is None and found.casefold() == folded:
+                fallback = ModelInput(found, path, fmt)
+    if fallback is not None:
+        return fallback
     raise FileNotFoundError(f"Unknown model_id: {model_id}")
 
 
@@ -357,8 +379,8 @@ def list_aralia_xml_inputs() -> dict[str, Any]:
     Lists OpenPSA ``*.xml``, compiled ``*.pcfb`` and nombrilo ``*.safetensors``
     circuits. An XML entry's ``modelId`` is the path relative to its search
     root without the ``.xml`` suffix; ``.pcfb`` and ``.safetensors`` ids keep
-    their suffix. Ids are lowercased and POSIX-normalised, and the first root
-    in search order wins when the same ``modelId`` appears in multiple roots.
+    their suffix. Ids keep the file system's case and are POSIX-normalised,
+    and the first root in search order wins when the same ``modelId`` appears in multiple roots.
     """
     models: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -381,7 +403,8 @@ def list_aralia_xml_inputs() -> dict[str, Any]:
                 "root": str(root.resolve()),
                 "format": fmt,
             }
-            oracle_key = model_id if fmt == MODEL_FORMAT_XML else rel.with_suffix("").as_posix().lower()
+            # model_oracle_p.json is keyed by lowercase id
+            oracle_key = rel.with_suffix("").as_posix().lower()
             oracle_p = _oracle_p_for_model_id(oracle_key, oracle_p_by_model)
             if oracle_p is not None:
                 entry["oracle_p"] = oracle_p
