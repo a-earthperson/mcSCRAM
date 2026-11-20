@@ -8,7 +8,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "fuzzybits"
-version = "0.18.3"
+version = "0.18.4"
 description = "Monte Carlo probability engine for OpenPSA MEF fault trees (AdaptiveCpp/SYCL)"
 readme = "docs/python.md"
 license = { file = "LICENSE" }
