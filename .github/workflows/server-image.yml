@@ -348,6 +348,10 @@ jobs:
         -v /var/run/docker.sock:/var/run/docker.sock
         -v /deployments/on-gateway/docker-swarm/@fuzzybit-org/apps/fuzzybits-server:/deployments/on-gateway/docker-swarm/@fuzzybit-org/apps/fuzzybits-server:ro
     timeout-minutes: 30
+    # steps in a job container default to sh
+    defaults:
+      run:
+        shell: bash
     concurrency:
       group: deploy-fuzzybits-server-${{ github.ref_type == 'tag' && 'staging' || 'develop' }}
       cancel-in-progress: false
