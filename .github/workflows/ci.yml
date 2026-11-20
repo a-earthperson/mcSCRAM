@@ -96,6 +96,9 @@ jobs:
       - name: uv
         uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
 
+      - name: SCRAM provenance must not grow (#144)
+        run: uv run --no-project --python 3.12 python scripts/ci/scram_provenance.py
+
       - name: REUSE/SPDX report (informational)
         continue-on-error: true
         run: |
