@@ -5,6 +5,7 @@ import {
   fetchSampleShapeForModel,
   type CompileDagOptions,
   type SampleShape,
+  type XmlInputDescriptor,
 } from "../../api/faultTreeApi";
 import { classNames } from "../../lib/format";
 import { SectionTitle } from "../../components";
@@ -20,7 +21,7 @@ import { useSamplingRunMetrics, type SamplingRunMetricsStore } from "./samplingR
 export type ControlPanelProps = {
   selectedId: string;
   onSelectedIdChange: (id: string) => void;
-  modelIds: string[];
+  models: readonly XmlInputDescriptor[];
   oracleP: number | null;
   blocked: boolean;
   compileOptions: CompileDagOptions;
@@ -61,7 +62,7 @@ const CONTROL_GROUP_SPANS = {
 export function ControlPanel({
   selectedId,
   onSelectedIdChange,
-  modelIds,
+  models,
   oracleP,
   blocked,
   compileOptions,
@@ -179,7 +180,7 @@ export function ControlPanel({
                 <InputControlFields
                   selectedId={selectedId}
                   onSelectedIdChange={onSelectedIdChange}
-                  modelIds={modelIds}
+                  models={models}
                   blocked={blocked}
                   disabled={inputsLocked}
                   inputSettings={inputSettings}

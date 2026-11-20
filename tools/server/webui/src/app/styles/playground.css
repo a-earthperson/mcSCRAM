@@ -36,6 +36,35 @@
 
 .playground-controls .pg-title-input .sticky-panel-group__body {
   flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 12px;
+}
+
+.playground-controls .pg-input-select {
+  gap: 4px;
+}
+
+.playground-controls .pg-input-select--model,
+.playground-controls .pg-title-input .sticky-panel-group__number-field--oracle-p {
+  grid-column: 1 / -1;
+}
+
+.playground-controls .pg-input-format-ext {
+  margin-left: auto;
+  padding: 1px 0 0;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.playground-controls .pg-input-select select {
+  min-width: 0;
 }
 
 .playground-controls .pg-title .section-title .eyebrow {
