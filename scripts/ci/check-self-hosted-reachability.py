@@ -13,8 +13,8 @@ allowed self-hosted runs-on values are in APPROVED_PR_RUNS_ON:
 
 Fork PR runs also need maintainer approval (repository setting). Other GPU
 workflows stay push/workflow_dispatch/schedule only (gpu.yml, images.yml).
-The ``swarm-managers`` group (deploy-live in server-image.yml) has no PR
-routing at all: it runs on release tags only.
+The ``swarm-managers`` group (the deploy job in server-image.yml) has no PR
+routing at all: it runs on release tags and develop pushes only.
 """
 from __future__ import annotations
 
