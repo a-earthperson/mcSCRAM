@@ -209,7 +209,9 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
         return std::move(to_tally);
     }
     event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
-    scram::mc::compat::host_publish_if_metal(queue_, computed_tally);
+    if (scram::mc::compat::is_metal_queue(queue_)) {
+        computed_tally->num_one_bits = metal_host_hits_[evt_idx];
+    }
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.total_bits = computed_tally->total_bits;
     // ---------------------------------------------------------------------
@@ -490,22 +492,69 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
         queueable->submit();
         scram::mc::compat::wait_if_metal(queue_);
     }
-    for (const auto &layer : pdag_nodes_by_layer_) {
-        for (const auto &node : layer) {
-            const auto gate_node = std::dynamic_pointer_cast<core::Gate>(node);
-            if (!gate_node) {
-                continue;
+    if (scram::mc::compat::is_metal_queue(queue_)) {
+        auto eval_in = [&](auto &blocks, const auto *g, const std::uint8_t op, const std::uint8_t at_least) -> bool {
+            if (g == nullptr) {
+                return false;
             }
-            auto git = allocated_gates_by_index_.find(gate_node->index());
-            if (git == allocated_gates_by_index_.end()) {
-                continue;
+            auto *gp = reinterpret_cast<const char *>(g);
+            for (auto &blk : blocks) {
+                if (!blk.data || blk.buffers == nullptr) {
+                    continue;
+                }
+                auto *base = reinterpret_cast<const char *>(blk.data);
+                if (gp < base) {
+                    continue;
+                }
+                const auto stride = sizeof(*blk.data);
+                const auto delta = static_cast<std::size_t>(gp - base);
+                if (delta % stride != 0) {
+                    continue;
+                }
+                const auto i = delta / stride;
+                if (i >= blk.count) {
+                    continue;
+                }
+                auto **inputs = blk.host_input_ptrs.data() + blk.host_input_offset[i];
+                auto *output = blk.buffers + i * blk.bitpacks_per_gate;
+                scram::mc::compat::host_eval_gate_if_metal(
+                    queue_, inputs, blk.host_input_count[i],
+                    static_cast<std::size_t>(blk.data[i].negated_inputs_offset), output, op, at_least,
+                    sample_shape_);
+                return true;
             }
-            scram::mc::compat::host_eval_gate_if_metal(queue_, git->second, sample_shape_,
-                                                       static_cast<std::uint8_t>(gate_node->type()));
+            return false;
+        };
+        for (const auto &layer : pdag_nodes_by_layer_) {
+            for (const auto &node : layer) {
+                const auto gate_node = std::dynamic_pointer_cast<core::Gate>(node);
+                if (!gate_node) {
+                    continue;
+                }
+                auto git = allocated_gates_by_index_.find(gate_node->index());
+                if (git == allocated_gates_by_index_.end()) {
+                    continue;
+                }
+                const auto op = static_cast<std::uint8_t>(gate_node->type());
+                const auto at_least = static_cast<std::uint8_t>(gate_node->min_number());
+                if (!eval_in(device_gate_blocks_, git->second, op, at_least)) {
+                    eval_in(device_atleast_gate_blocks_, git->second, op, at_least);
+                }
+            }
         }
-    }
-    for (auto &pair : allocated_tally_events_by_index_) {
-        scram::mc::compat::host_accumulate_if_metal(queue_, pair.second, sample_shape_);
+        for (auto &blk : device_tally_blocks_) {
+            for (std::size_t i = 0; i < blk.count; ++i) {
+                bitpack_t_ *buf = i < blk.host_buffers.size() ? blk.host_buffers[i] : nullptr;
+                const auto bits = scram::mc::compat::host_popcount_if_metal(queue_, buf, sample_shape_);
+                // recover PDAG index from allocated_tally_events_by_index_
+                for (auto &pair : allocated_tally_events_by_index_) {
+                    if (pair.second == &blk.data[i]) {
+                        metal_host_hits_[pair.first] += bits;
+                        break;
+                    }
+                }
+            }
+        }
     }
     return queue_;
 }
@@ -578,7 +627,9 @@ stats::TallyNodeMap &layer_manager<bitpack_t_, prob_t_, size_t_>::collect_tallie
     for (auto &pair : allocated_tally_events_by_index_) {
         const auto &idx = pair.first;
         auto *tally_on_device = allocated_tally_events_by_index_[idx];
-        scram::mc::compat::host_publish_if_metal(queue_, tally_on_device);
+        if (scram::mc::compat::is_metal_queue(queue_)) {
+            tally_on_device->num_one_bits = metal_host_hits_[idx];
+        }
         mc::stats::tally &tally = stats[idx].tally_stats;
         tally.update(tally_on_device);
     }

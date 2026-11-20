@@ -122,33 +122,6 @@ template <typename Group>
     return static_cast<std::size_t>(group32);
 }
 
-inline std::unordered_map<const void *, std::size_t> &metal_host_hits() {
-    static thread_local std::unordered_map<const void *, std::size_t> hits;
-    return hits;
-}
-
-inline std::unordered_map<const void *, const void *> &metal_tally_buffers() {
-    static thread_local std::unordered_map<const void *, const void *> buffers;
-    return buffers;
-}
-
-/// Host-tracked gate I/O pointers. `gate.inputs` is a USM table of device
-/// pointers (`bitpack_t **`); following it on Metal from a 3-D kernel is the
-/// remaining hits=0 cause after single nested pointers were shown to work
-/// (`mc.metal_canary.device_tally_hits`).
-struct metal_gate_io {
-    std::vector<const void *> inputs;
-    const void *output = nullptr;
-    std::size_t n_in = 0;
-    std::size_t negated_inputs_offset = 0;
-    std::uint8_t at_least = 0;
-};
-
-inline std::unordered_map<const void *, metal_gate_io> &metal_gates() {
-    static thread_local std::unordered_map<const void *, metal_gate_io> gates;
-    return gates;
-}
-
 /// Must match `scram::core::Connective`.
 inline constexpr std::uint8_t kHostAnd = 0;
 inline constexpr std::uint8_t kHostOr = 1;
@@ -197,91 +170,54 @@ template <typename Group>
     }
 }
 
-/// Record the host-tracked producer pointer at tally allocation, before any
-/// kernel can rewrite the USM `tally.buffer` field.
-template <typename Tally, typename Bitpack>
-inline void host_note_tally_buffer(const sycl::queue &queue, Tally *tally, Bitpack *buffer) {
-    if (!is_metal_queue(queue) || tally == nullptr) {
-        return;
-    }
-    detail::metal_tally_buffers()[tally] = buffer;
-}
-
-template <typename Gate, typename Bitpack>
-inline void host_note_gate(const sycl::queue &queue, Gate *gate, Bitpack **inputs, const std::size_t n_in,
-                           const std::size_t negated_inputs_offset, Bitpack *output, const std::uint8_t at_least = 0) {
-    if (!is_metal_queue(queue) || gate == nullptr) {
-        return;
-    }
-    detail::metal_gate_io io;
-    io.inputs.reserve(n_in);
-    for (std::size_t i = 0; i < n_in; ++i) {
-        io.inputs.push_back(inputs[i]);
-    }
-    io.output = output;
-    io.n_in = n_in;
-    io.negated_inputs_offset = negated_inputs_offset;
-    io.at_least = at_least;
-    detail::metal_gates()[gate] = std::move(io);
-}
-
-template <typename Bitpack>
-inline Bitpack host_atleast_word(const std::vector<std::vector<Bitpack>> &words, const std::size_t j,
-                                 const std::size_t n_in, const std::size_t negated_inputs_offset,
-                                 const std::uint8_t at_least) {
-    Bitpack out = 0;
-    constexpr int nbits = static_cast<int>(sizeof(Bitpack) * 8);
-    for (int b = 0; b < nbits; ++b) {
-        int count = 0;
-        for (std::size_t i = 0; i < n_in; ++i) {
-            Bitpack w = words[i][j];
-            if (i >= negated_inputs_offset) {
-                w = static_cast<Bitpack>(~w);
-            }
-            count += static_cast<int>((w >> b) & Bitpack{1});
-        }
-        if (count >= static_cast<int>(at_least)) {
-            out = static_cast<Bitpack>(out | (Bitpack{1} << b));
-        }
-    }
-    return out;
-}
-
 /// Replay one gate on the host from memcpy'd producer buffers. Metal device
-/// kernels cannot follow `bitpack_t **` input tables (double indirection in
-/// USM). No-op on other backends.
-template <typename Gate, typename Shape>
-inline void host_eval_gate_if_metal(sycl::queue &queue, Gate *gate, const Shape &shape, const std::uint8_t op) {
-    if (!is_metal_queue(queue) || gate == nullptr) {
+/// kernels cannot follow `bitpack_t **` input tables. Pointers must be the
+/// host-tracked copies on `gate_block` (not USM fields after wait). No-op
+/// on other backends.
+template <typename Bitpack, typename Shape>
+inline void host_eval_gate_if_metal(sycl::queue &queue, Bitpack **inputs, const std::size_t n_in,
+                                    const std::size_t negated_inputs_offset, Bitpack *output,
+                                    const std::uint8_t op, const std::uint8_t at_least,
+                                    const Shape &shape) {
+    if (!is_metal_queue(queue) || inputs == nullptr || output == nullptr || n_in == 0) {
         return;
     }
-    const auto it = detail::metal_gates().find(gate);
-    if (it == detail::metal_gates().end() || it->second.output == nullptr) {
-        return;
-    }
-    const auto &io = it->second;
-    using bitpack_t = std::remove_pointer_t<decltype(Gate::buffer)>;
     const std::size_t npacks =
         static_cast<std::size_t>(shape.batch_size) * static_cast<std::size_t>(shape.bitpacks_per_batch);
-    if (npacks == 0 || io.n_in == 0) {
+    if (npacks == 0) {
         return;
     }
-    std::vector<std::vector<bitpack_t>> in_words(io.n_in, std::vector<bitpack_t>(npacks));
-    for (std::size_t i = 0; i < io.n_in; ++i) {
-        if (io.inputs[i] == nullptr) {
+    std::vector<std::vector<Bitpack>> in_words(n_in, std::vector<Bitpack>(npacks));
+    for (std::size_t i = 0; i < n_in; ++i) {
+        if (inputs[i] == nullptr) {
             return;
         }
-        queue.memcpy(in_words[i].data(), io.inputs[i], npacks * sizeof(bitpack_t)).wait();
+        queue.memcpy(in_words[i].data(), inputs[i], npacks * sizeof(Bitpack)).wait();
     }
-    std::vector<bitpack_t> out(npacks);
+    std::vector<Bitpack> out(npacks);
     const bool and_like = (op == detail::kHostAnd || op == detail::kHostNand);
     for (std::size_t j = 0; j < npacks; ++j) {
         if (op == detail::kHostAtleast) {
-            out[j] = host_atleast_word(in_words, j, io.n_in, io.negated_inputs_offset, io.at_least);
+            Bitpack word = 0;
+            constexpr int nbits = static_cast<int>(sizeof(Bitpack) * 8);
+            for (int b = 0; b < nbits; ++b) {
+                int count = 0;
+                for (std::size_t i = 0; i < n_in; ++i) {
+                    Bitpack w = in_words[i][j];
+                    if (i >= negated_inputs_offset) {
+                        w = static_cast<Bitpack>(~w);
+                    }
+                    count += static_cast<int>((w >> b) & Bitpack{1});
+                }
+                if (count >= static_cast<int>(at_least)) {
+                    word = static_cast<Bitpack>(word | (Bitpack{1} << b));
+                }
+            }
+            out[j] = word;
             continue;
         }
-        bitpack_t result = and_like ? static_cast<bitpack_t>(~bitpack_t{0}) : bitpack_t{0};
-        auto combine = [&](bitpack_t val) {
+        Bitpack result = and_like ? static_cast<Bitpack>(~Bitpack{0}) : Bitpack{0};
+        auto combine = [&](Bitpack val) {
             if (op == detail::kHostOr || op == detail::kHostNor) {
                 result |= val;
             } else if (op == detail::kHostAnd || op == detail::kHostNand) {
@@ -292,75 +228,38 @@ inline void host_eval_gate_if_metal(sycl::queue &queue, Gate *gate, const Shape 
                 result = val;
             }
         };
-        for (std::size_t i = 0; i < io.negated_inputs_offset; ++i) {
+        for (std::size_t i = 0; i < negated_inputs_offset; ++i) {
             combine(in_words[i][j]);
         }
-        for (std::size_t i = io.negated_inputs_offset; i < io.n_in; ++i) {
-            combine(static_cast<bitpack_t>(~in_words[i][j]));
+        for (std::size_t i = negated_inputs_offset; i < n_in; ++i) {
+            combine(static_cast<Bitpack>(~in_words[i][j]));
         }
         if (op == detail::kHostNand || op == detail::kHostNor || op == detail::kHostNot) {
-            result = static_cast<bitpack_t>(~result);
+            result = static_cast<Bitpack>(~result);
         }
         out[j] = result;
     }
-    queue.memcpy(const_cast<void *>(io.output), out.data(), npacks * sizeof(bitpack_t)).wait();
+    queue.memcpy(output, out.data(), npacks * sizeof(Bitpack)).wait();
 }
 
-template <typename Gate>
-inline void host_clear_gate_if_metal(Gate *gate) {
-    if (gate != nullptr) {
-        detail::metal_gates().erase(gate);
-    }
-}
-
-/// After a Metal pass, memcpy the producer bitpack allocation and add the
-/// popcount into a host-only map. Direct host loads of Metal USM see zeros
-/// (`bitpack_identity` uses `queue.memcpy`). Does not write the USM tally:
-/// a later `wait()` copies the device image (hits=0) over that store.
-template <typename Tally, typename Shape>
-inline void host_accumulate_if_metal(sycl::queue &queue, Tally *tally, const Shape &shape) {
-    if (!is_metal_queue(queue) || tally == nullptr) {
-        return;
-    }
-    const auto buf_it = detail::metal_tally_buffers().find(tally);
-    if (buf_it == detail::metal_tally_buffers().end() || buf_it->second == nullptr) {
-        return;
+/// memcpy producer bitpacks and return the popcount. 0 if not Metal.
+template <typename Bitpack, typename Shape>
+inline std::size_t host_popcount_if_metal(sycl::queue &queue, Bitpack *buffer, const Shape &shape) {
+    if (!is_metal_queue(queue) || buffer == nullptr) {
+        return 0;
     }
     const std::size_t npacks =
         static_cast<std::size_t>(shape.batch_size) * static_cast<std::size_t>(shape.bitpacks_per_batch);
     if (npacks == 0) {
-        return;
+        return 0;
     }
-    using bitpack_t = std::remove_pointer_t<decltype(Tally::buffer)>;
-    const auto *src = static_cast<const bitpack_t *>(buf_it->second);
-    std::vector<bitpack_t> host(npacks);
-    queue.memcpy(host.data(), src, npacks * sizeof(bitpack_t)).wait();
+    std::vector<Bitpack> host(npacks);
+    queue.memcpy(host.data(), buffer, npacks * sizeof(Bitpack)).wait();
     std::size_t bits = 0;
     for (std::size_t j = 0; j < npacks; ++j) {
         bits += static_cast<std::size_t>(sycl::popcount(host[j]));
     }
-    detail::metal_host_hits()[tally] += bits;
-}
-
-/// Copy host-only Metal hits into the USM tally after the last wait, so
-/// `collect_tallies` / `fetch_tally_for_event_with_index` see them.
-template <typename Tally>
-inline void host_publish_if_metal(sycl::queue &queue, Tally *tally) {
-    if (!is_metal_queue(queue) || tally == nullptr) {
-        return;
-    }
-    const auto it = detail::metal_host_hits().find(tally);
-    if (it != detail::metal_host_hits().end()) {
-        tally->num_one_bits = it->second;
-    }
-}
-
-template <typename Tally>
-inline void host_clear_if_metal(Tally *tally) {
-    if (tally != nullptr) {
-        detail::metal_host_hits().erase(tally);
-        detail::metal_tally_buffers().erase(tally);
-    }
+    return bits;
 }
 
 [[gnu::always_inline]] [[gnu::flatten]] inline void add_hits(std::size_t &num_one_bits, const std::size_t group_sum) {

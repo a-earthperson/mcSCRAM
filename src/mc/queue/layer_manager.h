@@ -295,6 +295,10 @@ class layer_manager {
     /// @brief Map from node index to allocated blocks
     std::vector<event::tally_block<bitpack_t_>> device_tally_blocks_;
 
+    /// Metal-only cumulative hits, keyed by PDAG index. Not stored in USM
+    /// because wait() copies the device tally image (hits=0) over host writes.
+    std::unordered_map<index_t_, std::size_t> metal_host_hits_;
+
     /**
      * @brief Recursively gathers all nodes from a gate hierarchy
      * 
