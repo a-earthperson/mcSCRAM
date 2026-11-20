@@ -26,6 +26,8 @@ export type XmlInputDescriptor = {
   modelId: string;
   relativePath: string;
   root: string;
+  /** `openpsa-xml`, `pcfb`, or `nombrilo`; `.pcfb` and `.safetensors` ids keep their suffix. */
+  format?: "openpsa-xml" | "pcfb" | "nombrilo";
   oracle_p?: number;
 };
 
@@ -211,7 +213,7 @@ async function fetchJsonFromServer<T>(path: string, searchParams?: Record<string
   return (await response.json()) as T;
 }
 
-/** Recursive ``*.xml`` catalog from the server's Aralia search roots. */
+/** Recursive ``*.xml`` / ``*.pcfb`` / nombrilo ``*.safetensors`` catalog from the server's search roots. */
 export function fetchXmlInputCatalog(): Promise<XmlInputCatalog> {
   return fetchJsonFromServer<XmlInputCatalog>("/api/v1/model/xml-inputs");
 }
