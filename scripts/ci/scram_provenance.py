@@ -26,6 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = Path(__file__).with_name("scram_provenance.json")
 GPL_TAG = "SPDX-License-Identifier: GPL-3.0-or-later"
+GPL_TAG_LINE = re.compile(r"^\s*(?://|#|/?\*)\s*SPDX-License-Identifier:\s*GPL-3\.0-or-later\s*$", re.MULTILINE)
 UPSTREAM_COPYRIGHT = re.compile(r"Copyright \(C\) [0-9, -]+ Olzhas Rakhimov")
 INCLUDE = re.compile(r'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE)
 CXX_SUFFIXES = (".h", ".hpp", ".cc", ".cpp", ".tpp", ".inl", ".cc.in", ".h.in")
@@ -57,7 +58,7 @@ def measure(upstream_globs: list[str]) -> dict:
         except OSError:
             continue
         header = text[:2048]
-        if GPL_TAG in header:
+        if GPL_TAG_LINE.search(header):
             gpl.add(path)
             lines += text.count("\n")
             if UPSTREAM_COPYRIGHT.search(header) and "Affero" in header:
