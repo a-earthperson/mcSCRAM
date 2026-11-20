@@ -65,6 +65,12 @@ jobs:
       DOCKER_GPUS: device=0
       LOCK_PATH: /tmp/gpu-lock-xerxes-0
     steps: &measure-steps
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |

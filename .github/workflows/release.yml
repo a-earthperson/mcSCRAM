@@ -35,6 +35,12 @@ jobs:
       override: ${{ steps.v.outputs.override }}
       server: ${{ steps.v.outputs.server }}
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -90,6 +96,12 @@ jobs:
       BUILD_TESTING: "OFF"
       PYTHON_VERSIONS: "3.12 3.13 3.14 3.15"
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -236,6 +248,12 @@ jobs:
     runs-on: { group: fuzzybits-ci, labels: [self-hosted, Linux, X64] }
     timeout-minutes: 20
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -299,6 +317,12 @@ jobs:
     runs-on: { group: fuzzybits-ci, labels: [self-hosted, Linux, X64] }
     timeout-minutes: 20
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |

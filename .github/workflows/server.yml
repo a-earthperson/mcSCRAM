@@ -37,6 +37,12 @@ jobs:
     runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -68,6 +74,12 @@ jobs:
     runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -102,6 +114,12 @@ jobs:
     runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
     timeout-minutes: 20
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -160,6 +178,12 @@ jobs:
     runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"fuzzybits-ci","labels":["self-hosted","Linux","X64"]}') || 'ubuntu-24.04' }}
     timeout-minutes: 25
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |

@@ -114,6 +114,12 @@ jobs:
       head_digest: ${{ steps.pin.outputs.head_digest }}
       head_sha: ${{ steps.pin.outputs.head_sha }}
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -301,6 +307,12 @@ jobs:
       TARGET: cpu
       OUT: artifacts/accuracy.json
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -348,6 +360,12 @@ jobs:
       TARGET: v100s
       OUT: artifacts/v100s.json
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -400,6 +418,12 @@ jobs:
       TARGET: rtx3070
       OUT: artifacts/rtx3070.json
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -451,6 +475,12 @@ jobs:
       TARGET: rtx5060ti
       OUT: artifacts/rtx5060ti.json
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -500,6 +530,12 @@ jobs:
       TARGET: cpu
       OUT: artifacts/cpu.json
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
