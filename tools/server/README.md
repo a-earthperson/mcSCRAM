@@ -152,6 +152,7 @@ and `/app/input` is missing, the catalog is empty and the server stays up.
 | `MCSCRAM_WATCH` | Boolean watch-mode **or** comma-separated MEF names / PDAG indices to tally |
 | `MCSCRAM_WATCH_NODES` | Extra comma-separated watch names (same identification as `MCSCRAM_WATCH`) |
 | `MCSCRAM_AUTOSTART` | Start sampling on boot (default false) |
+| `FUZZYBITS_PASSES_PER_STEP` | Device passes run before the host reads tallies and checks convergence (default 1). Higher values keep the GPU busier on fast passes; convergence is checked less often. Applies to both the Python and the native (`MCSCRAM_CONVERGENCE_ENGINE=native`) loops. |
 | `HOST` / `PORT` / `LOG_LEVEL` | uvicorn |
 
 Sampling knobs (`MCSCRAM_NUM_TRIALS`, `MCSCRAM_POLICY`, …) are unchanged.

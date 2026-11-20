@@ -90,6 +90,9 @@ class ConvergenceConfig:
     event_ids: tuple[int, ...] = ()
     emit_min_interval_s: float = 1.0 / 60.0
     stream_nodes: bool = False
+    # Device passes per sampler step; the host reads tallies and checks
+    # convergence once per step.
+    passes_per_step: int = 1
 
     @classmethod
     def from_options(cls, options: dict[str, Any] | None) -> "ConvergenceConfig":
@@ -124,6 +127,7 @@ class ConvergenceConfig:
             event_ids=event_ids,
             emit_min_interval_s=emit_interval if emit_interval is not None else cls.emit_min_interval_s,
             stream_nodes=_as_bool(options.get("stream_nodes", False)),
+            passes_per_step=max(1, _as_int(options.get("passes_per_step")) or 1),
         )
 
 
@@ -231,7 +235,10 @@ class ConvergenceRunner:
         converged = False
 
         while True:
-            observation = self.sampler.step()
+            passes = cfg.passes_per_step
+            if max_passes:
+                passes = max(1, min(passes, max_passes - self.state.pass_count))
+            observation = self.sampler.step(passes)
             self.state.update(observation)
             target = self.state.target
 

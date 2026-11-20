@@ -152,7 +152,7 @@ struct PassTally {
 };
 
 struct PassResult {
-  std::uint64_t pass_index = 0;  ///< 1-based
+  std::uint64_t pass_index = 0;  ///< passes run so far, including this step's
   std::uint64_t trials_per_pass = 0;
   int target_index = 0;
   std::vector<PassTally> nodes;
@@ -194,7 +194,9 @@ class Session {
   [[nodiscard]] static std::vector<int> resolve_watch(const ReconstructedPdag &reconstructed,
                                                       const std::vector<std::string> &names);
 
-  PassResult step();
+  /// Run `passes` device passes (at least 1), waiting once at the end, and
+  /// return the cumulative tallies.
+  PassResult step(std::size_t passes = 1);
   void close();
 
  private:

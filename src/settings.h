@@ -425,6 +425,18 @@ class Settings {
         return *this;
     }
 
+    /// @returns the number of device passes queued before the host waits and
+    ///          reads the tallies (at least 1).
+    [[nodiscard]] std::size_t passes_per_step() const { return passes_per_step_; }
+
+    /// Sets how many device passes run between host tally reads.  Larger values
+    /// keep the device busier; convergence is then checked every that many passes.
+    /// Values below 1 select 1.
+    Settings &passes_per_step(const double n) {
+        passes_per_step_ = n >= 1 ? static_cast<std::size_t>(n) : 1;
+        return *this;
+    }
+
   /// @returns the list of MEF input files provided for the analysis (can be empty).
   [[nodiscard]] const std::vector<std::string>& input_files() const { return input_files_; }
 
@@ -492,6 +504,9 @@ class Settings {
   /// Optimistic per-node trials-per-pass target for the sample shaper.
   /// 0 → automatic policy (size each pass to the per-node memory budget).
   std::size_t requested_trials_per_pass_ = 0;
+
+  /// Device passes between host tally reads (at least 1).
+  std::size_t passes_per_step_ = 1;
 
   // A copy of the final list of MEF input files passed on the command-line.  Read-only access is provided via the getter above.
   std::vector<std::string> input_files_;

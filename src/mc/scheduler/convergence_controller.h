@@ -294,7 +294,7 @@ class convergence_controller {
         return true;
     }
 
-    /** Execute exactly one additional iteration on the device. */
+    /** Execute passes_this_step() additional iterations on the device, then read the tallies once. */
     [[nodiscard]] bool step(stats::TallyNodeMap &tally_node_map) {
 
         // don't step anymore, just return that we didn't take a step.
@@ -308,8 +308,9 @@ class convergence_controller {
 
         // still have iterations remaining
         // get the tally
-        process_tallies(manager_.pass_wait_collect(tally_node_map));
-        ++passes_completed_;
+        const std::size_t passes = passes_this_step();
+        process_tallies(manager_.pass_wait_collect(tally_node_map, passes));
+        passes_completed_ += passes;
 
         // for now, this is our convergence criteria
         // if converged now, set convergence_ sticky to true
@@ -368,8 +369,9 @@ class convergence_controller {
             return false;
         }
 
-        process_tallies(manager_.pass_wait_collect(tally_node_map));
-        ++passes_completed_;
+        const std::size_t passes = passes_this_step();
+        process_tallies(manager_.pass_wait_collect(tally_node_map, passes));
+        passes_completed_ += passes;
 
         // since we did step, update the iteration count
         return true;
@@ -503,6 +505,17 @@ public:
         // trial-derived iteration count when the host tally *does* advance.
         return passes_completed_ >= max_iterations ||
                current_steps().iterations() >= max_iterations;
+    }
+
+    /// Passes to queue before the next tally read: Settings::passes_per_step(),
+    /// capped by the passes left in a fixed iteration budget.
+    [[nodiscard]] std::size_t passes_this_step() const {
+        const std::size_t requested = std::max<std::size_t>(1, settings_.passes_per_step());
+        const std::size_t max_iterations = manager_.shaper().TOTAL_ITERATIONS;
+        if (max_iterations == 0 || passes_completed_ >= max_iterations) {
+            return requested;
+        }
+        return std::min(requested, max_iterations - passes_completed_);
     }
 
     [[nodiscard]] bool halt_for_iteration_cap() {

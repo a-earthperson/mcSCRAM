@@ -131,3 +131,37 @@ def test_oracle_diagnostics_round_trip() -> None:
     final = result.final_progress
     assert "z_score" in final and "abs_error" in final
     assert final["oracle_p"] == 0.2
+
+
+class _CountingSampler(BernoulliSampler):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.step_sizes: list[int] = []
+
+    def step(self, passes: int = 1):
+        self.step_sizes.append(passes)
+        return super().step(passes)
+
+
+def test_passes_per_step_batches_and_respects_budget() -> None:
+    sampler = _CountingSampler(true_p=0.1, trials_per_pass=4096, target_index=1, seed=3)
+    config = ConvergenceConfig(max_passes=10, passes_per_step=4)
+    result = ConvergenceRunner(sampler, config).run()
+
+    assert sampler.step_sizes == [4, 4, 2]
+    assert result.stop_reason == "max_passes"
+    assert result.state.pass_count == 10
+    assert result.state.target.total_bits == 10 * 4096
+
+
+def test_passes_per_step_from_options() -> None:
+    assert ConvergenceConfig.from_options({}).passes_per_step == 1
+    assert ConvergenceConfig.from_options({"passes_per_step": 16.0}).passes_per_step == 16
+    assert ConvergenceConfig.from_options({"passes_per_step": 0}).passes_per_step == 1
+
+
+def test_passes_per_step_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fuzzybits_server.config import options_from_env
+
+    monkeypatch.setenv("FUZZYBITS_PASSES_PER_STEP", "8")
+    assert options_from_env()["passes_per_step"] == 8

@@ -504,10 +504,15 @@ class Session:
         self._require_open()
         return dict(self._impl.execution_plan())
 
-    def step(self) -> PassResult:
-        """Run exactly one device pass (same payload as one :meth:`passes` yield)."""
+    def step(self, passes: int = 1) -> PassResult:
+        """Run ``passes`` device passes, waiting once at the end, and return cumulative counters.
+
+        ``pass_index`` counts passes, so it advances by ``passes``.
+        """
+        if passes < 1:
+            raise ValueError("passes must be at least 1")
         self._require_open()
-        return _pass_from_native(self._impl.step())
+        return _pass_from_native(self._impl.step(int(passes)))
 
     def passes(self, max_passes: int | None = None) -> Iterator[PassResult]:
         """Yield one :class:`PassResult` per device pass until ``max_passes`` or :meth:`close`."""

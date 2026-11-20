@@ -360,16 +360,19 @@ struct PyLayerManager {
         return tally_counter_dict(tally);
     }
 
-    // Run exactly one pass and return the raw cumulative counters for *every*
-    // registered tally node, keyed by PDAG node index.  This is the multi-node
-    // analogue of single_pass(): the device tallies all registered nodes during
-    // the same pass, so host-side convergence/stats can be computed per node
-    // (e.g. gradients across nodes) without re-sampling.
-    py::dict single_pass_all() {
+    // Run `passes` passes (waiting once, at the end) and return the raw
+    // cumulative counters for *every* registered tally node, keyed by PDAG node
+    // index.  This is the multi-node analogue of single_pass(): the device
+    // tallies all registered nodes during the same passes, so host-side
+    // convergence/stats can be computed per node without re-sampling.
+    py::dict single_pass_all(const std::size_t passes = 1) {
+        if (passes == 0) {
+            throw std::invalid_argument("single_pass_all: passes must be at least 1");
+        }
         scram::mc::stats::TallyNodeMap tallies;
         {
             py::gil_scoped_release release;
-            manager->pass_wait_collect(tallies, 1, 0);
+            manager->pass_wait_collect(tallies, passes, 0);
         }
         py::dict result;
         for (auto [index, node_tally] : tallies.tallies()) {
@@ -709,6 +712,7 @@ scram::core::Settings settings_from_options(const py::dict &options, py::object 
     set_option<int>(options, {"seed"}, [&](int value) { settings.seed(value); });
     set_option<double>(options, {"num_trials", "num-trials", "N"}, [&](double value) { settings.num_trials(value); });
     set_option<double>(options, {"requested_trials_per_pass", "requested-trials-per-pass", "trials_per_pass", "trials-per-pass"}, [&](double value) { settings.requested_trials_per_pass(value); });
+    set_option<double>(options, {"passes_per_step", "passes-per-step"}, [&](double value) { settings.passes_per_step(value); });
     set_option<double>(options, {"delta", "d"}, [&](double value) { settings.ci_rel_margin_error(value); });
     set_option<double>(options, {"burn_in", "burn-in", "b"}, [&](double value) { settings.ci_burnin_trials(value); });
     set_option<double>(options, {"confidence", "a"}, [&](double value) { settings.ci_confidence(value); });
@@ -1593,10 +1597,10 @@ struct PyPcfbSession {
         return plan;
     }
 
-    py::dict step() {
+    py::dict step(const std::size_t passes = 1) {
         ensure_manager();
-        ++pass_index;
-        py::dict raw = manager->single_pass_all();
+        py::dict raw = manager->single_pass_all(passes);
+        pass_index += passes;
         py::dict nodes;
         for (auto item : raw) {
             const int index = item.first.cast<int>();
@@ -1669,11 +1673,12 @@ Args:
 Returns:
     A dict with `num_one_bits` and `total_bits`.
 )pbdoc")
-        .def("single_pass_all", &PyLayerManager::single_pass_all, R"pbdoc(
-Run exactly one native DirectEval layer-manager pass and return raw cumulative
-tally counters for *every* registered tally node.
+        .def("single_pass_all", &PyLayerManager::single_pass_all, py::arg("passes") = 1, R"pbdoc(
+Run `passes` native DirectEval layer-manager passes (default 1), waiting once at
+the end, and return raw cumulative tally counters for *every* registered tally
+node.
 
-All registered nodes are tallied during the same device pass, so this is the
+All registered nodes are tallied during the same device passes, so this is the
 multi-node analogue of `single_pass()` and is the preferred way to drive
 host-side convergence/statistics over several nodes simultaneously.
 
@@ -1864,10 +1869,11 @@ fails JIT with a Python exception until double support lands (#17/#30).
         .def("graph", &PyPcfbSession::graph)
         .def("kernel_graph", &PyPcfbSession::kernel_graph)
         .def("execution_plan", &PyPcfbSession::execution_plan)
-        .def("step", &PyPcfbSession::step, R"pbdoc(
-Run exactly one device pass and return cumulative tally counters.
+        .def("step", &PyPcfbSession::step, py::arg("passes") = 1, R"pbdoc(
+Run `passes` device passes (default 1), waiting once at the end, and return
+cumulative tally counters.
 
-Returns a dict with `pass_index` (1-based), `trials_per_pass`, `target_index`,
+Returns a dict with `pass_index` (passes run so far), `trials_per_pass`, `target_index`,
 and `nodes` mapping PDAG index -> `{num_one_bits, total_bits, one_bits, popcount}`.
 Releases the GIL during kernel execution.
 )pbdoc")
