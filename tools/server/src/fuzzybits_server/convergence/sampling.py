@@ -177,7 +177,8 @@ class NativeSampler:
     def step(self, passes: int = 1) -> PassObservation:
         self._pass_index += passes
         if self._has_pass_all:
-            raw = self._manager.single_pass_all(passes)
+            # fuzzybits builds before passes_per_step only accept single_pass_all().
+            raw = self._manager.single_pass_all(passes) if passes > 1 else self._manager.single_pass_all()
             nodes = {
                 int(index): NodeCounters(
                     index=int(index),
@@ -362,7 +363,8 @@ class PcfbSampler:
         return list(self._node_indices)
 
     def step(self, passes: int = 1) -> PassObservation:
-        obs = self._session.step(passes)
+        # fuzzybits builds before passes_per_step only accept step().
+        obs = self._session.step(passes) if passes > 1 else self._session.step()
         self._pass_index = int(obs.pass_index)
         if not self._node_indices:
             self._node_indices = sorted(int(i) for i in obs.nodes)
