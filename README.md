@@ -8,7 +8,7 @@ basic events and gates are evaluated once, for every query at the same
 time. Models are OpenPSA MEF XML files. It runs on the CPU, or on an
 NVIDIA GPU if one is available.
 
-Status: alpha (0.18.0). Every result comes with a 95% confidence
+Status: alpha (0.18.1). Every result comes with a 95% confidence
 interval. In this release the compiled query is the top event of the
 first fault tree in the model; event-tree sequences are next
 (issue #92).
@@ -58,7 +58,7 @@ release-vs-develop history; see docs/benchmarks.md.
 Or run the same server with Docker, no Python needed:
 
     docker run --rm -p 127.0.0.1:8000:8000 -v "$PWD/models:/data:ro" \
-        ghcr.io/fuzzybit-org/fuzzybits-server:v0.18.0
+        ghcr.io/fuzzybit-org/fuzzybits-server:v0.18.1
 
 For an NVIDIA GPU, add --gpus all -e ACPP_VISIBILITY_MASK=cuda (this
 needs the NVIDIA Container Toolkit).
