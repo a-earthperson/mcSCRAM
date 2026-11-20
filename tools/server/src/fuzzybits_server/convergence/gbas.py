@@ -43,7 +43,7 @@ known relative-error law is preserved despite batching.
 
 This module is intentionally the only place in the engine that depends on
 ``numpy``/``scipy``; the policy layer imports it lazily so the default
-(Wald/Bayes) path stays dependency-light.
+(Wald) path stays dependency-light.
 """
 
 from __future__ import annotations

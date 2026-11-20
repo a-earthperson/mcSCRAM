@@ -3,7 +3,7 @@
 These exercise the full pass -> tally -> update -> emit loop and the primary
 deliverables simultaneously:
   (a) Wald-linear convergence statistics (canonical fields),
-  (b) Bayesian policy statistics (``bayes_*``).
+  (b) information-gain metrics (``info_bits_*``).
 """
 
 from __future__ import annotations
@@ -61,17 +61,16 @@ def test_converges_to_true_probability() -> None:
     assert final["epsilon_converged"] is True
 
 
-def test_emits_bayes_streams() -> None:
+def test_emits_policy_and_metric_streams() -> None:
     sampler = BernoulliSampler(true_p=0.2, trials_per_pass=4096, target_index=1, seed=7)
     config = ConvergenceConfig(delta=0.05, confidence=0.95, early_stop=True, burn_in=4096 * 3)
     result, frames = _collect(config, sampler)
     final = result.final_progress
 
-    # Bayesian policy stats streamed alongside Wald.
-    for key in ("bayes_mean", "bayes_epsilon", "bayes_target_epsilon", "bayes_converged"):
+    # Wald stats are also streamed under their namespace.
+    for key in ("wald_epsilon", "wald_target_epsilon", "wald_converged"):
         assert key in final
-    assert final["bayes_mean"] == pytest.approx(0.2, abs=0.02)
-    assert math.isfinite(final["bayes_epsilon"])
+    assert math.isfinite(final["wald_epsilon"])
 
     # Info gain accumulates.
     assert final["info_bits_total"] is not None and final["info_bits_total"] > 0.0
@@ -109,7 +108,7 @@ def test_config_from_options_maps_server_keys() -> None:
             "num_trials": 65536.0,
             "early_stop": True,
             "oracle": 0.01,
-            "policy": "bayes",
+            "policy": "gbas",
         }
     )
     assert config.delta == 1e-9
@@ -118,8 +117,8 @@ def test_config_from_options_maps_server_keys() -> None:
     assert config.max_trials == 65536
     assert config.early_stop is True
     assert config.oracle_p == 0.01
-    assert config.stopping_policy == "bayes"
-    assert "wald" in config.policies and "bayes" in config.policies
+    assert config.stopping_policy == "gbas"
+    assert "wald" in config.policies and "gbas" in config.policies
 
 
 def test_oracle_diagnostics_round_trip() -> None:

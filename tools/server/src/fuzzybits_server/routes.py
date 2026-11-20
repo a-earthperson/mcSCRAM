@@ -46,8 +46,8 @@ class SamplingControlBody(BaseModel):
     delta: float | None = Field(default=None, gt=0)
     oracle: float | None = Field(default=None, ge=-1, le=1)
     early_stop: bool | None = None
-    # Host-side convergence policy that gates early-stop ("wald" | "bayes" | "gbas").
-    policy: str | None = Field(default=None, pattern="^(wald|bayes|gbas)$")
+    # Host-side convergence policy that gates early-stop ("wald" | "gbas").
+    policy: str | None = Field(default=None, pattern="^(wald|gbas)$")
     burn_in: float | None = Field(default=None, ge=0)
     pcfb_id: str | None = None
     watch: list[str] | str | None = None

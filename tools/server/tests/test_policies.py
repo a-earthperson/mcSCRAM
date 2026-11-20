@@ -1,4 +1,4 @@
-"""Policy-layer checks: Wald-linear and Bayes convergence verdicts."""
+"""Policy-layer checks: Wald-linear convergence verdicts."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from fuzzybits_server.convergence import BayesPolicy, WaldLinearPolicy
+from fuzzybits_server.convergence import WaldLinearPolicy
 from fuzzybits_server.convergence import special
 from fuzzybits_server.convergence.tally import NodeCounters, NodeState, RunContext
 
@@ -59,28 +59,3 @@ def test_wald_zero_trials_not_converged() -> None:
     verdict = WaldLinearPolicy().evaluate(node, _ctx(delta=1.0))
     assert verdict.epsilon == 0.0
     assert not verdict.converged
-
-
-def test_bayes_posterior_mean_and_interval() -> None:
-    node = _node(ones=100, total=10_000)
-    ctx = _ctx(delta=1.0e-3, confidence=0.95)
-    verdict = BayesPolicy().evaluate(node, ctx)
-    alpha = 0.5 + 100
-    beta = 0.5 + 9_900
-    assert verdict.metrics["mean"] == pytest.approx(alpha / (alpha + beta), rel=1e-12)
-    lower = verdict.metrics["ci_low"]
-    upper = verdict.metrics["ci_high"]
-    assert 0.0 < lower < verdict.metrics["mean"] < upper < 1.0
-    assert verdict.epsilon == pytest.approx(0.5 * (upper - lower), rel=1e-12)
-
-
-def test_bayes_converges_with_loose_delta() -> None:
-    node = _node(ones=1_000, total=100_000)  # p_hat ~ 0.01, tight posterior
-    assert BayesPolicy().evaluate(node, _ctx(delta=0.5)).converged
-    assert not BayesPolicy().evaluate(node, _ctx(delta=1.0e-4)).converged
-
-
-def test_bayes_epsilon_finite_and_positive() -> None:
-    node = _node(ones=5, total=1_000)
-    verdict = BayesPolicy().evaluate(node, _ctx(delta=1.0e-3))
-    assert verdict.epsilon > 0.0 and math.isfinite(verdict.epsilon)

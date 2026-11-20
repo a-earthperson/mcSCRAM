@@ -8,7 +8,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 AGPL-3.0-or-later. Imported from `fuzzybit-org/fuzzybits-bench` (`src/server`)
 with history. Compiles OpenPSA/MEF **fault trees** to `.pcfb` (once per
 source SHA-256s and compile options) and samples the **top event** through
-`fuzzybits.Session`. Wald / Bayes / GBAS stopping. Event-tree sequences and
+`fuzzybits.Session`. Wald / GBAS stopping. Event-tree sequences and
 end states are not compiled or sampled ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)).
 Set `FUZZYBITS_SERVER_ENGINE=legacy` for the in-memory `run_compile` path.
 The `MCSCRAM_CONVERGENCE_ENGINE=native` `run_probability` fallback is unchanged.

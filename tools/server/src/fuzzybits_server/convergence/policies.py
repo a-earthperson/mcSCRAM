@@ -6,8 +6,7 @@ statistics characteristic of that policy (current half-width ``epsilon``, target
 ``target_epsilon``, projected sample size, and a flat ``metrics`` dict for
 emission).
 
-Two policies are provided, mirroring the native ``ConvergencePolicy``
-specializations:
+Two policies are provided:
 
 * :class:`WaldLinearPolicy` — classical normal-approximation interval on the
   linear probability scale.  ``epsilon = z * SE``, target ``= delta * p_hat``.
@@ -15,9 +14,6 @@ specializations:
   fields the web client already consumes.  (Linear only, per requirements; the
   log10 band is still computed and emitted for context but does not gate the
   stop.)
-* :class:`BayesPolicy` — Jeffreys ``Beta(1/2, 1/2)`` posterior credible interval.
-  ``epsilon`` is the half-width of the central credible interval at the same
-  confidence; target ``= delta * posterior_mean``.
 * :class:`GBASPolicy` — Huber's Gamma Bernoulli Approximation Scheme (2017).
   Instead of gating on a moving ``delta * p_hat`` interval width, it fixes a
   target success count ``k`` up front (from the *same* ``delta``/``confidence``
@@ -29,7 +25,7 @@ specializations:
 
 The runner can attach any number of policies; one is designated the *stopping*
 policy.  All are evaluated every pass and emitted under their namespace, so e.g.
-Wald, Bayes, and GBAS statistics stream simultaneously.
+Wald and GBAS statistics stream simultaneously.
 
 Most policies are stateless; :class:`GBASPolicy` keeps a little state (the solved
 ``k``, an RNG, and the estimate materialized at the first crossing) because the
@@ -126,70 +122,6 @@ class WaldLinearPolicy:
             epsilon=epsilon,
             target_epsilon=target_epsilon,
             projected_trials=max(projected_trials, projected_trials_log10),
-            metrics=metrics,
-        )
-
-
-class BayesPolicy:
-    """Jeffreys ``Beta(1/2, 1/2)`` posterior credible-interval convergence."""
-
-    name = "bayes"
-
-    def __init__(self, *, alpha0: float = 0.5, beta0: float = 0.5) -> None:
-        self._alpha0 = alpha0
-        self._beta0 = beta0
-        self._prior_mass = alpha0 + beta0 + 1.0  # effective prior sample size
-
-    def evaluate(self, node: NodeState, ctx: RunContext) -> PolicyVerdict:
-        z = ctx.z
-        successes = node.num_one_bits
-        failures = node.total_bits - node.num_one_bits
-        alpha = self._alpha0 + successes
-        beta = self._beta0 + failures
-        total = alpha + beta
-
-        posterior_mean = alpha / total
-        posterior_var = (alpha * beta) / (total * total * (total + 1.0))
-        posterior_sd = posterior_var**0.5
-
-        # Central credible interval at the same two-sided confidence encoded by z.
-        cred_level = special.clamp(2.0 * special.normal_cdf(z) - 1.0, 0.0, 1.0)
-        tail = (1.0 - cred_level) / 2.0
-        lower = special.beta_quantile(tail, alpha, beta)
-        upper = special.beta_quantile(1.0 - tail, alpha, beta)
-        epsilon = 0.5 * (upper - lower)
-
-        p_guard = max(posterior_mean, DELTA_EPSILON)
-        target_epsilon = ctx.delta * p_guard
-        converged = epsilon > 0.0 and epsilon <= target_epsilon
-
-        # Required N from the Wald-style inversion used by the native bayes update,
-        # corrected for the effective prior sample size and floored at current N.
-        var_term = posterior_mean * (1.0 - posterior_mean)
-        if target_epsilon > 0.0:
-            rhs = (z * z * var_term) / (target_epsilon * target_epsilon)
-            projected = math.ceil(max(0.0, rhs - self._prior_mass))
-        else:
-            projected = 0
-        projected = max(projected, node.total_bits)
-
-        metrics: dict[str, Any] = {
-            "mean": posterior_mean,
-            "std_err": posterior_sd,
-            "epsilon": epsilon,
-            "target_epsilon": target_epsilon,
-            "ci_low": lower,
-            "ci_high": upper,
-            "alpha": alpha,
-            "beta": beta,
-            "projected_trials": projected,
-        }
-        return PolicyVerdict(
-            name=self.name,
-            converged=converged,
-            epsilon=epsilon,
-            target_epsilon=target_epsilon,
-            projected_trials=projected,
             metrics=metrics,
         )
 
@@ -357,16 +289,15 @@ class GBASPolicy:
         )
 
 
-# Registry so config strings ("wald", "bayes", "gbas") resolve to policy factories.
+# Registry so config strings ("wald", "gbas") resolve to policy factories.
 POLICY_REGISTRY: dict[str, type[ConvergencePolicy]] = {
     WaldLinearPolicy.name: WaldLinearPolicy,
-    BayesPolicy.name: BayesPolicy,
     GBASPolicy.name: GBASPolicy,
 }
 
 
 def make_policy(name: str) -> ConvergencePolicy:
-    """Instantiate a policy by name (``"wald"`` / ``"bayes"``)."""
+    """Instantiate a policy by name (``"wald"`` / ``"gbas"``)."""
     try:
         factory = POLICY_REGISTRY[name.strip().lower()]
     except KeyError as exc:
@@ -380,7 +311,6 @@ __all__ = [
     "PolicyVerdict",
     "ConvergencePolicy",
     "WaldLinearPolicy",
-    "BayesPolicy",
     "GBASPolicy",
     "POLICY_REGISTRY",
     "make_policy",

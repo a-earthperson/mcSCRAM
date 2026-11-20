@@ -12,7 +12,7 @@ Layered design (each layer is independently testable):
 * :mod:`.sampling`  -- the ``Sampler`` boundary (native + simulated).
 * :mod:`.metrics`   -- non-stopping derived metrics (point estimate, information
   gain, oracle diagnostics).
-* :mod:`.policies`  -- convergence policies (Wald linear, Bayes credible, GBAS).
+* :mod:`.policies`  -- convergence policies (Wald linear, GBAS).
 * :mod:`.gbas`      -- Huber's GBAS numerics (numpy/scipy; imported lazily).
 * :mod:`.runner`    -- the pass->tally->update->emit loop and configuration.
 
@@ -25,7 +25,7 @@ or, for full control / testing::
 
     from fuzzybits_server.convergence import (
         BernoulliSampler, ConvergenceConfig, ConvergenceRunner,
-        WaldLinearPolicy, BayesPolicy,
+        WaldLinearPolicy,
     )
 """
 
@@ -39,7 +39,6 @@ from .metrics import (
     default_metrics,
 )
 from .policies import (
-    BayesPolicy,
     ConvergencePolicy,
     GBASPolicy,
     PolicyVerdict,
@@ -94,7 +93,6 @@ __all__ = [
     "ConvergencePolicy",
     "PolicyVerdict",
     "WaldLinearPolicy",
-    "BayesPolicy",
     "GBASPolicy",
     "make_policy",
 ]

@@ -12,9 +12,9 @@
 The progress frame keeps the field names the existing web client consumes
 (``mean``, ``epsilon``, ``target_epsilon``, ``epsilon_converged``,
 ``p01/05/95/99``, ``info_bits_*`` …) filled from the *primary* policy (GBAS
-by default), and adds every policy/metric under its own namespace (``wald_*``,
-``bayes_*``, ``info_bits_*`` …) so additional streams are available without
-breaking the UI.
+when it is attached, otherwise Wald), and adds every policy/metric under its own
+namespace (``wald_*``, ``gbas_*``, ``info_bits_*`` …) so additional streams are
+available without breaking the UI.
 
 :class:`ConvergenceConfig` carries the host-side knobs and is built from the
 existing server options dict via :meth:`ConvergenceConfig.from_options`.
@@ -85,7 +85,7 @@ class ConvergenceConfig:
     max_passes: int = 0  # 0 -> derive from max_trials, else unbounded
     early_stop: bool = False
     oracle_p: float | None = None
-    policies: tuple[str, ...] = ("wald", "bayes")
+    policies: tuple[str, ...] = ("wald",)
     stopping_policy: str = "wald"
     event_ids: tuple[int, ...] = ()
     emit_min_interval_s: float = 1.0 / 60.0
@@ -102,9 +102,9 @@ class ConvergenceConfig:
         oracle = _as_float(options.get("oracle"))
         policy = options.get("policy")
         stopping = str(policy).strip().lower() if policy else cls.stopping_policy
-        # Always evaluate both policies so Wald and Bayes stats stream together,
-        # regardless of which one gates the stop.
-        policies: tuple[str, ...] = ("wald", "bayes")
+        # Always evaluate Wald so its stats stream regardless of which policy
+        # gates the stop.
+        policies: tuple[str, ...] = ("wald",)
         if stopping not in policies:
             policies = (*policies, stopping)
 
@@ -336,7 +336,7 @@ class ConvergenceRunner:
         progress["remaining_iterations"] = math.ceil(remaining / tpp) if remaining else 0
 
         # Every policy is emitted under its namespace so multiple convergence
-        # criteria stream simultaneously (wald_*, bayes_*, ...).  Core verdict
+        # criteria stream simultaneously (wald_*, gbas_*, ...).  Core verdict
         # fields are written last so they win over any duplicated metric keys.
         for name, verdict in verdicts.items():
             for key, value in verdict.metrics.items():

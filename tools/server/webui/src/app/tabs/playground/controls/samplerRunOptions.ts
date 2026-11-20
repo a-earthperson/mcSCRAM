@@ -14,8 +14,8 @@ export type SamplerRunOptions = {
   requested_trials_per_pass: number;
   confidence?: number;
   delta?: number;
-  /** Host-side convergence/stopping policy ("wald" | "bayes" | "gbas"). */
-  policy?: "wald" | "bayes" | "gbas";
+  /** Host-side convergence/stopping policy ("wald" | "gbas"). */
+  policy?: "wald" | "gbas";
   /** Known true probability µ (mcSCRAM `oracle`); omitted when diagnostics are off. */
   oracle?: number;
 };
