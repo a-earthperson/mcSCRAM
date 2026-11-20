@@ -16,6 +16,34 @@ sequences and end states are not compiled yet
 ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)).
 
 
+When to use it, and when not
+----------------------------
+
+If a BDD, or a cut-set tool with an upper bound, finishes on your
+model, use it: the answer is exact or bounded, and on most published
+fault trees it is fast. fuzzybits is for models where those methods
+run out of memory or time, or where you want the only error in the
+answer to be a stated sampling error rather than an unreported
+truncation error.
+
+Example: nus9601 from the Aralia set (1,567 basic events, exact
+p = 9.94e-6). SCRAM's BDD and ZBDD run out of memory on it, and the
+exact value took 2.5 hours with ganak. fuzzybits runs 1e8 trials,
+gets 965 hits and estimates 9.59e-6 +/- 6% (95%) in about 0.6 s on a
+Tesla V100S or 12 s on an 8-core i7-9700 (sampling time, start-up
+excluded). The ganak time comes from a different machine, so treat
+the comparison as indicative.
+
+It is not the right tool, yet, for very rare events. For a fixed
+relative error the number of trials grows as 1/p (see How many
+trials): p = 1e-8 to +/- 10% needs about 4e10 trials, and four Aralia
+models with p between 1.4e-8 and 1.1e-13 are infeasible at the
+1e8-trial cap (see Accuracy). Exact module collapse and importance
+sampling are planned, not done
+([#21](https://github.com/fuzzybit-org/fuzzybits/issues/21),
+[#6](https://github.com/fuzzybit-org/fuzzybits/issues/6)).
+
+
 Install
 -------
 
