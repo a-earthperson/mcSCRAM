@@ -179,7 +179,10 @@ macOS / `metal` is parked; see [#30](https://github.com/fuzzybit-org/fuzzybits/i
 
 xerxes exposes **two** physical GPUs to Docker. Runners do not isolate
 `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES` (both unset). `gpu.yml`
-selects devices with `docker run --rm --gpus device=<n>`:
+selects devices with `docker run --rm --gpus device=<n>` using **nvidia-smi /
+NVML** ordinals (same as the harness table). CUDA's default FASTEST_FIRST
+ordering is the reverse on this host — never derive `device=N` from CUDA
+ordinals:
 
 | Job | Runner labels | `--gpus` | Device inside the container |
 | --- | --- | --- | --- |

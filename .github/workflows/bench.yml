@@ -5,6 +5,8 @@
 # posts a green check so required status does not hang.
 #
 # CPU A/B is report-only (CPU_GATE_BLOCKS = False, #124).
+# xerxes GPU indices are NVML/nvidia-smi (GPU 0 = V100S, GPU 1 = RTX 3070),
+# never CUDA FASTEST_FIRST. RTX 3070 idle/lock busy is a skip, not a failure.
 #
 # runs-on expressions must stay byte-identical to
 # scripts/ci/check-self-hosted-reachability.py APPROVED_PR_RUNS_ON_*.
@@ -372,6 +374,10 @@ jobs:
           path: artifacts/
           if-no-files-found: warn
 
+  # NVML / nvidia-smi / docker `--gpus device=N` on xerxes (not CUDA FASTEST_FIRST):
+  # GPU 0 = Tesla V100S (PCI 42:00.0, lock-0, group gpu-xerxes-v100s);
+  # GPU 1 = RTX 3070 (PCI 43:00.0, lock-1, group gpu-xerxes-3070).
+  # GPU 1 currently hosts an owner service; idle/lock → skip (green), not fail.
   bench-perf-rtx3070:
     name: bench-perf-rtx3070
     needs: [bench-filter, bench-images]
@@ -392,6 +398,8 @@ jobs:
       MODE: perf
       TARGET: rtx3070
       OUT: artifacts/rtx3070.json
+      # Probe once + one retry (~15s). Do not hang waiting for the owner service.
+      GUARD_RETRIES: "1"
     steps:
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'

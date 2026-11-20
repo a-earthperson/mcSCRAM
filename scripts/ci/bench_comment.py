@@ -15,12 +15,24 @@ from typing import Any
 MARKER = "<!-- fuzzybits-bench-gate -->"
 
 # Jobs whose harness verdict can fail the required summary. CPU is report-only (#124).
+# rtx3070 still blocks on a measured regression; idle/lock busy is a skip (owner
+# service on xerxes GPU 1 / NVML device 1, PCI 43:00.0).
 BLOCKING_JOBS = ("accuracy", "v100s", "rtx3070")
 REPORT_ONLY_JOBS = ("cpu",)
+BUSY_SKIP_JOBS = ("rtx3070",)
 
 _FAIL = {"block", "error"}
 # inconclusive: host busy — fail the gate so an untested PR is not green.
+# Exception: BUSY_SKIP_JOBS (see maybe_skip_busy).
 _FAIL_GPU = {"block", "error", "inconclusive"}
+
+_BUSY_ERROR_MARKERS = ("already held", "host not idle", "not idle", "compute_apps")
+
+RTX3070_BUSY_REASON = (
+    "device busy (GPU 1 = RTX 3070, PCI 43:00.0, lock /tmp/gpu-lock-xerxes-1). "
+    "Idle/lock guard refused timing (owner service on this device). "
+    "Not a regression; not a failure."
+)
 
 
 def _load(path: Path | None) -> dict[str, Any] | None:
@@ -49,6 +61,8 @@ def _verdict(payload: Mapping[str, Any] | None, *, missing: str = "skipped") -> 
 def _job_fails(name: str, verdict: str) -> bool:
     if name in REPORT_ONLY_JOBS:
         return verdict == "error"
+    if name in BUSY_SKIP_JOBS and verdict in {"inconclusive", "skipped", "pass"}:
+        return False
     if name in BLOCKING_JOBS:
         return verdict in _FAIL_GPU
     return verdict in _FAIL
@@ -74,6 +88,8 @@ def overall_verdict(jobs: Mapping[str, Mapping[str, Any] | None]) -> str:
         verdict = _verdict(payload)
         if name in REPORT_ONLY_JOBS and verdict == "block":
             verdict = "warn"
+        if name in BUSY_SKIP_JOBS and verdict == "inconclusive":
+            verdict = "skipped"
         if _job_fails(name, verdict):
             if failing is None or rank.get(verdict, 0) > rank.get(failing, 0):
                 failing = verdict
@@ -148,6 +164,16 @@ def render(
         "[#124](https://github.com/fuzzybit-org/fuzzybits/issues/124)); "
         "it does not fail this check."
     )
+    rtx_payload = loaded.get("rtx3070")
+    if rtx_payload and rtx_payload.get("kind") == "skip":
+        lines.append(
+            f"- **RTX 3070:** skipped: {rtx_payload.get('reason') or 'device busy'} "
+            "— **neutral, not a failure**."
+        )
+    elif rtx_payload and _verdict(rtx_payload) == "inconclusive":
+        lines.append(
+            "- **RTX 3070:** skipped: device busy — **neutral, not a failure**."
+        )
     if notices:
         lines.append("")
         for notice in notices:
@@ -156,7 +182,7 @@ def render(
     labels = {
         "accuracy": "Accuracy (head, CPU)",
         "v100s": "V100S A/B (`gpu_total_ms`, blocks at ci_lo > 1.03)",
-        "rtx3070": "RTX 3070 A/B (`gpu_total_ms`, blocks at ci_lo > 1.03)",
+        "rtx3070": "RTX 3070 A/B (`gpu_total_ms`, blocks at ci_lo > 1.03 when timed; skip if device busy)",
         "cpu": "CPU A/B (`cpu_sample_s`, report-only)",
     }
     for name, title in labels.items():
@@ -184,6 +210,36 @@ def render(
         "",
     ]
     return "\n".join(lines).rstrip() + "\n", overall
+
+
+def _is_device_busy(payload: Mapping[str, Any]) -> bool:
+    ctx = payload.get("context")
+    err = ""
+    if isinstance(ctx, dict):
+        err = str(ctx.get("error") or "")
+    blob = err + " " + json.dumps(payload, default=str)
+    return any(marker in blob for marker in _BUSY_ERROR_MARKERS)
+
+
+def maybe_skip_busy(path: Path, *, job: str) -> bool:
+    """Rewrite an idle/lock inconclusive JSON as a green skip. Return True if skipped."""
+    if not path.is_file():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("kind") == "skip":
+        return True
+    if payload.get("verdict") != "inconclusive":
+        return False
+    if not _is_device_busy(payload):
+        return False
+    reason = RTX3070_BUSY_REASON if "rtx3070" in job or job == "rtx3070" else "device busy"
+    write_skip(path, job=job, reason=reason, verdict="pass")
+    return True
 
 
 def write_skip(path: Path, *, job: str, reason: str, verdict: str = "pass") -> None:
@@ -275,7 +331,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-job", default="")
     parser.add_argument("--skip-reason", default="")
     parser.add_argument("--skip-verdict", default="pass")
+    parser.add_argument(
+        "--maybe-skip-busy",
+        type=Path,
+        default=None,
+        help="If JSON is inconclusive due to idle/lock, rewrite as skip and exit 0; else exit 1",
+    )
     args = parser.parse_args(argv)
+
+    if args.maybe_skip_busy is not None:
+        return 0 if maybe_skip_busy(args.maybe_skip_busy, job=args.skip_job or "bench-perf-rtx3070") else 1
 
     if args.write_skip is not None:
         write_skip(

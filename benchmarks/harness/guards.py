@@ -184,6 +184,9 @@ def wait_for_idle(
         if gpus:
             apps = gpu_compute_apps(context, gpus=gpus)
             snapshot["compute_apps"] = apps
+            # NVML reports containerized processes as process_name "[Not Found]".
+            # Those are live occupants (e.g. /app/parakeet on xerxes GPU 1), not
+            # zombies. Any compute-app row means this device is busy.
             busy_gpu = bool(apps)
         last = snapshot
         if not busy_cpu and not busy_gpu:

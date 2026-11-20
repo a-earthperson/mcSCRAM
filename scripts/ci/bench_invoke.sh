@@ -21,6 +21,7 @@ ctx=(
   --work-dir "${FUZZYBITS_BENCH_WORK}"
   --guard-retries "${GUARD_RETRIES:-20}"
 )
+set +e
 if [[ "${MODE}" == "accuracy" ]]; then
   python3 -m benchmarks run \
     --target cpu \
@@ -30,6 +31,7 @@ if [[ "${MODE}" == "accuracy" ]]; then
     --md "${md}" \
     "${ctx[@]}" \
     --commit "${HEAD_SHA:-${GITHUB_SHA:-}}"
+  rc=$?
 else
   extra=()
   if [[ -n "${INJECT:-}" ]]; then
@@ -47,4 +49,15 @@ else
     --rounds "${ROUNDS:-6}" \
     "${ctx[@]}" \
     "${extra[@]}"
+  rc=$?
 fi
+set -e
+
+# GPU 1 (RTX 3070) currently hosts a long-running owner service. Idle/lock
+# refusal is a skip, not a failed gate, and must not hang retries.
+if [[ "${TARGET}" == "rtx3070" ]]; then
+  if python3 scripts/ci/bench_comment.py --maybe-skip-busy "${out}" --skip-job bench-perf-rtx3070; then
+    exit 0
+  fi
+fi
+exit "${rc}"

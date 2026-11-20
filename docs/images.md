@@ -83,7 +83,9 @@ Measured uncompressed sizes (`docker image inspect`, `ci/images`
 
 ## How to run
 
-GPU device mapping (xerxes Docker; same as gpu.yml / #34):
+GPU device mapping (xerxes Docker; same as gpu.yml / #34). Indices are
+nvidia-smi / NVML / `--gpus device=N`, **not** CUDA FASTEST_FIRST (the reverse
+on xerxes):
 
 | host GPU | `--gpus` | image variant |
 |---|---|---|

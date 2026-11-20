@@ -14,12 +14,14 @@ if str(ROOT / "scripts" / "ci") not in sys.path:
 
 from bench_comment import (  # noqa: E402
     MARKER,
+    RTX3070_BUSY_REASON,
+    maybe_skip_busy,
     overall_verdict,
     render,
     write_skip,
 )
 from bench_filter import classify  # noqa: E402
-from benchmarks.harness.cli import _runtime_host  # noqa: E402
+from benchmarks.harness.cli import TARGETS, _runtime_host  # noqa: E402
 from benchmarks.harness.guards import acquire_lock, release_lock  # noqa: E402
 
 
@@ -43,6 +45,14 @@ def test_classify_harness_reuses_image():
     assert result["bench"] is True
     assert result["run_benches"] is True
     assert classify(["scripts/ci/bench_comment.py"])["bench"] is True
+
+
+def test_xerxes_gpu_indices_match_nvml_harness_table():
+    """nvidia-smi / NVML ordinals, not CUDA FASTEST_FIRST (reverse on xerxes)."""
+    assert TARGETS["v100s"]["gpus"] == "device=0"
+    assert TARGETS["v100s"]["lock_path"] == "/tmp/gpu-lock-xerxes-0"
+    assert TARGETS["rtx3070"]["gpus"] == "device=1"
+    assert TARGETS["rtx3070"]["lock_path"] == "/tmp/gpu-lock-xerxes-1"
 
 
 def test_runtime_host_is_local_for_default_docker_context():
@@ -141,3 +151,77 @@ def test_write_skip_json(tmp_path: Path):
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["kind"] == "skip"
     assert payload["verdict"] == "pass"
+
+
+def test_rtx3070_busy_is_skip_not_failure(tmp_path: Path):
+    path = tmp_path / "rtx3070.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "kind": "ab",
+                "verdict": "inconclusive",
+                "context": {
+                    "error": "host not idle after 1 retries: {'compute_apps': "
+                    "[{'process_name': '[Not Found]', 'used_gpu_memory': '3054 MiB'}]}",
+                    "target": "rtx3070",
+                },
+                "models": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert maybe_skip_busy(path, job="bench-perf-rtx3070") is True
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["kind"] == "skip"
+    assert payload["verdict"] == "pass"
+    assert payload["reason"].startswith("device busy")
+    assert "GPU 1" in payload["reason"]
+    loaded = {
+        "accuracy": {"verdict": "pass"},
+        "v100s": {"verdict": "pass"},
+        "rtx3070": payload,
+        "cpu": {"verdict": "pass"},
+    }
+    assert overall_verdict(loaded) == "pass"
+    text, overall = render(
+        jobs={"accuracy": None, "v100s": None, "rtx3070": path, "cpu": None},
+        run_url="https://example.test/run",
+        notices=[],
+        trusted=True,
+        run_benches=True,
+    )
+    assert overall == "pass"
+    assert "skipped: device busy" in text
+    assert "neutral, not a failure" in text
+    assert RTX3070_BUSY_REASON in text
+
+
+def test_rtx3070_inconclusive_does_not_fail_overall():
+    loaded = {
+        "accuracy": {"verdict": "pass"},
+        "v100s": {"verdict": "pass"},
+        "rtx3070": {"verdict": "inconclusive", "kind": "ab"},
+        "cpu": {"verdict": "pass"},
+    }
+    assert overall_verdict(loaded) == "pass"
+
+
+def test_v100s_inconclusive_still_fails_overall():
+    loaded = {
+        "accuracy": {"verdict": "pass"},
+        "v100s": {"verdict": "inconclusive"},
+        "rtx3070": {"verdict": "pass"},
+        "cpu": {"verdict": "pass"},
+    }
+    assert overall_verdict(loaded) == "inconclusive"
+
+
+def test_maybe_skip_busy_ignores_measured_block(tmp_path: Path):
+    path = tmp_path / "rtx3070.json"
+    path.write_text(
+        json.dumps({"schema_version": 1, "kind": "ab", "verdict": "block", "models": []}),
+        encoding="utf-8",
+    )
+    assert maybe_skip_busy(path, job="bench-perf-rtx3070") is False
+    assert json.loads(path.read_text(encoding="utf-8"))["verdict"] == "block"

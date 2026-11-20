@@ -55,6 +55,11 @@ from .verdict import (
     gpu_total_verdict,
 )
 
+# Device indices are nvidia-smi / NVML / docker `--gpus device=N` ordinals,
+# matching images.yml and gpu.yml. Do not derive them from CUDA's default
+# FASTEST_FIRST ordering, which is the reverse on xerxes:
+#   GPU 0 = Tesla V100S (PCI 42:00.0), lock /tmp/gpu-lock-xerxes-0
+#   GPU 1 = RTX 3070   (PCI 43:00.0), lock /tmp/gpu-lock-xerxes-1
 TARGETS: dict[str, dict[str, Any]] = {
     "cpu": {
         "docker_context": "gateway",
