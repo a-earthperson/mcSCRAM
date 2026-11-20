@@ -14,6 +14,7 @@ import json
 import multiprocessing as mp
 import os
 import queue
+import re
 import threading
 import time
 import traceback
@@ -196,6 +197,40 @@ def compile_pcfb_to_cache(input_files: list[str], options: dict[str, Any] | None
     tmp.write_bytes(blob)
     tmp.replace(path)
     return blob
+
+
+_NOMBRILO_VARIANT = re.compile(r"^(?P<base>.+)\.[a-z]\d+\.safetensors$", re.IGNORECASE)
+
+
+def nombrilo_weights_sibling(path: Path) -> Path | None:
+    """Base ``<model>.safetensors`` that a variant ``<model>.<x><n>.safetensors`` inherits weights from."""
+    match = _NOMBRILO_VARIANT.match(path.name)
+    if not match:
+        return None
+    sibling = path.with_name(f"{match.group('base')}.safetensors")
+    return sibling if sibling.is_file() else None
+
+
+def compile_nombrilo_to_cache(path: str | Path) -> Path:
+    """Translate a nombrilo circuit to `.pcfb` once, keyed by the circuit (and inherited weights) bytes."""
+    source = Path(path)
+    hasher = hashlib.sha256(b"nombrilo.circuit-1\0")
+    hasher.update(source.read_bytes())
+    sibling = nombrilo_weights_sibling(source)
+    if sibling is not None:
+        hasher.update(b"\0weights\0")
+        hasher.update(sibling.read_bytes())
+    cached = cached_pcfb_path(hasher.hexdigest())
+    if cached.is_file():
+        return cached
+    import fuzzybits
+
+    blob = bytes(fuzzybits.nombrilo_to_pcfb(source))
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cached.with_suffix(".pcfb.tmp")
+    tmp.write_bytes(blob)
+    tmp.replace(cached)
+    return cached
 
 
 def inspect_pcfb_bytes(data: bytes) -> dict[str, Any]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -246,8 +247,59 @@ def aralia_model_search_roots() -> list[Path]:
     return roots
 
 
+MODEL_FORMAT_XML = "openpsa-xml"
+MODEL_FORMAT_PCFB = "pcfb"
+MODEL_FORMAT_NOMBRILO = "nombrilo"
+
+# Compiled and circuit formats keep their suffix in the model id so that
+# `chinese.pcfb` and `chinese.safetensors` never collide with `chinese` (XML).
+_SUFFIX_FORMATS: dict[str, str] = {
+    ".pcfb": MODEL_FORMAT_PCFB,
+    ".safetensors": MODEL_FORMAT_NOMBRILO,
+}
+_SAFETENSORS_MAX_HEADER = 100 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class ModelInput:
+    """A catalog model resolved to a file on disk."""
+
+    model_id: str
+    path: Path
+    format: str
+
+
+def is_nombrilo_circuit(path: Path) -> bool:
+    """True when ``path`` is a safetensors container with ``format=nombrilo.circuit``."""
+    try:
+        with path.open("rb") as handle:
+            prefix = handle.read(8)
+            if len(prefix) != 8:
+                return False
+            header_len = int.from_bytes(prefix, "little")
+            if header_len <= 0 or header_len > _SAFETENSORS_MAX_HEADER:
+                return False
+            header = json.loads(handle.read(header_len))
+    except (OSError, ValueError):
+        return False
+    metadata = header.get("__metadata__") if isinstance(header, dict) else None
+    return isinstance(metadata, dict) and metadata.get("format") == "nombrilo.circuit"
+
+
+def _model_format_for_path(path: Path) -> str | None:
+    suffix = path.suffix.lower()
+    if suffix == ".xml":
+        return MODEL_FORMAT_XML
+    fmt = _SUFFIX_FORMATS.get(suffix)
+    if fmt == MODEL_FORMAT_NOMBRILO and not is_nombrilo_circuit(path):
+        return None
+    return fmt
+
+
 def _normalise_model_id_token(model_id: str) -> str:
-    token = model_id.strip().lower().removesuffix(".xml")
+    token = model_id.strip().lower()
+    if not token.endswith(tuple(_SUFFIX_FORMATS)):
+        token = token.removesuffix(".xml")
     if not token:
         raise ValueError("model_id is required")
     if any(part in {"", ".", ".."} for part in token.split("/")):
@@ -256,30 +308,57 @@ def _normalise_model_id_token(model_id: str) -> str:
 
 
 def _model_id_for_path(root: Path, path: Path) -> str:
-    return path.relative_to(root).with_suffix("").as_posix().lower()
+    rel = path.relative_to(root)
+    if path.suffix.lower() in _SUFFIX_FORMATS:
+        return rel.as_posix().lower()
+    return rel.with_suffix("").as_posix().lower()
 
 
-def resolve_model_xml_path(model_id: str) -> Path:
+def _iter_model_files(root: Path):
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        fmt = _model_format_for_path(path)
+        if fmt is not None:
+            yield path, fmt
+
+
+def resolve_model_input(model_id: str) -> ModelInput:
+    """Resolve a catalog ``model_id`` to an OpenPSA XML, ``.pcfb`` or nombrilo file."""
     token = _normalise_model_id_token(model_id)
     rel_parts = token.split("/")
     for root in aralia_model_search_roots():
         if not root.is_dir():
             continue
-        candidate = root.joinpath(*rel_parts).with_suffix(".xml")
+        if token.endswith(tuple(_SUFFIX_FORMATS)):
+            candidate = root.joinpath(*rel_parts)
+        else:
+            candidate = root.joinpath(*rel_parts).with_suffix(".xml")
         if candidate.is_file():
-            return candidate
-        for path in root.rglob("*.xml"):
-            if path.is_file() and _model_id_for_path(root, path) == token:
-                return path
+            fmt = _model_format_for_path(candidate)
+            if fmt is not None:
+                return ModelInput(token, candidate, fmt)
+        for path, fmt in _iter_model_files(root):
+            if _model_id_for_path(root, path) == token:
+                return ModelInput(token, path, fmt)
     raise FileNotFoundError(f"Unknown model_id: {model_id}")
 
 
-def list_aralia_xml_inputs() -> dict[str, Any]:
-    """Discover ``*.xml`` under :func:`aralia_model_search_roots` (recursive).
+def resolve_model_xml_path(model_id: str) -> Path:
+    model = resolve_model_input(model_id)
+    if model.format != MODEL_FORMAT_XML:
+        raise ValueError(f"model_id {model_id} is a {model.format} file, not OpenPSA XML")
+    return model.path
 
-    Each entry's ``modelId`` is the path relative to its search root, without
-    the ``.xml`` suffix, lowercased and POSIX-normalised.  The first root in
-    search order wins when the same ``modelId`` appears in multiple roots.
+
+def list_aralia_xml_inputs() -> dict[str, Any]:
+    """Discover models under :func:`aralia_model_search_roots` (recursive).
+
+    Lists OpenPSA ``*.xml``, compiled ``*.pcfb`` and nombrilo ``*.safetensors``
+    circuits. An XML entry's ``modelId`` is the path relative to its search
+    root without the ``.xml`` suffix; ``.pcfb`` and ``.safetensors`` ids keep
+    their suffix. Ids are lowercased and POSIX-normalised, and the first root
+    in search order wins when the same ``modelId`` appears in multiple roots.
     """
     models: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -290,9 +369,7 @@ def list_aralia_xml_inputs() -> dict[str, Any]:
         if not root.is_dir():
             continue
         roots_out.append(str(root.resolve()))
-        for path in sorted(root.rglob("*.xml")):
-            if not path.is_file():
-                continue
+        for path, fmt in _iter_model_files(root):
             rel = path.relative_to(root)
             model_id = _model_id_for_path(root, path)
             if model_id in seen:
@@ -302,8 +379,10 @@ def list_aralia_xml_inputs() -> dict[str, Any]:
                 "modelId": model_id,
                 "relativePath": rel.as_posix(),
                 "root": str(root.resolve()),
+                "format": fmt,
             }
-            oracle_p = _oracle_p_for_model_id(model_id, oracle_p_by_model)
+            oracle_key = model_id if fmt == MODEL_FORMAT_XML else rel.with_suffix("").as_posix().lower()
+            oracle_p = _oracle_p_for_model_id(oracle_key, oracle_p_by_model)
             if oracle_p is not None:
                 entry["oracle_p"] = oracle_p
             models.append(entry)

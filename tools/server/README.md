@@ -118,11 +118,27 @@ export FUZZYBITS_SERVER_DATA_DIR=/path/to/data
 | Path under `$FUZZYBITS_SERVER_DATA_DIR` | Used for |
 | --- | --- |
 | `compiler.csv`, `convergence.csv` | Optional run tables (`optional_table_path`) |
-| `*.xml`, `Aralia/`, `input/`, `input/Aralia/` | Model catalog (`GET /api/v1/model/xml-inputs`) |
+| `*.xml`, `*.pcfb`, `*.safetensors` under the root, `Aralia/`, `input/`, `input/Aralia/` | Model catalog (`GET /api/v1/model/xml-inputs`) |
 | `SmallTree.xml` or `input/SmallTree/SmallTree.xml` | Default `MCSCRAM_INPUT_FILES` when that env is unset |
 
-`MCSCRAM_ARALIA_INPUT_DIR` still overrides the XML search. If neither env is
-set and `/app/input` is missing, the catalog is empty and the server stays up.
+The catalog is recursive and lists three formats, each entry tagged with
+`format`:
+
+- OpenPSA MEF `*.xml` (`openpsa-xml`), compiled to `.pcfb` with the request's
+  compile options. Model id: relative path without `.xml`, e.g. `chinese`.
+- Compiled `*.pcfb` (`pcfb`), run as is; compile options don't apply. Model id
+  keeps the suffix, e.g. `chinese.pcfb`.
+- nombrilo circuits, `*.safetensors` files whose header says
+  `format=nombrilo.circuit` (`nombrilo`), translated once into the pcfb cache.
+  Variant files such as `baobab1.f3.safetensors` take their probabilities from
+  the sibling `baobab1.safetensors`. Model id keeps the suffix.
+
+The fault-tree and source-DAG views need MEF source, so they are empty for
+`.pcfb` and nombrilo models; the compiled-DAG, kernel and sampling views work
+for all three.
+
+`MCSCRAM_ARALIA_INPUT_DIR` still overrides the search. If neither env is set
+and `/app/input` is missing, the catalog is empty and the server stays up.
 
 ## Env
 
