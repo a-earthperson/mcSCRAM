@@ -90,6 +90,7 @@ TARGETS: dict[str, dict[str, Any]] = {
         "models_dir": "/tmp/fuzzybits-bench/input",
         "work_dir": "/tmp/fuzzybits-bench/work",
         "jit_volume": "fuzzybits-bench-jit-v100s",
+        "shared_device": False,
     },
     "rtx3070": {
         "docker_context": "xerxes",
@@ -105,6 +106,9 @@ TARGETS: dict[str, dict[str, Any]] = {
         "models_dir": "/tmp/fuzzybits-bench/input",
         "work_dir": "/tmp/fuzzybits-bench/work",
         "jit_volume": "fuzzybits-bench-jit-rtx3070",
+        # Co-run with owner services (parakeet, etc.). Idle guard records
+        # foreign load and never refuses; /tmp/gpu-lock-xerxes-1 still serializes our jobs.
+        "shared_device": True,
     },
 }
 
@@ -413,12 +417,13 @@ def cmd_run(args: argparse.Namespace) -> int:
                 lock_held = True
             if args.mode == "accuracy":
                 # Correctness, not a timing gate. CI runners are often busy.
-                load_before = snapshot_load(context)
+                load_before = snapshot_load(context, gpus=gpus)
             else:
                 load_before = wait_for_idle(
                     context=context,
                     gpus=gpus,
                     retries=args.guard_retries,
+                    shared_device=bool(target.get("shared_device")),
                 )
         except GuardError as exc:
             payload = {
@@ -594,7 +599,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
 
-        load_after = snapshot_load(context)
+        load_after = snapshot_load(context, gpus=gpus)
         payload = {
             "schema_version": 1,
             "kind": "run",
@@ -613,6 +618,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "runner": target["runner"],
                 "commit": args.commit or _git_sha(root),
                 "recipe": "docker/runtime.Dockerfile --target runtime",
+                "shared_device": bool(target.get("shared_device")),
                 "load_before": load_before,
                 "load_after": dict(load_after),
             },
@@ -751,6 +757,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                 context=context,
                 gpus=gpus,
                 retries=args.guard_retries,
+                shared_device=bool(target.get("shared_device")),
             )
         except GuardError as exc:
             payload = {
@@ -1139,7 +1146,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
 
-        load_after = snapshot_load(context)
+        load_after = snapshot_load(context, gpus=gpus)
         payload = {
             "schema_version": 1,
             "kind": "ab",
@@ -1164,6 +1171,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                 "toolchain": dockerutil.toolchain_image(root),
                 "rounds": rounds,
                 "inject_regression": args.inject_regression,
+                "shared_device": bool(target.get("shared_device")),
                 "load_before": load_before,
                 "load_after": dict(load_after),
             },

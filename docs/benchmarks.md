@@ -218,8 +218,8 @@ with the same recipe and timed alternately on the same host** (lesson from
 | job | runner | what | merge? |
 |---|---|---|---|
 | `bench-accuracy` | `fuzzybits-ci` | head image, every `accuracy` model | blocks on \|z\| > 4 (and harness `block`/`error`) |
-| `bench-perf-v100s` | `public-ci` V100S (`sm_70,v100s`, NVML GPU 0) | A/B vs develop runtime image | blocks when `ci_lo > 1.03` |
-| `bench-perf-rtx3070` | `public-ci` RTX 3070 (`sm_86,rtx_3070`, NVML GPU 1) | same, when the device is idle | **skip** (`skipped: device busy`, green) if compute apps / lock; otherwise blocks when `ci_lo > 1.03` |
+| `bench-perf-v100s` | `public-ci` V100S (`sm_70,v100s`, NVML GPU 0) | A/B vs develop runtime image | blocks when `ci_lo > 1.03` (exclusive GPU) |
+| `bench-perf-rtx3070` | `public-ci` RTX 3070 (`sm_86,rtx_3070`, NVML GPU 1) | same; `shared_device: true` | blocks when `ci_lo > 1.03`; co-runs with owner services |
 | `bench-perf-cpu` | `fuzzybits-bench` (gateway) | A/B, `cpu_sample_s` | **report-only** (#124) |
 | `bench-summary` | hosted | sticky PR comment + overall verdict | the check to require first |
 
@@ -238,19 +238,20 @@ docker `--gpus device=N`**, matching the harness table — GPU 0 = Tesla V100S
 them from CUDA's default FASTEST_FIRST ordering (the reverse on xerxes).
 V100S / RTX 3070 jobs also take GitHub `concurrency` groups `gpu-xerxes-v100s`
 / `gpu-xerxes-3070` (`cancel-in-progress: false`) so they queue behind
-`images.yml` smoke. If GPU 1 has compute apps (currently an owner
-`/app/parakeet` service), `bench-perf-rtx3070` reports `skipped: device busy`
-and stays green; it does not fail or hang.
+`images.yml` smoke. `rtx3070` is `shared_device: true` in the harness target
+table: the idle guard records foreign GPU processes (name, MiB, utilisation)
+and never refuses because of them. The job still takes `/tmp/gpu-lock-xerxes-1`
+so our benches do not overlap each other. V100S stays exclusive. Shared-device
+results are flagged in the PR comment (`shared GPU, foreign load: …`); a
+block there may be interference — the owner reruns manually.
 
 `workflow_dispatch` accepts `inject_regression` (`scale:1.10`, `scale:1.05`,
 `repeat`) to confirm the GPU jobs block. Do not make `bench-perf-cpu` a
 blocking required check.
 
 Recommended required checks once green: **`bench-summary`**, then
-`bench-accuracy`, `bench-perf-v100s`. `bench-perf-rtx3070` can be required
-once it is green (busy-skip is a pass); leave it optional until the owner
-service on GPU 1 is relocated. Leave `bench-perf-cpu` optional. Do not
-require `windows-generic` (#108).
+`bench-accuracy`, `bench-perf-v100s`, `bench-perf-rtx3070`. Leave
+`bench-perf-cpu` optional. Do not require `windows-generic` (#108).
 
 ### A/A noise (nightly-generic, identical images)
 
@@ -316,14 +317,15 @@ accuracy pass. In A/B, **head timeout / base ok is a regression
 
 | target | host (docker context) | device | time? |
 |---|---|---|---|
-| `v100s` | xerxes `--gpus device=0` (NVML GPU 0, PCI 42:00.0) | Tesla V100S | yes; take `/tmp/gpu-lock-xerxes-0` |
-| `rtx3070` | xerxes `--gpus device=1` (NVML GPU 1, PCI 43:00.0) | RTX 3070 | yes when idle; take `/tmp/gpu-lock-xerxes-1`. Busy → CI skip |
+| `v100s` | xerxes `--gpus device=0` (NVML GPU 0, PCI 42:00.0) | Tesla V100S | yes; exclusive; take `/tmp/gpu-lock-xerxes-0` |
+| `rtx3070` | xerxes `--gpus device=1` (NVML GPU 1, PCI 43:00.0) | RTX 3070 | yes; shared (`shared_device`); take `/tmp/gpu-lock-xerxes-1` |
 | `cpu` | gateway | i7-9700, 8 cores | yes |
 | — | xerxes CPU | noisy (Tdarr/Plex) | **no** |
 | — | shelly, bubs | CI (`fuzzybits-ci`) | **no** |
 
-GPU jobs also use those devices: check `nvidia-smi --query-compute-apps` and
-retry if busy. Do not time GPU work without the lock.
+GPU jobs take the lock. Exclusive targets (V100S) wait for idle compute apps
+and fail `inconclusive` if the device stays busy. Shared targets (`rtx3070`)
+record foreign processes and time anyway. Do not time GPU work without the lock.
 
 ### Injected regression (acceptance)
 

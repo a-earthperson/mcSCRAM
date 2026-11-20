@@ -14,15 +14,20 @@ if str(ROOT / "scripts" / "ci") not in sys.path:
 
 from bench_comment import (  # noqa: E402
     MARKER,
-    RTX3070_BUSY_REASON,
-    maybe_skip_busy,
     overall_verdict,
     render,
     write_skip,
 )
 from bench_filter import classify  # noqa: E402
 from benchmarks.harness.cli import TARGETS, _runtime_host  # noqa: E402
-from benchmarks.harness.guards import acquire_lock, release_lock  # noqa: E402
+from benchmarks.harness.guards import (  # noqa: E402
+    GuardError,
+    acquire_lock,
+    format_foreign_load,
+    release_lock,
+    wait_for_idle,
+)
+from benchmarks.harness.summarize import shared_device_note, summarize  # noqa: E402
 
 
 def test_classify_docs_only():
@@ -51,8 +56,10 @@ def test_xerxes_gpu_indices_match_nvml_harness_table():
     """nvidia-smi / NVML ordinals, not CUDA FASTEST_FIRST (reverse on xerxes)."""
     assert TARGETS["v100s"]["gpus"] == "device=0"
     assert TARGETS["v100s"]["lock_path"] == "/tmp/gpu-lock-xerxes-0"
+    assert TARGETS["v100s"].get("shared_device") is False
     assert TARGETS["rtx3070"]["gpus"] == "device=1"
     assert TARGETS["rtx3070"]["lock_path"] == "/tmp/gpu-lock-xerxes-1"
+    assert TARGETS["rtx3070"]["shared_device"] is True
 
 
 def test_runtime_host_is_local_for_default_docker_context():
@@ -153,37 +160,94 @@ def test_write_skip_json(tmp_path: Path):
     assert payload["verdict"] == "pass"
 
 
-def test_rtx3070_busy_is_skip_not_failure(tmp_path: Path):
+def test_format_foreign_load_parakeet():
+    snap = {
+        "compute_apps": [
+            {
+                "pid": "15727",
+                "process_name": "/app/parakeet",
+                "used_gpu_memory": "3054 MiB",
+                "name": "parakeet",
+            }
+        ],
+        "gpu": {"utilization_gpu": 14.0},
+    }
+    text = format_foreign_load(snap)
+    assert text == "parakeet 3.0 GiB, util 14%"
+    assert shared_device_note({"shared_device": True, "load_before": {**snap, "foreign_load": text}}) == (
+        "shared GPU, foreign load: parakeet 3.0 GiB, util 14%"
+    )
+    assert shared_device_note({"shared_device": False, "load_before": snap}) is None
+
+
+def test_shared_device_records_foreign_load_and_does_not_refuse(monkeypatch):
+    apps = [
+        {
+            "pid": "15727",
+            "process_name": "/app/parakeet",
+            "used_gpu_memory": "3054 MiB",
+            "name": "parakeet",
+        }
+    ]
+    stats = {"utilization_gpu": 14.0, "memory_used_mib": 3200.0}
+    monkeypatch.setattr("benchmarks.harness.guards.host_nproc", lambda ctx: 16)
+    monkeypatch.setattr("benchmarks.harness.guards.host_loadavg", lambda ctx: (1.0, 1.0, 1.0))
+    monkeypatch.setattr(
+        "benchmarks.harness.guards.gpu_compute_apps",
+        lambda ctx, gpus=None, **_: apps,
+    )
+    monkeypatch.setattr(
+        "benchmarks.harness.guards.gpu_device_stats",
+        lambda ctx, gpus=None, **_: stats,
+    )
+    snap = wait_for_idle(context=None, gpus="device=1", retries=6, shared_device=True)
+    assert snap["compute_apps"] == apps
+    assert "parakeet 3.0 GiB" in snap["foreign_load"]
+    assert "util 14%" in snap["foreign_load"]
+    assert snap["idle"] is False
+    try:
+        wait_for_idle(context=None, gpus="device=1", retries=0, shared_device=False)
+    except GuardError as exc:
+        assert "not idle" in str(exc)
+    else:
+        raise AssertionError("exclusive GPU must refuse foreign compute apps")
+
+
+def test_rtx3070_shared_load_is_visible_and_still_blocks(tmp_path: Path):
     path = tmp_path / "rtx3070.json"
     path.write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "kind": "ab",
-                "verdict": "inconclusive",
+                "verdict": "block",
+                "dataset": "v1",
                 "context": {
-                    "error": "host not idle after 1 retries: {'compute_apps': "
-                    "[{'process_name': '[Not Found]', 'used_gpu_memory': '3054 MiB'}]}",
                     "target": "rtx3070",
+                    "shared_device": True,
+                    "load_before": {
+                        "shared_device": True,
+                        "foreign_load": "parakeet 3.0 GiB, util 14%",
+                        "compute_apps": [
+                            {
+                                "name": "parakeet",
+                                "used_gpu_memory": "3054 MiB",
+                            }
+                        ],
+                    },
                 },
                 "models": [],
             }
         ),
         encoding="utf-8",
     )
-    assert maybe_skip_busy(path, job="bench-perf-rtx3070") is True
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["kind"] == "skip"
-    assert payload["verdict"] == "pass"
-    assert payload["reason"].startswith("device busy")
-    assert "GPU 1" in payload["reason"]
     loaded = {
         "accuracy": {"verdict": "pass"},
         "v100s": {"verdict": "pass"},
-        "rtx3070": payload,
+        "rtx3070": json.loads(path.read_text(encoding="utf-8")),
         "cpu": {"verdict": "pass"},
     }
-    assert overall_verdict(loaded) == "pass"
+    assert overall_verdict(loaded) == "block"
     text, overall = render(
         jobs={"accuracy": None, "v100s": None, "rtx3070": path, "cpu": None},
         run_url="https://example.test/run",
@@ -191,20 +255,10 @@ def test_rtx3070_busy_is_skip_not_failure(tmp_path: Path):
         trusted=True,
         run_benches=True,
     )
-    assert overall == "pass"
-    assert "skipped: device busy" in text
-    assert "neutral, not a failure" in text
-    assert RTX3070_BUSY_REASON in text
-
-
-def test_rtx3070_inconclusive_does_not_fail_overall():
-    loaded = {
-        "accuracy": {"verdict": "pass"},
-        "v100s": {"verdict": "pass"},
-        "rtx3070": {"verdict": "inconclusive", "kind": "ab"},
-        "cpu": {"verdict": "pass"},
-    }
-    assert overall_verdict(loaded) == "pass"
+    assert overall == "block"
+    assert "shared GPU, foreign load: parakeet 3.0 GiB" in text
+    body = summarize(json.loads(path.read_text(encoding="utf-8")))
+    assert "shared GPU, foreign load: parakeet 3.0 GiB" in body
 
 
 def test_v100s_inconclusive_still_fails_overall():
@@ -215,13 +269,3 @@ def test_v100s_inconclusive_still_fails_overall():
         "cpu": {"verdict": "pass"},
     }
     assert overall_verdict(loaded) == "inconclusive"
-
-
-def test_maybe_skip_busy_ignores_measured_block(tmp_path: Path):
-    path = tmp_path / "rtx3070.json"
-    path.write_text(
-        json.dumps({"schema_version": 1, "kind": "ab", "verdict": "block", "models": []}),
-        encoding="utf-8",
-    )
-    assert maybe_skip_busy(path, job="bench-perf-rtx3070") is False
-    assert json.loads(path.read_text(encoding="utf-8"))["verdict"] == "block"
