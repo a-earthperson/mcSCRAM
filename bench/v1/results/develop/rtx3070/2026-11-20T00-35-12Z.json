@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "dataset": "v1",
+  "created_utc": "2026-11-20T00:35:12Z",
+  "verdict": "inconclusive",
+  "context": {
+    "error": "host not idle after 6 retries: {'nproc': 48, 'loadavg': [18.71, 31.48, 31.72], 'load_fraction': 0.3897916666666667, 'attempt': 6, 'compute_apps': [{'gpu_uuid': 'GPU-0135d575-80b2-20cf-e61f-2e6c3f23c020', 'gpu_bus_id': '00000000:43:00.0', 'pid': '15727', 'process_name': '[Not Found]', 'used_gpu_memory': '3054 MiB'}, {'gpu_uuid': 'GPU-0135d575-80b2-20cf-e61f-2e6c3f23c020', 'gpu_bus_id': '00000000:43:00.0', 'pid': '992928', 'process_name': '[Not Found]', 'used_gpu_memory': '154 MiB'}], 'idle': False}",
+    "target": "rtx3070",
+    "image": "ghcr.io/fuzzybit-org/fuzzybits-runtime@sha256:0a1d609bd9395edabfbd5062b656eae06e3102be8c4371fe9e2d1ef635b4674d",
+    "docker_context": "default",
+    "backend": "cuda",
+    "device": "NVIDIA GeForce RTX 3070",
+    "runner": "fzb-xerxes-3",
+    "version": "develop",
+    "channel": "develop",
+    "driver": "580.178.04",
+    "runner_name": "fzb-xerxes-3"
+  },
+  "models": [],
+  "summary": {
+    "sources": [
+      "run",
+      "run"
+    ],
+    "n_models": 0
+  }
+}

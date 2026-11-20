@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "dataset": "v1",
+  "created_utc": "2026-11-20T00:44:43Z",
+  "verdict": "inconclusive",
+  "context": {
+    "error": "host not idle after 6 retries: {'nproc': 48, 'loadavg': [46.05, 46.83, 39.23], 'load_fraction': 0.959375, 'attempt': 6, 'compute_apps': [], 'idle': False}",
+    "target": "v100s",
+    "image": "ghcr.io/fuzzybit-org/fuzzybits-runtime@sha256:0a1d609bd9395edabfbd5062b656eae06e3102be8c4371fe9e2d1ef635b4674d",
+    "docker_context": "default",
+    "backend": "cuda",
+    "device": "Tesla V100S-PCIE-32GB",
+    "runner": "fzb-xerxes-5",
+    "version": "develop",
+    "channel": "develop",
+    "driver": "580.178.04",
+    "runner_name": "fzb-xerxes-5"
+  },
+  "models": [],
+  "summary": {
+    "sources": [
+      "run",
+      "run"
+    ],
+    "n_models": 0
+  }
+}
