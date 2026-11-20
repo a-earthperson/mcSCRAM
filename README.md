@@ -173,9 +173,9 @@ threads (start-up and JIT excluded; method in docs/benchmarks.md):
 
 | model (basic events / gates) | V100S                 | i7-9700               |
 |------------------------------|-----------------------|-----------------------|
-| chinese (25 / 36)            | ~$10^{10}$ trials/s   | ~$8 \times 10^7$ trials/s |
-| das9201 (122 / 82)           | ~$2.4 \times 10^9$    | ~$2.6 \times 10^7$    |
-| das9701 (267 / 2,226)        | ~$4.6 \times 10^8$    | ~$4.8 \times 10^6$    |
+| chinese (25 / 36)            | ~ $10^{10}$ trials/s   | ~ $8 \times 10^7$ trials/s |
+| das9201 (122 / 82)           | ~ $2.4 \times 10^9$    | ~ $2.6 \times 10^7$    |
+| das9701 (267 / 2,226)        | ~ $4.6 \times 10^8$    | ~ $4.8 \times 10^6$    |
 
 At das9701's rate on the V100S, p = $10^{-6}$ to ±10% takes about 0.8 s,
 and p = $10^{-8}$ to ±1% about 2.3 hours.
