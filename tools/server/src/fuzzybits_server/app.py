@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from fuzzybits_server.bench import create_bench_router
 from fuzzybits_server.config import CalculationConfig, apply_server_cli, env_bool
 from fuzzybits_server.event_hub import EventHub
 from fuzzybits_server.native import shutdown_native_workers
@@ -44,6 +45,7 @@ def create_app(
     app.state.event_hub = hub
     app.state.supervisor = calc_supervisor
     app.include_router(create_router(calc_supervisor, hub))
+    app.include_router(create_bench_router())
     mount_ui(app)
 
     should_autostart = autostart if autostart is not None else env_bool("MCSCRAM_AUTOSTART", False)

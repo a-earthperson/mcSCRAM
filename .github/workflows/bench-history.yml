@@ -1,0 +1,343 @@
+# Published accuracy/performance history (#123). Never on pull_request.
+# Tags, nightly develop, and manual backfill. Results go to the bench-results
+# branch (never develop) and, when Pages is enabled, to GitHub Pages.
+#
+# GitHub Pages is not enabled on this repository yet. Until Settings → Pages
+# → Source is "GitHub Actions", the deploy job is skipped on dispatch
+# (default) and allowed to fail on tags/schedule. Data still lands on
+# bench-results.
+name: Bench history
+
+on:
+  push:
+    tags: ["v*"]
+  schedule:
+    # After images.yml (47 7) so nightly-generic is usually already published.
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label to record (v0.17.0, v0.17.1, or develop)"
+        required: true
+        default: "develop"
+        type: string
+      image:
+        description: "Runtime image override (empty = derive from version)"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Skip harness; rebuild index from bench-results and stop before deploy"
+        required: false
+        default: false
+        type: boolean
+      deploy_pages:
+        description: "Deploy to GitHub Pages (needs Pages source = GitHub Actions)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.version || github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_REPO: ghcr.io/fuzzybit-org/fuzzybits-runtime
+  DATASET: v1
+
+jobs:
+  measure-v100s:
+    name: measure-v100s
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
+    runs-on:
+      group: public-ci
+      labels: [self-hosted, Linux, X64, nvidia, sm_70, v100s]
+    timeout-minutes: 180
+    concurrency:
+      group: gpu-xerxes-v100s
+      cancel-in-progress: false
+    env:
+      TARGET: v100s
+      DOCKER_GPUS: device=0
+      LOCK_PATH: /tmp/gpu-lock-xerxes-0
+    steps: &measure-steps
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Containers still mounting this workspace are left over from an earlier job.
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Resolve version, image, commit
+        id: meta
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+            IMAGE_OVERRIDE="${{ github.event.inputs.image }}"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+            IMAGE_OVERRIDE=""
+          else
+            VERSION="develop"
+            IMAGE_OVERRIDE=""
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            VERSION="develop"
+          fi
+          if [[ "${VERSION}" == "develop" || "${VERSION}" == "nightly" ]]; then
+            git fetch --no-tags origin develop:refs/remotes/origin/develop || true
+            COMMIT="$(git rev-parse origin/develop 2>/dev/null || echo "${GITHUB_SHA}")"
+          elif git rev-parse -q --verify "refs/tags/${VERSION}^{commit}" >/dev/null; then
+            COMMIT="$(git rev-parse "refs/tags/${VERSION}^{commit}")"
+          else
+            git fetch --tags origin "${VERSION}" || true
+            COMMIT="$(git rev-parse "refs/tags/${VERSION}^{commit}" 2>/dev/null || echo "${GITHUB_SHA}")"
+          fi
+          SHA12="${COMMIT:0:12}"
+          if [[ -n "${IMAGE_OVERRIDE}" ]]; then
+            IMAGE="${IMAGE_OVERRIDE}"
+          elif [[ "${VERSION}" == "develop" || "${VERSION}" == "nightly" ]]; then
+            IMAGE="${IMAGE_REPO}:nightly-generic"
+          else
+            IMAGE="${IMAGE_REPO}:${VERSION}-generic"
+            if ! docker buildx imagetools inspect "${IMAGE}" >/dev/null 2>&1; then
+              if docker buildx imagetools inspect "${IMAGE_REPO}:${VERSION}" >/dev/null 2>&1; then
+                IMAGE="${IMAGE_REPO}:${VERSION}"
+              elif docker buildx imagetools inspect "${IMAGE_REPO}:sha-${SHA12}-generic" >/dev/null 2>&1; then
+                IMAGE="${IMAGE_REPO}:sha-${SHA12}-generic"
+              fi
+            fi
+          fi
+          {
+            echo "version=${VERSION}"
+            echo "image=${IMAGE}"
+            echo "commit=${COMMIT}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION} image=${IMAGE} commit=${COMMIT}"
+
+      - name: uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+
+      - name: Wait for runtime image
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -euo pipefail
+          echo "pulling ${IMAGE}"
+          ok=0
+          for i in $(seq 1 40); do
+            if docker pull "${IMAGE}"; then
+              ok=1
+              break
+            fi
+            echo "image not ready (attempt ${i}); sleeping 30s"
+            sleep 30
+          done
+          if [[ "${ok}" != 1 ]]; then
+            echo "failed to pull ${IMAGE}" >&2
+            exit 1
+          fi
+          docker buildx imagetools inspect "${IMAGE}" | head -n 40
+
+      - name: Host driver
+        id: driver
+        run: |
+          set -euo pipefail
+          driver=""
+          if [[ -n "${DOCKER_GPUS}" ]] && command -v nvidia-smi >/dev/null 2>&1; then
+            driver="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n 1 | tr -d '[:space:]')"
+          fi
+          echo "driver=${driver}" >> "${GITHUB_OUTPUT}"
+          echo "driver=${driver:-none}"
+
+      - name: Take GPU lock
+        if: env.LOCK_PATH != ''
+        run: |
+          set -euo pipefail
+          lock="${LOCK_PATH}"
+          for i in $(seq 1 120); do
+            if mkdir "${lock}" 2>/dev/null; then
+              echo "acquired ${lock}"
+              exit 0
+            fi
+            echo "waiting for ${lock} (${i})"
+            sleep 15
+          done
+          echo "could not acquire ${lock}" >&2
+          exit 1
+
+      - name: Run accuracy + perf
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
+          DRIVER: ${{ steps.driver.outputs.driver }}
+          RUNNER_NAME: ${{ runner.name }}
+          OUT_DIR: ${{ runner.temp }}/bench-history
+          DOCKER_CONTEXT: default
+        run: bash scripts/ci/bench-history-run.sh
+
+      - name: Release GPU lock
+        if: always() && env.LOCK_PATH != ''
+        run: rmdir "${LOCK_PATH}" || true
+
+      - name: Upload merged results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-history-${{ env.TARGET }}-${{ steps.meta.outputs.version }}
+          path: ${{ runner.temp }}/bench-history/
+          if-no-files-found: error
+          retention-days: 30
+
+  measure-rtx3070:
+    name: measure-rtx3070
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
+    runs-on:
+      group: public-ci
+      labels: [self-hosted, Linux, X64, nvidia, sm_86, rtx_3070]
+    timeout-minutes: 180
+    concurrency:
+      group: gpu-xerxes-3070
+      cancel-in-progress: false
+    env:
+      TARGET: rtx3070
+      DOCKER_GPUS: device=1
+      LOCK_PATH: /tmp/gpu-lock-xerxes-1
+    steps: *measure-steps
+
+  measure-cpu:
+    name: measure-cpu
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
+    runs-on:
+      group: fuzzybits-bench
+      labels: [self-hosted, Linux, X64]
+    timeout-minutes: 180
+    concurrency:
+      group: cpu-bench-gateway
+      cancel-in-progress: false
+    env:
+      TARGET: cpu
+      DOCKER_GPUS: ""
+      LOCK_PATH: ""
+    steps: *measure-steps
+
+  publish:
+    name: publish
+    needs: [measure-v100s, measure-rtx3070, measure-cpu]
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          path: src
+
+      - name: Checkout bench-results
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: bench-results
+          fetch-depth: 0
+          persist-credentials: true
+          path: bench-results
+
+      - name: uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+
+      - name: Download measure artifacts
+        if: ${{ always() && (needs.measure-v100s.result == 'success' || needs.measure-v100s.result == 'failure' || needs.measure-rtx3070.result == 'success' || needs.measure-rtx3070.result == 'failure' || needs.measure-cpu.result == 'success' || needs.measure-cpu.result == 'failure') }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: bench-history-*
+          path: artifacts
+          merge-multiple: false
+
+      - name: Publish new points
+        working-directory: src
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(../artifacts/*/merged.json)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "no merged.json artifacts; rebuilding index only"
+          else
+            for f in "${files[@]}"; do
+              uv run --no-project --python 3.12 python -m benchmarks.history publish \
+                --results "${f}" \
+                --dest "${GITHUB_WORKSPACE}/bench-results"
+            done
+          fi
+          uv run --no-project --python 3.12 python -m benchmarks.history index \
+            --root "${GITHUB_WORKSPACE}/bench-results"
+
+      - name: Commit bench-results
+        working-directory: bench-results
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p bench/v1/results
+          touch .nojekyll
+          git add -- .nojekyll bench
+          if git diff --cached --quiet; then
+            echo "no history changes"
+            exit 0
+          fi
+          git commit -m "chore(bench): publish history $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push origin HEAD:bench-results
+
+      - name: Assemble Pages artifact
+        run: |
+          set -euo pipefail
+          mkdir -p pages
+          cp -a bench-results/.nojekyll pages/ || touch pages/.nojekyll
+          cp -a bench-results/bench pages/
+          find pages -name .git -prune -o -type f -print | head
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: pages
+
+  deploy:
+    name: deploy-pages
+    needs: publish
+    if: ${{ !cancelled() && needs.publish.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.deploy_pages == 'true') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
+      - name: Pages setting reminder
+        if: failure()
+        run: |
+          echo "::warning::GitHub Pages deploy failed. Enable it on the repository: Settings → Pages → Build and deployment → Source = GitHub Actions. Then re-run this workflow with deploy_pages=true."

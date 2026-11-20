@@ -5,6 +5,7 @@ import App from "./App";
 import { TooltipProvider } from "./app/components/ui/HintTooltip";
 import { normalizeAppPath } from "./app/routing";
 import "./app/styles/global.css";
+import "./app/styles/tabs.css";
 import "./app/styles/scroll-bar.css";
 import "./app/styles/sticky-panel.css";
 

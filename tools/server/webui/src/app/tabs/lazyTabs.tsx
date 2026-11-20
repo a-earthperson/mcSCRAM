@@ -4,3 +4,7 @@ import { lazy } from "react";
 export const PlaygroundTab = lazy(() =>
   import("./playground/Playground").then((m) => ({ default: m.Playground })),
 );
+
+export const BenchmarksTab = lazy(() =>
+  import("./benchmarks/Benchmarks").then((m) => ({ default: m.Benchmarks })),
+);

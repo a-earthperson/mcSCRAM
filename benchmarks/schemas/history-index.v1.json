@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fuzzybit-org/fuzzybits/blob/develop/benchmarks/schemas/history-index.v1.json",
+  "title": "fuzzybits published benchmark history index",
+  "description": "Static JSON at bench/v1/index.json (#123). Each point is one version x target x dataset run.",
+  "type": "object",
+  "required": ["schema_version", "dataset", "generated_utc", "points"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "dataset": { "type": "string" },
+    "generated_utc": { "type": "string" },
+    "source_url": { "type": "string" },
+    "n_points": { "type": "integer" },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "channel", "target", "path", "models"],
+        "properties": {
+          "version": { "type": "string" },
+          "channel": { "type": "string", "enum": ["release", "develop"] },
+          "target": { "type": "string", "enum": ["cpu", "v100s", "rtx3070"] },
+          "dataset": { "type": "string" },
+          "created_utc": { "type": "string" },
+          "path": { "type": "string" },
+          "runner": { "type": ["string", "null"] },
+          "device": { "type": ["string", "null"] },
+          "driver": { "type": ["string", "null"] },
+          "image_digest": { "type": ["string", "null"] },
+          "recipe": { "type": ["string", "null"] },
+          "commit": { "type": ["string", "null"] },
+          "verdict": { "type": ["string", "null"] },
+          "flags": { "type": "object" },
+          "models": { "type": "array" }
+        }
+      }
+    }
+  }
+}

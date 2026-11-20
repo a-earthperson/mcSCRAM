@@ -15,6 +15,8 @@ x-server: &server
     ACPP_VISIBILITY_MASK: ""
     ACPP_ADAPTIVITY_LEVEL: 1
     ACPP_PERSISTENT_RUNTIME: 1
+    FUZZYBITS_BENCH_DATA_URL: ${FUZZYBITS_BENCH_DATA_URL:-https://fuzzybit-org.github.io/fuzzybits/bench/v1/index.json}
+    FUZZYBITS_BENCH_CACHE_DIR: ${FUZZYBITS_BENCH_CACHE_DIR:-}
   volumes:
     # Public OpenPSA/Aralia models from this checkout; the catalog scans /data recursively.
     - ./input:/data:ro

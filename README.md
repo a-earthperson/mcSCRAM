@@ -52,6 +52,8 @@ Put your .xml models in a folder and start the server:
     fuzzybits-server --data-dir ./models
 
 Then open http://localhost:8000, pick a model and start sampling.
+The Benchmarks tab (http://localhost:8000/benchmarks) plots published
+release-vs-develop history; see docs/benchmarks.md.
 
 Or run the same server with Docker, no Python needed:
 

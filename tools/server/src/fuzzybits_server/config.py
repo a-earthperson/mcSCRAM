@@ -15,6 +15,9 @@ SERVER_ENGINE_ENV = "FUZZYBITS_SERVER_ENGINE"
 SERVER_CACHE_DIR_ENV = "FUZZYBITS_SERVER_CACHE_DIR"
 SERVER_UI_ENV = "FUZZYBITS_SERVER_UI"
 SERVER_UI_DIR_ENV = "FUZZYBITS_SERVER_UI_DIR"
+SERVER_BENCH_DATA_URL_ENV = "FUZZYBITS_BENCH_DATA_URL"
+SERVER_BENCH_CACHE_DIR_ENV = "FUZZYBITS_BENCH_CACHE_DIR"
+DEFAULT_BENCH_INDEX_URL = "https://fuzzybit-org.github.io/fuzzybits/bench/v1/index.json"
 _LEGACY_DEFAULT_INPUT = Path("/app/input/SmallTree.xml")
 _BOOLEAN_TRUE = {"1", "true", "yes", "on"}
 _BOOLEAN_FALSE = {"0", "false", "no", "off"}
@@ -286,6 +289,19 @@ def server_ui_dir() -> Path | None:
     if raw:
         return _ui_index(Path(raw).expanduser())
     return packaged_ui_dir() or source_ui_dir()
+
+
+def bench_index_url() -> str:
+    raw = os.getenv(SERVER_BENCH_DATA_URL_ENV, "").strip()
+    return raw or DEFAULT_BENCH_INDEX_URL
+
+
+def bench_cache_dir() -> Path | None:
+    raw = os.getenv(SERVER_BENCH_CACHE_DIR_ENV, "").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    return path if path.is_dir() else None
 
 
 @dataclass(frozen=True)
