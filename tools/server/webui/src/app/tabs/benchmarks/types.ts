@@ -1,5 +1,5 @@
-export const BENCH_TARGETS = ["v100s", "rtx3070", "cpu"] as const;
-export type BenchTarget = (typeof BENCH_TARGETS)[number];
+export const BENCH_TARGETS = ["v100s", "rtx3070", "rtx5060ti", "cpu"] as const;
+export type BenchTarget = (typeof BENCH_TARGETS)[number] | string;
 
 export type BenchChannel = "release" | "develop";
 

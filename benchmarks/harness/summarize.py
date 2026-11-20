@@ -34,17 +34,25 @@ def _md_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> str:
 
 
 def shared_device_note(context: Mapping[str, Any] | None) -> str | None:
-    """``shared GPU, foreign load: parakeet 3.0 GiB`` or None if exclusive."""
+    """``shared GPU, report-only, foreign load: parakeet 3.0 GiB`` or None."""
     if not context:
         return None
     load = context.get("load_before") if isinstance(context.get("load_before"), Mapping) else {}
     shared = bool(context.get("shared_device") or (load or {}).get("shared_device"))
-    if not shared:
+    report_only = bool(context.get("report_only"))
+    bits: list[str] = []
+    if shared:
+        bits.append("shared GPU")
+    if report_only:
+        bits.append("report-only")
+    if shared:
+        text = (load or {}).get("foreign_load") if isinstance(load, Mapping) else None
+        if not text:
+            text = format_foreign_load(load if isinstance(load, Mapping) else None)
+        bits.append(f"foreign load: {text}")
+    if not bits:
         return None
-    text = (load or {}).get("foreign_load") if isinstance(load, Mapping) else None
-    if not text:
-        text = format_foreign_load(load if isinstance(load, Mapping) else None)
-    return f"shared GPU, foreign load: {text}"
+    return ", ".join(bits)
 
 
 def summarize_run(payload: Mapping[str, Any]) -> str:

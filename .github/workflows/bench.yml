@@ -8,6 +8,7 @@
 # xerxes GPU indices are NVML/nvidia-smi (GPU 0 = V100S, GPU 1 = RTX 3070),
 # never CUDA FASTEST_FIRST. rtx3070 is shared_device (co-runs with owner
 # services); V100S stays exclusive. Both still take /tmp/gpu-lock-xerxes-{0,1}.
+# rtx5060ti on shelly is shared_device + report_only (lock /tmp/gpu-lock-shelly-0).
 #
 # runs-on expressions must stay byte-identical to
 # scripts/ci/check-self-hosted-reachability.py APPROVED_PR_RUNS_ON_*.
@@ -427,6 +428,57 @@ jobs:
           path: artifacts/
           if-no-files-found: warn
 
+  # shelly NVML GPU 0 = RTX 5060 Ti (PCI device=0, lock /tmp/gpu-lock-shelly-0,
+  # group gpu-shelly-5060ti). Heavily shared (VLLM); report-only, never blocks.
+  bench-perf-rtx5060ti:
+    name: bench-perf-rtx5060ti
+    needs: [bench-filter, bench-images]
+    if: always() && needs.bench-filter.result == 'success' && needs.bench-filter.outputs.trusted == 'true' && needs.bench-filter.outputs.run_benches == 'true' && needs.bench-images.result == 'success'
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"public-ci","labels":["self-hosted","Linux","X64","nvidia","fast","sm_120","rtx_5060ti_8gb"]}') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    concurrency:
+      group: gpu-shelly-5060ti
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      BASE_IMAGE: ${{ needs.bench-images.outputs.base_image }}
+      HEAD_IMAGE: ${{ needs.bench-images.outputs.head_image }}
+      BASE_SHA: ${{ needs.bench-images.outputs.base_sha }}
+      HEAD_SHA: ${{ needs.bench-images.outputs.head_sha }}
+      INJECT: ${{ github.event.inputs.inject_regression || '' }}
+      MODE: perf
+      TARGET: rtx5060ti
+      OUT: artifacts/rtx5060ti.json
+    steps:
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Pull images
+        run: |
+          docker pull "${BASE_IMAGE}"
+          docker pull "${HEAD_IMAGE}"
+
+      - name: A/B RTX 5060 Ti (report-only)
+        run: bash scripts/ci/bench_invoke.sh
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-rtx5060ti
+          path: artifacts/
+          if-no-files-found: warn
+
   bench-perf-cpu:
     name: bench-perf-cpu
     needs: [bench-filter, bench-images]
@@ -484,6 +536,7 @@ jobs:
       - bench-accuracy
       - bench-perf-v100s
       - bench-perf-rtx3070
+      - bench-perf-rtx5060ti
       - bench-perf-cpu
     if: always()
     runs-on: ubuntu-24.04
@@ -515,6 +568,7 @@ jobs:
           ACC_RESULT: ${{ needs.bench-accuracy.result }}
           V100S_RESULT: ${{ needs.bench-perf-v100s.result }}
           RTX_RESULT: ${{ needs.bench-perf-rtx3070.result }}
+          RTX5060_RESULT: ${{ needs.bench-perf-rtx5060ti.result }}
           CPU_RESULT: ${{ needs.bench-perf-cpu.result }}
           PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           INJECT: ${{ github.event.inputs.inject_regression || '' }}
@@ -548,11 +602,13 @@ jobs:
           acc="$(find_json accuracy)"
           v100s="$(find_json v100s)"
           rtx="$(find_json rtx3070)"
+          rtx5060="$(find_json rtx5060ti)"
           cpu="$(find_json cpu)"
           args=()
           [[ -n "${acc}" ]] && args+=(--accuracy "${acc}")
           [[ -n "${v100s}" ]] && args+=(--v100s "${v100s}")
           [[ -n "${rtx}" ]] && args+=(--rtx3070 "${rtx}")
+          [[ -n "${rtx5060}" ]] && args+=(--rtx5060ti "${rtx5060}")
           [[ -n "${cpu}" ]] && args+=(--cpu "${cpu}")
           set +e
           python3 scripts/ci/bench_comment.py \
@@ -579,6 +635,9 @@ jobs:
             if [[ "${CPU_RESULT}" == "failure" ]]; then
               echo "CPU job failed (harness error, not a report-only warn)" >&2
               exit 1
+            fi
+            if [[ "${RTX5060_RESULT}" == "failure" ]]; then
+              echo "RTX 5060 Ti job failed (report-only; not blocking)" >&2
             fi
           fi
           exit "${rc}"

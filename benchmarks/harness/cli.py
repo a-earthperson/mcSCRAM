@@ -6,6 +6,7 @@ import argparse
 import json
 import subprocess
 import sys
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -45,12 +46,16 @@ from .verdict import (
     VERDICT_PASS,
     VERDICT_PASS_LOW_POWER,
     VERDICT_TIMEOUT,
+    VERDICT_UNSUPPORTED,
     VERDICT_WARN,
     ab_timeout_verdict,
     accuracy_power_verdict,
+    apply_report_only,
+    classify_run_failure,
     collect_timings,
     combine_verdicts,
     cpu_wall_verdict,
+    finite_positive,
     gpu_kernel_verdict,
     gpu_total_verdict,
 )
@@ -60,6 +65,7 @@ from .verdict import (
 # FASTEST_FIRST ordering, which is the reverse on xerxes:
 #   GPU 0 = Tesla V100S (PCI 42:00.0), lock /tmp/gpu-lock-xerxes-0
 #   GPU 1 = RTX 3070   (PCI 43:00.0), lock /tmp/gpu-lock-xerxes-1
+# shelly: GPU 0 = RTX 5060 Ti (sm_120), lock /tmp/gpu-lock-shelly-0
 TARGETS: dict[str, dict[str, Any]] = {
     "cpu": {
         "docker_context": "gateway",
@@ -110,7 +116,81 @@ TARGETS: dict[str, dict[str, Any]] = {
         # foreign load and never refuses; /tmp/gpu-lock-xerxes-1 still serializes our jobs.
         "shared_device": True,
     },
+    "rtx5060ti": {
+        "docker_context": "shelly",
+        "gpus": "device=0",
+        "backend": "cuda",
+        # No Nsight Systems on shelly; A/B falls back to fzb sample_s / wall.
+        "profiler": None,
+        "profiler_bin": None,
+        "lock_host": "shelly",
+        "lock_path": "/tmp/gpu-lock-shelly-0",
+        "device": "NVIDIA GeForce RTX 5060 Ti",
+        "runner": "shelly-1",
+        "models_dir": "/tmp/fuzzybits-bench/input",
+        "work_dir": "/tmp/fuzzybits-bench/work",
+        "jit_volume": "fuzzybits-bench-jit-rtx5060ti",
+        # Co-run with VLLM / owner python (~7 GiB resident, ~0.5 GiB free).
+        "shared_device": True,
+        "report_only": True,
+    },
 }
+
+
+def _sample_s_ms(run: Mapping[str, Any] | None) -> float | None:
+    """fzb ``sample_s`` (or wall) in milliseconds, for targets with no nsys."""
+    if not run:
+        return None
+    sample = run.get("sample_s")
+    if sample is None:
+        sample = (run.get("run") or {}).get("sample_s")
+    if sample is None:
+        sample = run.get("wall_s")
+    number, _reason = finite_positive(sample)
+    return None if number is None else number * 1000.0
+
+
+def _gpu_profiler_with_fallback(run: Mapping[str, Any]) -> dict[str, Any]:
+    profiler = dict(run.get("profiler") or {})
+    if profiler.get("gpu_total_ms") is None and profiler.get("total_gpu_kernel_ms") is None:
+        ms = _sample_s_ms(run)
+        if ms is not None:
+            profiler["gpu_total_ms"] = ms
+            profiler["gpu_total_source"] = "sample_s"
+    return profiler
+
+
+def _run_failure_verdict(*runs: Mapping[str, Any] | None) -> str:
+    parts: list[Any] = []
+    for run in runs:
+        if not run:
+            continue
+        parts.extend(
+            (
+                run.get("error"),
+                run.get("stderr"),
+                run.get("docker_stderr"),
+                run.get("stdout"),
+            )
+        )
+    return classify_run_failure(*parts)
+
+
+_OK_EXIT = {
+    VERDICT_PASS,
+    VERDICT_PASS_LOW_POWER,
+    VERDICT_INFEASIBLE,
+    VERDICT_KNOWN_FAILURE,
+    VERDICT_WARN,
+    VERDICT_TIMEOUT,
+    VERDICT_UNSUPPORTED,
+}
+
+
+def _exit_ok(verdict: str, *, report_only: bool) -> bool:
+    if report_only:
+        return True
+    return verdict in _OK_EXIT
 
 
 def _run_error(prefix: str, run: dict[str, Any]) -> str:
@@ -482,7 +562,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     compile_verdict = VERDICT_KNOWN_FAILURE
                     status = "known_failure"
                 else:
-                    compile_verdict = VERDICT_BLOCK
+                    compile_verdict = _run_failure_verdict(compiled)
                     status = "error"
                 row = {
                     "id": model.id,
@@ -536,7 +616,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                         "mode": args.mode,
                         "ok": False,
                         "error": compiled.get("error") or compiled.get("stderr"),
-                        "verdict": "block",
+                        "verdict": _run_failure_verdict(compiled),
                     }
                 )
                 continue
@@ -572,7 +652,11 @@ def cmd_run(args: argparse.Namespace) -> int:
                 row["inspect"] = compiled.get("inspect")
                 row["compile_wall_s"] = compiled.get("compile_wall_s")
             else:
-                profiler = run.get("profiler") or {}
+                profiler = (
+                    _gpu_profiler_with_fallback(run)
+                    if backend == "cuda"
+                    else (run.get("profiler") or {})
+                )
                 timed_out = bool(run.get("timed_out"))
                 row = {
                     "id": model.id,
@@ -584,7 +668,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "profiler": profiler,
                     "run": run.get("run"),
                     "verdict": VERDICT_TIMEOUT if timed_out else (
-                        "pass" if run.get("ok") else "block"
+                        "pass" if run.get("ok") else _run_failure_verdict(run)
                     ),
                     "timed_out": timed_out,
                     "error": None if run.get("ok") and not timed_out else (
@@ -619,24 +703,23 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "commit": args.commit or _git_sha(root),
                 "recipe": "docker/runtime.Dockerfile --target runtime",
                 "shared_device": bool(target.get("shared_device")),
+                "report_only": bool(target.get("report_only")),
+                "profiler": target.get("profiler"),
                 "load_before": load_before,
                 "load_after": dict(load_after),
             },
             "models": rows,
         }
+        if target.get("report_only"):
+            payload["verdict"] = apply_report_only(
+                payload["verdict"], report_only=True
+            )
         _write_json(Path(args.out), payload)
         text = summarize(payload)
         if args.md:
             Path(args.md).write_text(text, encoding="utf-8")
         print(text)
-        return 0 if payload["verdict"] in {
-            VERDICT_PASS,
-            VERDICT_PASS_LOW_POWER,
-            VERDICT_INFEASIBLE,
-            VERDICT_KNOWN_FAILURE,
-            VERDICT_WARN,
-            VERDICT_TIMEOUT,
-        } else 1
+        return 0 if _exit_ok(payload["verdict"], report_only=bool(target.get("report_only"))) else 1
     finally:
         if lock_held:
             release_lock(host, target["lock_path"])
@@ -648,6 +731,7 @@ def _ratio_row(
     samples_head: list[float],
     metric: str,
     gpu: bool,
+    report_only: bool = False,
 ) -> dict[str, Any] | tuple[None, str]:
     try:
         ratio, lo, hi = bootstrap_median_ratio_ci(samples_base, samples_head, seed=1)
@@ -660,6 +744,7 @@ def _ratio_row(
             verdict = gpu_total_verdict(ratio, lo, hi)
     else:
         verdict = cpu_wall_verdict(ratio, lo, hi)
+    verdict = apply_report_only(verdict, report_only=report_only)
     ratios = paired_ratios(samples_base, samples_head)
     return {
         "metric": metric,
@@ -841,7 +926,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                 rows.append(
                     {
                         "id": model.id,
-                        "verdict": "block",
+                        "verdict": _run_failure_verdict(compiled_base, compiled_head),
                         "error": {
                             "base": compiled_base.get("error") or compiled_base.get("stderr"),
                             "head": compiled_head.get("error") or compiled_head.get("stderr"),
@@ -954,7 +1039,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                     rows.append(
                         {
                             "id": model.id,
-                            "verdict": "block",
+                            "verdict": _run_failure_verdict(warm),
                             "error": _run_error(f"{side} warmup", warm),
                         }
                     )
@@ -1003,7 +1088,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                         rows.append(
                             {
                                 "id": model.id,
-                                "verdict": "block",
+                                "verdict": _run_failure_verdict(timed),
                                 "error": _run_error(f"{side} round {round_i}", timed),
                             }
                         )
@@ -1036,6 +1121,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                         samples_head=total_h,
                         metric="gpu_total_ms",
                         gpu=True,
+                        report_only=bool(target.get("report_only")),
                     )
                     if isinstance(total_row, tuple):
                         rows.append(
@@ -1063,6 +1149,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                             samples_head=kernel_h,
                             metric="gpu_kernel_ms",
                             gpu=True,
+                            report_only=bool(target.get("report_only")),
                         )
                         if isinstance(kernel_row, tuple):
                             kernel_row = None
@@ -1100,6 +1187,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                         samples_head=head_ss,
                         metric="cpu_sample_s",
                         gpu=False,
+                        report_only=bool(target.get("report_only")),
                     )
                     if isinstance(cpu_row, tuple):
                         rows.append(
@@ -1123,6 +1211,9 @@ def cmd_ab(args: argparse.Namespace) -> int:
                     acc = _accuracy_row(model, head_runs[-1], manifest=manifest)
                     if acc.get("verdict") == VERDICT_BLOCK and acc.get("gated"):
                         verdict = VERDICT_BLOCK
+                verdict = apply_report_only(
+                    verdict, report_only=bool(target.get("report_only"))
+                )
                 rows.append(
                     {
                         "id": model.id,
@@ -1172,24 +1263,23 @@ def cmd_ab(args: argparse.Namespace) -> int:
                 "rounds": rounds,
                 "inject_regression": args.inject_regression,
                 "shared_device": bool(target.get("shared_device")),
+                "report_only": bool(target.get("report_only")),
+                "profiler": target.get("profiler"),
                 "load_before": load_before,
                 "load_after": dict(load_after),
             },
             "models": rows,
         }
+        if target.get("report_only"):
+            payload["verdict"] = apply_report_only(
+                payload["verdict"], report_only=True
+            )
         _write_json(Path(args.out), payload)
         text = summarize(payload)
         if args.md:
             Path(args.md).write_text(text, encoding="utf-8")
         print(text)
-        return 0 if payload["verdict"] in {
-            VERDICT_PASS,
-            VERDICT_PASS_LOW_POWER,
-            VERDICT_INFEASIBLE,
-            VERDICT_KNOWN_FAILURE,
-            VERDICT_WARN,
-            VERDICT_TIMEOUT,
-        } else 1
+        return 0 if _exit_ok(payload["verdict"], report_only=bool(target.get("report_only"))) else 1
     finally:
         if lock_held:
             release_lock(host, target["lock_path"])

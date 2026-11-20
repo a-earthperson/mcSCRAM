@@ -19,13 +19,23 @@ from bench_comment import (  # noqa: E402
     write_skip,
 )
 from bench_filter import classify  # noqa: E402
-from benchmarks.harness.cli import TARGETS, _runtime_host  # noqa: E402
+from benchmarks.harness.cli import (  # noqa: E402
+    TARGETS,
+    _gpu_profiler_with_fallback,
+    _runtime_host,
+)
 from benchmarks.harness.guards import (  # noqa: E402
     GuardError,
     acquire_lock,
     format_foreign_load,
     release_lock,
     wait_for_idle,
+)
+from benchmarks.harness.verdict import (  # noqa: E402
+    apply_report_only,
+    classify_run_failure,
+    collect_timings,
+    combine_verdicts,
 )
 from benchmarks.harness.summarize import shared_device_note, summarize  # noqa: E402
 
@@ -60,6 +70,12 @@ def test_xerxes_gpu_indices_match_nvml_harness_table():
     assert TARGETS["rtx3070"]["gpus"] == "device=1"
     assert TARGETS["rtx3070"]["lock_path"] == "/tmp/gpu-lock-xerxes-1"
     assert TARGETS["rtx3070"]["shared_device"] is True
+    assert TARGETS["rtx5060ti"]["gpus"] == "device=0"
+    assert TARGETS["rtx5060ti"]["lock_path"] == "/tmp/gpu-lock-shelly-0"
+    assert TARGETS["rtx5060ti"]["shared_device"] is True
+    assert TARGETS["rtx5060ti"]["report_only"] is True
+    assert TARGETS["rtx5060ti"]["profiler"] is None
+    assert TARGETS["rtx5060ti"]["runner"] == "shelly-1"
 
 
 def test_runtime_host_is_local_for_default_docker_context():
@@ -121,12 +137,14 @@ def test_comment_cpu_block_is_report_only(tmp_path: Path):
         "accuracy": acc,
         "v100s": None,
         "rtx3070": None,
+        "rtx5060ti": None,
         "cpu": cpu,
     }
     loaded = {
         "accuracy": json.loads(acc.read_text(encoding="utf-8")),
         "v100s": None,
         "rtx3070": None,
+        "rtx5060ti": None,
         "cpu": json.loads(cpu.read_text(encoding="utf-8")),
     }
     assert overall_verdict(loaded) == "warn"
@@ -148,7 +166,7 @@ def test_comment_gpu_block_fails(tmp_path: Path):
         json.dumps({"schema_version": 1, "kind": "ab", "verdict": "block", "models": []}),
         encoding="utf-8",
     )
-    loaded = {"accuracy": {"verdict": "pass"}, "v100s": {"verdict": "block"}, "rtx3070": {"verdict": "pass"}, "cpu": {"verdict": "pass"}}
+    loaded = {"accuracy": {"verdict": "pass"}, "v100s": {"verdict": "block"}, "rtx3070": {"verdict": "pass"}, "rtx5060ti": {"verdict": "warn"}, "cpu": {"verdict": "pass"}}
     assert overall_verdict(loaded) == "block"
 
 
@@ -245,11 +263,12 @@ def test_rtx3070_shared_load_is_visible_and_still_blocks(tmp_path: Path):
         "accuracy": {"verdict": "pass"},
         "v100s": {"verdict": "pass"},
         "rtx3070": json.loads(path.read_text(encoding="utf-8")),
+        "rtx5060ti": None,
         "cpu": {"verdict": "pass"},
     }
     assert overall_verdict(loaded) == "block"
     text, overall = render(
-        jobs={"accuracy": None, "v100s": None, "rtx3070": path, "cpu": None},
+        jobs={"accuracy": None, "v100s": None, "rtx3070": path, "rtx5060ti": None, "cpu": None},
         run_url="https://example.test/run",
         notices=[],
         trusted=True,
@@ -266,6 +285,90 @@ def test_v100s_inconclusive_still_fails_overall():
         "accuracy": {"verdict": "pass"},
         "v100s": {"verdict": "inconclusive"},
         "rtx3070": {"verdict": "pass"},
+        "rtx5060ti": {"verdict": "error"},
         "cpu": {"verdict": "pass"},
     }
     assert overall_verdict(loaded) == "inconclusive"
+
+
+def test_rtx5060ti_error_does_not_fail_overall():
+    loaded = {
+        "accuracy": {"verdict": "pass"},
+        "v100s": {"verdict": "pass"},
+        "rtx3070": {"verdict": "pass"},
+        "rtx5060ti": {"verdict": "error", "kind": "ab"},
+        "cpu": {"verdict": "pass"},
+    }
+    assert overall_verdict(loaded) == "warn"
+
+
+def test_classify_oom_and_unsupported_jit():
+    assert classify_run_failure("CUDA_ERROR_OUT_OF_MEMORY") == "error"
+    assert classify_run_failure("out of memory on device") == "error"
+    assert classify_run_failure("no kernel image is available for execution on the device") == "unsupported"
+    assert classify_run_failure("ptxas fatal   : Not supported") == "unsupported"
+    assert classify_run_failure("segfault") == "block"
+    assert apply_report_only("block", report_only=True) == "warn"
+    assert apply_report_only("error", report_only=True) == "error"
+    assert combine_verdicts(["unsupported", "unsupported"]) == "unsupported"
+    assert combine_verdicts(["pass", "unsupported"]) == "pass"
+
+
+def test_gpu_profiler_fallback_writes_sample_s_ms():
+    profiler = _gpu_profiler_with_fallback({"sample_s": 0.4, "profiler": {}})
+    assert abs(profiler["gpu_total_ms"] - 400.0) < 1e-6
+    assert profiler["gpu_total_source"] == "sample_s"
+    kept = _gpu_profiler_with_fallback(
+        {"sample_s": 0.4, "profiler": {"gpu_total_ms": 12.5, "total_gpu_kernel_ms": 12.5}}
+    )
+    assert kept["gpu_total_ms"] == 12.5
+    assert "gpu_total_source" not in kept
+
+
+def test_collect_timings_falls_back_to_sample_s_without_profiler():
+    runs = [
+        {"sample_s": 0.012, "profiler": {}},
+        {"sample_s": 0.013, "wall_s": 0.04},
+    ]
+    values, err = collect_timings(runs, gpu=True, kind="total")
+    assert err is None
+    assert values is not None
+    assert abs(values[0] - 12.0) < 1e-6
+    assert abs(values[1] - 13.0) < 1e-6
+
+
+def test_rtx5060ti_comment_is_report_only_shared(tmp_path: Path):
+    path = tmp_path / "rtx5060ti.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "kind": "ab",
+                "verdict": "warn",
+                "dataset": "v1",
+                "context": {
+                    "target": "rtx5060ti",
+                    "shared_device": True,
+                    "report_only": True,
+                    "load_before": {
+                        "shared_device": True,
+                        "foreign_load": "EngineCore 3.6 GiB, python 3.5 GiB, util 0%",
+                    },
+                },
+                "models": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    text, overall = render(
+        jobs={"accuracy": None, "v100s": None, "rtx3070": None, "rtx5060ti": path, "cpu": None},
+        run_url="https://example.test/run",
+        notices=[],
+        trusted=True,
+        run_benches=True,
+    )
+    assert overall == "warn"
+    assert "shared GPU" in text
+    assert "report-only" in text
+    assert "EngineCore 3.6 GiB" in text
+    assert "never blocks" in text

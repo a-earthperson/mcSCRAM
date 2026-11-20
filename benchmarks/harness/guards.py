@@ -327,7 +327,7 @@ def wait_for_idle(
     """Return a snapshot of load (and GPU occupancy).
 
     Exclusive GPUs (``shared_device=False``) raise ``GuardError`` if compute
-    apps stay present. Shared GPUs (rtx3070) record foreign processes and
+    apps stay present. Shared GPUs (rtx3070, rtx5060ti) record foreign processes and
     return immediately — they never refuse or skip because of them. Host
     loadavg is ignored for GPU jobs (sibling GPU / Tdarr / Plex on xerxes).
     """

@@ -15,8 +15,9 @@ from typing import Any
 MARKER = "<!-- fuzzybits-bench-gate -->"
 
 # Jobs whose harness verdict can fail the required summary. CPU is report-only (#124).
+# rtx5060ti is shared-device report-only on shelly (never blocks).
 BLOCKING_JOBS = ("accuracy", "v100s", "rtx3070")
-REPORT_ONLY_JOBS = ("cpu",)
+REPORT_ONLY_JOBS = ("cpu", "rtx5060ti")
 
 _FAIL = {"block", "error"}
 # inconclusive: host busy — fail the gate so an untested PR is not green.
@@ -47,6 +48,8 @@ def _verdict(payload: Mapping[str, Any] | None, *, missing: str = "skipped") -> 
 
 
 def _job_fails(name: str, verdict: str) -> bool:
+    if name == "rtx5060ti":
+        return False
     if name in REPORT_ONLY_JOBS:
         return verdict == "error"
     if name in BLOCKING_JOBS:
@@ -62,6 +65,7 @@ def overall_verdict(jobs: Mapping[str, Mapping[str, Any] | None]) -> str:
         "skipped": 0,
         "infeasible": 1,
         "known_failure": 1,
+        "unsupported": 1,
         "timeout": 2,
         "warn": 3,
         "block": 4,
@@ -72,7 +76,15 @@ def overall_verdict(jobs: Mapping[str, Mapping[str, Any] | None]) -> str:
     failing: str | None = None
     for name, payload in jobs.items():
         verdict = _verdict(payload)
-        if name in REPORT_ONLY_JOBS and verdict == "block":
+        if name == "rtx5060ti" and verdict in {
+            "block",
+            "error",
+            "inconclusive",
+            "unsupported",
+        }:
+            # Shared GPU, report-only: surface as warn, never fail the gate.
+            verdict = "warn"
+        elif name in REPORT_ONLY_JOBS and verdict == "block":
             verdict = "warn"
         if _job_fails(name, verdict):
             if failing is None or rank.get(verdict, 0) > rank.get(failing, 0):
@@ -148,17 +160,19 @@ def render(
         "[#124](https://github.com/fuzzybit-org/fuzzybits/issues/124)); "
         "it does not fail this check."
     )
-    rtx_note = None
-    rtx_payload = loaded.get("rtx3070")
-    if rtx_payload:
-        try:
-            from benchmarks.harness.summarize import shared_device_note
-        except ImportError:
-            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-            from benchmarks.harness.summarize import shared_device_note
-        rtx_note = shared_device_note(_context(rtx_payload))
+    try:
+        from benchmarks.harness.summarize import shared_device_note
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        from benchmarks.harness.summarize import shared_device_note
+    rtx_note = shared_device_note(_context(loaded.get("rtx3070")))
     if rtx_note:
         lines.append(f"- **RTX 3070:** {rtx_note} (co-runs; a block may be interference)")
+    rtx5060_note = shared_device_note(_context(loaded.get("rtx5060ti")))
+    if rtx5060_note:
+        lines.append(f"- **RTX 5060 Ti:** {rtx5060_note} (never blocks)")
+    elif loaded.get("rtx5060ti"):
+        lines.append("- **RTX 5060 Ti:** shared GPU, report-only (never blocks)")
     if notices:
         lines.append("")
         for notice in notices:
@@ -168,6 +182,7 @@ def render(
         "accuracy": "Accuracy (head, CPU)",
         "v100s": "V100S A/B (`gpu_total_ms`, blocks at ci_lo > 1.03)",
         "rtx3070": "RTX 3070 A/B (`gpu_total_ms`, blocks at ci_lo > 1.03; shared GPU)",
+        "rtx5060ti": "RTX 5060 Ti A/B (shelly, shared GPU, report-only)",
         "cpu": "CPU A/B (`cpu_sample_s`, report-only)",
     }
     for name, title in labels.items():
@@ -191,7 +206,7 @@ def render(
         "",
         "## Artifacts",
         "",
-        "JSON results are uploaded on the Actions run (accuracy, v100s, rtx3070, cpu).",
+        "JSON results are uploaded on the Actions run (accuracy, v100s, rtx3070, rtx5060ti, cpu).",
         "",
     ]
     return "\n".join(lines).rstrip() + "\n", overall
@@ -263,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--accuracy", type=Path, default=None)
     parser.add_argument("--v100s", type=Path, default=None)
     parser.add_argument("--rtx3070", type=Path, default=None)
+    parser.add_argument("--rtx5060ti", type=Path, default=None)
     parser.add_argument("--cpu", type=Path, default=None)
     parser.add_argument("--run-url", default="")
     parser.add_argument("--notice", action="append", default=[])
@@ -301,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
         "accuracy": args.accuracy,
         "v100s": args.v100s,
         "rtx3070": args.rtx3070,
+        "rtx5060ti": args.rtx5060ti,
         "cpu": args.cpu,
     }
     markdown, overall = render(

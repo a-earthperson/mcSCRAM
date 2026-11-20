@@ -217,6 +217,22 @@ jobs:
       LOCK_PATH: /tmp/gpu-lock-xerxes-1
     steps: *measure-steps
 
+  measure-rtx5060ti:
+    name: measure-rtx5060ti
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
+    runs-on:
+      group: public-ci
+      labels: [self-hosted, Linux, X64, nvidia, fast, sm_120, rtx_5060ti_8gb]
+    timeout-minutes: 180
+    concurrency:
+      group: gpu-shelly-5060ti
+      cancel-in-progress: false
+    env:
+      TARGET: rtx5060ti
+      DOCKER_GPUS: device=0
+      LOCK_PATH: /tmp/gpu-lock-shelly-0
+    steps: *measure-steps
+
   measure-cpu:
     name: measure-cpu
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
@@ -235,7 +251,7 @@ jobs:
 
   publish:
     name: publish
-    needs: [measure-v100s, measure-rtx3070, measure-cpu]
+    needs: [measure-v100s, measure-rtx3070, measure-rtx5060ti, measure-cpu]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -262,7 +278,7 @@ jobs:
         uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
 
       - name: Download measure artifacts
-        if: ${{ always() && (needs.measure-v100s.result == 'success' || needs.measure-v100s.result == 'failure' || needs.measure-rtx3070.result == 'success' || needs.measure-rtx3070.result == 'failure' || needs.measure-cpu.result == 'success' || needs.measure-cpu.result == 'failure') }}
+        if: ${{ always() && (needs.measure-v100s.result == 'success' || needs.measure-v100s.result == 'failure' || needs.measure-rtx3070.result == 'success' || needs.measure-rtx3070.result == 'failure' || needs.measure-rtx5060ti.result == 'success' || needs.measure-rtx5060ti.result == 'failure' || needs.measure-cpu.result == 'success' || needs.measure-cpu.result == 'failure') }}
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: bench-history-*

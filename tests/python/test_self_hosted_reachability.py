@@ -40,6 +40,7 @@ def test_approved_gpu_and_cpu_expressions_are_in_bench_yml():
     text = bench.read_text(encoding="utf-8")
     assert reach.APPROVED_PR_RUNS_ON_V100S in text
     assert reach.APPROVED_PR_RUNS_ON_RTX3070 in text
+    assert reach.APPROVED_PR_RUNS_ON_RTX5060TI in text
     assert reach.APPROVED_PR_RUNS_ON_BENCH_CPU in text
     assert reach.APPROVED_PR_RUNS_ON_CI in text
 
@@ -53,6 +54,7 @@ def test_approved_gpu_routing_on_pull_request_passes(tmp_path: Path):
             "jobs": {
                 "bench-perf-v100s": {"runs-on": reach.APPROVED_PR_RUNS_ON_V100S},
                 "bench-perf-rtx3070": {"runs-on": reach.APPROVED_PR_RUNS_ON_RTX3070},
+                "bench-perf-rtx5060ti": {"runs-on": reach.APPROVED_PR_RUNS_ON_RTX5060TI},
                 "bench-perf-cpu": {"runs-on": reach.APPROVED_PR_RUNS_ON_BENCH_CPU},
                 "linux": {"runs-on": reach.APPROVED_PR_RUNS_ON_CI},
             },
