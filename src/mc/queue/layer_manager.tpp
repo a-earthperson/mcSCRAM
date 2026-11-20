@@ -31,6 +31,15 @@
 
 namespace scram::mc::queue {
 
+static_assert(static_cast<std::uint8_t>(core::kAnd) == scram::mc::compat::detail::kHostAnd);
+static_assert(static_cast<std::uint8_t>(core::kOr) == scram::mc::compat::detail::kHostOr);
+static_assert(static_cast<std::uint8_t>(core::kAtleast) == scram::mc::compat::detail::kHostAtleast);
+static_assert(static_cast<std::uint8_t>(core::kXor) == scram::mc::compat::detail::kHostXor);
+static_assert(static_cast<std::uint8_t>(core::kNot) == scram::mc::compat::detail::kHostNot);
+static_assert(static_cast<std::uint8_t>(core::kNand) == scram::mc::compat::detail::kHostNand);
+static_assert(static_cast<std::uint8_t>(core::kNor) == scram::mc::compat::detail::kHostNor);
+static_assert(static_cast<std::uint8_t>(core::kNull) == scram::mc::compat::detail::kHostNull);
+
 template <typename bitpack_t_, typename prob_t_, typename size_t_>
 void layer_manager<bitpack_t_, prob_t_, size_t_>::gather_all_nodes(
     const std::shared_ptr<core::Gate> &gate, std::vector<std::shared_ptr<core::Node>> &nodes,
@@ -480,6 +489,20 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
     for (const auto &queueable : queueables_) {
         queueable->submit();
         scram::mc::compat::wait_if_metal(queue_);
+    }
+    for (const auto &layer : pdag_nodes_by_layer_) {
+        for (const auto &node : layer) {
+            const auto gate_node = std::dynamic_pointer_cast<core::Gate>(node);
+            if (!gate_node) {
+                continue;
+            }
+            auto git = allocated_gates_by_index_.find(gate_node->index());
+            if (git == allocated_gates_by_index_.end()) {
+                continue;
+            }
+            scram::mc::compat::host_eval_gate_if_metal(queue_, git->second, sample_shape_,
+                                                       static_cast<std::uint8_t>(gate_node->type()));
+        }
     }
     for (auto &pair : allocated_tally_events_by_index_) {
         scram::mc::compat::host_accumulate_if_metal(queue_, pair.second, sample_shape_);

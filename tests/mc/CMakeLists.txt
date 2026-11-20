@@ -90,7 +90,7 @@ target_include_directories(mc_metal_canary_tests PRIVATE
 )
 add_sycl_to_target(TARGET mc_metal_canary_tests SOURCES metal_canary_tests.cc)
 
-set(_metal_xfail_canaries reduce64 double device_tally_hits)
+set(_metal_xfail_canaries reduce64 double)
 foreach(_canary IN LISTS _metal_xfail_canaries)
   if(APPLE)
     add_test(NAME mc.metal_canary.${_canary}
@@ -107,9 +107,16 @@ foreach(_canary IN LISTS _metal_xfail_canaries)
   )
 endforeach()
 
-# 64-bit fetch_add is host-visible on the hosted Metal device; not a shim.
+# 64-bit fetch_add and single nested-USM popcount are host-visible on the
+# hosted Metal device; not shims. Double-indirection `bitpack_t **` in gate
+# kernels is still host-evaluated (host_eval_gate_if_metal).
 add_test(NAME mc.metal_canary.atomic64 COMMAND mc_metal_canary_tests "[atomic64]")
 set_tests_properties(mc.metal_canary.atomic64 PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)
+add_test(NAME mc.metal_canary.device_tally_hits COMMAND mc_metal_canary_tests "[device_tally_hits]")
+set_tests_properties(mc.metal_canary.device_tally_hits PROPERTIES
   LABELS "mc"
   TIMEOUT ${MC_TEST_TIMEOUT}
 )

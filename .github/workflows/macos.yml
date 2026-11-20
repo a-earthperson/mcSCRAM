@@ -353,10 +353,10 @@ jobs:
           set -euo pipefail
           export PATH="${ACPP_PREFIX}/bin:${PATH}"
           export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
-          # Native 64-bit reduce_over_group, device double, nested-USM
-          # popcount. Apple wraps those in metal_canary_xfail.cmake
-          # (SIGABRT is not a CTest WILL_FAIL). 64-bit fetch_add is
-          # labelled `mc` (not xfail).
+          # Native 64-bit reduce_over_group and device double. Apple wraps
+          # those two in metal_canary_xfail.cmake (SIGABRT is not a CTest
+          # WILL_FAIL). 64-bit fetch_add and nested-USM popcount are labelled
+          # `mc` (not xfail).
           ctest --test-dir build/metal -R '^mc.metal_canary' --output-on-failure --no-tests=error
 
       - name: Record timings

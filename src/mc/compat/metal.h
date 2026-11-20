@@ -32,10 +32,11 @@
  *   2. LLVMToMetal accepts `double` in device IR, or AdaptiveCpp provides
  *      soft-double (canary `mc.metal_canary.double` flips). Then restore
  *      named `double` fields on `event::tally` if desired.
- *   3. After `queue.wait()`, device `tally.num_one_bits` from a kernel
- *      popcount is host-visible and is not clobbered by a later wait
- *      (canary `mc.metal_canary.device_tally_hits` flips). Then delete
- *      `host_accumulate_if_metal` / `host_publish_if_metal`.
+ *   3. Device kernels can follow USM `bitpack_t **` input tables and
+ *      `wait()` does not clobber host-visible hits. Then delete
+ *      `host_eval_gate_if_metal`, `host_accumulate_if_metal`, and
+ *      `host_publish_if_metal`. Single nested pointers already work
+ *      (`mc.metal_canary.device_tally_hits`).
  *
  * 64-bit atomics are **not** shimmed. `mc.metal_canary.atomic64` passed on
  * the hosted macos-26 paravirtual device (eight groups, host saw 8).
@@ -59,6 +60,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -93,7 +95,15 @@ inline constexpr bool group_sum_fits_u32_v =
     (sizeof(bitpack_t_) * 8 * kMaxTallyLocalSize) <= std::numeric_limits<std::uint32_t>::max();
 
 inline bool is_metal_queue(const sycl::queue &queue) {
-    return static_cast<int>(queue.get_device().get_backend()) == kMetalRuntimeBackendId;
+    const auto dev = queue.get_device();
+    if (static_cast<int>(dev.get_backend()) == kMetalRuntimeBackendId) {
+        return true;
+    }
+    if (dev.get_info<sycl::info::device::device_type>() != sycl::info::device_type::gpu) {
+        return false;
+    }
+    const auto name = dev.get_info<sycl::info::device::name>();
+    return name.find("Apple") != std::string::npos || name.find("Metal") != std::string::npos;
 }
 
 namespace detail {
@@ -121,6 +131,33 @@ inline std::unordered_map<const void *, const void *> &metal_tally_buffers() {
     static thread_local std::unordered_map<const void *, const void *> buffers;
     return buffers;
 }
+
+/// Host-tracked gate I/O pointers. `gate.inputs` is a USM table of device
+/// pointers (`bitpack_t **`); following it on Metal from a 3-D kernel is the
+/// remaining hits=0 cause after single nested pointers were shown to work
+/// (`mc.metal_canary.device_tally_hits`).
+struct metal_gate_io {
+    std::vector<const void *> inputs;
+    const void *output = nullptr;
+    std::size_t n_in = 0;
+    std::size_t negated_inputs_offset = 0;
+    std::uint8_t at_least = 0;
+};
+
+inline std::unordered_map<const void *, metal_gate_io> &metal_gates() {
+    static thread_local std::unordered_map<const void *, metal_gate_io> gates;
+    return gates;
+}
+
+/// Must match `scram::core::Connective`.
+inline constexpr std::uint8_t kHostAnd = 0;
+inline constexpr std::uint8_t kHostOr = 1;
+inline constexpr std::uint8_t kHostAtleast = 2;
+inline constexpr std::uint8_t kHostXor = 3;
+inline constexpr std::uint8_t kHostNot = 4;
+inline constexpr std::uint8_t kHostNand = 5;
+inline constexpr std::uint8_t kHostNor = 6;
+inline constexpr std::uint8_t kHostNull = 7;
 
 } // namespace detail
 
@@ -168,6 +205,112 @@ inline void host_note_tally_buffer(const sycl::queue &queue, Tally *tally, Bitpa
         return;
     }
     detail::metal_tally_buffers()[tally] = buffer;
+}
+
+template <typename Gate, typename Bitpack>
+inline void host_note_gate(const sycl::queue &queue, Gate *gate, Bitpack **inputs, const std::size_t n_in,
+                           const std::size_t negated_inputs_offset, Bitpack *output, const std::uint8_t at_least = 0) {
+    if (!is_metal_queue(queue) || gate == nullptr) {
+        return;
+    }
+    detail::metal_gate_io io;
+    io.inputs.reserve(n_in);
+    for (std::size_t i = 0; i < n_in; ++i) {
+        io.inputs.push_back(inputs[i]);
+    }
+    io.output = output;
+    io.n_in = n_in;
+    io.negated_inputs_offset = negated_inputs_offset;
+    io.at_least = at_least;
+    detail::metal_gates()[gate] = std::move(io);
+}
+
+template <typename Bitpack>
+inline Bitpack host_atleast_word(const std::vector<std::vector<Bitpack>> &words, const std::size_t j,
+                                 const std::size_t n_in, const std::size_t negated_inputs_offset,
+                                 const std::uint8_t at_least) {
+    Bitpack out = 0;
+    constexpr int nbits = static_cast<int>(sizeof(Bitpack) * 8);
+    for (int b = 0; b < nbits; ++b) {
+        int count = 0;
+        for (std::size_t i = 0; i < n_in; ++i) {
+            Bitpack w = words[i][j];
+            if (i >= negated_inputs_offset) {
+                w = static_cast<Bitpack>(~w);
+            }
+            count += static_cast<int>((w >> b) & Bitpack{1});
+        }
+        if (count >= static_cast<int>(at_least)) {
+            out = static_cast<Bitpack>(out | (Bitpack{1} << b));
+        }
+    }
+    return out;
+}
+
+/// Replay one gate on the host from memcpy'd producer buffers. Metal device
+/// kernels cannot follow `bitpack_t **` input tables (double indirection in
+/// USM). No-op on other backends.
+template <typename Gate, typename Shape>
+inline void host_eval_gate_if_metal(sycl::queue &queue, Gate *gate, const Shape &shape, const std::uint8_t op) {
+    if (!is_metal_queue(queue) || gate == nullptr) {
+        return;
+    }
+    const auto it = detail::metal_gates().find(gate);
+    if (it == detail::metal_gates().end() || it->second.output == nullptr) {
+        return;
+    }
+    const auto &io = it->second;
+    using bitpack_t = std::remove_pointer_t<decltype(Gate::buffer)>;
+    const std::size_t npacks =
+        static_cast<std::size_t>(shape.batch_size) * static_cast<std::size_t>(shape.bitpacks_per_batch);
+    if (npacks == 0 || io.n_in == 0) {
+        return;
+    }
+    std::vector<std::vector<bitpack_t>> in_words(io.n_in, std::vector<bitpack_t>(npacks));
+    for (std::size_t i = 0; i < io.n_in; ++i) {
+        if (io.inputs[i] == nullptr) {
+            return;
+        }
+        queue.memcpy(in_words[i].data(), io.inputs[i], npacks * sizeof(bitpack_t)).wait();
+    }
+    std::vector<bitpack_t> out(npacks);
+    const bool and_like = (op == detail::kHostAnd || op == detail::kHostNand);
+    for (std::size_t j = 0; j < npacks; ++j) {
+        if (op == detail::kHostAtleast) {
+            out[j] = host_atleast_word(in_words, j, io.n_in, io.negated_inputs_offset, io.at_least);
+            continue;
+        }
+        bitpack_t result = and_like ? static_cast<bitpack_t>(~bitpack_t{0}) : bitpack_t{0};
+        auto combine = [&](bitpack_t val) {
+            if (op == detail::kHostOr || op == detail::kHostNor) {
+                result |= val;
+            } else if (op == detail::kHostAnd || op == detail::kHostNand) {
+                result &= val;
+            } else if (op == detail::kHostXor) {
+                result ^= val;
+            } else {
+                result = val;
+            }
+        };
+        for (std::size_t i = 0; i < io.negated_inputs_offset; ++i) {
+            combine(in_words[i][j]);
+        }
+        for (std::size_t i = io.negated_inputs_offset; i < io.n_in; ++i) {
+            combine(static_cast<bitpack_t>(~in_words[i][j]));
+        }
+        if (op == detail::kHostNand || op == detail::kHostNor || op == detail::kHostNot) {
+            result = static_cast<bitpack_t>(~result);
+        }
+        out[j] = result;
+    }
+    queue.memcpy(const_cast<void *>(io.output), out.data(), npacks * sizeof(bitpack_t)).wait();
+}
+
+template <typename Gate>
+inline void host_clear_gate_if_metal(Gate *gate) {
+    if (gate != nullptr) {
+        detail::metal_gates().erase(gate);
+    }
 }
 
 /// After a Metal pass, memcpy the producer bitpack allocation and add the

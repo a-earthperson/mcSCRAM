@@ -65,7 +65,7 @@ TEST_CASE("uint32 reduce_over_group in a 3-D nd_range", "[mc][reduce32-3d]") {
 }
 
 TEST_CASE("device popcount of nested USM buffer is host-visible on Metal",
-          "[metal-canary][device_tally_hits]") {
+          "[mc][device_tally_hits]") {
     sycl::queue queue;
     auto *buf = sycl::malloc_shared<std::uint64_t>(1, queue);
     auto *out = sycl::malloc_shared<std::size_t>(1, queue);

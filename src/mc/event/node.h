@@ -577,6 +577,8 @@ namespace scram::mc::event {
 
             // Copy actual buffer pointers.
             std::copy(gate_inputs.begin(), gate_inputs.end(), all_inputs + cursor);
+            compat::host_note_gate(queue, &gates[i], all_inputs + cursor, n_in,
+                                   static_cast<std::size_t>(n_in - n_neg), gates[i].buffer);
             cursor += n_in;
         }
 
@@ -613,6 +615,9 @@ namespace scram::mc::event {
         }
 
         if (blk.data) {
+            for (std::size_t i = 0; i < blk.count; ++i) {
+                compat::host_clear_gate_if_metal(&blk.data[i]);
+            }
             sycl::free(blk.data, queue);
             blk.data = nullptr;
         }
@@ -702,6 +707,9 @@ namespace scram::mc::event {
 
             // Copy actual buffer pointers.
             std::copy(gate_inputs.begin(), gate_inputs.end(), all_inputs + cursor);
+            compat::host_note_gate(queue, &gates[i], all_inputs + cursor, n_in,
+                                   static_cast<std::size_t>(n_in - n_neg), gates[i].buffer,
+                                   static_cast<std::uint8_t>(atleast_per_gate[i]));
             cursor += n_in;
         }
 
@@ -738,6 +746,9 @@ namespace scram::mc::event {
         }
 
         if (blk.data) {
+            for (std::size_t i = 0; i < blk.count; ++i) {
+                compat::host_clear_gate_if_metal(&blk.data[i]);
+            }
             sycl::free(blk.data, queue);
             blk.data = nullptr;
         }
