@@ -93,5 +93,5 @@ export function compilationLevelSummary(level: number): string {
 export const COMPILATION_LEVEL_FIELD_HINT = [
   "Cumulative DirectEval preprocessor depth (compilation_level 0–8). Each Cn runs all passes through Cn−1, then adds the row below.",
   "C0–C3 are the native mcSCRAM structural passes; C4–C8 add Rakhimov's five-phase NNF pipeline (Phase I–V), staggered one phase per level.",
-  "C6–C7 run only when Expand K/N or Expand XOR is enabled; C8 completes the pipeline toward AND/OR NNF when those expansions are on.",
+  "C6–C7 run only when Expand VOT or Expand XOR is enabled; C8 completes the pipeline toward AND/OR NNF when those expansions are on.",
 ].join(" ");

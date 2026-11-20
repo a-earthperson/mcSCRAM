@@ -40,14 +40,14 @@ export function CompilerControlGroup({
       />
       <div className="pg-matrix" role="group" aria-label="Connective normalization">
         <span className="pg-matrix__caption" aria-hidden="true">Nodes</span>
-        <span className="pg-matrix__col" aria-hidden="true">K/N</span>
+        <span className="pg-matrix__col" aria-hidden="true">VOT</span>
         <span className="pg-matrix__col" aria-hidden="true">XOR</span>
         <span className="pg-matrix__col" aria-hidden="true">NUL</span>
         <span className="pg-matrix__col" aria-hidden="true">NOT</span>
 
         <span className="pg-matrix__row" aria-hidden="true">Replace</span>
         <MatrixCheckbox
-          label="Replace K/N (ATLEAST) gates"
+          label="Replace VOTER gates"
           checked={compileOptions.compilationLevel >= 6 || compileOptions.expandAtleastGates}
           disabled={disabled || compileOptions.compilationLevel >= 6}
           onChange={patch("expandAtleastGates")}
@@ -75,7 +75,7 @@ export function CompilerControlGroup({
 
         <span className="pg-matrix__row" aria-hidden="true">Merge</span>
         <MatrixCheckbox
-          label="Merge K/N (ATLEAST) groups"
+          label="Merge VOTER groups"
           checked={compileOptions.compilationLevel < 6 ? compileOptions.recognizeAtleastGroups : false}
           disabled={disabled || compileOptions.compilationLevel >= 6}
           onChange={patch("recognizeAtleastGroups")}
