@@ -1,13 +1,13 @@
 [project]
 name = "fuzzybits-server"
-version = "0.18.2"
+version = "0.18.3"
 description = "FastAPI server: compile OpenPSA/MEF fault trees to .pcfb and sample the top event."
 readme = "README.md"
 requires-python = ">=3.12,<3.16"
 license = {text = "AGPL-3.0-or-later"}
 authors = [{ name = "fuzzybit-org" }]
 dependencies = [
-    "fuzzybits==0.18.2",
+    "fuzzybits==0.18.3",
     "fastapi>=0.115",
     "numpy>=2.4.6",
     "platformdirs>=4.0",
