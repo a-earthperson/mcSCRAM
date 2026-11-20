@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # vim: set foldmarker={{{,}}} foldlevel=0 foldmethod=marker:
 
 # Catch2 is fetched once at the top level (cmake/FuzzybitsCatch2.cmake, v3.4.0).

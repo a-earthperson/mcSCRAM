@@ -245,4 +245,5 @@ More
 - Benchmark dataset, harness and CI gates: docs/benchmarks.md
 - Questions and bug reports: https://github.com/fuzzybit-org/fuzzybits/issues
 - License: AGPL-3.0 (see LICENSE). fuzzybits is derived from SCRAM by
-  Olzhas Rakhimov (https://github.com/rakhimov/scram).
+  Olzhas Rakhimov (https://github.com/rakhimov/scram); files derived
+  from SCRAM remain GPL-3.0-or-later (see NOTICE).
