@@ -101,6 +101,7 @@ with fuzzybits.Session(pcfb, backend="auto") as session:
         print(obs.pass_index, tally.num_one_bits, tally.total_bits)
         if tally.total_bits >= 1_000_000:
             break                        # early stop; Session.close() on __exit__
+    obs = session.step(passes=16)        # 16 passes, one wait and one tally read
 ```
 
 `compile` / `compile_file` lower OpenPSA/MEF **or** nombrilo.circuit

@@ -155,6 +155,7 @@ def options_from_env() -> dict[str, Any]:
         ("MCSCRAM_SEED", "seed"),
         ("MCSCRAM_LIMIT_ORDER", "limit_order"),
         ("MCSCRAM_COMPILATION_PASSES", "compilation_passes"),
+        ("FUZZYBITS_PASSES_PER_STEP", "passes_per_step"),
     ):
         if raw := os.getenv(env_name):
             options[key] = int(raw)

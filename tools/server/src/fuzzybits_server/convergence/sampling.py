@@ -89,7 +89,7 @@ def _native_options(options: dict[str, Any] | None) -> dict[str, Any]:
 
 @runtime_checkable
 class Sampler(Protocol):
-    """Produces raw cumulative tally counters one device pass at a time."""
+    """Produces raw cumulative tally counters, one step (one or more device passes) at a time."""
 
     @property
     def shape(self) -> SampleShape: ...
@@ -100,8 +100,8 @@ class Sampler(Protocol):
     @property
     def node_indices(self) -> list[int]: ...
 
-    def step(self) -> PassObservation:
-        """Run exactly one pass and return cumulative counters for tracked nodes."""
+    def step(self, passes: int = 1) -> PassObservation:
+        """Run ``passes`` passes, waiting once, and return cumulative counters for tracked nodes."""
         ...
 
     def close(self) -> None:
@@ -174,10 +174,11 @@ class NativeSampler:
     def node_indices(self) -> list[int]:
         return list(self._node_indices)
 
-    def step(self) -> PassObservation:
-        self._pass_index += 1
+    def step(self, passes: int = 1) -> PassObservation:
+        self._pass_index += passes
         if self._has_pass_all:
-            raw = self._manager.single_pass_all()
+            # fuzzybits builds before passes_per_step only accept single_pass_all().
+            raw = self._manager.single_pass_all(passes) if passes > 1 else self._manager.single_pass_all()
             nodes = {
                 int(index): NodeCounters(
                     index=int(index),
@@ -187,7 +188,8 @@ class NativeSampler:
                 for index, counter in raw.items()
             }
         else:
-            counter = self._manager.single_pass(self._target_index)
+            for _ in range(passes):
+                counter = self._manager.single_pass(self._target_index)
             nodes = {
                 self._target_index: NodeCounters(
                     index=self._target_index,
@@ -260,13 +262,14 @@ class BernoulliSampler:
     def node_indices(self) -> list[int]:
         return sorted(self._true_p)
 
-    def step(self) -> PassObservation:
-        self._pass_index += 1
+    def step(self, passes: int = 1) -> PassObservation:
+        self._pass_index += passes
+        trials = self._trials_per_pass * passes
         nodes: dict[int, NodeCounters] = {}
         for index, p in self._true_p.items():
-            successes = self._binomial(self._trials_per_pass, p)
+            successes = self._binomial(trials, p)
             self._counts[index] += successes
-            self._totals[index] += self._trials_per_pass
+            self._totals[index] += trials
             nodes[index] = NodeCounters(
                 index=index,
                 num_one_bits=self._counts[index],
@@ -359,8 +362,9 @@ class PcfbSampler:
     def node_indices(self) -> list[int]:
         return list(self._node_indices)
 
-    def step(self) -> PassObservation:
-        obs = self._session.step()
+    def step(self, passes: int = 1) -> PassObservation:
+        # fuzzybits builds before passes_per_step only accept step().
+        obs = self._session.step(passes) if passes > 1 else self._session.step()
         self._pass_index = int(obs.pass_index)
         if not self._node_indices:
             self._node_indices = sorted(int(i) for i in obs.nodes)

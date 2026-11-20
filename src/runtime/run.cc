@@ -285,13 +285,16 @@ bool Session::closed() const {
   return !impl_ || impl_->closed;
 }
 
-PassResult Session::step() {
+PassResult Session::step(const std::size_t passes) {
   if (!impl_ || impl_->closed || !impl_->manager) {
     throw RuntimeError("session: closed");
   }
+  if (passes == 0) {
+    throw RuntimeError("session: passes must be at least 1");
+  }
   scram::mc::stats::TallyNodeMap tallies;
   try {
-    impl_->manager->pass_wait_collect(tallies, 1, 0);
+    impl_->manager->pass_wait_collect(tallies, passes, 0);
   } catch (const RuntimeError &) {
     throw;
   } catch (const sycl::exception &e) {
@@ -299,7 +302,7 @@ PassResult Session::step() {
   } catch (const std::exception &e) {
     throw RuntimeError(std::string("Monte Carlo session failed: ") + e.what());
   }
-  ++impl_->pass_index;
+  impl_->pass_index += passes;
 
   PassResult out;
   out.pass_index = impl_->pass_index;

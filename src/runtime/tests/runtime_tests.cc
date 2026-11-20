@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -183,6 +184,32 @@ TEST_CASE("Session streams the same first-pass hits as run_graph on chinese", "[
   REQUIRE_FALSE(first.nodes.empty());
   session.close();
   REQUIRE(session.closed());
+}
+
+TEST_CASE("Session::step(n) matches n single steps on chinese", "[runtime][mc][bit-identity]") {
+  constexpr std::uint64_t kTrialsPerPass = 65536;
+  auto compiled = fuzzybits::compile::compile_files({aralia("chinese.xml")}, no_kn());
+  REQUIRE(compiled);
+
+  auto batched = fuzzybits::runtime::Session::from_bytes(compiled->bytes, "omp", kTrialsPerPass);
+  auto single = fuzzybits::runtime::Session::from_bytes(compiled->bytes, "omp", kTrialsPerPass);
+  const auto once = batched.step(3);
+  fuzzybits::runtime::PassResult last;
+  for (int i = 0; i < 3; ++i) {
+    last = single.step();
+  }
+
+  REQUIRE(once.pass_index == 3);
+  REQUIRE(last.pass_index == 3);
+  REQUIRE(once.nodes.size() == last.nodes.size());
+  for (const auto &node : once.nodes) {
+    const auto match = std::find_if(last.nodes.begin(), last.nodes.end(),
+                                    [&](const auto &other) { return other.index == node.index; });
+    REQUIRE(match != last.nodes.end());
+    REQUIRE(node.num_one_bits == match->num_one_bits);
+    REQUIRE(node.total_bits == match->total_bits);
+  }
+  REQUIRE_THROWS(batched.step(0));
 }
 
 TEST_CASE("extra watch queries do not replace the PDAG root", "[runtime][mc][watch]") {
