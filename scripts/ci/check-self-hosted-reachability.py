@@ -13,6 +13,8 @@ allowed self-hosted runs-on values are in APPROVED_PR_RUNS_ON:
 
 Fork PR runs also need maintainer approval (repository setting). Other GPU
 workflows stay push/workflow_dispatch/schedule only (gpu.yml, images.yml).
+The ``swarm-managers`` group (the deploy job in server-image.yml) has no PR
+routing at all: it runs on release tags and develop pushes only.
 """
 from __future__ import annotations
 
@@ -40,6 +42,9 @@ SELF_HOSTED_MARKERS = (
     "fuzzybits-ci",
     "fuzzybits-bench",
     "fzb-bench",
+    "swarm-managers",
+    "swarm-manager",
+    "fzb-gtw",
 )
 
 # Same-repo, non-Dependabot PRs (and non-pull_request events) may use a
