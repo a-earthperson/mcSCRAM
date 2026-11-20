@@ -7,6 +7,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from .guards import format_foreign_load
+
 
 def _fmt_float(value: Any, digits: int = 6) -> str:
     if value is None:
@@ -31,6 +33,28 @@ def _md_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> str:
     return "\n".join([line, sep, *body])
 
 
+def shared_device_note(context: Mapping[str, Any] | None) -> str | None:
+    """``shared GPU, report-only, foreign load: parakeet 3.0 GiB`` or None."""
+    if not context:
+        return None
+    load = context.get("load_before") if isinstance(context.get("load_before"), Mapping) else {}
+    shared = bool(context.get("shared_device") or (load or {}).get("shared_device"))
+    report_only = bool(context.get("report_only"))
+    bits: list[str] = []
+    if shared:
+        bits.append("shared GPU")
+    if report_only:
+        bits.append("report-only")
+    if shared:
+        text = (load or {}).get("foreign_load") if isinstance(load, Mapping) else None
+        if not text:
+            text = format_foreign_load(load if isinstance(load, Mapping) else None)
+        bits.append(f"foreign load: {text}")
+    if not bits:
+        return None
+    return ", ".join(bits)
+
+
 def summarize_run(payload: Mapping[str, Any]) -> str:
     context = payload.get("context") or {}
     models = list(payload.get("models") or [])
@@ -43,8 +67,11 @@ def summarize_run(payload: Mapping[str, Any]) -> str:
         f"- digest: `{context.get('image_digest') or ''}`",
         f"- backend: `{context.get('backend')}` device `{context.get('device')}`",
         f"- runner / context: `{context.get('runner')}` / `{context.get('docker_context')}`",
-        "",
     ]
+    note = shared_device_note(context if isinstance(context, Mapping) else None)
+    if note:
+        lines.append(f"- {note}")
+    lines += [""]
     accuracy_rows = []
     perf_rows = []
     compile_rows = []
@@ -120,6 +147,11 @@ def summarize_ab(payload: Mapping[str, Any]) -> str:
         f"- head digest: `{context.get('head_digest') or ''}`",
         f"- target: `{context.get('target')}` backend `{context.get('backend')}`",
         f"- rounds: {context.get('rounds')} (first dropped as warm-up)",
+    ]
+    note = shared_device_note(context if isinstance(context, Mapping) else None)
+    if note:
+        lines.append(f"- {note}")
+    lines += [
         "",
         "## Ratios (head / base)",
         "",

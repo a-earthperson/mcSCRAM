@@ -22,16 +22,39 @@ VERDICT_WARN = "warn"
 VERDICT_BLOCK = "block"
 VERDICT_ERROR = "error"
 VERDICT_INCONCLUSIVE = "inconclusive"
+VERDICT_UNSUPPORTED = "unsupported"
 VERDICTS = (
     VERDICT_PASS,
     VERDICT_PASS_LOW_POWER,
     VERDICT_INFEASIBLE,
     VERDICT_KNOWN_FAILURE,
+    VERDICT_UNSUPPORTED,
     VERDICT_TIMEOUT,
     VERDICT_WARN,
     VERDICT_BLOCK,
     VERDICT_ERROR,
     VERDICT_INCONCLUSIVE,
+)
+
+_OOM_MARKERS = (
+    "out of memory",
+    "outofmemory",
+    "cuda_error_out_of_memory",
+    "cudaerroroutofmemory",
+    "std::bad_alloc",
+)
+_UNSUPPORTED_MARKERS = (
+    "no kernel image is available for execution on the device",
+    "invalid ptx",
+    "unsupported ptx",
+    "ptxas fatal",
+    "ptxas error",
+    "jit compilation failed",
+    "sscp compilation",
+    "cannot find ptxas",
+    "nvptx-arch",
+    "fatal error: error in backend",
+    "adaptivecpp error",
 )
 
 
@@ -74,6 +97,23 @@ def cpu_wall_verdict(ratio: float, ci_lo: float, ci_hi: float) -> str:
     if verdict == VERDICT_BLOCK and not CPU_GATE_BLOCKS:
         return VERDICT_WARN
     return verdict
+
+
+def apply_report_only(verdict: str, *, report_only: bool) -> str:
+    """Measured ``block`` becomes ``warn`` on report-only targets."""
+    if report_only and verdict == VERDICT_BLOCK:
+        return VERDICT_WARN
+    return verdict
+
+
+def classify_run_failure(*texts: Any) -> str:
+    """Map compile/run stderr to ``error`` (OOM), ``unsupported`` (JIT/PTX), or ``block``."""
+    blob = " ".join(str(text or "") for text in texts).lower()
+    if any(marker in blob for marker in _OOM_MARKERS):
+        return VERDICT_ERROR
+    if any(marker in blob for marker in _UNSUPPORTED_MARKERS):
+        return VERDICT_UNSUPPORTED
+    return VERDICT_BLOCK
 
 
 def accuracy_verdict(z: float, *, z_max: float = Z_BLOCK) -> str:
@@ -143,6 +183,7 @@ _RANK = {
     VERDICT_PASS_LOW_POWER: 0,
     VERDICT_INFEASIBLE: 1,
     VERDICT_KNOWN_FAILURE: 1,
+    VERDICT_UNSUPPORTED: 1,
     VERDICT_TIMEOUT: 2,
     VERDICT_WARN: 3,
     VERDICT_BLOCK: 4,
@@ -150,7 +191,7 @@ _RANK = {
     VERDICT_INCONCLUSIVE: 6,
 }
 
-_VISIBLE_NOT_GATE = {VERDICT_INFEASIBLE, VERDICT_KNOWN_FAILURE}
+_VISIBLE_NOT_GATE = {VERDICT_INFEASIBLE, VERDICT_KNOWN_FAILURE, VERDICT_UNSUPPORTED}
 
 
 def combine_verdicts(verdicts: Iterable[str]) -> str:
@@ -227,6 +268,16 @@ def collect_timings(
                     raw = profiler.get("gpu_total_ms")
                 if raw is None:
                     raw = profiler.get("primary_ms")
+                if raw is None:
+                    # No nsys/nvprof: use fzb sample_s (or container wall) in ms.
+                    sample = run.get("sample_s")
+                    if sample is None:
+                        sample = (run.get("run") or {}).get("sample_s")
+                    if sample is None:
+                        sample = run.get("wall_s")
+                    number, _reason = finite_positive(sample)
+                    if number is not None:
+                        raw = number * 1000.0
                 label = "gpu_total_ms"
         else:
             raw = run.get("sample_s")

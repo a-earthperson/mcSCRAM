@@ -19,7 +19,7 @@
         "properties": {
           "version": { "type": "string" },
           "channel": { "type": "string", "enum": ["release", "develop"] },
-          "target": { "type": "string", "enum": ["cpu", "v100s", "rtx3070"] },
+          "target": { "type": "string", "enum": ["cpu", "v100s", "rtx3070", "rtx5060ti"] },
           "dataset": { "type": "string" },
           "created_utc": { "type": "string" },
           "path": { "type": "string" },

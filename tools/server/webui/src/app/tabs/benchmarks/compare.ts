@@ -8,11 +8,18 @@ export const Z_BLOCK = 4;
 export const TARGET_LABEL: Record<string, string> = {
   v100s: "V100S",
   rtx3070: "RTX 3070",
+  rtx5060ti: "RTX 5060 Ti",
   cpu: "CPU (gateway)",
 };
 
+const TARGET_ORDER = ["v100s", "rtx3070", "rtx5060ti", "cpu"];
+
 export function isGpuTarget(target: string): boolean {
-  return target === "v100s" || target === "rtx3070";
+  return target !== "cpu";
+}
+
+export function isReportOnlyTarget(target: string): boolean {
+  return target === "cpu" || target === "rtx5060ti";
 }
 
 export function pointsForTarget(index: BenchIndex, target: string): BenchPoint[] {
@@ -56,15 +63,14 @@ function modelOn(point: BenchPoint | null, id: string): BenchModel | null {
   return point.models.find((model) => model.id === id) ?? null;
 }
 
-function toneForRatio(value: number | null, gpu: boolean): RatioTone {
+function toneForRatio(value: number | null, gpu: boolean, reportOnly = false): RatioTone {
   if (value === null || !Number.isFinite(value)) return "neutral";
   const limit = gpu ? 1 + GPU_BLOCK : 1 + CPU_BLOCK;
-  if (gpu) {
-    if (value > limit) return "block";
+  if (reportOnly || !gpu) {
     if (value > 1) return "warn";
     return "pass";
   }
-  if (value > limit) return "warn";
+  if (value > limit) return "block";
   if (value > 1) return "warn";
   return "pass";
 }
@@ -101,6 +107,7 @@ function pushRow(
 export function compareReleaseDevelop(release: BenchPoint | null, develop: BenchPoint | null): CompareRow[] {
   if (!release || !develop) return [];
   const gpu = isGpuTarget(String(release.target));
+  const reportOnly = isReportOnlyTarget(String(release.target));
   const ids = modelIds([release, develop]);
   const rows: CompareRow[] = [];
   for (const id of ids) {
@@ -109,10 +116,18 @@ export function compareReleaseDevelop(release: BenchPoint | null, develop: Bench
     if (gpu) {
       const rTotal = rel?.perf?.gpu_total_ms ?? null;
       const dTotal = dev?.perf?.gpu_total_ms ?? null;
-      pushRow(rows, id, "gpu_total_ms", rTotal, dTotal, toneForRatio(ratio(dTotal, rTotal), true));
+      pushRow(
+        rows,
+        id,
+        "gpu_total_ms",
+        rTotal,
+        dTotal,
+        toneForRatio(ratio(dTotal, rTotal), true, reportOnly),
+        reportOnly ? "RTX 5060 Ti is report-only (shared GPU on shelly)." : null,
+      );
       const rKer = rel?.perf?.gpu_kernel_ms ?? null;
       const dKer = dev?.perf?.gpu_kernel_ms ?? null;
-      pushRow(rows, id, "gpu_kernel_ms", rKer, dKer, toneForRatio(ratio(dKer, rKer), true));
+      pushRow(rows, id, "gpu_kernel_ms", rKer, dKer, toneForRatio(ratio(dKer, rKer), true, reportOnly));
     } else {
       const rCpu = rel?.perf?.cpu_sample_s ?? null;
       const dCpu = dev?.perf?.cpu_sample_s ?? null;
@@ -168,7 +183,9 @@ export function flagSummary(flags: BenchPoint["flags"] | undefined): string[] {
   return labels;
 }
 
-export function targetOptions(index: BenchIndex): BenchTarget[] {
-  const present = new Set(index.points.map((p) => p.target));
-  return (["v100s", "rtx3070", "cpu"] as BenchTarget[]).filter((t) => present.has(t));
+export function targetOptions(index: BenchIndex): string[] {
+  const present = [...new Set(index.points.map((p) => String(p.target)))];
+  const ordered = TARGET_ORDER.filter((t) => present.includes(t));
+  const extra = present.filter((t) => !TARGET_ORDER.includes(t)).sort();
+  return [...ordered, ...extra];
 }

@@ -73,12 +73,11 @@ def _perf_metrics(row: Mapping[str, Any]) -> dict[str, Any]:
     sample_s = row.get("sample_s")
     if sample_s is None:
         sample_s = (row.get("run") or {}).get("sample_s")
+    gpu_total = profiler.get("gpu_total_ms")
+    if gpu_total is None:
+        gpu_total = profiler.get("total_gpu_kernel_ms")
     return {
-        "gpu_total_ms": _finite(
-            profiler.get("gpu_total_ms")
-            if profiler.get("gpu_total_ms") is not None
-            else profiler.get("total_gpu_kernel_ms")
-        ),
+        "gpu_total_ms": _finite(gpu_total),
         "gpu_kernel_ms": _finite(
             profiler.get("gpu_kernel_ms")
             if profiler.get("gpu_kernel_ms") is not None

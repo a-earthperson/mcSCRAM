@@ -107,8 +107,10 @@ Chosen for coverage of the engine's cost profile (kernel breakdowns from
 Perf trial count is 1e8 on GPU. CPU perf trial counts are sized per model so
 in-process sampling is ~2–5 s (`trials.cpu_perf` in the manifest). GPU metrics
 are per-kernel times (`basic_event`, gate kernels, tally) via **nvprof** on
-V100S (`sm_70`) and **nsys** on RTX 3070 (`sm_86`). Warm and cold AdaptiveCpp
-cache times are reported separately; the gate uses **warm** numbers.
+V100S (`sm_70`) and **nsys** on RTX 3070 (`sm_86`). RTX 5060 Ti (`sm_120`,
+shelly) has no Nsight Systems; A/B falls back to fzb `sample_s` / wall.
+Warm and cold AdaptiveCpp cache times are reported separately; the gate uses
+**warm** numbers.
 
 The A/B **gate metric is `gpu_total_ms`** (all compute kernels; memcpy
 excluded), not `basic_event` alone. On das9701 at 1e8, `basic_event` is 81.5 ms
@@ -149,9 +151,9 @@ it is CPU-only and does not import the native engine.
 
 ```text
 python -m benchmarks validate
-python -m benchmarks run  --target cpu|v100s|rtx3070 --mode accuracy|perf|compile \
+python -m benchmarks run  --target cpu|v100s|rtx3070|rtx5060ti --mode accuracy|perf|compile \
     --image IMG --out results.json [--md summary.md] [--ids chinese das9201]
-python -m benchmarks ab   --target cpu|v100s|rtx3070 --rounds 6 \
+python -m benchmarks ab   --target cpu|v100s|rtx3070|rtx5060ti --rounds 6 \
     --base SHA --head SHA --build \
     --out ab.json [--md ab.md]
 python -m benchmarks ab   --target v100s --base-image IMG --head-image IMG \
@@ -210,6 +212,60 @@ with the same recipe and timed alternately on the same host** (lesson from
    - **inconclusive** if idle/load guards fail, rather than reporting noise as
      a regression.
 
+### PR gate (CI)
+
+`.github/workflows/bench.yml` runs on `pull_request` and `workflow_dispatch`
+(#122). Same-repo, non-Dependabot PRs:
+
+| job | runner | what | merge? |
+|---|---|---|---|
+| `bench-accuracy` | `fuzzybits-ci` | head image, every `accuracy` model | blocks on \|z\| > 4 (and harness `block`/`error`) |
+| `bench-perf-v100s` | `public-ci` V100S (`sm_70,v100s`, NVML GPU 0) | A/B vs develop runtime image | blocks when `ci_lo > 1.03` (exclusive GPU) |
+| `bench-perf-rtx3070` | `public-ci` RTX 3070 (`sm_86,rtx_3070`, NVML GPU 1) | same; `shared_device: true` | blocks when `ci_lo > 1.03`; co-runs with owner services |
+| `bench-perf-rtx5060ti` | `public-ci` RTX 5060 Ti (`sm_120,rtx_5060ti_8gb`, NVML GPU 0 on shelly) | same; `shared_device` + `report_only` | **report-only**; never blocks. ~0.5 GiB free beside VLLM |
+| `bench-perf-cpu` | `fuzzybits-bench` (gateway) | A/B, `cpu_sample_s` | **report-only** (#124) |
+| `bench-summary` | hosted | sticky PR comment + overall verdict | the check to require first |
+
+Fork and Dependabot PRs skip the self-hosted jobs with a notice (push a
+`ci/**` branch for numbers). Docs-only PRs skip accuracy/perf and
+`bench-summary` still reports a green check so required status does not hang.
+
+Base image is `ghcr.io/fuzzybit-org/fuzzybits-runtime:sha-<develop12>-generic`
+when that tag exists, else `nightly-generic`, pinned by registry digest. Head
+is rebuilt with `docker/runtime.Dockerfile --target runtime` only when product
+paths change (`src/`, `python/`, `cmake/`, `docker/`, …); otherwise head is
+the same digest as base (true A/A). Jobs use `--docker-context default` and
+take `/tmp/gpu-lock-xerxes-{0,1}` and `/tmp/gpu-lock-shelly-0` locally. Indices
+are **nvidia-smi / NVML / docker `--gpus device=N`**, matching the harness
+table — on xerxes, GPU 0 = Tesla V100S (PCI 42:00.0, lock-0), GPU 1 = RTX 3070
+(PCI 43:00.0, lock-1); on shelly, GPU 0 = RTX 5060 Ti (lock-0). Do not derive
+them from CUDA's default FASTEST_FIRST ordering (the reverse on xerxes).
+V100S / RTX 3070 / RTX 5060 Ti jobs also take GitHub `concurrency` groups
+`gpu-xerxes-v100s` / `gpu-xerxes-3070` / `gpu-shelly-5060ti`
+(`cancel-in-progress: false`) so they queue behind `images.yml` smoke. `rtx3070` is `shared_device: true` in the harness target
+table: the idle guard records foreign GPU processes (name, MiB, utilisation)
+and never refuses because of them. The job still takes `/tmp/gpu-lock-xerxes-1`
+so our benches do not overlap each other. V100S stays exclusive. Shared-device
+results are flagged in the PR comment (`shared GPU, foreign load: …`); a
+block there may be interference — the owner reruns manually.
+
+`rtx5060ti` (shelly-1, NVML GPU 0, lock `/tmp/gpu-lock-shelly-0`, concurrency
+`gpu-shelly-5060ti`) is **report-only** and `shared_device`. VLLM and an owner
+Python service occupy ~7 GiB of 8 GiB; CUDA OOM is recorded as `error` (not a
+hang). There is no Nsight Systems on shelly, so A/B uses fzb `sample_s` / wall
+instead of `gpu_total_ms` from nsys. If generic SSCP JIT cannot target sm_120,
+the harness records `unsupported` and does not block. Leave
+`bench-perf-rtx5060ti` optional.
+
+`workflow_dispatch` accepts `inject_regression` (`scale:1.10`, `scale:1.05`,
+`repeat`) to confirm the GPU jobs block. Do not make `bench-perf-cpu` a
+blocking required check.
+
+Recommended required checks once green: **`bench-summary`**, then
+`bench-accuracy`, `bench-perf-v100s`, `bench-perf-rtx3070`. Leave
+`bench-perf-cpu` and `bench-perf-rtx5060ti` optional. Do not require
+`windows-generic` (#108).
+
 ### A/A noise (nightly-generic, identical images)
 
 `nightly-generic` must be pinned by digest before A/A. Local config ids were
@@ -222,12 +278,25 @@ host-specific; the registry manifest is the pin.
 | CPU | chinese | cpu_sample_s | 9 | 0.999 | [0.963, 1.027] | 3.2% | 4.6% | pass (report-only) |
 | CPU | das9201 | cpu_sample_s | 9 | 1.011 | [0.977, 1.035] | 2.9% | 2.8% | pass (report-only) |
 | CPU | das9701 | cpu_sample_s | 9 | 1.040 | [0.964, 1.097] | 6.6% | 8.9% | pass (report-only) |
+| RTX 5060 Ti (shared, no nsys) | chinese | gpu_total_ms (`sample_s`) | 5 | 1.010 | [0.988, 1.039] | 2.6% | 1.7% | pass (report-only) |
 
 Sampling times were in band (chinese ~2.9 s at 225·2^20, das9201 ~3.2 s at
 80·2^20, das9701 ~3.5 s at 16·2^20) with `OMP_NUM_THREADS=8`,
 `--cpuset-cpus 0-7`. CPU half-widths are **2.9–6.6%**, not ≤2%. Gateway load
 rose to 10 during the run (ZFS + the 8-thread jobs). The CPU gate is
 **report-only** (`CPU_GATE_BLOCKS = False`, [#124](https://github.com/fuzzybit-org/fuzzybits/issues/124)): it can warn, it does not block.
+
+RTX 5060 Ti A/A used the same `nightly-generic` digest with VLLM
+(`VLLM::EngineCore` ~3.5 GiB) and uvicorn/PaddleOCR (~3.4 GiB) resident,
+~492 MiB free, util 0%. Generic SSCP JIT **does** run on sm_120 (AdaptiveCpp
+25.10 / LLVM 20 `libllvm-to-ptx.so`; driver 595.99.02). LLVM warns
+`'+ptx88' is not a recognized feature for this target (ignoring feature)`
+and still produces a working kernel. There is no nsys on shelly, so
+`gpu_total_ms` is fzb `sample_s` (~400 ms for chinese at 1e8, not the ~10 ms
+kernel). The 95% CI already reaches 1.039, so a 3% `ci_lo` gate would be
+unusable once VLLM is serving; the job is report-only. chinese at 1e8 fit
+in the remaining ~0.5 GiB; larger models (nus9601) may record CUDA OOM as
+`error` rather than hang.
 
 Pinned-image A/A (registry digest
 `sha256:97e5ffe141ce4f1a969f9a520264f940b0e5c256b9cf7780dfd6e2a9831d7803`)
@@ -274,14 +343,17 @@ accuracy pass. In A/B, **head timeout / base ok is a regression
 
 | target | host (docker context) | device | time? |
 |---|---|---|---|
-| `v100s` | xerxes `--gpus device=0` | Tesla V100S | yes; take `/tmp/gpu-lock-xerxes-0` |
-| `rtx3070` | xerxes `--gpus device=1` | RTX 3070 | yes; take `/tmp/gpu-lock-xerxes-1` |
+| `v100s` | xerxes `--gpus device=0` (NVML GPU 0, PCI 42:00.0) | Tesla V100S | yes; exclusive; take `/tmp/gpu-lock-xerxes-0` |
+| `rtx3070` | xerxes `--gpus device=1` (NVML GPU 1, PCI 43:00.0) | RTX 3070 | yes; shared (`shared_device`); take `/tmp/gpu-lock-xerxes-1` |
+| `rtx5060ti` | shelly `--gpus device=0` (NVML GPU 0, sm_120) | RTX 5060 Ti 8 GB | yes; shared + **report-only**; take `/tmp/gpu-lock-shelly-0` |
 | `cpu` | gateway | i7-9700, 8 cores | yes |
 | — | xerxes CPU | noisy (Tdarr/Plex) | **no** |
-| — | shelly, bubs | CI (`fuzzybits-ci`) | **no** |
+| — | shelly CPU, bubs | CI (`fuzzybits-ci`) | **no** CPU timing |
 
-GPU jobs also use those devices: check `nvidia-smi --query-compute-apps` and
-retry if busy. Do not time GPU work without the lock.
+GPU jobs take the lock. Exclusive targets (V100S) wait for idle compute apps
+and fail `inconclusive` if the device stays busy. Shared targets (`rtx3070`,
+`rtx5060ti`) record foreign processes and time anyway. Do not time GPU work
+without the lock.
 
 ### Injected regression (acceptance)
 
@@ -407,9 +479,10 @@ python3 -m benchmarks.history publish --results /tmp/merged.json --dest /path/to
 
 Older entries are never rewritten; a rerun adds a timestamped file
 (`…Z-2.json`). The workflow uses per-GPU concurrency groups
-`gpu-xerxes-v100s` / `gpu-xerxes-3070` (same as runtime-image smoke) plus
-the harness locks `/tmp/gpu-lock-xerxes-0` (V100S, `device=0`) and
-`/tmp/gpu-lock-xerxes-1` (RTX 3070, `device=1`).
+`gpu-xerxes-v100s` / `gpu-xerxes-3070` / `gpu-shelly-5060ti` (same as
+runtime-image smoke) plus the harness locks `/tmp/gpu-lock-xerxes-0` (V100S,
+`device=0`), `/tmp/gpu-lock-xerxes-1` (RTX 3070, `device=1`), and
+`/tmp/gpu-lock-shelly-0` (RTX 5060 Ti, `device=0`).
 
 Until GitHub Pages is enabled (**Settings → Pages → Build and deployment →
 Source = GitHub Actions**), keep the JSON on `bench-results` and point the
