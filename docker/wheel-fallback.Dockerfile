@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY generic.whl /tmp/generic.whl
 COPY sm70.whl /tmp/sm70.whl
 # pip rejects filenames that are not PEP 427 tags; rename before install.
-RUN mv /tmp/generic.whl /tmp/fuzzybits-0.17.1-cp312-cp312-manylinux_2_39_x86_64.whl && \
-    pip install --no-cache-dir /tmp/fuzzybits-0.17.1-cp312-cp312-manylinux_2_39_x86_64.whl && \
+RUN mv /tmp/generic.whl /tmp/fuzzybits-0.18.0-cp312-cp312-manylinux_2_39_x86_64.whl && \
+    pip install --no-cache-dir /tmp/fuzzybits-0.18.0-cp312-cp312-manylinux_2_39_x86_64.whl && \
     python3 - <<'PY'
 import pathlib, sysconfig, zipfile
 plat = pathlib.Path(sysconfig.get_path("platlib"))
