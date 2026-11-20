@@ -21,31 +21,37 @@
  * -----------------------
  * Match AdaptiveCpp `memory_streaming.hpp`: void lambdas that assign into an
  * outer variable. Do not use the documented T() return value; on Metal it
- * lowered, but the returned integer was 0 (tally `n` was host-visible,
- * `hits` stayed 0; `mc.metal_canary.atomic64` showed 64-bit fetch_add itself
- * is host-visible).
+ * lowered, but the returned integer was 0.
  *
  * Removal
  * -------
- * Delete this header and the call sites in `kernel/tally.h` when all of:
+ * Delete this header and the call sites in `kernel/tally.h` /
+ * `queue/layer_manager.tpp` when all of:
  *   1. LLVMToMetal accepts the native 64-bit `sycl::reduce_over_group` on
  *      `std::size_t` (canary `mc.metal_canary.reduce64` xfail-strict flips).
  *   2. LLVMToMetal accepts `double` in device IR, or AdaptiveCpp provides
  *      soft-double (canary `mc.metal_canary.double` flips). Then restore
  *      named `double` fields on `event::tally` if desired.
+ *   3. After `queue.wait()`, device `tally.num_one_bits` from a kernel
+ *      popcount is host-visible and is not clobbered by a later wait
+ *      (canary `mc.metal_canary.device_tally_hits` flips). Then delete
+ *      `host_accumulate_if_metal` / `host_publish_if_metal`.
  *
  * 64-bit atomics are **not** shimmed. `mc.metal_canary.atomic64` passed on
  * the hosted macos-26 paravirtual device (eight groups, host saw 8).
  *
  * Metal tally accumulation
  * ------------------------
- * `reduce_over_group` on uint32 in the 3-D tally launch still produced
- * `hits=0` while `total_bits` (plain store) and isolated 64-bit `fetch_add`
- * were host-visible (runs 44629827202, 44635268590, 44636412806). Per-item
- * 64-bit `fetch_add` hung the hosted Metal ctest (lock-table contention
- * inside AdaptiveCpp's atomic64 emulation). The Metal path therefore has
- * the group leader serially popcount the group's bitpacks and issue one
- * `fetch_add`. Native keeps `reduce_over_group` plus one atomic per group.
+ * Device popcount of nested USM `tally.buffer` stays 0 on Metal (`n` from a
+ * plain `total_bits` store is host-visible; isolated 64-bit `fetch_add`
+ * is host-visible). `bitpack_identity` sees bits only via `queue.memcpy`
+ * of the producer allocation after wait, not via a host load of USM.
+ *
+ * Writing hits into the USM `tally` struct is not enough: `wait_sycl_queue`
+ * after `single_pass` copies the device image (hits=0) over the host write
+ * (run 44642209903: CLI `p_hat=0` with `n` set). Hits therefore live in a
+ * host-only map keyed by the tally pointer; `host_publish_if_metal` copies
+ * them into the USM struct after the last wait, immediately before collect.
  */
 
 #pragma once
@@ -54,6 +60,8 @@
 #include <cstdint>
 #include <limits>
 #include <type_traits>
+#include <unordered_map>
+#include <vector>
 #include <sycl/sycl.hpp>
 
 namespace scram::mc::compat {
@@ -84,6 +92,10 @@ template <typename bitpack_t_>
 inline constexpr bool group_sum_fits_u32_v =
     (sizeof(bitpack_t_) * 8 * kMaxTallyLocalSize) <= std::numeric_limits<std::uint32_t>::max();
 
+inline bool is_metal_queue(const sycl::queue &queue) {
+    return static_cast<int>(queue.get_device().get_backend()) == kMetalRuntimeBackendId;
+}
+
 namespace detail {
 
 template <typename Group>
@@ -98,6 +110,16 @@ template <typename Group>
     const auto local32 = static_cast<std::uint32_t>(local_sum);
     const auto group32 = sycl::reduce_over_group(group, local32, sycl::plus<>());
     return static_cast<std::size_t>(group32);
+}
+
+inline std::unordered_map<const void *, std::size_t> &metal_host_hits() {
+    static thread_local std::unordered_map<const void *, std::size_t> hits;
+    return hits;
+}
+
+inline std::unordered_map<const void *, const void *> &metal_tally_buffers() {
+    static thread_local std::unordered_map<const void *, const void *> buffers;
+    return buffers;
 }
 
 } // namespace detail
@@ -129,33 +151,73 @@ template <typename Group>
     return in_bounds;
 }
 
-/// Group-leader hit accumulator. Native `atomic_ref<std::size_t>::fetch_add`
-/// on every backend: the atomic64 canary is host-visible on Metal.
 /// Drain the queue on Metal only. AdaptiveCpp Metal `depends_on` does not
-/// make prior USM stores visible to the next kernel (tally sees zeros while
-/// a host memcpy after wait, as in bitpack_identity, sees the bits). No-op
-/// on every other backend (host compares `get_backend()` to 5).
+/// make prior USM stores visible to the next kernel. No-op on every other
+/// backend (host compares `get_backend()` to 5).
 [[gnu::always_inline]] inline void wait_if_metal(sycl::queue &queue) {
-    if (static_cast<int>(queue.get_device().get_backend()) == kMetalRuntimeBackendId) {
+    if (is_metal_queue(queue)) {
         queue.wait();
     }
 }
 
-/// After a Metal pass, popcount each tally buffer on the host and accumulate.
-/// Device kernels still cannot see nested USM pointers the way a host memcpy
-/// after wait can (bitpack_identity vs tally hits=0). No-op on other backends.
+/// Record the host-tracked producer pointer at tally allocation, before any
+/// kernel can rewrite the USM `tally.buffer` field.
+template <typename Tally, typename Bitpack>
+inline void host_note_tally_buffer(const sycl::queue &queue, Tally *tally, Bitpack *buffer) {
+    if (!is_metal_queue(queue) || tally == nullptr) {
+        return;
+    }
+    detail::metal_tally_buffers()[tally] = buffer;
+}
+
+/// After a Metal pass, memcpy the producer bitpack allocation and add the
+/// popcount into a host-only map. Direct host loads of Metal USM see zeros
+/// (`bitpack_identity` uses `queue.memcpy`). Does not write the USM tally:
+/// a later `wait()` copies the device image (hits=0) over that store.
 template <typename Tally, typename Shape>
 inline void host_accumulate_if_metal(sycl::queue &queue, Tally *tally, const Shape &shape) {
-    if (static_cast<int>(queue.get_device().get_backend()) != kMetalRuntimeBackendId) {
+    if (!is_metal_queue(queue) || tally == nullptr) {
+        return;
+    }
+    const auto buf_it = detail::metal_tally_buffers().find(tally);
+    if (buf_it == detail::metal_tally_buffers().end() || buf_it->second == nullptr) {
         return;
     }
     const std::size_t npacks =
         static_cast<std::size_t>(shape.batch_size) * static_cast<std::size_t>(shape.bitpacks_per_batch);
+    if (npacks == 0) {
+        return;
+    }
+    using bitpack_t = std::remove_pointer_t<decltype(Tally::buffer)>;
+    const auto *src = static_cast<const bitpack_t *>(buf_it->second);
+    std::vector<bitpack_t> host(npacks);
+    queue.memcpy(host.data(), src, npacks * sizeof(bitpack_t)).wait();
     std::size_t bits = 0;
     for (std::size_t j = 0; j < npacks; ++j) {
-        bits += static_cast<std::size_t>(sycl::popcount(tally->buffer[j]));
+        bits += static_cast<std::size_t>(sycl::popcount(host[j]));
     }
-    tally->num_one_bits += bits;
+    detail::metal_host_hits()[tally] += bits;
+}
+
+/// Copy host-only Metal hits into the USM tally after the last wait, so
+/// `collect_tallies` / `fetch_tally_for_event_with_index` see them.
+template <typename Tally>
+inline void host_publish_if_metal(sycl::queue &queue, Tally *tally) {
+    if (!is_metal_queue(queue) || tally == nullptr) {
+        return;
+    }
+    const auto it = detail::metal_host_hits().find(tally);
+    if (it != detail::metal_host_hits().end()) {
+        tally->num_one_bits = it->second;
+    }
+}
+
+template <typename Tally>
+inline void host_clear_if_metal(Tally *tally) {
+    if (tally != nullptr) {
+        detail::metal_host_hits().erase(tally);
+        detail::metal_tally_buffers().erase(tally);
+    }
 }
 
 [[gnu::always_inline]] [[gnu::flatten]] inline void add_hits(std::size_t &num_one_bits, const std::size_t group_sum) {
@@ -164,9 +226,9 @@ inline void host_accumulate_if_metal(sycl::queue &queue, Tally *tally, const Sha
     atomic_one_bits.fetch_add(group_sum);
 }
 
-/// Tally popcount + accumulate. Metal: group-leader serial popcount plus one
-/// atomic (see file comment). Native: original early-return, size_t group
-/// reduction, group-leader atomic.
+/// Tally popcount + accumulate. Metal: group leader stores `total_bits` only;
+/// hits come from `host_accumulate_if_metal`. Native: original early-return,
+/// size_t group reduction, group-leader atomic (pre-shim tally.h).
 template <typename Item, typename Tally, typename Shape>
 [[gnu::always_inline]] [[gnu::flatten]] inline void count_and_add(const Item &item, Tally *tallies,
                                                                   const std::size_t tally_count,
@@ -191,7 +253,7 @@ template <typename Item, typename Tally, typename Shape>
         }
         const std::size_t idx = batch_idx * sample_shape.bitpacks_per_batch + bitpack_id;
         const std::size_t local_sum = sycl::popcount(tallies[tally_idx].buffer[idx]);
-        const std::size_t group_sum = detail::group_sum_native(item.get_group(), local_sum);
+        const std::size_t group_sum = sycl::reduce_over_group(item.get_group(), local_sum, sycl::plus<>());
         if (item.get_local_linear_id() == 0) {
             write_total_bits();
             add_hits(tallies[tally_idx].num_one_bits, group_sum);
@@ -202,33 +264,10 @@ template <typename Item, typename Tally, typename Shape>
         if (item.get_local_linear_id() != 0) {
             return;
         }
-        const auto lr = item.get_local_range();
-        const std::size_t g0 = item.get_group(0) * lr[0];
-        const std::size_t g1 = item.get_group(1) * lr[1];
-        const std::size_t g2 = item.get_group(2) * lr[2];
-        std::size_t sum = 0;
-        for (std::size_t lx = 0; lx < lr[0]; ++lx) {
-            const std::size_t t = g0 + lx;
-            if (t >= tally_count) {
-                continue;
-            }
-            for (std::size_t ly = 0; ly < lr[1]; ++ly) {
-                const std::size_t b = g1 + ly;
-                if (b >= sample_shape.batch_size) {
-                    continue;
-                }
-                for (std::size_t lz = 0; lz < lr[2]; ++lz) {
-                    const std::size_t p = g2 + lz;
-                    if (p >= sample_shape.bitpacks_per_batch) {
-                        continue;
-                    }
-                    const std::size_t idx = b * sample_shape.bitpacks_per_batch + p;
-                    sum += static_cast<std::size_t>(sycl::popcount(tallies[t].buffer[idx]));
-                }
-            }
+        if (tally_idx >= tally_count) {
+            return;
         }
         write_total_bits();
-        add_hits(tallies[tally_idx].num_one_bits, sum);
     };
 
     __acpp_if_target_sscp(namespace jit = sycl::AdaptiveCpp_jit;

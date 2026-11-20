@@ -64,6 +64,33 @@ TEST_CASE("uint32 reduce_over_group in a 3-D nd_range", "[mc][reduce32-3d]") {
     sycl::free(out, queue);
 }
 
+TEST_CASE("device popcount of nested USM buffer is host-visible on Metal",
+          "[metal-canary][device_tally_hits]") {
+    sycl::queue queue;
+    auto *buf = sycl::malloc_shared<std::uint64_t>(1, queue);
+    auto *out = sycl::malloc_shared<std::size_t>(1, queue);
+    struct Nested {
+        std::uint64_t *buffer;
+    };
+    auto *node = sycl::malloc_shared<Nested>(1, queue);
+    REQUIRE(buf != nullptr);
+    REQUIRE(out != nullptr);
+    REQUIRE(node != nullptr);
+    *buf = ~std::uint64_t{0};
+    *out = 0;
+    node->buffer = buf;
+    queue.submit([&](sycl::handler &cgh) {
+        cgh.single_task([=] {
+            *out = static_cast<std::size_t>(sycl::popcount(node->buffer[0]));
+        });
+    });
+    queue.wait_and_throw();
+    REQUIRE(*out == 64);
+    sycl::free(buf, queue);
+    sycl::free(out, queue);
+    sycl::free(node, queue);
+}
+
 TEST_CASE("native 64-bit fetch_add on Metal", "[metal-canary][atomic64]") {
     sycl::queue queue;
     auto *out = sycl::malloc_shared<std::size_t>(1, queue);

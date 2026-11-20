@@ -471,6 +471,7 @@ namespace scram::mc::event {
             tallies[i].num_one_bits = 0;
             tallies[i].total_bits   = 0;
             tallies[i].fp()         = {};
+            compat::host_note_tally_buffer(queue, &tallies[i], source_buffers[i]);
         }
 
         tally_block<bitpack_t_> blk;
@@ -489,6 +490,9 @@ namespace scram::mc::event {
     void destroy_tally_block(const sycl::queue          &queue,
                              tally_block<bitpack_t_>    &blk) {
         if (blk.data) {
+            for (std::size_t i = 0; i < blk.count; ++i) {
+                compat::host_clear_if_metal(&blk.data[i]);
+            }
             sycl::free(blk.data, queue);
             blk.data = nullptr;
         }

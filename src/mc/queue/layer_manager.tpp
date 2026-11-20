@@ -199,7 +199,8 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
         LOG(ERROR) << "Unable to fetch tally for unknown event with index " << evt_idx;
         return std::move(to_tally);
     }
-    const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
+    event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
+    scram::mc::compat::host_publish_if_metal(queue_, computed_tally);
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.total_bits = computed_tally->total_bits;
     // ---------------------------------------------------------------------
@@ -553,7 +554,8 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
 stats::TallyNodeMap &layer_manager<bitpack_t_, prob_t_, size_t_>::collect_tallies(stats::TallyNodeMap &stats) {
     for (auto &pair : allocated_tally_events_by_index_) {
         const auto &idx = pair.first;
-        const auto *tally_on_device = allocated_tally_events_by_index_[idx];
+        auto *tally_on_device = allocated_tally_events_by_index_[idx];
+        scram::mc::compat::host_publish_if_metal(queue_, tally_on_device);
         mc::stats::tally &tally = stats[idx].tally_stats;
         tally.update(tally_on_device);
     }

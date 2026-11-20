@@ -90,7 +90,7 @@ target_include_directories(mc_metal_canary_tests PRIVATE
 )
 add_sycl_to_target(TARGET mc_metal_canary_tests SOURCES metal_canary_tests.cc)
 
-set(_metal_xfail_canaries reduce64 double)
+set(_metal_xfail_canaries reduce64 double device_tally_hits)
 foreach(_canary IN LISTS _metal_xfail_canaries)
   if(APPLE)
     add_test(NAME mc.metal_canary.${_canary}
