@@ -22,7 +22,7 @@ if(WIN32)
   unset(_fb_win_override)
 endif()
 
-project(SCRAM VERSION 0.18.1 LANGUAGES C CXX)
+project(SCRAM VERSION 0.18.2 LANGUAGES C CXX)
 include(GNUInstallDirs)
 
 # Find and configure LLVM toolchain BEFORE project() call

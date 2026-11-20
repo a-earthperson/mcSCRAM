@@ -12,6 +12,8 @@ from fuzzybits_server.fault_tree_payload import build_fault_tree_payload
 from fuzzybits_server.state import CalculationState
 from fuzzybits_server.worker import calculation_main
 
+_FINISHED_EXIT_GRACE_S = 5.0
+
 
 class CalculationSupervisor:
     def __init__(self, event_hub: EventHub) -> None:
@@ -98,11 +100,16 @@ class CalculationSupervisor:
             }
         try:
             if self._process and self._process.is_alive():
-                return {
-                    "accepted": False,
-                    "reason": "calculation already running",
-                    "status": self.state.snapshot(alive=True),
-                }
+                if self.state.snapshot()["status"] == "running":
+                    return {
+                        "accepted": False,
+                        "reason": "calculation already running",
+                        "status": self.state.snapshot(alive=True),
+                    }
+                # The previous calculation reported its result but its process
+                # is still exiting (worker and runtime teardown).
+                self._process.join(timeout=_FINISHED_EXIT_GRACE_S)
+                self.stop()
             self._generation += 1
             self._event_hub.clear_replay()
             self._event_hub.publish_from_thread({"event": "calculation_reset"})
