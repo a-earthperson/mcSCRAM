@@ -27,7 +27,7 @@ CLI defaults to `127.0.0.1:8000`. Flags: `--host`, `--port`, `--data-dir`,
 `--engine pcfb|legacy`, `--no-ui`, `--open`.
 
 Compile / sampling endpoints need the native module. The published
-`fuzzybits-server` wheel depends on `fuzzybits==0.18.0`. Until that engine
+`fuzzybits-server` wheel depends on `fuzzybits==0.18.1`. Until that engine
 wheel is on PyPI ([#36](https://github.com/fuzzybit-org/fuzzybits/issues/36)),
 `uv.lock` resolves it from this checkout's static metadata and CI/Docker skip
 installing it (`uv sync --no-install-package fuzzybits`) so the runtime image
@@ -55,7 +55,7 @@ The wheel is `py3-none-any` and bundles the CSR playground. Build contract
 ```bash
 export COPYFILE_DISABLE=1   # macOS: keep AppleDouble files out of archives
 (cd tools/server/webui && npm ci && npm run build) &&   (cd tools/server && uv build --wheel --out-dir ../../dist-server)
-# -> dist-server/fuzzybits_server-0.18.0-py3-none-any.whl
+# -> dist-server/fuzzybits_server-0.18.1-py3-none-any.whl
 ```
 
 An sdist is optional; if produced, it includes `webui/dist` so building a
