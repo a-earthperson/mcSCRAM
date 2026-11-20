@@ -114,7 +114,8 @@ export function formatRequestedTrialsPerPassDescription(value: number): string {
 }
 
 export const REQUESTED_TRIALS_PER_PASS_FIELD_HINT = [
-  "Optimistic number of Bernoulli trials each node samples per device pass, passed to the sample shaper as requested_trials_per_pass.",
-  "The shaper treats it as a target and clamps it to the per-node device-memory budget, then rounds down to a whole cache line, so the realized trials/pass may be smaller.",
-  `Use −/+ to step powers of two from ${formatApproxTrialsPerPass(trialsPerPassFromExponent(REQUESTED_TRIALS_PER_PASS_EXPONENT_MIN))} through ${formatApproxTrialsPerPass(trialsPerPassFromExponent(REQUESTED_TRIALS_PER_PASS_EXPONENT_MAX))}, or type any whole number from ${MIN_REQUESTED_TRIALS_PER_PASS} to ${formatInteger(MAX_REQUESTED_TRIALS_PER_PASS)} (auto = fill memory budget).`,
+  "How many trials each node samples in one pass on the device.",
+  "This is a request: the engine lowers it to fit device memory and rounds it down to a whole cache line, so the actual number can be smaller.",
+  `−/+ doubles or halves it, from ${formatApproxTrialsPerPass(trialsPerPassFromExponent(REQUESTED_TRIALS_PER_PASS_EXPONENT_MIN))} to ${formatApproxTrialsPerPass(trialsPerPassFromExponent(REQUESTED_TRIALS_PER_PASS_EXPONENT_MAX))}; you can also type any whole number up to ${formatInteger(MAX_REQUESTED_TRIALS_PER_PASS)}.`,
+  "Leave it on auto to use as much memory as is available.",
 ].join(" ");

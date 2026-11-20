@@ -343,9 +343,9 @@ function DagPanel({
 function compileDetail(dag: DagPayload, options: CompileDagOptions): string {
   const counts = formatCounts(dag.counts);
   const switches = [
-    options.expandAtleastGates ? "ATLEAST expanded" : "ATLEAST preserved",
+    options.expandAtleastGates ? "VOT expanded" : "VOT preserved",
     options.expandXorGates ? "XOR expanded" : "XOR preserved",
-    options.recognizeAtleastGroups ? "ATLEAST recognition on" : "ATLEAST recognition off",
+    options.recognizeAtleastGroups ? "VOT recognition on" : "VOT recognition off",
     options.recognizeXorGroups ? "XOR recognition on" : "XOR recognition off",
     "CCF on",
     options.keepNullGates ? "null gates kept" : "null gates removed",

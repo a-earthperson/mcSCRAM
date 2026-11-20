@@ -85,7 +85,7 @@ const KIND_LABELS: Record<ExecKindKey, string> = {
   or: "OR",
   nor: "NOR",
   xor: "XOR",
-  atleast: "ATLEAST",
+  atleast: "VOT",
   not: "NOT",
   null: "NULL",
   gate: "gate",

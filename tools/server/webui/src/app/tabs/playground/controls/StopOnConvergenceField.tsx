@@ -2,7 +2,7 @@ import { FieldHintTrigger } from "../../../components/ui/HintTooltip";
 import { StickyPanelCheckbox } from "../../../components/ui/StickyPanel";
 
 export const STOP_ON_CONVERGENCE_FIELD_HINT =
-  "When enabled, sampling stops once the Wald CI policy converges, using Confidence (CI) and Delta (δ) for the stopping band (ε = δ·p̂). MAX TRIALS (N) is an upper bound (upto N). When disabled, the run draws exactly N trials; CI and δ are ignored.";
+  "On: stop as soon as the estimate meets the Confidence and Delta (δ) target, or at Max Trials, whichever comes first. Off: run all Max Trials and ignore Confidence and δ. With Max Trials on auto, a run only ends when it converges or you stop it.";
 
 export function StopOnConvergenceField({
   checked,

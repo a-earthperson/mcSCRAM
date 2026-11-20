@@ -109,7 +109,7 @@ and switches only for triangles, pentagon, cross, and inner circle overlays.
 | `upright_triangle` | 1 | `sdRegularPolygon(..., 3, ..., PI * 0.5)` | Used by AND/NAND. |
 | `upsidedown_triangle` | 2 | `sdRegularPolygon(..., 3, ..., -PI * 0.5)` | Used by OR/NOR. |
 | `circle_with_cross` | 3 | Circle SDF plus two diagonal stroke SDFs | Used by XOR/XNOR. |
-| `pentagon` | 4 | `sdRegularPolygon(..., 5, ..., -PI * 0.5)` | Used by ATLEAST. The sign is intentionally negative so the pentagon is not flipped by 180 degrees. |
+| `pentagon` | 4 | `sdRegularPolygon(..., 5, ..., -PI * 0.5)` | Used by VOT. The sign is intentionally negative so the pentagon is not flipped by 180 degrees. |
 | `circle_inside_circle` | 5 | Circle SDF plus inner circle stroke at radius `0.42` | Used by NOT. |
 | `upright_triangle_inscribed` | 6 | Upright triangle plus smaller inner triangle stroke | Used by NAND. |
 | `upsidedown_triangle_inscribed` | 7 | Upside-down triangle plus smaller inner triangle stroke | Used by NOR. |
@@ -200,9 +200,9 @@ The Playground sends these options to `/model/dag-bundle`:
 | UI control | Query option | Effect on visual glyph set |
 |---|---|---|
 | Compiler `C0`-`C8` | `compilation_level` | Changes native normalization passes and therefore the node set, edges, and possibly which connectives survive. |
-| Expand `K/N` | `expand_atleast_gates` | When true, native compilation may replace `atleast` gates with AND/OR structure, removing pentagons from compiled/kernel views. |
+| Replace `VOT` | `expand_atleast_gates` | When true, native compilation may replace `atleast` gates with AND/OR structure, removing pentagons from compiled/kernel views. |
 | Expand `XOR` | `expand_xor_gates` | When true, native compilation may replace XOR gates with AND/OR structure, removing circle-with-cross glyphs from compiled/kernel views. |
-| Merge `K/N` | `recognize_atleast_groups` | When true, native compilation may recognize AND/OR structure as `atleast`, introducing pentagons. |
+| Merge `VOT` | `recognize_atleast_groups` | When true, native compilation may recognize AND/OR structure as `atleast`, introducing pentagons. |
 | Merge `XOR` | `recognize_xor_groups` | When true, native compilation may recognize structure as XOR, introducing circle-with-cross glyphs. |
 | CCF | `ccf` | Always sent as true by current Playground bundle fetch. It can affect native graph shape but has no direct glyph. |
 | Keep null gates | `keep_null_gates` | When true, native graph may preserve null gates. These render as amber squares. |
@@ -251,7 +251,7 @@ Use this as the current viewer legend:
 | Cyan upright triangle | AND-family gate | AND and NAND overlap. |
 | Red upside-down triangle | OR-family gate | OR and NOR overlap. |
 | Green circle with diagonal cross | XOR-family gate | XOR and XNOR overlap. |
-| Purple pentagon | K-of-N / ATLEAST gate | Threshold `min` value is not shown. |
+| Purple pentagon | VOT (voter) gate | Threshold `min` value is not shown. |
 | Amber circle with inner ring | NOT gate | Unique among mapped standard types. |
 | Amber square | NULL gate | Shares hue with NOT; shape distinguishes it. |
 | Fuchsia house | Constant event | Native compiled/kernel DAG only. |

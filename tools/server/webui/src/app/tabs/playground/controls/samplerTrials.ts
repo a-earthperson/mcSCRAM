@@ -22,7 +22,7 @@ export const TRIALS_SCALE_LABELS: Record<TrialsScaleExponent, string> = {
 };
 
 export const TRIALS_N_FIELD_HINT =
-  "Enter a mantissa and choose the unit (M = ×10⁶, B = ×10⁹, T = ×10¹²). Actual N is derived as mantissa × unit (1 million to 10 trillion). Examples at B: 1 → 1 billion, 10 → 10 billion, 1000 → 1 trillion. −/+ adjusts the mantissa in steps of 1. Leave empty or type auto for unbounded sampling (num_trials = 0).";
+  "The most trials to run. Leave it empty, or type auto, for no limit.";
 
 /** @deprecated Use {@link DEFAULT_TRIALS_MANTISSA} at {@link DEFAULT_TRIALS_SCALE_EXPONENT}. */
 export const DEFAULT_TRIALS_SCALAR = DEFAULT_TRIALS_MANTISSA;

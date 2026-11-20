@@ -6,7 +6,7 @@
 
 export type CompilationLevelOption = {
   level: number;
-  /** Shown in the &lt;select&gt;; keep readable at ~42–52 characters. */
+  /** Shown in the &lt;select&gt;; keep it short. */
   label: string;
   /** One-line summary for tooltips / docs. */
   summary: string;
@@ -16,57 +16,57 @@ export type CompilationLevelOption = {
 export const COMPILATION_LEVEL_OPTIONS: readonly CompilationLevelOption[] = [
   {
     level: 0,
-    label: "C0 — raw tree (optional K/N·XOR normalize only)",
+    label: "C0 — Pass-through",
     summary:
-      "No structural passes. Optionally expand or merge K/N and XOR connectives when those flags are set, then ship the parsed PDAG.",
+      "Pass-through only.",
   },
   {
     level: 1,
-    label: "C1 — NULL/NOT → complemented edges",
+    label: "C1 — Replace NULL/NOT",
     summary:
-      "NormalizeGates(NONE): replace NULL gates with edges and NOT gates with complemented argument edges.",
+      "Replace NULL gates with edges; NOT gates with complemented edges.",
   },
   {
     level: 2,
-    label: "C2 — CSE, modules, coalesce, merge args",
+    label: "C2 — Find dupes, detect modules",
     summary:
-      "ProcessMultipleDefinitions, DetectModules, CoalesceGates (non-shared then shared), MergeCommonArgs. Default compilation_level (2).",
+      "Remove duplicates, detect modules, coalesce gates (non-shared then shared), merge common arguments.",
   },
   {
     level: 3,
-    label: "C3 — distributivity, Boolean opt, decompose",
+    label: "C3 — detect distributivity",
     summary:
-      "Extended structural block: distributivity detection, Shannon Boolean optimization, decompose common nodes, then coalesce; optional RecognizeAtleast/Xor groups.",
+      "Detect distributivity, decompose common nodes, then coalesce.",
   },
   {
     level: 4,
-    label: "C4 — +Phase I (null/constant cleanup)",
+    label: "C4 — Rerun C1",
     summary:
-      "Rakhimov Phase I (RunPhaseOne): remove residual null/constant wrappers after C2–C3 rewrites.",
+      "Rerun C1 → C2 → C3.",
   },
   {
     level: 5,
-    label: "C5 — +Phase II (structural block rerun)",
+    label: "C5 — Rerun C2 → C3",
     summary:
-      "Rakhimov Phase II (RunPhaseTwo): rerun the full CSE → modules → coalesce → merge → distributivity → Boolean-opt pipeline on the cleaned graph.",
+      "Rerun the C2 → C3 pipeline on the cleaned graph.",
   },
   {
     level: 6,
-    label: "C6 — +Phase III (expand K/N·XOR → AND/OR)",
+    label: "C6 — Expand VOT/XOR → C2 → C3",
     summary:
-      "Phase III when expand_atleast or expand_xor is set: fully normalize connectives to AND/OR, mark graph normal, then rerun Phase II.",
+      "Rewrite VOT and XOR gates as AND/OR then rerun C2 → C3.",
   },
   {
     level: 7,
-    label: "C7 — +Phase IV (push complements toward leaves)",
+    label: "C7 — Push NOTs down",
     summary:
-      "Phase IV when expand flags are set and the graph is non-coherent: De Morgan / complement propagation toward basic events.",
+      "De Morgan / complement propagation toward basic events.",
   },
   {
     level: 8,
-    label: "C8 — +Phase V (NNF coalesce, full pipeline)",
+    label: "C8 — Full NNF",
     summary:
-      "Phase V: aggressive shared coalescing, Phase II, coalesce again — reaches negation normal form when K/N·XOR expansion is enabled.",
+      "The SCRAM default.",
   },
 ] as const;
 
@@ -90,8 +90,38 @@ export function compilationLevelSummary(level: number): string {
   return compilationLevelOption(level).summary;
 }
 
+export type CompilerId = "fuzzybits" | "scram";
+
+export type CompilerOption = {
+  id: CompilerId;
+  label: string;
+  minLevel: number;
+  maxLevel: number;
+  defaultLevel: number;
+};
+
+/** Each compiler owns a contiguous range of levels; the first is the default compiler. */
+export const COMPILER_OPTIONS: readonly CompilerOption[] = [
+  { id: "fuzzybits", label: "FuzzyBits", minLevel: 0, maxLevel: 3, defaultLevel: 2 },
+  { id: "scram", label: "SCRAM", minLevel: 4, maxLevel: 8, defaultLevel: 8 },
+] as const;
+
+export function compilerForLevel(level: number): CompilerOption {
+  const clamped = clampCompilationLevel(level);
+  return COMPILER_OPTIONS.find((c) => clamped >= c.minLevel && clamped <= c.maxLevel) ?? COMPILER_OPTIONS[0];
+}
+
+export function compilerOption(id: string): CompilerOption {
+  return COMPILER_OPTIONS.find((c) => c.id === id) ?? COMPILER_OPTIONS[0];
+}
+
+export function compilationLevelsFor(compiler: CompilerOption): readonly CompilationLevelOption[] {
+  return COMPILATION_LEVEL_OPTIONS.filter((o) => o.level >= compiler.minLevel && o.level <= compiler.maxLevel);
+}
+
 export const COMPILATION_LEVEL_FIELD_HINT = [
-  "Cumulative DirectEval preprocessor depth (compilation_level 0–8). Each Cn runs all passes through Cn−1, then adds the row below.",
-  "C0–C3 are the native mcSCRAM structural passes; C4–C8 add Rakhimov's five-phase NNF pipeline (Phase I–V), staggered one phase per level.",
-  "C6–C7 run only when Expand VOT or Expand XOR is enabled; C8 completes the pipeline toward AND/OR NNF when those expansions are on.",
+  "Pick a compiler and the compilation level.",
+  "FuzzyBits is optimized for Monte Carlo sampling.",
+  "SCRAM adds Rakhimov's five-phase NNF pipeline.",
+  "Levels are cumulative.",
 ].join(" ");

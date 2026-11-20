@@ -321,8 +321,8 @@
 }
 
 /* ---- connective normalization matrix (taxonomic table) ----
- *            K/N   XOR
- *  Expand     □     □
+ *            VOT   XOR
+ *  Replace    □     □
  *  Merge      ▣     ▣
  */
 .pg-matrix {

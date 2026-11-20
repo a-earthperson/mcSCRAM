@@ -60,7 +60,8 @@ export function formatDeltaDescription(delta: number): string {
 }
 
 export const DELTA_FIELD_HINT = [
-  "Relative margin δ for convergence stopping. The engine targets half-width ε = δ·p̂, where p̂ is the running probability estimate (ε = |µ − p̂| in absolute terms).",
-  `Use −/+ to step through ${DELTA_PRESETS.map((preset) => formatDeltaInput(preset)).join(", ")}, or type any δ from ${formatDeltaInput(MIN_DELTA)} to ${formatDeltaInput(MAX_DELTA)}.`,
-  `Default δ = ${formatDeltaInput(DEFAULT_DELTA)} (${formatNumber(DEFAULT_DELTA * 100, DECIMAL_PLACES)}% relative band at p̂ = 1).`,
+  "Required precision, relative to the estimate p̂.",
+  "Sampling has converged once the confidence interval is no wider than ±δ·p̂ (ε = δ·p̂).",
+  `The default, ${formatDeltaInput(DEFAULT_DELTA)}, means within ±${formatNumber(DEFAULT_DELTA * 100, DECIMAL_PLACES)}% of p̂.`,
+  `−/+ steps through ${DELTA_PRESETS.map((preset) => formatDeltaInput(preset)).join(", ")}; you can also type any value from ${formatDeltaInput(MIN_DELTA)} to ${formatDeltaInput(MAX_DELTA)}.`,
 ].join(" ");

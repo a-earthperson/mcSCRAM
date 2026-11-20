@@ -5,8 +5,11 @@ import type { CompileDagOptions } from "../../../api/faultTreeApi";
 import {
   clampCompilationLevel,
   COMPILATION_LEVEL_FIELD_HINT,
-  COMPILATION_LEVEL_OPTIONS,
   compilationLevelOption,
+  compilationLevelsFor,
+  COMPILER_OPTIONS,
+  compilerForLevel,
+  compilerOption,
 } from "./compilationLevel";
 
 export function CompilerControlGroup({
@@ -27,12 +30,17 @@ export function CompilerControlGroup({
 
   return (
     <StickyPanelGroup
-      legend="Compiler"
-      legendHint={<FieldHintTrigger label="Compilation level help" content={COMPILATION_LEVEL_FIELD_HINT} />}
+      legend="Compilation"
+      legendHint={<FieldHintTrigger label="Compilation help" content={COMPILATION_LEVEL_FIELD_HINT} />}
       className="sticky-panel-group--compiler"
       hSpan={hSpan}
       vSpan={vSpan}
     >
+      <CompilerSelect
+        level={compileOptions.compilationLevel}
+        onChange={(compilationLevel) => onCompileOptionsChange((current) => ({ ...current, compilationLevel }))}
+        disabled={disabled}
+      />
       <CompileLevelSelect
         value={compileOptions.compilationLevel}
         onChange={(compilationLevel) => onCompileOptionsChange((current) => ({ ...current, compilationLevel }))}
@@ -129,6 +137,42 @@ function MatrixCheckbox({ label, disabled = false, ...props }: MatrixCheckboxPro
   );
 }
 
+function CompilerSelect({
+  level,
+  onChange,
+  disabled = false,
+}: {
+  level: number;
+  onChange: (level: number) => void;
+  disabled?: boolean;
+}) {
+  const compiler = compilerForLevel(level);
+
+  return (
+    <div className="sticky-panel-group__number-field pg-compile-level">
+      <div className="sticky-panel-group__number-field-label-row">
+        <label className="sticky-panel-group__number-field-label" htmlFor="playground-compiler">
+          Compiler
+        </label>
+      </div>
+      <div className="pg-compile-level__row">
+        <select
+          id="playground-compiler"
+          value={compiler.id}
+          disabled={disabled}
+          onChange={(event) => onChange(compilerOption(event.target.value).defaultLevel)}
+        >
+          {COMPILER_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function CompileLevelSelect({
   value,
   onChange,
@@ -140,6 +184,7 @@ function CompileLevelSelect({
 }) {
   const level = clampCompilationLevel(value);
   const selected = compilationLevelOption(level);
+  const levels = compilationLevelsFor(compilerForLevel(level));
 
   return (
     <div className="sticky-panel-group__number-field pg-compile-level">
@@ -152,7 +197,7 @@ function CompileLevelSelect({
           disabled={disabled}
           onChange={(event) => onChange(clampCompilationLevel(Number(event.target.value)))}
         >
-          {COMPILATION_LEVEL_OPTIONS.map((option) => (
+          {levels.map((option) => (
             <option key={option.level} value={option.level}>
               {option.label}
             </option>

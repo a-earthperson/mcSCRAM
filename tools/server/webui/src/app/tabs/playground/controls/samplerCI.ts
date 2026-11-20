@@ -13,7 +13,7 @@ const PRESET_EPSILON = 1e-6;
 
 
 export const CONFIDENCE_CI_FIELD_HINT =
-  "Two-sided confidence level (percent) for Wald stopping bands. Use −/+ to step through 90, 95, 99, 99.9, 99.99, and 99.999% CI, or type any value from 90 to 99.999.";
+  `Confidence level of the two-sided (Wald) interval used to decide when to stop. −/+ steps through ${CONFIDENCE_CI_PRESETS.join(", ")}%; you can also type any value from ${MIN_CONFIDENCE_CI_PERCENT} to ${MAX_CONFIDENCE_CI_PERCENT}.`;
 
 /** Clamp manual input to the allowed range (no preset snapping). */
 export function clampConfidenceCiPercent(value: number): number {
