@@ -39,6 +39,12 @@ jobs:
     outputs:
       proceed: ${{ steps.decide.outputs.proceed }}
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -105,6 +111,12 @@ jobs:
     env:
       VARIANT: ${{ matrix.variant }}
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
@@ -420,6 +432,12 @@ jobs:
     env:
       VARIANT: generic
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim workspace (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |

@@ -53,6 +53,12 @@ jobs:
       DOCKER_GPUS: device=0
       FUZZYBITS_CTR: fuzzybits-ci-${{ github.run_id }}-sm70-${{ github.run_attempt }}
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim leftover root-owned files
         run: |
           set -eu
@@ -116,6 +122,12 @@ jobs:
       DOCKER_GPUS: device=1
       FUZZYBITS_CTR: fuzzybits-ci-${{ github.run_id }}-sm86-${{ github.run_attempt }}
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim leftover root-owned files
         run: |
           set -eu
@@ -177,6 +189,12 @@ jobs:
       DOCKER_GPUS: device=0
       FUZZYBITS_CTR: fuzzybits-ci-${{ github.run_id }}-sm120-${{ github.run_attempt }}
     steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
       - name: Reclaim leftover root-owned files
         run: |
           set -eu
