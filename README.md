@@ -27,18 +27,18 @@ answer to be a stated sampling error rather than an unreported
 truncation error.
 
 Example: nus9601 from the Aralia set (1,567 basic events, exact
-p = 9.94e-6). SCRAM's BDD and ZBDD run out of memory on it, and the
-exact value took 2.5 hours with ganak. fuzzybits runs 1e8 trials,
-gets 965 hits and estimates 9.59e-6 +/- 6% (95%) in about 0.6 s on a
+p = $9.94 \times 10^{-6}$). SCRAM's BDD and ZBDD run out of memory on it, and the
+exact value took 2.5 hours with ganak. fuzzybits runs $10^8$ trials,
+gets 965 hits and estimates $9.59 \times 10^{-6}$ ± 6% (95%) in about 0.6 s on a
 Tesla V100S or 12 s on an 8-core i7-9700 (sampling time, start-up
 excluded). The ganak time comes from a different machine, so treat
 the comparison as indicative.
 
 It is not the right tool, yet, for very rare events. For a fixed
 relative error the number of trials grows as 1/p (see How many
-trials): p = 1e-8 to +/- 10% needs about 4e10 trials, and four Aralia
-models with p between 1.4e-8 and 1.1e-13 are infeasible at the
-1e8-trial cap (see Accuracy). Exact module collapse and importance
+trials): p = $10^{-8}$ to ±10% needs about $4 \times 10^{10}$ trials, and four Aralia
+models with p between $1.4 \times 10^{-8}$ and $1.1 \times 10^{-13}$ are infeasible at the
+$10^8$-trial cap (see Accuracy). Exact module collapse and importance
 sampling are planned, not done
 ([#21](https://github.com/fuzzybit-org/fuzzybits/issues/21),
 [#6](https://github.com/fuzzybit-org/fuzzybits/issues/6)).
@@ -73,7 +73,7 @@ input/Aralia/chinese.xml from this repository:
     r1  1.17652615e-03  [1.16982950e-03, 1.18322280e-03]  n=100663296  hits=118433
 
 The exact top-event probability of this model, from a BDD, is
-1.17058e-03. The trial count is rounded up to whole sampling passes,
+$1.17058 \times 10^{-3}$. The trial count is rounded up to whole sampling passes,
 and the same model and trial count always print the same line.
 
 Add --ccf to fzb compile to expand common-cause failure groups,
@@ -151,34 +151,34 @@ Fr(I) · P(sequence | I). fzb does not compile the event-tree part yet
 compiles one fault-tree top, such as X, Y or Z here.
 
 After n trials, a node that was true in h of them has the estimate
-p = h/n, and fzb prints the interval p ± 1.96·sqrt(p(1 − p)/n).
+p = h/n, and fzb prints the interval $p \pm 1.96\sqrt{p(1 - p)/n}$.
 
 
 How many trials
 ---------------
 
 To estimate a probability p to within ±d·p at 95% confidence takes
-about n = 1.96² · (1 − p) / (d² · p) trials:
+about $n = 1.96^2 \cdot (1 - p) / (d^2 \cdot p)$ trials:
 
-| p    | ±10%   | ±1%    |
-|------|--------|--------|
-| 1e-2 | 3.8e4  | 3.8e6  |
-| 1e-4 | 3.8e6  | 3.8e8  |
-| 1e-6 | 3.8e8  | 3.8e10 |
-| 1e-8 | 3.8e10 | 3.8e12 |
+| p         | ±10%               | ±1%                |
+|-----------|--------------------|--------------------|
+| $10^{-2}$ | $3.8 \times 10^4$  | $3.8 \times 10^6$  |
+| $10^{-4}$ | $3.8 \times 10^6$  | $3.8 \times 10^8$  |
+| $10^{-6}$ | $3.8 \times 10^8$  | $3.8 \times 10^{10}$ |
+| $10^{-8}$ | $3.8 \times 10^{10}$ | $3.8 \times 10^{12}$ |
 
 Measured sampling rates for three Aralia models, as GPU kernel time on
 a Tesla V100S and in-process sampling time on an Intel i7-9700 with 8
 threads (start-up and JIT excluded; method in docs/benchmarks.md):
 
-| model (basic events / gates) | V100S          | i7-9700        |
-|------------------------------|----------------|----------------|
-| chinese (25 / 36)            | ~1e10 trials/s | ~8e7 trials/s  |
-| das9201 (122 / 82)           | ~2.4e9         | ~2.6e7         |
-| das9701 (267 / 2,226)        | ~4.6e8         | ~4.8e6         |
+| model (basic events / gates) | V100S                 | i7-9700               |
+|------------------------------|-----------------------|-----------------------|
+| chinese (25 / 36)            | ~$10^{10}$ trials/s   | ~$8 \times 10^7$ trials/s |
+| das9201 (122 / 82)           | ~$2.4 \times 10^9$    | ~$2.6 \times 10^7$    |
+| das9701 (267 / 2,226)        | ~$4.6 \times 10^8$    | ~$4.8 \times 10^6$    |
 
-At das9701's rate on the V100S, p = 1e-6 to ±10% takes about 0.8 s,
-and p = 1e-8 to ±1% about 2.3 hours.
+At das9701's rate on the V100S, p = $10^{-6}$ to ±10% takes about 0.8 s,
+and p = $10^{-8}$ to ±1% about 2.3 hours.
 
 
 Accuracy
@@ -192,10 +192,10 @@ standard errors from the exact value, for models where the expected
 number of hits n·p is at least 16.
 
 Every published accuracy run since 0.17.1 (CPU, V100S, RTX 3070, RTX
-5060 Ti) has 38 passes and one low-power pass: isp9607, p ≈ 9.5e-7,
-about 96 expected hits. Four models are infeasible at the 1e8-trial
-cap and are reported as such: das9205 (p ≈ 1.4e-8), das9204
-(2.2e-11), edf9206 (8.6e-12) and das9209 (1.1e-13). Per-release data:
+5060 Ti) has 38 passes and one low-power pass: isp9607, p ≈ $9.5 \times 10^{-7}$,
+about 96 expected hits. Four models are infeasible at the $10^8$-trial
+cap and are reported as such: das9205 (p ≈ $1.4 \times 10^{-8}$), das9204
+($2.2 \times 10^{-11}$), edf9206 ($8.6 \times 10^{-12}$) and das9209 ($1.1 \times 10^{-13}$). Per-release data:
 https://fuzzybit-org.github.io/fuzzybits/bench/v1/index.json
 
 
@@ -209,9 +209,9 @@ Limits
 - The interval is the normal approximation. With few hits it is too
   narrow, and with no hits it is [0, 0], so check the hit count.
 - Probabilities are stored as 32-bit thresholds. Values below
-  2^-32 ≈ 2.3e-10 become 0, and others are rounded down by up to
-  2^-32, a relative error of up to 2^-32/p: about 2% at 1e-8 and 0.2%
-  at 1e-7 ([#17](https://github.com/fuzzybit-org/fuzzybits/issues/17)).
+  $2^{-32} \approx 2.3 \times 10^{-10}$ become 0, and others are rounded down by up to
+  $2^{-32}$, a relative error of up to $2^{-32}/p$: about 2% at $10^{-8}$ and 0.2%
+  at $10^{-7}$ ([#17](https://github.com/fuzzybit-org/fuzzybits/issues/17)).
 - Results are deterministic for a given model and trial count.
   --seed is not supported yet
   ([#65](https://github.com/fuzzybit-org/fuzzybits/issues/65)), so
@@ -224,18 +224,18 @@ Limits
 Status
 ------
 
-| Feature                                                  | State     |
-|----------------------------------------------------------|-----------|
-| Fault-tree top event, or any gate with --target          | yes       |
-| k-of-n and XOR gates without expansion                   | yes; --no-kn, --no-xor expand them |
+| Feature                                                         | State     |
+|-----------------------------------------------------------------|-----------|
+| Fault-tree top event, or any gate with --target                 | yes       |
+| k-of-n and XOR gates without expansion                          | yes; --no-kn, --no-xor expand them |
 | Common-cause groups: beta-factor, MGL, alpha-factor, phi-factor | yes, with --ccf |
-| CPU (OpenMP) and NVIDIA GPU (CUDA) backends              | yes; Apple Metal is experimental ([#30](https://github.com/fuzzybit-org/fuzzybits/issues/30)) |
-| Event-tree sequences and end states in one pass          | not yet ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)) |
-| Probabilities of intermediate gates                      | not yet ([#96](https://github.com/fuzzybit-org/fuzzybits/issues/96)) |
-| Importance measures (Birnbaum, Fussell–Vesely, RAW, RRW) | not yet   |
-| Importance sampling for rare events                      | not yet ([#6](https://github.com/fuzzybit-org/fuzzybits/issues/6)) |
-| User-set random seed                                     | not yet ([#65](https://github.com/fuzzybit-org/fuzzybits/issues/65)) |
-| Probabilities below 2^-32                                | not yet ([#17](https://github.com/fuzzybit-org/fuzzybits/issues/17)) |
+| CPU (OpenMP) and NVIDIA GPU (CUDA) backends                     | yes; Apple Metal is experimental ([#30](https://github.com/fuzzybit-org/fuzzybits/issues/30)) |
+| Event-tree sequences and end states in one pass                 | not yet ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)) |
+| Probabilities of intermediate gates                             | not yet ([#96](https://github.com/fuzzybit-org/fuzzybits/issues/96)) |
+| Importance measures (Birnbaum, Fussell–Vesely, RAW, RRW)        | not yet   |
+| Importance sampling for rare events                             | not yet ([#6](https://github.com/fuzzybit-org/fuzzybits/issues/6)) |
+| User-set random seed                                            | not yet ([#65](https://github.com/fuzzybit-org/fuzzybits/issues/65)) |
+| Probabilities below $2^{-32}$                                   | not yet ([#17](https://github.com/fuzzybit-org/fuzzybits/issues/17)) |
 
 
 Background
@@ -273,5 +273,4 @@ More
 - Benchmark dataset, harness and CI gates: docs/benchmarks.md
 - Questions and bug reports: https://github.com/fuzzybit-org/fuzzybits/issues
 - License: AGPL-3.0 (see LICENSE). fuzzybits is derived from SCRAM by
-  Olzhas Rakhimov (https://github.com/rakhimov/scram); files derived
-  from SCRAM remain GPL-3.0-or-later (see NOTICE).
+  Olzhas Rakhimov (https://github.com/rakhimov/scram).
