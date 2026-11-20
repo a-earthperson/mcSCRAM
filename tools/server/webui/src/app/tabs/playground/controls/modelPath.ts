@@ -46,7 +46,6 @@ export type ModelPathIndex = {
   readonly systems: readonly string[];
   formatsFor(system: string): readonly string[];
   modelsFor(system: string, format: string): readonly ModelOption[];
-  extensionsFor(system: string, format: string): readonly string[];
   parse(modelId: string): ParsedModelPath | undefined;
 };
 
@@ -54,7 +53,6 @@ export type DisplayedModelSelection = {
   system: string;
   format: string;
   extension: string;
-  formatExtensions: readonly string[];
   systems: readonly string[];
   formats: readonly string[];
   models: readonly ModelOption[];
@@ -195,16 +193,6 @@ export function buildModelPathIndex(models: readonly CatalogModelRef[]): ModelPa
       optionCache.set(key, options);
       return options;
     },
-    extensionsFor(system: string, format: string) {
-      const seen = new Set<string>();
-      const ordered: string[] = [];
-      for (const entry of modelsByPair.get(pairKey(system, format)) ?? []) {
-        if (!entry.extension || seen.has(entry.extension)) continue;
-        seen.add(entry.extension);
-        ordered.push(entry.extension);
-      }
-      return ordered;
-    },
     parse(modelId: string) {
       return byId.get(modelId);
     },
@@ -220,12 +208,10 @@ export function displayedModelSelection(index: ModelPathIndex, selectedId: strin
     ? selected.format
     : (formats[0] ?? MISSING_PATH_LEVEL);
   const models = index.modelsFor(system, format);
-  const formatExtensions = index.extensionsFor(system, format);
   return {
     system,
     format,
     extension: selected?.extension ?? models[0]?.extension ?? "",
-    formatExtensions,
     systems,
     formats,
     models,

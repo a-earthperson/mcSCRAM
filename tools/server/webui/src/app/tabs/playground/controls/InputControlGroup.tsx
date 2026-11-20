@@ -69,9 +69,6 @@ export function InputControlFields({
   const formatId = useId();
   const modelSelectId = useId();
   const extensionBadge = formatExtensionBadge(selection.extension);
-  const formatExtTitle = selection.formatExtensions.length
-    ? selection.formatExtensions.map((ext) => ext.toUpperCase()).join(" · ")
-    : undefined;
 
   return (
     <>
@@ -90,8 +87,6 @@ export function InputControlFields({
         disabled={selectsDisabled}
         options={selection.formats.map((format) => ({ value: format, label: format }))}
         onChange={(format) => onSelectedIdChange(modelIdAfterFormatChange(index, selectedId, format))}
-        badge={extensionBadge || undefined}
-        badgeTitle={formatExtTitle}
       />
       <LabeledSelect
         id={modelSelectId}
@@ -101,6 +96,7 @@ export function InputControlFields({
         disabled={selectsDisabled}
         options={selection.models.map((option) => ({ value: option.modelId, label: option.label }))}
         onChange={onSelectedIdChange}
+        badge={extensionBadge || undefined}
       />
       <OraclePField
         value={inputSettings.oracleP}
@@ -119,7 +115,6 @@ function LabeledSelect({
   onChange,
   disabled,
   badge,
-  badgeTitle,
   className,
 }: {
   id: string;
@@ -129,7 +124,6 @@ function LabeledSelect({
   onChange: (value: string) => void;
   disabled: boolean;
   badge?: string;
-  badgeTitle?: string;
   className?: string;
 }) {
   return (
@@ -139,7 +133,7 @@ function LabeledSelect({
           {label}
         </label>
         {badge ? (
-          <span className="pg-input-format-ext" id={`${id}-ext`} title={badgeTitle}>
+          <span className="pg-input-ext" id={`${id}-ext`}>
             {badge}
           </span>
         ) : null}

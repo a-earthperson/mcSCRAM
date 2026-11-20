@@ -50,7 +50,7 @@
   grid-column: 1 / -1;
 }
 
-.playground-controls .pg-input-format-ext {
+.playground-controls .pg-input-ext {
   margin-left: auto;
   padding: 1px 0 0;
   color: var(--ink-faint);
