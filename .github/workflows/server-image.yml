@@ -11,9 +11,10 @@
 #   - else on ci/**: newest existing ci-*-<variant> or nightly-<variant>
 #     (GHCR versions newest-first).
 #   - else (develop / tags): sha-<this-sha12>-<variant> if published,
-#     else nightly-<variant>. On develop, the runtime job first waits for
-#     this commit's Runtime images run to finish publishing, so an engine
-#     change ships in the same commit's server image.
+#     else nightly-<variant>. On develop and tags, the runtime job first
+#     waits for the commit's develop Runtime images run to finish
+#     publishing, so an engine change ships in the same commit's server
+#     image.
 # Override with the dispatch input rather than editing this file.
 #
 # Every push builds, not only server changes: develop deploys each commit to
@@ -50,7 +51,9 @@ env:
 
 jobs:
   # Both workflows start on the same develop push, and the runtime build
-  # outlasts this one. Polling from a hosted runner keeps the self-hosted
+  # outlasts this one. scripts/release.sh pushes the release commit and its
+  # tag together, so a tag waits on that develop run too; a tag on an older
+  # commit finds it finished. Polling from a hosted runner keeps the self-hosted
   # slots free for the runtime build it waits on. If that run skips publishing
   # (no engine change) or fails, publish falls back to nightly-<variant>.
   runtime:
@@ -61,7 +64,7 @@ jobs:
       actions: read
     steps:
       - name: Wait for this commit's runtime images
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

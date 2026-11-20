@@ -33,20 +33,21 @@ Actions → Release → Run workflow (on any branch). Every version string becom
 
 ## Cut a release
 
-1. Set the version everywhere and commit it to `develop` (via a PR):
+1. From a clean `develop` that matches `origin/develop`, run:
    ```bash
-   scripts/ci/release-version.sh apply 0.18.0
-   (cd tools/server && uv lock)
-   # Also bump project(SCRAM VERSION …) in CMakeLists.txt when the CMake
-   # package version should match (CMake VERSION cannot be a .devN override).
+   scripts/release.sh patch          # or minor, major, or an explicit 0.19.0
+   scripts/release.sh --dry-run minor  # rewrite and show the diff only
    ```
-   This updates `pyproject.toml`, `python/fuzzybits/__init__.py` and, for the server, `tools/server/pyproject.toml` (`version` and the `fuzzybits==` pin). `uv lock` refreshes `tools/server/uv.lock`, which records both versions.
-2. Tag that commit and push the tag:
-   ```bash
-   git tag -a v0.18.0 -m "fuzzybits 0.18.0" && git push origin v0.18.0
-   ```
-   The `version` job fails if the tag and any version string disagree.
-3. Approve the `pypi` and then the `pypi-server` deployment. After both uploads, `github-release` creates the GitHub Release with every wheel attached.
+   The script sets the version in every file that carries it:
+   - `pyproject.toml` and `python/fuzzybits/__init__.py`
+   - `tools/server/pyproject.toml` (`version` and the `fuzzybits==` pin)
+   - `project(SCRAM VERSION …)` in `CMakeLists.txt`
+   - the Docker `ARG`s, the `.env` server tag, the README examples, and both `uv.lock` files
+
+   It fails if any of those files no longer matches its pattern, and it lists any other mention of the old version without changing it. It then commits `chore(release): X.Y.Z` to `develop`, creates the annotated tag `vX.Y.Z`, and, after asking, pushes both in one atomic push. `--no-push` stops after the local commit and tag; `-y` pushes without asking. The `version` job in `release.yml` fails if the tag and any version string disagree.
+2. Approve the `pypi` and then the `pypi-server` deployment. After both uploads, `github-release` creates the GitHub Release with every wheel attached.
+
+The tag also redeploys live.fuzzybit.org (`server-image.yml`), and the `develop` push redeploys dev.fuzzybit.org.
 
 If an upload fails partway, fix the cause and rerun the failed jobs (`gh run rerun <run id> --failed`): the uploads use `skip-existing`, so files already on PyPI are skipped. PyPI never accepts changed files for an existing version; to fix a bad release, publish a new version.
 
