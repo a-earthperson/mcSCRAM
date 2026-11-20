@@ -12,6 +12,7 @@ import {
   modelIds,
   pointsForTarget,
   seriesForModel,
+  preferredModelId,
   targetOptions,
 } from "./compare";
 import { BenchDataError, DEFAULT_BENCH_INDEX_URL, loadBenchIndex } from "./load";
@@ -45,7 +46,9 @@ export function Benchmarks() {
 
   const points = useMemo(() => (index ? pointsForTarget(index, target) : []), [index, target]);
   const models = useMemo(() => modelIds(points), [points]);
-  const selectedModel = models.includes(modelId) ? modelId : (models[0] ?? "");
+  const selectedModel = models.includes(modelId)
+    ? modelId
+    : preferredModelId(points, target);
   const latest = useMemo(() => latestByChannel(points), [points]);
   const rows = useMemo(
     () => compareReleaseDevelop(latest.release, latest.develop),

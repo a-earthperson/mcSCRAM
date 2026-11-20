@@ -42,6 +42,15 @@ export function modelIds(points: BenchPoint[]): string[] {
   return [...ids].sort();
 }
 
+export function preferredModelId(points: BenchPoint[], target: string): string {
+  const ids = modelIds(points);
+  const metric = isGpuTarget(target) ? "gpu_total_ms" : "cpu_sample_s";
+  for (const id of ids) {
+    if (seriesForModel(points, id, metric).some((point) => point.value != null)) return id;
+  }
+  return ids[0] ?? "";
+}
+
 function modelOn(point: BenchPoint | null, id: string): BenchModel | null {
   if (!point) return null;
   return point.models.find((model) => model.id === id) ?? null;
