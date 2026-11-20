@@ -493,34 +493,35 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
         scram::mc::compat::wait_if_metal(queue_);
     }
     if (scram::mc::compat::is_metal_queue(queue_)) {
-        auto eval_in = [&](auto &blocks, const auto *g, const std::uint8_t op, const std::uint8_t at_least) -> bool {
+        auto eval_in = [&](auto &ios, const auto *g, const std::uint8_t op, const std::uint8_t at_least) -> bool {
             if (g == nullptr) {
                 return false;
             }
             auto *gp = reinterpret_cast<const char *>(g);
-            for (auto &blk : blocks) {
-                if (!blk.data || blk.buffers == nullptr) {
+            for (auto &io : ios) {
+                if (io.data == nullptr || io.buffers == nullptr) {
                     continue;
                 }
-                auto *base = reinterpret_cast<const char *>(blk.data);
+                auto *base = reinterpret_cast<const char *>(io.data);
                 if (gp < base) {
                     continue;
                 }
-                const auto stride = sizeof(*blk.data);
+                const auto stride = io.stride;
+                if (stride == 0) {
+                    continue;
+                }
                 const auto delta = static_cast<std::size_t>(gp - base);
                 if (delta % stride != 0) {
                     continue;
                 }
                 const auto i = delta / stride;
-                if (i >= blk.count) {
+                if (i >= io.n_gates) {
                     continue;
                 }
-                auto **inputs = blk.host_input_ptrs.data() + blk.host_input_offset[i];
-                auto *output = blk.buffers + i * blk.bitpacks_per_gate;
+                auto **inputs = io.input_ptrs.data() + io.offset[i];
+                auto *output = io.buffers + i * io.bitpacks_per_gate;
                 scram::mc::compat::host_eval_gate_if_metal(
-                    queue_, inputs, blk.host_input_count[i],
-                    static_cast<std::size_t>(blk.data[i].negated_inputs_offset), output, op, at_least,
-                    sample_shape_);
+                    queue_, inputs, io.count[i], io.negated_offset[i], output, op, at_least, sample_shape_);
                 return true;
             }
             return false;
@@ -537,18 +538,18 @@ template <typename bitpack_t_, typename prob_t_, typename size_t_>
                 }
                 const auto op = static_cast<std::uint8_t>(gate_node->type());
                 const auto at_least = static_cast<std::uint8_t>(gate_node->min_number());
-                if (!eval_in(device_gate_blocks_, git->second, op, at_least)) {
-                    eval_in(device_atleast_gate_blocks_, git->second, op, at_least);
+                if (!eval_in(metal_gate_ios_, git->second, op, at_least)) {
+                    eval_in(metal_atleast_ios_, git->second, op, at_least);
                 }
             }
         }
-        for (auto &blk : device_tally_blocks_) {
-            for (std::size_t i = 0; i < blk.count; ++i) {
-                bitpack_t_ *buf = i < blk.host_buffers.size() ? blk.host_buffers[i] : nullptr;
+        for (auto &io : metal_tally_ios_) {
+            auto *data = static_cast<event::tally<bitpack_t_> *>(io.data);
+            for (std::size_t i = 0; i < io.count; ++i) {
+                bitpack_t_ *buf = i < io.buffers.size() ? io.buffers[i] : nullptr;
                 const auto bits = scram::mc::compat::host_popcount_if_metal(queue_, buf, sample_shape_);
-                // recover PDAG index from allocated_tally_events_by_index_
                 for (auto &pair : allocated_tally_events_by_index_) {
-                    if (pair.second == &blk.data[i]) {
+                    if (pair.second == &data[i]) {
                         metal_host_hits_[pair.first] += bits;
                         break;
                     }
@@ -655,6 +656,10 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::~layer_manager() {
         device_gate_blocks_.clear();
         device_atleast_gate_blocks_.clear();
         device_tally_blocks_.clear();
+        metal_gate_ios_.clear();
+        metal_atleast_ios_.clear();
+        metal_tally_ios_.clear();
+        metal_host_hits_.clear();
         queue_.throw_asynchronous();
         sycl_async_error_slot().clear();
     } catch (...) {
@@ -736,8 +741,31 @@ layer_manager<bitpack_t_, prob_t_, size_t_>::layer_manager(core::Pdag *pdag, con
         partition_ids_by_queueable_,
         pdag_nodes_by_layer_.size());
 
+    if (scram::mc::compat::is_metal_queue(queue_)) {
+        snapshot_metal_host_io();
+    }
+
     // Log sample_shaper configuration
     LOG(DEBUG2) << sample_shaper_;
+}
+
+template <typename bitpack_t_, typename prob_t_, typename size_t_>
+void layer_manager<bitpack_t_, prob_t_, size_t_>::snapshot_metal_host_io() {
+    metal_gate_ios_.clear();
+    metal_atleast_ios_.clear();
+    metal_tally_ios_.clear();
+    metal_gate_ios_.reserve(device_gate_blocks_.size());
+    metal_atleast_ios_.reserve(device_atleast_gate_blocks_.size());
+    metal_tally_ios_.reserve(device_tally_blocks_.size());
+    for (const auto &blk : device_gate_blocks_) {
+        metal_gate_ios_.push_back(scram::mc::compat::snapshot_gate_host_io(blk));
+    }
+    for (const auto &blk : device_atleast_gate_blocks_) {
+        metal_atleast_ios_.push_back(scram::mc::compat::snapshot_gate_host_io(blk));
+    }
+    for (const auto &blk : device_tally_blocks_) {
+        metal_tally_ios_.push_back(scram::mc::compat::snapshot_tally_host_io(blk));
+    }
 }
 
 } // namespace scram::mc::queue

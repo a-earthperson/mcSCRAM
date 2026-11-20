@@ -447,9 +447,8 @@ namespace scram::mc::event {
      */
     template<typename bitpack_t_>
     struct tally_block : public node_block<tally<bitpack_t_>> {
-        /// Host-tracked producer pointers (same values as `tally.buffer` at
-        /// allocation). Not USM — AdaptiveCpp wait() must not rewrite them.
-        std::vector<bitpack_t_ *> host_buffers;
+        // Kernel functors copy this wrapper by value. Do not add host-only
+        // containers here — LLVMToMetal emits their dtors as `_ZdlPvm`.
     };
 
     /**
@@ -478,7 +477,6 @@ namespace scram::mc::event {
         tally_block<bitpack_t_> blk;
         blk.data  = tallies;
         blk.count = n;
-        blk.host_buffers = source_buffers;
         return blk;
     }
 
@@ -523,10 +521,6 @@ namespace scram::mc::event {
         std::size_t   total_inputs      = 0;        ///< length of all_inputs
 
         std::size_t   bitpacks_per_gate = 0;        ///< stride between successive gate buffers
-
-        std::vector<bitpack_t_ *> host_input_ptrs;
-        std::vector<std::size_t> host_input_offset;
-        std::vector<std::size_t> host_input_count;
     };
 
     /**
@@ -591,17 +585,6 @@ namespace scram::mc::event {
         blk.all_inputs         = all_inputs;
         blk.total_inputs       = total_input_ptrs;
         blk.bitpacks_per_gate  = num_bitpacks;
-        blk.host_input_ptrs.assign(all_inputs, all_inputs + total_input_ptrs);
-        blk.host_input_offset.resize(num_gates);
-        blk.host_input_count.resize(num_gates);
-        {
-            std::size_t off = 0;
-            for (std::size_t i = 0; i < num_gates; ++i) {
-                blk.host_input_offset[i] = off;
-                blk.host_input_count[i] = static_cast<std::size_t>(gates[i].num_inputs);
-                off += blk.host_input_count[i];
-            }
-        }
         return blk;
     }
 
@@ -661,10 +644,6 @@ namespace scram::mc::event {
         std::size_t   total_inputs      = 0;        ///< length of all_inputs
 
         std::size_t   bitpacks_per_gate = 0;        ///< stride between successive gate buffers
-
-        std::vector<bitpack_t_ *> host_input_ptrs;
-        std::vector<std::size_t> host_input_offset;
-        std::vector<std::size_t> host_input_count;
     };
 
     /**
@@ -731,17 +710,6 @@ namespace scram::mc::event {
         blk.all_inputs         = all_inputs;
         blk.total_inputs       = total_input_ptrs;
         blk.bitpacks_per_gate  = num_bitpacks;
-        blk.host_input_ptrs.assign(all_inputs, all_inputs + total_input_ptrs);
-        blk.host_input_offset.resize(num_gates);
-        blk.host_input_count.resize(num_gates);
-        {
-            std::size_t off = 0;
-            for (std::size_t i = 0; i < num_gates; ++i) {
-                blk.host_input_offset[i] = off;
-                blk.host_input_count[i] = static_cast<std::size_t>(gates[i].num_inputs);
-                off += blk.host_input_count[i];
-            }
-        }
         return blk;
     }
 

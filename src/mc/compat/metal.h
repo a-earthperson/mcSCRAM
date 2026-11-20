@@ -134,6 +134,67 @@ inline constexpr std::uint8_t kHostNull = 7;
 
 } // namespace detail
 
+/// Host-only gate I/O. Kernel functors copy `event::gate_block` by value, so
+/// these containers must not live on that wrapper (dtor → `_ZdlPvm` in Metal
+/// IR; capturing `std::vector` SIGSEGVs OpenMP). Snapshot before first wait().
+template <typename Bitpack>
+struct metal_gate_host_io {
+    std::vector<Bitpack *> input_ptrs;
+    std::vector<std::size_t> offset;
+    std::vector<std::size_t> count;
+    std::vector<std::size_t> negated_offset;
+    Bitpack *buffers = nullptr;
+    std::size_t bitpacks_per_gate = 0;
+    std::size_t n_gates = 0;
+    std::size_t stride = 0;
+    const void *data = nullptr;
+};
+
+template <typename Bitpack>
+struct metal_tally_host_io {
+    std::vector<Bitpack *> buffers;
+    void *data = nullptr;
+    std::size_t count = 0;
+};
+
+template <typename Block>
+inline auto snapshot_gate_host_io(const Block &blk) {
+    using Bitpack = std::remove_pointer_t<decltype(Block::buffers)>;
+    metal_gate_host_io<Bitpack> io;
+    io.data = blk.data;
+    io.buffers = blk.buffers;
+    io.bitpacks_per_gate = blk.bitpacks_per_gate;
+    io.n_gates = blk.count;
+    io.stride = blk.data != nullptr ? sizeof(*blk.data) : 0;
+    if (blk.all_inputs != nullptr && blk.total_inputs > 0) {
+        io.input_ptrs.assign(blk.all_inputs, blk.all_inputs + blk.total_inputs);
+    }
+    io.offset.resize(blk.count);
+    io.count.resize(blk.count);
+    io.negated_offset.resize(blk.count);
+    std::size_t off = 0;
+    for (std::size_t i = 0; i < blk.count; ++i) {
+        io.count[i] = static_cast<std::size_t>(blk.data[i].num_inputs);
+        io.negated_offset[i] = static_cast<std::size_t>(blk.data[i].negated_inputs_offset);
+        io.offset[i] = off;
+        off += io.count[i];
+    }
+    return io;
+}
+
+template <typename Block>
+inline auto snapshot_tally_host_io(const Block &blk) {
+    using Bitpack = std::remove_pointer_t<decltype(blk.data[0].buffer)>;
+    metal_tally_host_io<Bitpack> io;
+    io.data = blk.data;
+    io.count = blk.count;
+    io.buffers.resize(blk.count);
+    for (std::size_t i = 0; i < blk.count; ++i) {
+        io.buffers[i] = blk.data[i].buffer;
+    }
+    return io;
+}
+
 /// Intra-group popcount reduction. Metal path: uint32 then widen. Native path:
 /// `reduce_over_group` on `std::size_t` byte-for-byte with pre-shim code.
 template <typename Group>
@@ -172,8 +233,8 @@ template <typename Group>
 
 /// Replay one gate on the host from memcpy'd producer buffers. Metal device
 /// kernels cannot follow `bitpack_t **` input tables. Pointers must be the
-/// host-tracked copies on `gate_block` (not USM fields after wait). No-op
-/// on other backends.
+/// host-tracked copies on `metal_gate_host_io` (not USM fields after wait,
+/// and not members of kernel-captured `gate_block`). No-op on other backends.
 template <typename Bitpack, typename Shape>
 inline void host_eval_gate_if_metal(sycl::queue &queue, Bitpack **inputs, const std::size_t n_in,
                                     const std::size_t negated_inputs_offset, Bitpack *output,
