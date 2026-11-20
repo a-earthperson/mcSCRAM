@@ -277,3 +277,95 @@ jobs:
       - name: Drop smoke container
         if: always() && matrix.variant == 'generic'
         run: docker rm -f fuzzybits-server-e2e-${{ github.run_id }}-${{ github.run_attempt }} || true
+
+  # Redeploys live.fuzzybit.org (swarm stack fzb-app-fuzzybits-server) after a
+  # release tag, once both variants are published and the generic image has
+  # passed the e2e smoke. It checks out nothing: the swarm manager runs only
+  # these commands, against the stack file mirrored on gateway (from
+  # fuzzybit-org/swarm-deployment apps/fuzzybits-server), mounted read-only at
+  # its gateway path because `docker stack deploy` reads it in the client.
+  # The image is pinned by digest so the service runs exactly what this tag
+  # published.
+  deploy-live:
+    name: deploy-live
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    runs-on:
+      group: swarm-managers
+    container:
+      image: node:26-bookworm-slim
+      options: >-
+        --init
+        -v /var/run/docker.sock:/var/run/docker.sock
+        -v /deployments/on-gateway/docker-swarm/@fuzzybit-org/apps/fuzzybits-server:/deployments/on-gateway/docker-swarm/@fuzzybit-org/apps/fuzzybits-server:ro
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-live
+      cancel-in-progress: false
+    permissions:
+      packages: read
+    env:
+      STACK: fzb-app-fuzzybits-server
+      SERVICE: fzb-app-fuzzybits-server_server
+      STACK_DIR: /deployments/on-gateway/docker-swarm/@fuzzybit-org/apps/fuzzybits-server
+      LIVE_TAG: ${{ github.ref_name }}-cuda12.8-sm70
+    steps:
+      - name: Install base packages and the Docker CLI
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+          echo "1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570  /etc/apt/keyrings/docker.asc" | sha256sum -c -
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+            > /etc/apt/sources.list.d/docker.list
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            docker-ce-cli=5:29.9.2-1~debian.12~bookworm \
+            docker-buildx-plugin=0.38.1-1~debian.12~bookworm
+
+      - name: Isolate Docker credentials
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
+      # --with-registry-auth forwards this read-only token to the node that
+      # pulls. It expires with the job; a later restart reuses the pulled image.
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve the released digest
+        run: |
+          set -euo pipefail
+          digest="$(docker buildx imagetools inspect "${IMAGE}:${LIVE_TAG}" | awk '/^Digest:/{print $2; exit}')"
+          [[ ${digest} =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "No published digest for ${IMAGE}:${LIVE_TAG}." >&2; exit 1; }
+          echo "DIGEST=${digest}" >> "${GITHUB_ENV}"
+          echo "${IMAGE}:${LIVE_TAG} -> ${digest}"
+
+      - name: Deploy the released digest
+        working-directory: ${{ env.STACK_DIR }}
+        run: |
+          set -euo pipefail
+          FUZZYBITS_SERVER_IMAGE="${IMAGE}@${DIGEST}" \
+            docker stack deploy --detach=false --with-registry-auth -c stack.yml "${STACK}"
+
+      - name: Verify the service runs that digest
+        run: |
+          set -euo pipefail
+          image="$(docker service inspect "${SERVICE}" --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}')"
+          state="$(docker service inspect "${SERVICE}" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}')"
+          replicas="$(docker service ls --filter "name=${SERVICE}" --format '{{.Replicas}}')"
+          echo "${SERVICE}: ${image} update=${state:-none} replicas=${replicas}"
+          echo "- live: \`${image}\` (update=${state:-none}, replicas=${replicas})" >> "${GITHUB_STEP_SUMMARY}"
+          [[ ${image} == *"@${DIGEST}" ]] || { echo "Spec does not pin ${DIGEST}." >&2; exit 1; }
+          [[ -z ${state} || ${state} == completed ]] || { echo "Update ended ${state}." >&2; exit 1; }
+          [[ ${replicas} == 1/1 ]] || { echo "Service is not running." >&2; exit 1; }
+
+      - name: Return workspace ownership to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "${GITHUB_WORKSPACE}/..")" "${GITHUB_WORKSPACE}" "${HOME}" "${RUNNER_TEMP}"
