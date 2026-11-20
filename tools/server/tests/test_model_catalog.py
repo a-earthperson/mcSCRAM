@@ -109,7 +109,16 @@ def test_source_views_are_empty_for_compiled_models(data_dir: Path) -> None:
     assert missing.status_code == 404
 
 
+@pytest.fixture
+def native_workers():
+    from fuzzybits_server.native import shutdown_native_workers
+
+    yield
+    shutdown_native_workers()
+
+
 @pytest.mark.native
+@pytest.mark.usefixtures("native_workers")
 def test_pcfb_and_nombrilo_models_compile_and_render(data_dir: Path) -> None:
     if not TINY_XML.is_file():
         pytest.skip(f"missing {TINY_XML}")
@@ -119,15 +128,17 @@ def test_pcfb_and_nombrilo_models_compile_and_render(data_dir: Path) -> None:
     (data_dir / "tiny.pcfb").write_bytes(blob)
     (data_dir / "tiny.safetensors").write_bytes(fuzzybits.pcfb_to_nombrilo(blob))
 
-    client = TestClient(create_app())
-    catalog = client.get("/api/v1/model/xml-inputs").json()
-    assert {"tiny.pcfb", "tiny.safetensors"} <= set(catalog["modelIds"])
+    # The context manager runs the app's shutdown hook, which stops the
+    # isolated compile worker; without it the worker outlives pytest.
+    with TestClient(create_app()) as client:
+        catalog = client.get("/api/v1/model/xml-inputs").json()
+        assert {"tiny.pcfb", "tiny.safetensors"} <= set(catalog["modelIds"])
 
-    for model_id in ("tiny.pcfb", "tiny.safetensors"):
-        response = client.get("/api/v1/model/sample-shape", params={"model_id": model_id})
-        assert response.status_code == 200, response.text
-        dag = client.get("/api/v1/model/dag", params={"model_id": model_id})
-        assert dag.status_code == 200, dag.text
+        for model_id in ("tiny.pcfb", "tiny.safetensors"):
+            response = client.get("/api/v1/model/sample-shape", params={"model_id": model_id})
+            assert response.status_code == 200, response.text
+            dag = client.get("/api/v1/model/dag", params={"model_id": model_id})
+            assert dag.status_code == 200, dag.text
 
     cached = list((data_dir / ".cache").rglob("*.pcfb"))
     assert cached, "nombrilo model should be translated into the pcfb cache"
