@@ -12,10 +12,6 @@ All functions are pure and operate on Python floats.  Accuracy targets:
 * ``normal_quantile_two_sided`` — Acklam (2003) rational approximation, max abs
   error ~5e-16 over (0, 1); identical coefficients to the C++/TS implementations
   so the three stacks agree to round-off.
-* ``regularized_incomplete_beta`` — Lentz continued fraction (Numerical
-  Recipes ``betacf``), relative error ~1e-15.
-* ``beta_quantile`` — bisection on the regularized incomplete beta; converges to
-  full double precision in <=128 iterations.
 """
 
 from __future__ import annotations
@@ -123,7 +119,7 @@ def confidence_from_alpha(alpha: float) -> float:
 
 
 # ---------------------------------------------------------------------------
-#  Beta / digamma helpers (Bayesian policy + information gain)
+#  Beta / digamma helpers (information gain)
 # ---------------------------------------------------------------------------
 def digamma(x: float) -> float:
     r"""Digamma function :math:`\psi(x)` for ``x > 0`` (recurrence + asymptotic)."""
@@ -165,77 +161,6 @@ def information_gain_bits(
     return beta_entropy_bits(alpha_prev, beta_prev) - beta_entropy_bits(alpha_new, beta_new)
 
 
-def _beta_continued_fraction(a: float, b: float, x: float, *, max_iter: int = 300) -> float:
-    """Lentz's continued fraction for the regularized incomplete beta (``betacf``)."""
-    tiny = 1.0e-300
-    eps = 3.0e-16
-    qab = a + b
-    qap = a + 1.0
-    qam = a - 1.0
-    c = 1.0
-    d = 1.0 - qab * x / qap
-    if abs(d) < tiny:
-        d = tiny
-    d = 1.0 / d
-    h = d
-    for m in range(1, max_iter + 1):
-        m2 = 2 * m
-        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
-        d = 1.0 + aa * d
-        if abs(d) < tiny:
-            d = tiny
-        c = 1.0 + aa / c
-        if abs(c) < tiny:
-            c = tiny
-        d = 1.0 / d
-        h *= d * c
-        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
-        d = 1.0 + aa * d
-        if abs(d) < tiny:
-            d = tiny
-        c = 1.0 + aa / c
-        if abs(c) < tiny:
-            c = tiny
-        d = 1.0 / d
-        delta = d * c
-        h *= delta
-        if abs(delta - 1.0) < eps:
-            break
-    return h
-
-
-def regularized_incomplete_beta(x: float, a: float, b: float) -> float:
-    r"""Regularized incomplete beta :math:`I_x(a, b)` (the ``Beta(a,b)`` CDF)."""
-    if x <= 0.0:
-        return 0.0
-    if x >= 1.0:
-        return 1.0
-    front = math.exp(log_beta(a, b) * -1.0 + a * math.log(x) + b * math.log1p(-x))
-    if x < (a + 1.0) / (a + b + 2.0):
-        return front * _beta_continued_fraction(a, b, x) / a
-    return 1.0 - front * _beta_continued_fraction(b, a, 1.0 - x) / b
-
-
-def beta_quantile(q: float, a: float, b: float, *, iterations: int = 128) -> float:
-    r"""Inverse Beta CDF (percent-point function) via bisection on :math:`I_x(a,b)`.
-
-    Robust and monotone; ``iterations`` halvings reach full double precision.
-    """
-    if q <= 0.0:
-        return 0.0
-    if q >= 1.0:
-        return 1.0
-    low = 0.0
-    high = 1.0
-    for _ in range(iterations):
-        mid = 0.5 * (low + high)
-        if regularized_incomplete_beta(mid, a, b) < q:
-            low = mid
-        else:
-            high = mid
-    return 0.5 * (low + high)
-
-
 # ---------------------------------------------------------------------------
 #  Bernoulli sampling-theory formulas (shared by policies and metrics)
 # ---------------------------------------------------------------------------
@@ -272,8 +197,6 @@ __all__ = [
     "log_beta",
     "beta_entropy_bits",
     "information_gain_bits",
-    "regularized_incomplete_beta",
-    "beta_quantile",
     "required_trials_two_sided",
     "required_trials_log10_two_sided",
     "epsilon_from_trials",

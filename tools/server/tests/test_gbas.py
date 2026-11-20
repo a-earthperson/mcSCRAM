@@ -20,7 +20,6 @@ import pytest
 from scipy.special import gammaincinv
 
 from fuzzybits_server.convergence import (
-    BayesPolicy,
     BernoulliSampler,
     ConvergenceConfig,
     ConvergenceRunner,
@@ -244,7 +243,7 @@ def test_runner_gbas_stopping_uses_exact_estimate() -> None:
     config = ConvergenceConfig(
         delta=0.05, confidence=0.95, early_stop=True, stopping_policy="gbas"
     )
-    policies = [WaldLinearPolicy(), BayesPolicy(), GBASPolicy(seed=123)]
+    policies = [WaldLinearPolicy(), GBASPolicy(seed=123)]
     frames: list[dict] = []
     runner = ConvergenceRunner(sampler, config, policies=policies, on_progress=frames.append)
     result = runner.run()
@@ -301,7 +300,7 @@ def test_config_and_registry_allow_gbas() -> None:
         {"policy": "gbas", "delta": 0.05, "confidence": 0.95, "early_stop": True}
     )
     assert config.stopping_policy == "gbas"
-    assert {"wald", "bayes", "gbas"} <= set(config.policies)
+    assert {"wald", "gbas"} <= set(config.policies)
 
     from fuzzybits_server.convergence.policies import make_policy
 

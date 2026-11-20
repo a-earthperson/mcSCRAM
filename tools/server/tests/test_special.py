@@ -24,19 +24,6 @@ def test_normal_cdf_and_p_value() -> None:
     assert special.two_sided_p_value(1.959963984540054) == pytest.approx(0.05, abs=1e-6)
 
 
-def test_regularized_incomplete_beta_matches_uniform() -> None:
-    # Beta(1, 1) is Uniform(0, 1): I_x(1, 1) = x.
-    for x in (0.1, 0.25, 0.5, 0.75, 0.9):
-        assert special.regularized_incomplete_beta(x, 1.0, 1.0) == pytest.approx(x, abs=1e-12)
-
-
-def test_beta_quantile_inverts_cdf() -> None:
-    a, b = 12.5, 88.5
-    for q in (0.025, 0.5, 0.975):
-        x = special.beta_quantile(q, a, b)
-        assert special.regularized_incomplete_beta(x, a, b) == pytest.approx(q, abs=1e-8)
-
-
 def test_beta_entropy_uniform_is_zero_bits() -> None:
     # Differential entropy of Uniform(0,1) is 0 nats -> 0 bits.
     assert special.beta_entropy_bits(1.0, 1.0) == pytest.approx(0.0, abs=1e-9)
