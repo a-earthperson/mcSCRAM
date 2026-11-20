@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 ####################### Begin SCRAM core lib config ##################### {{{

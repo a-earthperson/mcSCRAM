@@ -1,0 +1,23 @@
+fuzzybits
+Copyright (C) 2025-2026 Arjun Earthperson
+
+fuzzybits is a fork of SCRAM (https://github.com/rakhimov/scram),
+Copyright (C) 2014-2018 Olzhas Rakhimov, licensed under the GNU General
+Public License, version 3 or (at your option) any later version.
+
+Files derived from SCRAM keep the upstream copyright notice and carry
+"SPDX-License-Identifier: GPL-3.0-or-later". The rest of fuzzybits is
+licensed under the GNU Affero General Public License, version 3 (see
+LICENSE). Section 13 of the GPLv3 permits combining the two; the combined
+work is distributed under the AGPL-3.0.
+
+Model data, test fixtures and documentation that came with SCRAM are
+listed in scripts/ci/scram_provenance.json, and scripts/ci/scram_provenance.py
+reports what remains. The scripts/translators submodule is SCRAM's model
+translators (https://github.com/rakhimov/translators), under its own licence.
+
+src/ext/combination.h (Howard Hinnant) and src/ext/scope_guard.h
+(Yuri Kilochek) are distributed under the Boost Software License 1.0.
+
+Replacing the SCRAM-derived code is tracked in
+https://github.com/fuzzybit-org/fuzzybits/issues/144.

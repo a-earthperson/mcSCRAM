@@ -66,6 +66,7 @@ sdist.include = [
     "CMakePresets.json",
     "toolchain.env",
     "LICENSE",
+    "NOTICE",
 ]
 sdist.exclude = [
     "build/**",

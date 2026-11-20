@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 install(FILES
   project.rng
   input.rng

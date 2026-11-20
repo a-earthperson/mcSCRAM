@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2014-2018 Olzhas Rakhimov
 #
 # This program is free software; you can redistribute it and/or modify
