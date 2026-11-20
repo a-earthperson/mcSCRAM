@@ -265,7 +265,7 @@ export function Playground() {
       <ControlPanel
         selectedId={selectedId}
         onSelectedIdChange={setSelectedId}
-        modelIds={modelIds}
+        models={catalog ?? []}
         oracleP={selectedModel?.oracle_p ?? null}
         blocked={blocked}
         compileOptions={compileOptions}
