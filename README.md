@@ -4,8 +4,9 @@ fuzzybits
 fuzzybits estimates the probability of a fault-tree top event in an
 OpenPSA MEF model by Monte Carlo. It compiles the model's logic once
 into a Boolean circuit, packs 64 independent trials into each 64-bit
-word, evaluates the gates with bitwise instructions on a CPU or an
-NVIDIA GPU, and reports the estimate with a 95% confidence interval.
+word, evaluates the gates with bitwise instructions on a CPU, an
+NVIDIA GPU or an Apple Silicon GPU, and reports the estimate with a
+95% confidence interval.
 No cut sets are generated and nothing is truncated or bounded. The
 cost is that, for a fixed relative error, the number of trials grows
 as 1/p.
@@ -52,8 +53,11 @@ Install
 Wheels are built for CPython 3.12 to 3.15 on Linux x86_64 (glibc 2.39
 or newer, for example Ubuntu 24.04), macOS 15+ on Intel and macOS 26+
 on Apple Silicon. On Linux, an NVIDIA GPU needs only the driver (CUDA
-12.8 or newer). On macOS, sampling runs on the CPU; the Metal backend
-is experimental ([#30](https://github.com/fuzzybit-org/fuzzybits/issues/30)).
+12.8 or newer). On Apple Silicon, the GPU is supported through Metal.
+Running more than one pass per step on Metal (fuzzybits-server's
+FUZZYBITS_PASSES_PER_STEP above 1) can return wrong counts
+([#171](https://github.com/fuzzybit-org/fuzzybits/issues/171)).
+On Intel Macs, sampling runs on the CPU.
 There is no Windows wheel on PyPI yet
 ([#101](https://github.com/fuzzybit-org/fuzzybits/issues/101)).
 
@@ -77,7 +81,8 @@ $1.17058 \times 10^{-3}$. The trial count is rounded up to whole sampling passes
 and the same model and trial count always print the same line.
 
 Add --ccf to fzb compile to expand common-cause failure groups,
---backend cuda to fzb run to use an NVIDIA GPU, or --json for
+--backend cuda or --backend metal to fzb run to use an NVIDIA or
+Apple Silicon GPU (--backend omp for the CPU), or --json for
 machine-readable output. fzb --help lists all options.
 
 
@@ -229,7 +234,7 @@ Status
 | Fault-tree top event, or any gate with --target                 | yes       |
 | k-of-n and XOR gates without expansion                          | yes; --no-kn, --no-xor expand them |
 | Common-cause groups: beta-factor, MGL, alpha-factor, phi-factor | yes, with --ccf |
-| CPU (OpenMP) and NVIDIA GPU (CUDA) backends                     | yes; Apple Metal is experimental ([#30](https://github.com/fuzzybit-org/fuzzybits/issues/30)) |
+| CPU (OpenMP), NVIDIA GPU (CUDA) and Apple Silicon GPU (Metal)   | yes; Metal with several passes per step: [#171](https://github.com/fuzzybit-org/fuzzybits/issues/171) |
 | Event-tree sequences and end states in one pass                 | not yet ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)) |
 | Probabilities of intermediate gates                             | not yet ([#96](https://github.com/fuzzybit-org/fuzzybits/issues/96)) |
 | Importance measures (Birnbaum, Fussell–Vesely, RAW, RRW)        | not yet   |
