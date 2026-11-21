@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-cmake_minimum_required(VERSION 3.18.4)
+cmake_minimum_required(VERSION 3.25)
 
 # In-source build prevention.
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)

@@ -89,7 +89,7 @@ int cmd_run(int argc, char **argv) {
       ("trials,N", po::value<std::string>(), "Bernoulli trials (e.g. 1e9, 1000000)")
       ("seed,S", po::value<int>()->default_value(372),
        "must be 372 (the scram-cli default); other values are rejected")
-      ("backend", po::value<std::string>(), "AdaptiveCpp backend: cuda or omp (sets ACPP_VISIBILITY_MASK first)")
+      ("backend", po::value<std::string>(), "AdaptiveCpp backend: cuda, metal or omp (sets ACPP_VISIBILITY_MASK)")
       ("json", "print results as JSON")
       ("input-file", po::value<std::string>(), ".pcfb file");
 
@@ -105,7 +105,7 @@ int cmd_run(int argc, char **argv) {
     return 1;
   }
   if (vm.count("help")) {
-    std::cout << "Usage: fzb run model.pcfb --trials N [--seed S] [--backend cuda|omp] [--json]\n\n"
+    std::cout << "Usage: fzb run model.pcfb --trials N [--seed S] [--backend cuda|metal|omp] [--json]\n\n"
               << desc << std::endl;
     return 0;
   }

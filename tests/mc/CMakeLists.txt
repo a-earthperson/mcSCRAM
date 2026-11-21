@@ -128,14 +128,23 @@ foreach(_kernel atleast tally)
 endforeach()
 
 add_executable(mc_device_selection_tests device_selection_tests.cc)
-target_link_libraries(mc_device_selection_tests PRIVATE Catch2::Catch2WithMain mc)
+target_link_libraries(mc_device_selection_tests PRIVATE Catch2::Catch2WithMain mc fuzzybits_runtime)
 target_include_directories(mc_device_selection_tests PRIVATE
   "${PROJECT_SOURCE_DIR}/src"
   "${PROJECT_SOURCE_DIR}/tests"
 )
 add_sycl_to_target(TARGET mc_device_selection_tests SOURCES device_selection_tests.cc)
-add_test(NAME mc.device_selection COMMAND mc_device_selection_tests)
+add_test(NAME mc.device_selection COMMAND mc_device_selection_tests "~[late-mask]")
 set_tests_properties(mc.device_selection PROPERTIES
   LABELS "mc"
   TIMEOUT ${MC_TEST_TIMEOUT}
+)
+# Starts with no mask so AdaptiveCpp loads every backend, as for an fzb user.
+# Catch2 exits 4 when every test case is skipped (only one backend present).
+add_test(NAME mc.device_selection.late_mask COMMAND mc_device_selection_tests "[late-mask]")
+set_tests_properties(mc.device_selection.late_mask PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+  ENVIRONMENT_MODIFICATION "ACPP_VISIBILITY_MASK=unset:"
+  SKIP_RETURN_CODE 4
 )
