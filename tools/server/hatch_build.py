@@ -26,9 +26,6 @@ class CustomBuildHook(BuildHookInterface):
             junk.unlink()
         for junk in dist.rglob(".DS_Store"):
             junk.unlink()
-        # Source map of the minified third-party Plotly bundle (~11 MB).
-        for junk in dist.rglob("plotly*.js.map"):
-            junk.unlink()
         force_include = build_data.setdefault("force_include", {})
         if self.target_name == "wheel":
             force_include[str(dist)] = "fuzzybits_server/webui"
