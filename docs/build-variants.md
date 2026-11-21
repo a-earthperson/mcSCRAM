@@ -211,11 +211,15 @@ Xcode and Apple's Metal Toolchain component are **not** needed: AdaptiveCpp's
 ```bash
 scripts/dev/macos-dev.sh            # bootstrap: idempotent, rebuilds on pin changes
 source .cache/macos-dev.env         # PATH, DYLD_LIBRARY_PATH, *_PREFIX
-cmake --workflow --preset metal-local   # configure + build + metal-local-cpu tests
-ctest --preset metal-local -L mc        # Metal device tests (#30 gaps expected)
+cmake --workflow --preset metal-local   # configure + build + metal-local-cpu tests (OpenMP)
+ctest --preset metal-local              # the same tests on the Metal device
 PYTHON_VERSIONS=3.12 scripts/ci/macos-wheel-versions.sh all   # wheel + smoke
 scripts/dev/macos-dev.sh doctor     # read-only state report
 ```
+
+The test presets set `ACPP_VISIBILITY_MASK` themselves (`omp` for
+`metal-local-cpu`, `metal` for `metal-local`), so a value exported in the
+shell does not move `cmake --workflow` onto the GPU; pick the test preset.
 
 `bootstrap` runs the same `scripts/ci/macos-{brew-deps,metal-cpp-fetch,boost-build,acpp-build}.sh`
 as [macos.yml](../.github/workflows/macos.yml), installs Homebrew `llvm@20`,

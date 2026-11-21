@@ -177,8 +177,8 @@ macOS does not use the toolchain image: hosted `macos-26` / `macos-15-intel`
 jobs in [macos.yml](../.github/workflows/macos.yml) build AdaptiveCpp through
 `scripts/ci/macos-*.sh` and cache the prefix with `actions/cache`. The same
 scripts back the local harness (`scripts/dev/macos-dev.sh`; see
-[build-variants.md](build-variants.md#macos-local-development)). Metal
-device-code gaps remain on [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30).
+[build-variants.md](build-variants.md#macos-local-development)). The Metal
+device-code audit is tracked on [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30).
 
 ## GPU device mapping (xerxes / shelly)
 

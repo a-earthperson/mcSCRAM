@@ -41,6 +41,7 @@
 #pragma once
 
 #include "mc/event/node.h"
+#include <cstdint>
 #include <sycl/sycl.hpp>
 
 namespace scram::mc::kernel {
@@ -334,10 +335,12 @@ namespace scram::mc::kernel {
 
             // Each work-item processes exactly one bitpack for this tally
             const std::size_t idx = batch_idx * sample_shape_.bitpacks_per_batch + bitpack_id;
-            const std::size_t local_sum = sycl::popcount(tallies_block_.data[tally_idx].buffer[idx]);
+            const auto local_sum = static_cast<std::uint32_t>(sycl::popcount(tallies_block_.data[tally_idx].buffer[idx]));
 
-            // Use an intra-group reduction so we only do one atomic add per group
-            const std::size_t group_sum = sycl::reduce_over_group(item.get_group(), local_sum, sycl::plus<>());
+            // Use an intra-group reduction so we only do one atomic add per group.
+            // 32-bit because Metal simdgroup reductions reject 64-bit integers; the sum is
+            // bounded by bits_per_bitpack * work_group_size, far below 2^32.
+            const std::uint32_t group_sum = sycl::reduce_over_group(item.get_group(), local_sum, sycl::plus<std::uint32_t>());
 
             // Have the group leader accumulate bit counts in global memory
             if (item.get_local_linear_id() == 0) {
@@ -357,7 +360,7 @@ namespace scram::mc::kernel {
                         sycl::memory_scope::device,
                         sycl::access::address_space::global_space>(
                         tallies_block_.data[tally_idx].num_one_bits);
-                atomic_one_bits.fetch_add(group_sum);
+                atomic_one_bits.fetch_add(static_cast<std::size_t>(group_sum));
             }
 
 

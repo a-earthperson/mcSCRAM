@@ -26,7 +26,7 @@ target_include_directories(mc_cli_correctness_tests PRIVATE
 )
 add_dependencies(mc_cli_correctness_tests scram-cli)
 
-foreach(_model chinese das9201 isp9601 baobab2 small_tree bscu)
+foreach(_model chinese das9201 isp9601 baobab2 small_tree bscu kn_synthetic)
   add_test(NAME mc.cli.${_model} COMMAND mc_cli_correctness_tests "[${_model}]")
   set_tests_properties(mc.cli.${_model} PROPERTIES
     LABELS "mc"
@@ -64,6 +64,68 @@ set_tests_properties(mc.bitpack_identity PROPERTIES
   LABELS "mc"
   TIMEOUT ${MC_TEST_TIMEOUT}
 )
+
+add_executable(mc_atleast_gate_tests atleast_gate_tests.cc)
+target_link_libraries(mc_atleast_gate_tests PRIVATE Catch2::Catch2WithMain mc)
+target_include_directories(mc_atleast_gate_tests PRIVATE
+  "${PROJECT_SOURCE_DIR}/src"
+  "${PROJECT_SOURCE_DIR}/tests"
+)
+add_sycl_to_target(TARGET mc_atleast_gate_tests SOURCES atleast_gate_tests.cc)
+add_test(NAME mc.atleast_gate COMMAND mc_atleast_gate_tests)
+set_tests_properties(mc.atleast_gate PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)
+
+add_executable(mc_tally_kernel_tests tally_kernel_tests.cc)
+target_link_libraries(mc_tally_kernel_tests PRIVATE Catch2::Catch2WithMain mc)
+target_include_directories(mc_tally_kernel_tests PRIVATE
+  "${PROJECT_SOURCE_DIR}/src"
+  "${PROJECT_SOURCE_DIR}/tests"
+)
+add_sycl_to_target(TARGET mc_tally_kernel_tests SOURCES tally_kernel_tests.cc)
+add_test(NAME mc.tally_kernel COMMAND mc_tally_kernel_tests)
+set_tests_properties(mc.tally_kernel PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)
+
+# 128- and 256-bit bitpacks must be rejected at compile time, and only for the
+# stated reason: the at-least gate's split 32-bit reduction static_asserts on
+# width, and sycl::popcount is constrained to the standard integer types. Each
+# test builds an EXCLUDE_FROM_ALL object target and passes iff that build fails
+# and every compiler error matches the expected diagnostic.
+# Locations are file:line:col (clang) or file(line,col) (clang-cl).
+set(_compile_fail_loc "[:(][0-9]+[:,][0-9]+\\)?: error: ")
+set(_compile_fail_regex_atleast "gate\\.h${_compile_fail_loc}static assertion failed due to requirement 'sizeof\\(.*\\) == 2 \\* sizeof\\(unsigned int\\)'")
+set(_compile_fail_regex_tally "tally\\.h${_compile_fail_loc}no matching function for call to 'popcount'")
+foreach(_kernel atleast tally)
+  string(TOUPPER "${_kernel}" _kernel_upper)
+  foreach(_bits 128 256)
+    set(_target mc_compile_fail_${_kernel}_u${_bits})
+    add_library(${_target} OBJECT EXCLUDE_FROM_ALL bitpack_width_compile_fail.cc)
+    target_link_libraries(${_target} PRIVATE mc)
+    target_include_directories(${_target} PRIVATE
+      "${PROJECT_SOURCE_DIR}/src"
+      "${PROJECT_SOURCE_DIR}/tests"
+    )
+    target_compile_definitions(${_target} PRIVATE FZB_BITS=${_bits} FZB_KERNEL_${_kernel_upper})
+    add_sycl_to_target(TARGET ${_target} SOURCES bitpack_width_compile_fail.cc)
+    add_test(NAME mc.compile_fail.${_kernel}.u${_bits}
+      COMMAND ${CMAKE_COMMAND}
+        "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
+        "-DTARGET=${_target}"
+        "-DCONFIG=$<CONFIG>"
+        "-DEXPECT=${_compile_fail_regex_${_kernel}}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/expect_compile_failure.cmake")
+    set_tests_properties(mc.compile_fail.${_kernel}.u${_bits} PROPERTIES
+      LABELS "mc;compile-fail"
+      RESOURCE_LOCK fuzzybits_build_tree
+      TIMEOUT 300
+    )
+  endforeach()
+endforeach()
 
 add_executable(mc_device_selection_tests device_selection_tests.cc)
 target_link_libraries(mc_device_selection_tests PRIVATE Catch2::Catch2WithMain mc)

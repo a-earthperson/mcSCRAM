@@ -483,8 +483,10 @@ namespace scram::mc::kernel {
 
             static constexpr std::size_t NUM_BITS = sizeof(bitpack_t_) * 8;
 
+            // The group-wide OR in operator() must not span gates or batches.
             sycl::range<3> new_local_range = local_range;
             new_local_range[0] = 1;            // one gate per group in X
+            new_local_range[1] = 1;            // one batch per group in Y
             new_local_range[2] = NUM_BITS;     // one thread per output bit
 
             // Compute desired global sizes.
@@ -544,9 +546,18 @@ namespace scram::mc::kernel {
 
             const bitpack_t_ my_bit = (cnt >= k) ? mask : bitpack_t_(0);
 
-            /* Reduction across the *whole* work-group (64 lanes) */
+            /* Reduction across the *whole* work-group (64 lanes), in 32-bit words
+             * because Metal simdgroup reductions reject 64-bit integers. */
             const auto &wg = item.get_group();
-            const bitpack_t_ result = sycl::reduce_over_group(wg, my_bit, sycl::bit_or<bitpack_t_>());
+            bitpack_t_ result;
+            if constexpr (sizeof(bitpack_t_) > sizeof(std::uint32_t)) {
+                static_assert(sizeof(bitpack_t_) == 2 * sizeof(std::uint32_t));
+                const auto lo = sycl::reduce_over_group(wg, static_cast<std::uint32_t>(my_bit), sycl::bit_or<std::uint32_t>());
+                const auto hi = sycl::reduce_over_group(wg, static_cast<std::uint32_t>(my_bit >> 32), sycl::bit_or<std::uint32_t>());
+                result = (static_cast<bitpack_t_>(hi) << 32) | static_cast<bitpack_t_>(lo);
+            } else {
+                result = static_cast<bitpack_t_>(sycl::reduce_over_group(wg, static_cast<std::uint32_t>(my_bit), sycl::bit_or<std::uint32_t>()));
+            }
 
             /* Single thread (lane 0) writes the 64-bit result */
             if (lane == 0) {
