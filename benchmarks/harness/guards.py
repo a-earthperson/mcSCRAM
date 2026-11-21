@@ -99,6 +99,8 @@ def _format_mib(mib: float) -> str:
 def _display_name(process_name: str, pid: str, cmdline: str = "") -> str:
     skip = {"", "[not found]", "[n/a]", "n/a", "python", "python3", "python3.12", "bash", "sh"}
     for source in (process_name, cmdline):
+        if str(source).strip().lower() in skip:
+            continue
         for token in str(source).split():
             if token == "-c":
                 break  # the rest is inline code
