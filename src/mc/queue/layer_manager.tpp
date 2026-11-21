@@ -199,7 +199,7 @@ event::tally<bitpack_t_> layer_manager<bitpack_t_, prob_t_, size_t_>::fetch_tall
         LOG(ERROR) << "Unable to fetch tally for unknown event with index " << evt_idx;
         return std::move(to_tally);
     }
-    const event::tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
+    const event::device_tally<bitpack_t_> *computed_tally = allocated_tally_events_by_index_[evt_idx];
     to_tally.num_one_bits = computed_tally->num_one_bits;
     to_tally.total_bits = computed_tally->total_bits;
     // ---------------------------------------------------------------------

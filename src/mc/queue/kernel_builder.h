@@ -873,10 +873,10 @@ namespace scram::mc::queue {
      *     tally_kernel->submit();  // Compute statistics for all nodes
      * }
      * 
-     * // Access computed statistics
+     * // Read the raw device counters
      * for (const auto& [index, tally] : allocated_tally_events_by_index) {
-     *     std::cout << "Node " << index << " probability: " << tally->mean
-     *               << " ± " << tally->std_err << std::endl;
+     *     std::cout << "Node " << index << ": " << tally->num_one_bits
+     *               << " / " << tally->total_bits << std::endl;
      * }
      * @endcode
      * 
@@ -892,15 +892,15 @@ namespace scram::mc::queue {
      * tally_kernel->submit();
      * queue.wait_and_throw();
      * 
-     * // Analyze confidence intervals
-     * for (const auto& [index, tally] : allocated_tally_events_by_index) {
-     *     auto ci_95_lower = tally->ci[0];
-     *     auto ci_95_upper = tally->ci[1];
-     *     auto ci_99_lower = tally->ci[2];
-     *     auto ci_99_upper = tally->ci[3];
-     *     
-     *     std::cout << "Node " << index << " 95% CI: [" << ci_95_lower << ", " << ci_95_upper << "]" << std::endl;
-     *     std::cout << "Node " << index << " 99% CI: [" << ci_99_lower << ", " << ci_99_upper << "]" << std::endl;
+     * // Confidence intervals are host-side: copy the counters into an
+     * // event::tally and let stats::populate_point_estimates fill mean/std_err/ci
+     * for (const auto& [index, device_tally] : allocated_tally_events_by_index) {
+     *     event::tally<uint64_t> tally;
+     *     tally.num_one_bits = device_tally->num_one_bits;
+     *     tally.total_bits = device_tally->total_bits;
+     *     stats::populate_point_estimates(tally);
+     *     std::cout << "Node " << index << " 95% CI: [" << tally.ci[0] << ", " << tally.ci[1] << "]" << std::endl;
+     *     std::cout << "Node " << index << " 99% CI: [" << tally.ci[2] << ", " << tally.ci[3] << "]" << std::endl;
      * }
      * @endcode
      */
@@ -913,7 +913,7 @@ namespace scram::mc::queue {
         std::unordered_map<index_t_, std::shared_ptr<queueable_base>> &queueables_by_index_,
         const std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_>*> &allocated_basic_events_by_index_,
         const std::unordered_map<index_t_, event::gate<bitpack_t_, size_t_>*> &allocated_gates_by_index_,
-        std::unordered_map<index_t_, event::tally<bitpack_t_> *> &allocated_tally_events_by_index_,
+        std::unordered_map<index_t_, event::device_tally<bitpack_t_> *> &allocated_tally_events_by_index_,
         std::vector<event::tally_block<bitpack_t_>> &device_tally_blocks_,
         std::vector<kernel_partition_description> &execution_partitions_,
         std::vector<kernel_dependency_edge> &execution_dependency_edges_,

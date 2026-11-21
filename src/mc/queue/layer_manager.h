@@ -275,7 +275,7 @@ class layer_manager {
     std::vector<kernel_dependency_edge> execution_dependency_edges_;
 
     /// @brief Map from node index to allocated device-side tally event structures
-    std::unordered_map<index_t_, event::tally<bitpack_t_> *> allocated_tally_events_by_index_;
+    std::unordered_map<index_t_, event::device_tally<bitpack_t_> *> allocated_tally_events_by_index_;
     
     /// @brief Map from node index to allocated device-side basic event structures
     std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_> *> allocated_basic_events_by_index_;
