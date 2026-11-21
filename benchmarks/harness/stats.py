@@ -1,4 +1,4 @@
-"""Accuracy z-scores, medians, IQR, and bootstrap CIs of a head/base ratio."""
+"""Accuracy z-scores, medians, IQR, and CIs of a head/base timing ratio."""
 
 from __future__ import annotations
 
@@ -129,3 +129,52 @@ def bootstrap_median_ratio_ci(
     lo = percentile(ratios, 100.0 * (alpha / 2.0))
     hi = percentile(ratios, 100.0 * (1.0 - alpha / 2.0))
     return point, lo, hi
+
+
+# Two-sided 95% Student t critical values, df = 1..30.
+_T975 = (
+    12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+    2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086,
+    2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042,
+)
+
+
+def t975(df: int) -> float:
+    """Two-sided 95% Student t critical value (normal tail correction above df 30)."""
+    if df < 1:
+        raise ValueError("t975 needs df >= 1")
+    if df <= len(_T975):
+        return _T975[df - 1]
+    return Z95 + (Z95**3 + Z95) / (4.0 * df)
+
+
+def paired_log_ratio_ci(
+    base: Sequence[float],
+    head: Sequence[float],
+) -> tuple[float, float, float, float]:
+    """Head/base ratio from rounds measured back to back: ``(ratio, ci_lo, ci_hi, t)``.
+
+    Each round's ``log(head / base)`` cancels drift that affects both sides of
+    the round (other workloads on a shared GPU, clocks). ``ratio`` is the
+    geometric mean, the CI is the 95% Student t interval of the mean log ratio,
+    and ``t`` is mean / standard error (positive means head is slower).
+    """
+    if len(base) != len(head):
+        raise ValueError(f"paired_log_ratio_ci: length mismatch {len(base)} vs {len(head)}")
+    if len(base) < 2:
+        raise ValueError("paired_log_ratio_ci needs ≥ 2 rounds")
+    logs: list[float] = []
+    for b, h in zip(base, head, strict=True):
+        if b <= 0.0 or h <= 0.0:
+            raise ValueError("paired_log_ratio_ci: timings must be positive")
+        logs.append(math.log(float(h) / float(b)))
+    n = len(logs)
+    m = sum(logs) / n
+    sd = math.sqrt(sum((x - m) ** 2 for x in logs) / (n - 1))
+    se = sd / math.sqrt(n)
+    half = t975(n - 1) * se
+    if se > 0.0:
+        t_stat = m / se
+    else:
+        t_stat = 0.0 if m == 0.0 else math.copysign(float("inf"), m)
+    return math.exp(m), math.exp(m - half), math.exp(m + half), t_stat

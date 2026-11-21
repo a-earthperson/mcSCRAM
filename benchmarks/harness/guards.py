@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
+import shlex
 import subprocess
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -252,25 +255,45 @@ def format_foreign_load(snapshot: Mapping[str, Any] | None) -> str:
     return ", ".join(parts) if parts else "none"
 
 
-def _acquire_lock_once(host: str | None, path: str) -> None:
+@dataclass
+class LockHandle:
+    """A held GPU lock: an open ``flock``-ed descriptor, or an ssh process holding one."""
+
+    host: str | None
+    path: str
+    fd: int | None = None
+    proc: subprocess.Popen[str] | None = None
+
+
+def _acquire_lock_once(host: str | None, path: str) -> LockHandle:
     if not host:
         try:
-            Path(path).mkdir(mode=0o700)
-        except FileExistsError as exc:
-            raise GuardError(f"could not acquire {path}: already held") from exc
+            # O_RDONLY also opens a directory left by the old mkdir lock.
+            fd = os.open(path, os.O_RDONLY | os.O_CREAT, 0o666)
+        except IsADirectoryError:
+            fd = os.open(path, os.O_RDONLY)
         except OSError as exc:
             raise GuardError(f"could not acquire {path}: {exc}") from exc
-        return
-    proc = subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", host, f"mkdir {path}"],
-        check=False,
-        capture_output=True,
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            os.close(fd)
+            raise GuardError(f"could not acquire {path}: already held") from exc
+        return LockHandle(host=None, path=path, fd=fd)
+    quoted = shlex.quote(path)
+    proc = subprocess.Popen(
+        ["ssh", "-o", "BatchMode=yes", host, f"flock -n {quoted} sh -c 'echo LOCKED; exec cat'"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
-    if proc.returncode != 0:
-        raise GuardError(
-            f"could not acquire {host}:{path}: {proc.stderr.strip() or proc.stdout.strip()}"
-        )
+    assert proc.stdout is not None
+    if proc.stdout.readline().strip() == "LOCKED":
+        return LockHandle(host=host, path=path, proc=proc)
+    proc.kill()
+    _, err = proc.communicate()
+    raise GuardError(f"could not acquire {host}:{path}: {(err or '').strip() or 'already held'}")
 
 
 def acquire_lock(
@@ -279,19 +302,19 @@ def acquire_lock(
     *,
     retries: int = 0,
     retry_s: float = DEFAULT_RETRY_S,
-) -> None:
-    """``mkdir`` a directory lock. Local when ``host`` is empty; else ssh.
+) -> LockHandle:
+    """Take an exclusive ``flock`` on ``path``. Local when ``host`` is empty; else over ssh.
 
     CI jobs run on the GPU host itself (``--docker-context default``) and
-    take ``/tmp/gpu-lock-xerxes-{0,1}`` locally so they interlock with
-    developer sessions that acquire the same path over ssh. Retry when the
-    lock is held; do not steal it.
+    lock ``/tmp/gpu-lock-xerxes-{0,1}`` locally, so they interlock with
+    anyone running ``flock /tmp/gpu-lock-xerxes-N …`` by hand. The kernel
+    drops the lock when the holder exits, so a cancelled job cannot leave
+    it held. Retry when the lock is held; do not steal it.
     """
     last: GuardError | None = None
     for attempt in range(retries + 1):
         try:
-            _acquire_lock_once(host, path)
-            return
+            return _acquire_lock_once(host, path)
         except GuardError as exc:
             last = exc
             if attempt < retries:
@@ -300,19 +323,21 @@ def acquire_lock(
     raise last
 
 
-def release_lock(host: str | None, path: str) -> None:
-    if not host:
-        try:
-            Path(path).rmdir()
-        except OSError:
-            pass
+def release_lock(handle: LockHandle | None) -> None:
+    if handle is None:
         return
-    subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", host, f"rmdir {path}"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    if handle.fd is not None:
+        try:
+            fcntl.flock(handle.fd, fcntl.LOCK_UN)
+        finally:
+            os.close(handle.fd)
+    if handle.proc is not None:
+        try:
+            if handle.proc.stdin:
+                handle.proc.stdin.close()
+            handle.proc.wait(timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            handle.proc.kill()
 
 
 def wait_for_idle(

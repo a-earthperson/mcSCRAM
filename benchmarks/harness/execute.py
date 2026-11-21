@@ -187,6 +187,10 @@ def container_env(*, backend: str, extra: Mapping[str, str] | None = None) -> di
     env = {
         "ACPP_VISIBILITY_MASK": backend,
         "ACPP_DEBUG_LEVEL": "0",
+        # The runtime image defaults to 2, which re-JITs kernels for each new
+        # launch shape; 1 matches the live servers. 0 fails das9701 on sm_86
+        # with CU:701 (launch out of resources, #18).
+        "ACPP_ADAPTIVITY_LEVEL": "1",
         "ACPP_PERSISTENT_RUNTIME": "1",
         "ACPP_APPDB_DIR": "/home/coder/.cache/fuzzybits/acpp",
     }
@@ -458,6 +462,7 @@ def fzb_run(
     sleep_ms: int = 0,
     cpuset_cpus: str | None = None,
     inprocess: bool = False,
+    warmup_trials: int | None = None,
 ) -> dict[str, Any]:
     inner = ["fzb", "run", pcfb, "--trials", str(trials), "--backend", backend, "--json"]
     inprocess_payload = None
@@ -467,6 +472,8 @@ def fzb_run(
             "pcfb": pcfb,
             "trials": int(trials),
         }
+        if warmup_trials:
+            inprocess_payload["warmup_trials"] = int(warmup_trials)
     result = run_inner(
         context=context,
         image=image,

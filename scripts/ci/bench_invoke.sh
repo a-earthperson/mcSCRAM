@@ -35,6 +35,19 @@ else
   if [[ -n "${INJECT:-}" ]]; then
     extra+=(--inject-regression "${INJECT}")
   fi
+  # GPU targets default to the workflow's GPU_PERF_IDS; CPU keeps the manifest perf set.
+  ids_list="${IDS:-}"
+  if [[ -z "${ids_list}" && "${TARGET}" != "cpu" ]]; then
+    ids_list="${GPU_PERF_IDS:-}"
+  fi
+  if [[ -n "${ids_list}" ]]; then
+    read -r -a ids <<< "${ids_list}"
+    extra+=(--ids "${ids[@]}")
+  fi
+  [[ -n "${METRIC:-}" ]] && extra+=(--metric "${METRIC}")
+  [[ -n "${SECONDS_PER_RUN:-}" ]] && extra+=(--seconds "${SECONDS_PER_RUN}")
+  [[ -n "${BUDGET_S:-}" ]] && extra+=(--budget-s "${BUDGET_S}")
+  [[ -n "${ATTEMPTS:-}" ]] && extra+=(--attempts "${ATTEMPTS}")
   python3 -m benchmarks ab \
     --target "${TARGET}" \
     --mode perf \

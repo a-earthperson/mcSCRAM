@@ -128,15 +128,14 @@ def test_local_gpu_lock(tmp_path: Path):
     from benchmarks.harness.guards import GuardError, acquire_lock, release_lock
 
     lock = tmp_path / "gpu-lock-test"
-    acquire_lock(None, str(lock))
-    assert lock.is_dir()
+    handle = acquire_lock(None, str(lock), retries=0)
     try:
-        acquire_lock(None, str(lock))
+        acquire_lock(None, str(lock), retries=0)
         raise AssertionError("second acquire should fail")
     except GuardError:
         pass
-    release_lock(None, str(lock))
-    assert not lock.exists()
+    release_lock(handle)
+    release_lock(acquire_lock(None, str(lock), retries=0))
 
 
 def test_flag_changes_isolated_targets():
