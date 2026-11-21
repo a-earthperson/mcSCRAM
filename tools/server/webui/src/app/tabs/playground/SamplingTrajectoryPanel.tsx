@@ -8,7 +8,7 @@ import {
   type PlotMathboxReference,
   type PlotMathboxSeries,
 } from "../../components/plot/PlotMathbox";
-import { formatDefaultLinear, formatExp, formatPower, formatSI } from "../../components/plot/mathbox/axis";
+import { formatDefaultLinear, formatExp, formatSI } from "../../components/plot/mathbox/axis";
 import type { AxisScale, TrajectoryStroke } from "../../components/plot/mathbox/trajectoryPlot";
 import {
   confidenceFromAlpha,
@@ -65,16 +65,6 @@ type LiveProbabilityPoint = {
   targetEpsilon?: number;
   epsilonConverged?: boolean;
   oracleP?: number;
-  // Per-policy convergence criteria (current half-width, target, projected N).
-  waldEpsilon?: number;
-  waldTargetEpsilon?: number;
-  waldProjectedTrials?: number;
-  bayesEpsilon?: number;
-  bayesTargetEpsilon?: number;
-  bayesProjectedTrials?: number;
-  gbasEpsilon?: number;
-  gbasTargetEpsilon?: number;
-  gbasProjectedTrials?: number;
   // GBAS (Huber 2017) exact relative-error stream.
   gbasRunCiLow?: number;
   gbasRunCiHigh?: number;
@@ -296,14 +286,6 @@ export function SamplingTrajectoryPanel({
         />
         <LiveGbasPathPlot points={replayPathPoints} clientAlpha={clientAlpha} />
       </div>
-      <div className="playground-sampling-outputs__section">
-        <SectionTitle
-          eyebrow="Output: ε vs target"
-          title="Stopping half-width"
-          text="Per policy (GBAS solid, Wald dashed, Bayes dotted): current ε, target ε, projected N."
-        />
-        <ConvergenceCriteriaPlot points={replayPathPoints} yScale={{ type: "log", base: 10 }} xScale={{ type: "log", base: 10 }} />
-      </div>
       {/* <div className="playground-sampling-outputs__section">
         <SectionTitle
           eyebrow="Output: Convergence Criterion"
@@ -380,28 +362,6 @@ const LiveGbasPathPlot = memo(function LiveGbasPathPlot({
     <TrajectoryPlotFrame>
       <PlotMathbox
         className="convergence-large-plot live-gbas-plot"
-        x={view.x}
-        y={view.y}
-        series={view.series}
-        references={view.references}
-        legend={view.legend}
-      />
-    </TrajectoryPlotFrame>
-  );
-});
-
-const ConvergenceCriteriaPlot = memo(function ConvergenceCriteriaPlot({
-  points,
-  xScale,
-  yScale,
-}: { points: LiveProbabilityPoint[] } & AxisScaleProps) {
-  const { palette } = usePlotTheme();
-  const scene = useMemo(() => buildConvergenceCriteriaScene(points, palette), [points, palette]);
-  const view = applyScales(scene, { xScale, yScale });
-  return (
-    <TrajectoryPlotFrame>
-      <PlotMathbox
-        className="convergence-large-plot live-criteria-plot"
         x={view.x}
         y={view.y}
         series={view.series}
@@ -701,162 +661,6 @@ function buildGbasScene(
   };
 }
 
-/** Per-policy convergence-criteria plot: ε (solid) + target ε (dashed), one hue per policy. */
-function buildConvergenceCriteriaScene(
-  points: LiveProbabilityPoint[],
-  palette: InkPalette,
-): ProbabilityScene {
-  const renderPoints = thinProbabilityPoints(points, MAX_RENDER_PATH_POINTS);
-  const xs = renderPoints.map((point) => point.trials);
-
-  // Encoding: policy = complementary hue + fixed stroke (GBAS solid, Wald dashed,
-  // Bayes dotted). Quantity is encoded on top of that: current ε at base alpha,
-  // target ε at higher alpha, projected-N as a thicker, darker vertical guide.
-  const policies: Array<{
-    key: string;
-    label: string;
-    color: string[];
-    markerSize?: number[];
-    markerColor?: string[];
-    width: number[];
-    opacity?: number[];
-    stroke: TrajectoryStroke[];
-    epsilon: (point: LiveProbabilityPoint) => number | undefined;
-    target: (point: LiveProbabilityPoint) => number | undefined;
-    projected: (point: LiveProbabilityPoint) => number | undefined;
-  }> = [
-    {
-      key: "gbas",
-      label: "GBAS",
-      opacity: [0.6, 0.8, 1.0],
-      markerSize: [1.5, 0, 0],
-      markerColor: [palette.inkSoft, palette.ochre, palette.ochreDark],
-      color: [palette.inkFaint, palette.inkMute, palette.inkSoft],
-      width: [1.0, 2.0, 1.0],
-      stroke: ["solid", "dashed", "solid"],
-      epsilon: (point) => point.gbasEpsilon,
-      target: (point) => point.gbasTargetEpsilon,
-      projected: (point) => point.gbasProjectedTrials,
-    },
-    {
-      key: "wald",
-      label: "Wald",
-      opacity: [1.0, 0.8, 1.0],
-      markerSize: [4.5, 0, 0],
-      markerColor: [palette.ochre, palette.ochre, palette.ochreDark],
-      color: [palette.ochreBright, palette.ochreBright, palette.ochreBright],
-      width: [1, 3.0, 4.0],
-      stroke: ["solid", "solid", "dashed"],
-      epsilon: (point) => point.waldEpsilon,
-      target: (point) => point.waldTargetEpsilon,
-      projected: (point) => point.waldProjectedTrials,
-    },
-    {
-      key: "bayes",
-      label: "Bayes",
-      opacity: [0.5, 0.8, 1.0],
-      markerSize: [1.5, 0, 0],
-      markerColor: [palette.indigoBright, palette.ochre, palette.ochreDark],
-      color: [palette.indigoBright, palette.indigoBright, palette.indigoBright],
-      width: [1, 2.0, 4.0],
-      stroke: ["solid", "dashed", "dotted"],
-      epsilon: (point) => point.bayesEpsilon,
-      target: (point) => point.bayesTargetEpsilon,
-      projected: (point) => point.bayesProjectedTrials,
-    },
-  ];
-
-  const series: PlotMathboxSeries[] = [];
-  const references: PlotMathboxReference[] = [];
-  const yValues: Array<number | null | undefined> = [];
-  const dataXMax = Math.max(1, ...xs.filter(isFiniteNumber));
-  let projectedXMax = 0;
-
-  // Per-quantity styling on top of the per-policy hue + stroke.
-  const CURRENT_ALPHA = 1.0;
-  const TARGET_ALPHA = 1.0;
-
-  const legend: PlotMathboxLegendItem[] = [];
-
-  for (const policy of policies) {
-    const epsilonValues = renderPoints.map(policy.epsilon);
-    const targetValues = renderPoints.map(policy.target);
-    const hasEpsilon = epsilonValues.some(isFiniteNumber);
-    const hasTarget = targetValues.some(isFiniteNumber);
-    const projected = lastFinitePositive(renderPoints.map(policy.projected));
-
-    series.push({
-      id: `${policy.key}-epsilon`,
-      kind: "line",
-      x: xs,
-      y: epsilonValues.map((value) => value ?? Number.NaN),
-      color: policy.color[0],
-      markerSize: policy.markerSize?.[0] ?? 0,
-      markerColor: policy.markerColor?.[0] ?? policy.color[0],
-      width: policy.width[0],
-      stroke: policy.stroke[0],
-      opacity: policy.opacity?.[0] ?? CURRENT_ALPHA,
-    });
-    series.push({
-      id: `${policy.key}-target`,
-      kind: "line",
-      x: xs,
-      y: targetValues.map((value) => value ?? Number.NaN),
-      color: policy.color[1],
-      width: policy.width[1],
-      stroke: policy.stroke[1],
-      opacity: policy.opacity?.[1] ?? TARGET_ALPHA,
-    });
-    if (hasEpsilon) yValues.push(...epsilonValues);
-    if (hasTarget) yValues.push(...targetValues);
-
-    // Projected total trials → a thick, darker vertical "deadline" guide in the
-    // policy's hue + stroke. Hidden (opacity 0) until a projection is known.
-    references.push({
-      id: `${policy.key}-projected`,
-      axis: "x",
-      value: projected ?? 1,
-      color: policy.color[2],
-      width: policy.width[2],
-      stroke: policy.stroke[2],
-      opacity: projected !== undefined ? (policy.opacity?.[2] ?? CURRENT_ALPHA) : 0,
-    });
-    if (projected !== undefined) projectedXMax = Math.max(projectedXMax, projected);
-
-    legend.push({ label: policy.label, color: policy.color[0], stroke: policy.stroke[0] });
-  }
-
-  const xMax = Math.max(dataXMax, projectedXMax, 1) * 1.05;
-
-  const yRange = linearAxisRange(yValues, { floor: 0, pad: 0.12 }) ?? [0, 1];
-
-  return {
-    x: {
-      range: [0, xMax],
-      title: "Cumulative Bernoulli trials",
-      format: formatSI,
-      color: palette.ink,
-    },
-    y: {
-      range: yRange,
-      title: "ε  /  target ε",
-      format: formatPower,
-      color: palette.ink,
-    },
-    series,
-    references,
-    legend,
-  };
-}
-
-/** Last finite, strictly-positive value in a series (for projected-N guides). */
-function lastFinitePositive(values: Array<number | null | undefined>): number | undefined {
-  for (let i = values.length - 1; i >= 0; i -= 1) {
-    if (isPositiveNumber(values[i])) return values[i] as number;
-  }
-  return undefined;
-}
-
 /** Oracle reference p line plus its analytic Wald CI envelopes (host curves). */
 function oracleLineSeries(
   points: LiveProbabilityPoint[],
@@ -1017,15 +821,6 @@ function probabilityPoint(update: LiveProgressUpdate | null | undefined): LivePr
     targetEpsilon: update.target_epsilon,
     epsilonConverged: update.epsilon_converged,
     oracleP: update.oracle_p,
-    waldEpsilon: update.wald_epsilon,
-    waldTargetEpsilon: update.wald_target_epsilon,
-    waldProjectedTrials: update.wald_projected_trials,
-    bayesEpsilon: update.bayes_epsilon,
-    bayesTargetEpsilon: update.bayes_target_epsilon,
-    bayesProjectedTrials: update.bayes_projected_trials,
-    gbasEpsilon: update.gbas_epsilon,
-    gbasTargetEpsilon: update.gbas_target_epsilon,
-    gbasProjectedTrials: update.gbas_projected_trials,
     gbasRunCiLow: update.gbas_run_ci_low,
     gbasRunCiHigh: update.gbas_run_ci_high,
     gbasRunCi95Low: update.gbas_run_ci95_low,
