@@ -64,7 +64,7 @@ jobs:
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           echo "${ACTIONLINT_SHA256}  actionlint.tgz" | sha256sum -c
           tar -xzf actionlint.tgz actionlint
-          # macos.yml still trips shellcheck style; ignore those nits.
+          # bench.yml, images.yml, server-image.yml still trip shellcheck style; ignore those nits.
           ./actionlint -color -ignore 'shellcheck reported issue'
 
   hygiene:

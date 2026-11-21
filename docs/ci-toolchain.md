@@ -173,7 +173,12 @@ and [`.github/workflows/gpu.yml`](../.github/workflows/gpu.yml) (self-hosted):
 image) and FetchContent of that same tarball otherwise. A newer system Boost
 is not accepted.
 
-macOS / `metal` is parked; see [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30).
+macOS does not use the toolchain image: hosted `macos-26` / `macos-15-intel`
+jobs in [macos.yml](../.github/workflows/macos.yml) build AdaptiveCpp through
+`scripts/ci/macos-*.sh` and cache the prefix with `actions/cache`. The same
+scripts back the local harness (`scripts/dev/macos-dev.sh`; see
+[build-variants.md](build-variants.md#macos-local-development)). Metal
+device-code gaps remain on [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30).
 
 ## GPU device mapping (xerxes / shelly)
 

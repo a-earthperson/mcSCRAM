@@ -201,6 +201,53 @@ CPU tests on a metal build: `ctest --preset metal-cpu` (`ACPP_VISIBILITY_MASK=om
 Metal device tests: `ctest --preset metal` (or `ctest -L mc` with
 `ACPP_VISIBILITY_MASK=metal`).
 
+### macOS local development
+
+Prerequisites: Command Line Tools (`xcode-select --install`) and Homebrew.
+Xcode and Apple's Metal Toolchain component are **not** needed: AdaptiveCpp's
+`llvm-to-metal` emits MSL source, which the runtime compiles in-process with
+`MTLDevice::newLibrary` (MSL 4.0, so Metal kernels need macOS 26+).
+
+```bash
+scripts/dev/macos-dev.sh            # bootstrap: idempotent, rebuilds on pin changes
+source .cache/macos-dev.env         # PATH, DYLD_LIBRARY_PATH, *_PREFIX
+cmake --workflow --preset metal-local   # configure + build + metal-local-cpu tests
+ctest --preset metal-local -L mc        # Metal device tests (#30 gaps expected)
+PYTHON_VERSIONS=3.12 scripts/ci/macos-wheel-versions.sh all   # wheel + smoke
+scripts/dev/macos-dev.sh doctor     # read-only state report
+```
+
+`bootstrap` runs the same `scripts/ci/macos-{brew-deps,metal-cpp-fetch,boost-build,acpp-build}.sh`
+as [macos.yml](../.github/workflows/macos.yml), installs Homebrew `llvm@20`,
+`lld@20`, `libomp`, `ninja`, `ccache`, `coreutils`, `cmake` (plus `uv` if
+absent), initialises submodules, and builds into `.cache/`
+(`acpp-prefix`, `boost-prefix`, `metal-cpp`; gitignored). Each prefix carries
+a `.fuzzybits-pin` stamp of the `toolchain.env` pins (AdaptiveCpp: ref, Metal
+on/off, metal-cpp tag, LLVM and SDK versions), so a pin bump triggers a rebuild instead
+of silently reusing a stale prefix. `lld@20` is required, not just any `lld`:
+`cmake/bundle_acpp.py` ships its `liblld*.dylib` alongside LLVM 20 in wheels.
+
+**SDK:** builds must use a macOS 26 SDK, which `bootstrap` selects and writes
+to `macos-dev.env` as `SDKROOT` (override: `FUZZYBITS_MACOS_SDK`). The macOS
+27 SDK's `math.h` includes `<float.h>` under `__need_infinity_nan` whenever
+`__has_feature(modules)` is true, and Homebrew clang 20 reports that in C++20+
+modes. LLVM 20's libc++ `<float.h>` include guard then hides `FLT_*` from every
+later `<cfloat>`, so SYCL TUs (compiled by clang 20 via `acpp`) fail in
+Boost.Math's `<boost/cstdfloat.hpp>`. Homebrew clang ignores `SDKROOT` (its
+`etc/clang/*.cfg` pins `-isysroot`), so the `-isysroot` that CMake emits from
+`CMAKE_OSX_SYSROOT` is what makes this work. The `metal-local` preset sets that
+from `$env{SDKROOT}`. Command Line Tools for macOS 27 still ships
+`MacOSX26.sdk`; `doctor` fails if no 26.x SDK is available. `bootstrap` also
+exports `MACOSX_DEPLOYMENT_TARGET` (26.0 arm64, 15.0 x86_64, matching the
+wheel jobs), so prebuilt Boost/AdaptiveCpp objects link into wheels cleanly.
+
+The `metal-local` presets point at `${sourceDir}/.cache` directly and pin the
+compilers to `/usr/bin/clang{,++}`: with `llvm@20` on `PATH`, a bare `clang` is
+Homebrew clang 20, which is AdaptiveCpp's `CLANG_EXECUTABLE_PATH`, not the
+host compiler. `BUILD_PYTHON_BINDINGS=OFF` matches the hosted `macos-metal`
+job; Python builds go through the wheel scripts. On Intel Macs `bootstrap`
+builds AdaptiveCpp with `WITH_METAL_BACKEND=OFF`.
+
 ### macOS arm64 wheel
 
 `macos-wheel` in [macos.yml](../.github/workflows/macos.yml) builds

@@ -96,6 +96,22 @@
       }
     },
     {
+      "name": "metal-local",
+      "displayName": "metal-local (macOS dev toolchain in .cache)",
+      "description": "metal against the prefixes built by scripts/dev/macos-dev.sh in <repo>/.cache; source .cache/macos-dev.env first (SDKROOT selects the macOS 26 SDK). Mirrors the hosted macos-metal job: AppleClang host compiler, ccache, BUILD_PYTHON_BINDINGS=OFF. Boost falls back to FetchContent when .cache/boost-prefix is absent.",
+      "inherits": "metal",
+      "cacheVariables": {
+        "CMAKE_OSX_SYSROOT": "$env{SDKROOT}",
+        "BUILD_PYTHON_BINDINGS": "OFF",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/.cache/acpp-prefix;${sourceDir}/.cache/boost-prefix",
+        "AdaptiveCpp_DIR": "${sourceDir}/.cache/acpp-prefix/lib/cmake/AdaptiveCpp"
+      }
+    },
+    {
       "name": "windows-generic",
       "displayName": "windows-generic (SSCP JIT)",
       "description": "Windows x86_64. ACPP_TARGETS=generic against AdaptiveCpp linked into LLVM (CUDA + OpenMP host, ACPP_COMPILER_FEATURE_PROFILE=full). clang targeting the MSVC ABI. MALLOC_TYPE=malloc, Python module on. See docs/build-variants.md.",
@@ -143,6 +159,10 @@
     {
       "name": "metal",
       "configurePreset": "metal"
+    },
+    {
+      "name": "metal-local",
+      "configurePreset": "metal-local"
     },
     {
       "name": "debug",
@@ -237,6 +257,16 @@
       }
     },
     {
+      "name": "metal-local",
+      "inherits": "metal",
+      "configurePreset": "metal-local"
+    },
+    {
+      "name": "metal-local-cpu",
+      "inherits": "metal-cpu",
+      "configurePreset": "metal-local"
+    },
+    {
       "name": "debug",
       "configurePreset": "debug",
       "output": {
@@ -312,6 +342,14 @@
         { "type": "configure", "name": "metal" },
         { "type": "build", "name": "metal" },
         { "type": "test", "name": "metal" }
+      ]
+    },
+    {
+      "name": "metal-local",
+      "steps": [
+        { "type": "configure", "name": "metal-local" },
+        { "type": "build", "name": "metal-local" },
+        { "type": "test", "name": "metal-local-cpu" }
       ]
     },
     {

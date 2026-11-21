@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Build AdaptiveCpp into ACPP_PREFIX. WITH_METAL_BACKEND=ON|OFF (default ON).
+# Usage: macos-acpp-build.sh [--check]
+#   --check  exit 0 if ACPP_PREFIX works and matches the pins, 1 otherwise.
 set -euo pipefail
 
 test -n "${ACPP_PREFIX:-}"
@@ -11,7 +13,19 @@ test -n "${ACPP_LLD_PATH:-}"
 metal="${WITH_METAL_BACKEND:-ON}"
 ref="${ACPP_REF_TO_BUILD:-${ACPP_REF_METAL:?}}"
 
-start=$(date +%s)
+metal_cpp=""
+if [[ "${metal}" == "ON" ]]; then
+  metal_cpp="${METAL_CPP_VERSION:?}"
+fi
+llvm_version="$("${LLVM_PREFIX}/bin/llvm-config" --version)"
+stamp_file="${ACPP_PREFIX}/.fuzzybits-pin"
+expected_stamp="ref=${ref}
+metal=${metal}
+metal_cpp=${metal_cpp}
+llvm=${llvm_version}
+sdk=$(xcrun --show-sdk-version)
+profile=full"
+
 acpp_ok=0
 if [[ -x "${ACPP_PREFIX}/bin/acpp-info" ]]; then
   if DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}" \
@@ -19,6 +33,21 @@ if [[ -x "${ACPP_PREFIX}/bin/acpp-info" ]]; then
     acpp_ok=1
   fi
 fi
+if [[ "${acpp_ok}" -eq 1 ]]; then
+  if [[ -f "${stamp_file}" ]]; then
+    [[ "$(cat "${stamp_file}")" == "${expected_stamp}" ]] || acpp_ok=0
+  elif [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
+    # Unstamped prefixes predate pin tracking. The Actions cache key already
+    # encodes the pins; anywhere else the prefix may be stale.
+    acpp_ok=0
+  fi
+fi
+if [[ "${1:-}" == "--check" ]]; then
+  [[ "${acpp_ok}" -eq 1 ]]
+  exit
+fi
+
+start=$(date +%s)
 if [[ "${acpp_ok}" -eq 1 ]]; then
   echo "AdaptiveCpp cache hit at ${ACPP_PREFIX}"
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
@@ -35,7 +64,7 @@ echo "AdaptiveCpp cache miss; building ref=${ref} WITH_METAL_BACKEND=${metal}"
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "cache=miss" >> "${GITHUB_OUTPUT}"
 fi
-rm -rf "${ACPP_PREFIX}"
+rm -rf "${ACPP_PREFIX}" "${RUNNER_TEMP}/acpp"
 mkdir -p "${ACPP_PREFIX}" "${RUNNER_TEMP}/acpp"
 git clone --filter=blob:none "${ACPP_REPO}" "${RUNNER_TEMP}/acpp/src"
 git -C "${RUNNER_TEMP}/acpp/src" fetch --depth 1 origin "${ref}"
@@ -76,6 +105,7 @@ cmake -S "${RUNNER_TEMP}/acpp/src" -B "${RUNNER_TEMP}/acpp/build" -G Ninja "${cm
 cmake --build "${RUNNER_TEMP}/acpp/build"
 cmake --install "${RUNNER_TEMP}/acpp/build"
 rm -rf "${RUNNER_TEMP}/acpp"
+echo "${expected_stamp}" > "${stamp_file}"
 elapsed=$(( $(date +%s) - start ))
 echo "acpp_build_seconds=${elapsed}"
 if [[ -n "${GITHUB_ENV:-}" ]]; then
