@@ -45,7 +45,7 @@ from ._runtime import (
     native,
 )
 
-__version__ = "0.18.4"
+__version__ = "0.18.5"
 
 __all__ = [
     "NodeTally",

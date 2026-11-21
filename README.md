@@ -10,7 +10,7 @@ No cut sets are generated and nothing is truncated or bounded. The
 cost is that, for a fixed relative error, the number of trials grows
 as 1/p.
 
-Status: alpha (0.18.4). Each compile produces one query: the top gate
+Status: alpha (0.18.5). Each compile produces one query: the top gate
 of the first fault tree, or the gate named with --target. Event-tree
 sequences and end states are not compiled yet
 ([#92](https://github.com/fuzzybit-org/fuzzybits/issues/92)).
@@ -95,7 +95,7 @@ release-vs-develop history; see docs/benchmarks.md.
 Or run the same server with Docker, no Python needed:
 
     docker run --rm -p 127.0.0.1:8000:8000 -v "$PWD/models:/data:ro" \
-        ghcr.io/fuzzybit-org/fuzzybits-server:v0.18.4
+        ghcr.io/fuzzybit-org/fuzzybits-server:v0.18.5
 
 For an NVIDIA GPU, add --gpus all -e ACPP_VISIBILITY_MASK=cuda (this
 needs the NVIDIA Container Toolkit).
