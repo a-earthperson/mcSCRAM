@@ -24,15 +24,18 @@ from . import dockerutil
 from .execute import compile_and_inspect, container_env, fzb_run, probe_pass_size
 from .guards import (
     GuardError,
+    LockHandle,
     acquire_lock,
+    format_foreign_load,
+    gpu_occupancy,
     release_lock,
     snapshot_load,
     wait_for_idle,
 )
 from .stats import (
     Z_BLOCK,
-    bootstrap_median_ratio_ci,
     iqr,
+    paired_log_ratio_ci,
     paired_ratios,
     z_score,
 )
@@ -41,6 +44,7 @@ from .inject import choose_pass_counts, parse_inject_regression, pass_size_from_
 from .verdict import (
     VERDICT_BLOCK,
     VERDICT_ERROR,
+    VERDICT_INCONCLUSIVE,
     VERDICT_INFEASIBLE,
     VERDICT_KNOWN_FAILURE,
     VERDICT_PASS,
@@ -81,6 +85,7 @@ TARGETS: dict[str, dict[str, Any]] = {
         "jit_volume": "fuzzybits-bench-jit-cpu",
         "cpuset_cpus": "0-7",
         "omp_num_threads": 8,
+        "report_only": True,
     },
     "v100s": {
         "docker_context": "xerxes",
@@ -96,7 +101,10 @@ TARGETS: dict[str, dict[str, Any]] = {
         "models_dir": "/tmp/fuzzybits-bench/input",
         "work_dir": "/tmp/fuzzybits-bench/work",
         "jit_volume": "fuzzybits-bench-jit-v100s",
-        "shared_device": False,
+        # live.fuzzybit.org and dev.fuzzybit.org run on this GPU and keep a
+        # CUDA context open, so it is shared and report-only.
+        "shared_device": True,
+        "report_only": True,
     },
     "rtx3070": {
         "docker_context": "xerxes",
@@ -112,9 +120,28 @@ TARGETS: dict[str, dict[str, Any]] = {
         "models_dir": "/tmp/fuzzybits-bench/input",
         "work_dir": "/tmp/fuzzybits-bench/work",
         "jit_volume": "fuzzybits-bench-jit-rtx3070",
-        # Co-run with owner services (parakeet, etc.). Idle guard records
-        # foreign load and never refuses; /tmp/gpu-lock-xerxes-1 still serializes our jobs.
+        # Screening run: co-runs with owner services (parakeet, etc.). The idle
+        # guard records foreign load and never refuses; /tmp/gpu-lock-xerxes-1
+        # still serializes our jobs. A flagged screen asks for rtx3070-isolated.
         "shared_device": True,
+        "report_only": True,
+    },
+    "rtx3070-isolated": {
+        "docker_context": "xerxes",
+        "gpus": "device=1",
+        "backend": "cuda",
+        "profiler": None,
+        "profiler_bin": None,
+        "lock_host": "xerxes",
+        "lock_path": "/tmp/gpu-lock-xerxes-1",
+        "device": "NVIDIA GeForce RTX 3070",
+        "runner": "fzb-xerxes-3",
+        "models_dir": "/tmp/fuzzybits-bench/input",
+        "work_dir": "/tmp/fuzzybits-bench/work",
+        "jit_volume": "fuzzybits-bench-jit-rtx3070",
+        # Deferred, manually approved run after the owner clears the GPU: the
+        # idle guard refuses while any other compute process is present.
+        "shared_device": False,
     },
     "rtx5060ti": {
         "docker_context": "shelly",
@@ -174,6 +201,10 @@ def _run_failure_verdict(*runs: Mapping[str, Any] | None) -> str:
             )
         )
     return classify_run_failure(*parts)
+
+
+# fzb samples in whole device passes; size timed runs in multiples of 2^20.
+FZB_PASS_QUANTUM = 1 << 20
 
 
 _OK_EXIT = {
@@ -301,7 +332,7 @@ def _select_models(manifest: Manifest, args: argparse.Namespace) -> list[Model]:
             raise SystemExit(f"unknown model id(s): {sorted(missing)}")
     if args.mode == "accuracy":
         models = [m for m in models if m.has_tag("accuracy")]
-    elif args.mode == "perf":
+    elif args.mode == "perf" and not args.ids:
         models = [m for m in models if m.has_tag("perf")]
     elif args.mode == "compile":
         models = [m for m in models if m.has_tag("pwr") or m.source == "pwr"]
@@ -485,16 +516,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         extra={"OMP_NUM_THREADS": str(target["omp_num_threads"])} if target.get("omp_num_threads") else None,
     )
     cpuset = target.get("cpuset_cpus")
-    lock_held = False
+    lock: LockHandle | None = None
     try:
         try:
             if target.get("lock_path") and not args.no_lock:
-                acquire_lock(
+                lock = acquire_lock(
                     host,
                     target["lock_path"],
                     retries=args.guard_retries,
                 )
-                lock_held = True
             if args.mode == "accuracy":
                 # Correctness, not a timing gate. CI runners are often busy.
                 load_before = snapshot_load(context, gpus=gpus)
@@ -721,8 +751,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(text)
         return 0 if _exit_ok(payload["verdict"], report_only=bool(target.get("report_only"))) else 1
     finally:
-        if lock_held:
-            release_lock(host, target["lock_path"])
+        release_lock(lock)
 
 
 def _ratio_row(
@@ -731,10 +760,9 @@ def _ratio_row(
     samples_head: list[float],
     metric: str,
     gpu: bool,
-    report_only: bool = False,
 ) -> dict[str, Any] | tuple[None, str]:
     try:
-        ratio, lo, hi = bootstrap_median_ratio_ci(samples_base, samples_head, seed=1)
+        ratio, lo, hi, t_stat = paired_log_ratio_ci(samples_base, samples_head)
     except ValueError as exc:
         return None, str(exc)
     if gpu:
@@ -744,12 +772,12 @@ def _ratio_row(
             verdict = gpu_total_verdict(ratio, lo, hi)
     else:
         verdict = cpu_wall_verdict(ratio, lo, hi)
-    verdict = apply_report_only(verdict, report_only=report_only)
     ratios = paired_ratios(samples_base, samples_head)
     return {
         "metric": metric,
         "ratio": ratio,
         "ratio_ci": [lo, hi],
+        "t": t_stat,
         "iqr_ratio": iqr(ratios),
         "base_samples": samples_base,
         "head_samples": samples_head,
@@ -757,7 +785,8 @@ def _ratio_row(
     }
 
 
-def cmd_ab(args: argparse.Namespace) -> int:
+def _ab_once(args: argparse.Namespace, *, ids: list[str] | None) -> dict[str, Any]:
+    """One A/B pass over the selected models; returns the results payload."""
     root = repo_root()
     manifest = load_manifest(args.manifest, root=root, check_files=not args.skip_validate)
     target = dict(TARGETS[args.target])
@@ -828,43 +857,51 @@ def cmd_ab(args: argparse.Namespace) -> int:
     host = _runtime_host(target)
     _ensure_host_dir(host, target["work_dir"])
 
-    lock_held = False
+    sample_metric = args.metric == "sample"
+    shared = bool(target.get("shared_device"))
+    lock: LockHandle | None = None
     try:
         try:
             if target.get("lock_path") and not args.no_lock:
-                acquire_lock(
+                lock = acquire_lock(
                     host,
                     target["lock_path"],
                     retries=args.guard_retries,
                 )
-                lock_held = True
             load_before = wait_for_idle(
                 context=context,
                 gpus=gpus,
                 retries=args.guard_retries,
-                shared_device=bool(target.get("shared_device")),
+                shared_device=shared,
             )
         except GuardError as exc:
-            payload = {
+            return {
                 "schema_version": 1,
                 "kind": "ab",
                 "dataset": manifest.dataset,
                 "created_utc": _now(),
                 "verdict": "inconclusive",
-                "context": {"error": str(exc), "target": args.target},
+                "measured_verdict": "inconclusive",
+                "context": {
+                    "error": str(exc),
+                    "target": args.target,
+                    "report_only": bool(target.get("report_only")),
+                },
                 "models": [],
             }
-            _write_json(Path(args.out), payload)
-            print(summarize(payload))
-            return 2
 
-        models = _select_models(manifest, args)
+        selection = argparse.Namespace(**{**vars(args), "ids": ids})
+        models = _select_models(manifest, selection)
         if args.mode == "run":
             # Default A/B set: perf models (and their accuracy check on the same run).
-            if not args.ids and not args.tag:
+            if not ids and not args.tag:
                 models = [m for m in manifest.models if m.has_tag("perf")]
         rows: list[dict[str, Any]] = []
         rounds = args.rounds
+        seconds = float(args.seconds or 0.0)
+        if seconds > 0.0 and args.budget_s and models:
+            # One warm-up pair plus `rounds` pairs per model share the budget.
+            seconds = min(seconds, args.budget_s / (2.0 * (rounds + 1) * len(models)))
         for model in models:
             xml, _compat = _compat_xml(
                 model, root=root, host=host, work_dir=target["work_dir"]
@@ -940,11 +977,45 @@ def cmd_ab(args: argparse.Namespace) -> int:
                 trials = int(
                     model.trials_cpu_perf or model.trials_perf or model.trials_accuracy or FZB_1E8
                 )
-            head_trials = trials
             scale_meta: dict[str, Any] | None = None
             budget_key = "gpu_perf" if gpu else "cpu_perf"
             timeout_s = int(model.time_budget_s.get(budget_key, 60))
-            profiler = target.get("profiler") if gpu else None
+            # The sample metric times fuzzybits.run in-process after a warm-up,
+            # so container start-up and JIT stay out of the measurement.
+            profiler = target.get("profiler") if gpu and not sample_metric else None
+            inprocess = (not gpu) or sample_metric
+            sizing: dict[str, Any] | None = None
+            if seconds > 0.0:
+                probe_run = fzb_run(
+                    context=context,
+                    image=base_image,
+                    pcfb=pcfb,
+                    trials=trials,
+                    backend=backend,
+                    volumes=vol_base,
+                    env=env_base,
+                    timeout_s=timeout_s,
+                    gpus=gpus if gpu else None,
+                    cpuset_cpus=cpuset,
+                    inprocess=True,
+                    warmup_trials=trials,
+                )
+                rate_s, _reason = finite_positive(probe_run.get("sample_s"))
+                if not probe_run.get("ok") or rate_s is None:
+                    rows.append(
+                        {
+                            "id": model.id,
+                            "verdict": _run_failure_verdict(probe_run) if not probe_run.get("ok") else VERDICT_ERROR,
+                            "error": _run_error("sizing run", probe_run),
+                        }
+                    )
+                    continue
+                per_s = trials / rate_s
+                sized = int(-(-seconds * per_s // FZB_PASS_QUANTUM) * FZB_PASS_QUANTUM)
+                sizing = {"seconds": seconds, "trials_per_s": per_s, "probe_trials": trials}
+                trials = max(sized, FZB_PASS_QUANTUM)
+                timeout_s = max(timeout_s, int(10 * seconds) + 60)
+            head_trials = trials
             if scale != 1.0:
                 probe = probe_pass_size(
                     context=context,
@@ -998,7 +1069,8 @@ def cmd_ab(args: argparse.Namespace) -> int:
                     f"realized={n_head / n_base:.4f}",
                     file=sys.stderr,
                 )
-            # Warm caches (round 0 will still be dropped).
+            # Warm both JIT caches at the timed trial count (each new launch
+            # shape is compiled on first use).
             warmup_timeout = False
             for side, image, volumes, env, extra, sleep, n_trials in (
                 ("base", base_image, vol_base, env_base, 0, 0, trials),
@@ -1019,7 +1091,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                     extra_runs=extra,
                     sleep_ms=sleep,
                     cpuset_cpus=cpuset,
-                    inprocess=not gpu,
+                    inprocess=inprocess,
                 )
                 if warm.get("timed_out"):
                     rows.append(
@@ -1049,10 +1121,31 @@ def cmd_ab(args: argparse.Namespace) -> int:
                 continue
             base_runs: list[dict[str, Any]] = []
             head_runs: list[dict[str, Any]] = []
+            round_load: list[dict[str, Any]] = []
+            foreign_during_isolated: str | None = None
             for round_i in range(rounds):
-                for side, image, volumes, env, bucket, extra, sleep, n_trials in (
+                if gpu:
+                    occupancy = gpu_occupancy(context, gpus)
+                    apps = occupancy.get("compute_apps") or []
+                    device = occupancy.get("gpu") or {}
+                    round_load.append(
+                        {
+                            "round": round_i,
+                            "foreign": format_foreign_load(occupancy),
+                            "compute_apps": len(apps),
+                            "utilization_gpu": device.get("utilization_gpu"),
+                        }
+                    )
+                    if apps and not shared and foreign_during_isolated is None:
+                        foreign_during_isolated = format_foreign_load(occupancy)
+                sides = (
                     ("base", base_image, vol_base, env_base, base_runs, 0, 0, trials),
                     ("head", head_image, vol_head, env_head, head_runs, extra_runs, sleep_ms, head_trials),
+                )
+                # Alternate which side goes first (A-B, B-A, ...) so slow drift
+                # does not always land on the same side.
+                for side, image, volumes, env, bucket, extra, sleep, n_trials in (
+                    sides if round_i % 2 == 0 else sides[::-1]
                 ):
                     timed = fzb_run(
                         context=context,
@@ -1069,7 +1162,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
                         extra_runs=extra,
                         sleep_ms=sleep,
                         cpuset_cpus=cpuset,
-                        inprocess=not gpu,
+                        inprocess=inprocess,
                     )
                     if timed.get("timed_out"):
                         rows.append(
@@ -1098,10 +1191,12 @@ def cmd_ab(args: argparse.Namespace) -> int:
                     continue
                 break
             else:
-                # Drop first round as warm-up.
-                kept_base = base_runs[1:]
-                kept_head = head_runs[1:]
-                if gpu:
+                if sample_metric:
+                    kept_base, kept_head = base_runs, head_runs
+                else:
+                    # Profiled runs: drop the first round as warm-up.
+                    kept_base, kept_head = base_runs[1:], head_runs[1:]
+                if gpu and not sample_metric:
                     total_b, total_err = collect_timings(kept_base, gpu=True, kind="total")
                     total_h, total_err_h = collect_timings(kept_head, gpu=True, kind="total")
                     err = total_err or total_err_h
@@ -1121,7 +1216,6 @@ def cmd_ab(args: argparse.Namespace) -> int:
                         samples_head=total_h,
                         metric="gpu_total_ms",
                         gpu=True,
-                        report_only=bool(target.get("report_only")),
                     )
                     if isinstance(total_row, tuple):
                         rows.append(
@@ -1149,7 +1243,6 @@ def cmd_ab(args: argparse.Namespace) -> int:
                             samples_head=kernel_h,
                             metric="gpu_kernel_ms",
                             gpu=True,
-                            report_only=bool(target.get("report_only")),
                         )
                         if isinstance(kernel_row, tuple):
                             kernel_row = None
@@ -1167,7 +1260,10 @@ def cmd_ab(args: argparse.Namespace) -> int:
                     }
                     base_ss = total_b
                     head_ss = total_h
+                    t_stat = total_row["t"]
                 else:
+                    # In-process fuzzybits.run time: CPU always, GPU with --metric sample.
+                    metric = "sample_s" if gpu else "cpu_sample_s"
                     base_ss, err_b = collect_timings(kept_base, gpu=False)
                     head_ss, err_h = collect_timings(kept_head, gpu=False)
                     err = err_b or err_h
@@ -1175,42 +1271,46 @@ def cmd_ab(args: argparse.Namespace) -> int:
                         rows.append(
                             {
                                 "id": model.id,
-                                "metric": "cpu_sample_s",
+                                "metric": metric,
                                 "verdict": VERDICT_ERROR,
                                 "error": err,
                             }
                         )
                         continue
                     assert base_ss is not None and head_ss is not None
-                    cpu_row = _ratio_row(
+                    sample_row = _ratio_row(
                         samples_base=base_ss,
                         samples_head=head_ss,
-                        metric="cpu_sample_s",
-                        gpu=False,
-                        report_only=bool(target.get("report_only")),
+                        metric=metric,
+                        gpu=gpu,
                     )
-                    if isinstance(cpu_row, tuple):
+                    if isinstance(sample_row, tuple):
                         rows.append(
                             {
                                 "id": model.id,
-                                "metric": "cpu_sample_s",
+                                "metric": metric,
                                 "verdict": VERDICT_ERROR,
-                                "error": cpu_row[1],
+                                "error": sample_row[1],
                                 "base_samples": base_ss,
                                 "head_samples": head_ss,
                             }
                         )
                         continue
-                    verdict = cpu_row["verdict"]
-                    metric = "cpu_sample_s"
-                    ratio = cpu_row["ratio"]
-                    lo, hi = cpu_row["ratio_ci"]
+                    verdict = sample_row["verdict"]
+                    ratio = sample_row["ratio"]
+                    lo, hi = sample_row["ratio_ci"]
+                    t_stat = sample_row["t"]
                     extras = {}
                 acc = None
                 if model.has_tag("accuracy") and model.reference.probability is not None:
                     acc = _accuracy_row(model, head_runs[-1], manifest=manifest)
                     if acc.get("verdict") == VERDICT_BLOCK and acc.get("gated"):
                         verdict = VERDICT_BLOCK
+                error = None
+                if foreign_during_isolated is not None:
+                    verdict = VERDICT_INCONCLUSIVE
+                    error = f"another GPU process was present during the isolated run: {foreign_during_isolated}"
+                measured = verdict
                 verdict = apply_report_only(
                     verdict, report_only=bool(target.get("report_only"))
                 )
@@ -1220,14 +1320,19 @@ def cmd_ab(args: argparse.Namespace) -> int:
                         "metric": metric,
                         "ratio": ratio,
                         "ratio_ci": [lo, hi],
+                        "t": t_stat,
                         "iqr_ratio": iqr(paired_ratios(base_ss, head_ss)),
                         "base_samples": base_ss,
                         "head_samples": head_ss,
                         "verdict": verdict,
+                        "measured_verdict": measured,
+                        "error": error,
                         "accuracy": acc,
                         "n_rounds": len(base_ss),
                         "head_trials": head_trials,
                         "base_trials": trials,
+                        "sizing": sizing,
+                        "round_load": round_load,
                         "scale": scale_meta,
                         **extras,
                     }
@@ -1244,6 +1349,9 @@ def cmd_ab(args: argparse.Namespace) -> int:
             "dataset": manifest.dataset,
             "created_utc": _now(),
             "verdict": combine_verdicts(r.get("verdict") or "pass" for r in rows),
+            "measured_verdict": combine_verdicts(
+                r.get("measured_verdict") or r.get("verdict") or "pass" for r in rows
+            ),
             "context": {
                 "target": args.target,
                 "docker_context": context,
@@ -1261,10 +1369,14 @@ def cmd_ab(args: argparse.Namespace) -> int:
                 "recipe": "docker/runtime.Dockerfile --target runtime",
                 "toolchain": dockerutil.toolchain_image(root),
                 "rounds": rounds,
+                "metric": args.metric,
+                "seconds": seconds or None,
+                "budget_s": args.budget_s or None,
+                "adaptivity_level": container_env(backend=backend).get("ACPP_ADAPTIVITY_LEVEL"),
                 "inject_regression": args.inject_regression,
-                "shared_device": bool(target.get("shared_device")),
+                "shared_device": shared,
                 "report_only": bool(target.get("report_only")),
-                "profiler": target.get("profiler"),
+                "profiler": None if sample_metric else target.get("profiler"),
                 "load_before": load_before,
                 "load_after": dict(load_after),
             },
@@ -1274,15 +1386,73 @@ def cmd_ab(args: argparse.Namespace) -> int:
             payload["verdict"] = apply_report_only(
                 payload["verdict"], report_only=True
             )
-        _write_json(Path(args.out), payload)
-        text = summarize(payload)
-        if args.md:
-            Path(args.md).write_text(text, encoding="utf-8")
-        print(text)
-        return 0 if _exit_ok(payload["verdict"], report_only=bool(target.get("report_only"))) else 1
+        return payload
     finally:
-        if lock_held:
-            release_lock(host, target["lock_path"])
+        release_lock(lock)
+
+
+# Measured verdicts that send a screening run to a second attempt (and, if
+# repeated, to the isolated run).
+_FLAG_VERDICTS = {VERDICT_BLOCK, VERDICT_ERROR, VERDICT_INCONCLUSIVE, VERDICT_TIMEOUT}
+
+
+def _flagged_ids(payload: Mapping[str, Any]) -> set[str]:
+    return {
+        str(row.get("id"))
+        for row in payload.get("models") or []
+        if (row.get("measured_verdict") or row.get("verdict")) in _FLAG_VERDICTS
+    }
+
+
+def _payload_flagged(payload: Mapping[str, Any]) -> bool:
+    if payload.get("models"):
+        return bool(_flagged_ids(payload))
+    return (payload.get("measured_verdict") or payload.get("verdict")) in _FLAG_VERDICTS
+
+
+def cmd_ab(args: argparse.Namespace) -> int:
+    payload = _ab_once(args, ids=args.ids)
+    attempts = 1
+    if args.attempts > 1 and _payload_flagged(payload):
+        retry_ids = sorted(_flagged_ids(payload)) or args.ids
+        print(f"flagged {retry_ids or 'all models'}; repeating once", file=sys.stderr)
+        retry = _ab_once(args, ids=retry_ids)
+        attempts = 2
+        if payload.get("models") and retry.get("models"):
+            redone = {str(row.get("id")): row for row in retry["models"]}
+            merged = []
+            for row in payload["models"]:
+                again = redone.get(str(row.get("id")))
+                if again is None:
+                    merged.append(row)
+                    continue
+                again = dict(again)
+                again["first_attempt"] = {
+                    key: row.get(key)
+                    for key in ("verdict", "measured_verdict", "ratio", "ratio_ci", "t", "error")
+                }
+                merged.append(again)
+            payload["models"] = merged
+            payload["verdict"] = combine_verdicts(r.get("verdict") or "pass" for r in merged)
+            payload["measured_verdict"] = combine_verdicts(
+                r.get("measured_verdict") or r.get("verdict") or "pass" for r in merged
+            )
+            if (payload.get("context") or {}).get("report_only"):
+                payload["verdict"] = apply_report_only(payload["verdict"], report_only=True)
+        else:
+            payload = retry
+    payload["attempts"] = attempts
+    payload["flagged"] = _payload_flagged(payload)
+    payload["flagged_ids"] = sorted(_flagged_ids(payload))
+    _write_json(Path(args.out), payload)
+    text = summarize(payload)
+    if args.md:
+        Path(args.md).write_text(text, encoding="utf-8")
+    print(text)
+    report_only = bool((payload.get("context") or {}).get("report_only"))
+    if not payload.get("models") and payload.get("verdict") == VERDICT_INCONCLUSIVE and not report_only:
+        return 2
+    return 0 if _exit_ok(payload["verdict"], report_only=report_only) else 1
 
 
 def cmd_summarize(args: argparse.Namespace) -> int:
@@ -1333,6 +1503,33 @@ def _parser() -> argparse.ArgumentParser:
     p_ab.add_argument("--head-image", default=None)
     p_ab.add_argument("--build", action="store_true", help="build both SHAs with the nightly recipe")
     p_ab.add_argument("--rounds", type=int, default=6)
+    p_ab.add_argument(
+        "--metric",
+        choices=("kernel", "sample"),
+        default="kernel",
+        help=(
+            "kernel: profiler GPU kernel time (CPU: in-process sample time); "
+            "sample: in-process fuzzybits.run time after a warm-up, on any backend"
+        ),
+    )
+    p_ab.add_argument(
+        "--seconds",
+        type=float,
+        default=0.0,
+        help="size each timed run to about this many seconds on the base image (0: manifest trials)",
+    )
+    p_ab.add_argument(
+        "--budget-s",
+        type=float,
+        default=0.0,
+        help="cap --seconds so timed sampling per attempt (warm-up + rounds, both sides) fits this budget",
+    )
+    p_ab.add_argument(
+        "--attempts",
+        type=int,
+        default=1,
+        help="repeat flagged models once more when 2 (screening); a model stays flagged only if both attempts flag it",
+    )
     p_ab.add_argument(
         "--inject-regression",
         default=None,

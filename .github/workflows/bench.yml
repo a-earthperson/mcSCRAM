@@ -4,11 +4,15 @@
 # Dependabot PRs skip GPU/CPU/accuracy work with a notice; bench-summary still
 # posts a green check so required status does not hang.
 #
-# CPU A/B is report-only (CPU_GATE_BLOCKS = False, #124).
+# Blocking: accuracy (CPU) and, only when the RTX 3070 screen flags a model
+# twice, bench-perf-isolated (manual approval in the gpu-isolated environment,
+# after the owner clears the RTX 3070). Report-only: CPU (#124), V100S (shared
+# with live/dev fuzzybits-server), RTX 5060 Ti, and the RTX 3070 screen itself.
+# GPU A/B times in-process fuzzybits.run on runs sized to SECONDS_PER_RUN,
+# capped at BUDGET_S of timed sampling per attempt.
 # xerxes GPU indices are NVML/nvidia-smi (GPU 0 = V100S, GPU 1 = RTX 3070),
-# never CUDA FASTEST_FIRST. rtx3070 is shared_device (co-runs with owner
-# services); V100S stays exclusive. Both still take /tmp/gpu-lock-xerxes-{0,1}.
-# rtx5060ti on shelly is shared_device + report_only (lock /tmp/gpu-lock-shelly-0).
+# never CUDA FASTEST_FIRST. Jobs flock /tmp/gpu-lock-xerxes-{0,1} and
+# /tmp/gpu-lock-shelly-0.
 #
 # runs-on expressions must stay byte-identical to
 # scripts/ci/check-self-hosted-reachability.py APPROVED_PR_RUNS_ON_*.
@@ -38,6 +42,9 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/fuzzybit-org/fuzzybits-runtime
+  # GPU A/B set: sampler-bound (das9201), gate-heavy (das9701), many basic
+  # events (nus9601), fused-path regressor (edf9203).
+  GPU_PERF_IDS: das9201 das9701 nus9601 edf9203
 
 jobs:
   bench-filter:
@@ -359,6 +366,10 @@ jobs:
       MODE: perf
       TARGET: v100s
       OUT: artifacts/v100s.json
+      METRIC: sample
+      SECONDS_PER_RUN: "1.5"
+      BUDGET_S: "90"
+      ROUNDS: "6"
     steps:
       - name: Isolate Docker credentials (self-hosted)
         if: runner.environment == 'self-hosted'
@@ -383,7 +394,7 @@ jobs:
           docker pull "${BASE_IMAGE}"
           docker pull "${HEAD_IMAGE}"
 
-      - name: A/B V100S
+      - name: A/B V100S (report-only)
         run: bash scripts/ci/bench_invoke.sh
 
       - name: Upload
@@ -395,13 +406,94 @@ jobs:
           if-no-files-found: warn
 
   # NVML / nvidia-smi / docker `--gpus device=N` on xerxes (not CUDA FASTEST_FIRST):
-  # GPU 0 = Tesla V100S (PCI 42:00.0, lock-0, group gpu-xerxes-v100s, exclusive);
+  # GPU 0 = Tesla V100S (PCI 42:00.0, lock-0, group gpu-xerxes-v100s, shared with live/dev);
   # GPU 1 = RTX 3070 (PCI 43:00.0, lock-1, group gpu-xerxes-3070, shared_device).
+  # Screen: report-only, repeats flagged models once; two flags -> bench-perf-isolated.
   bench-perf-rtx3070:
     name: bench-perf-rtx3070
     needs: [bench-filter, bench-images]
     if: always() && needs.bench-filter.result == 'success' && needs.bench-filter.outputs.trusted == 'true' && needs.bench-filter.outputs.run_benches == 'true' && needs.bench-images.result == 'success'
     runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"public-ci","labels":["self-hosted","Linux","X64","nvidia","sm_86","rtx_3070"]}') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    concurrency:
+      group: gpu-xerxes-3070
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    outputs:
+      needs_isolated: ${{ steps.screen.outputs.needs_isolated }}
+    env:
+      BASE_IMAGE: ${{ needs.bench-images.outputs.base_image }}
+      HEAD_IMAGE: ${{ needs.bench-images.outputs.head_image }}
+      BASE_SHA: ${{ needs.bench-images.outputs.base_sha }}
+      HEAD_SHA: ${{ needs.bench-images.outputs.head_sha }}
+      INJECT: ${{ github.event.inputs.inject_regression || '' }}
+      MODE: perf
+      TARGET: rtx3070
+      OUT: artifacts/rtx3070.json
+      METRIC: sample
+      SECONDS_PER_RUN: "1.5"
+      BUDGET_S: "90"
+      ROUNDS: "6"
+      ATTEMPTS: "2"
+    steps:
+      - name: Isolate Docker credentials (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/docker-config"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/docker-config" >> "${GITHUB_ENV}"
+
+      - name: Reclaim workspace (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          docker ps -aq --filter "volume=${GITHUB_WORKSPACE}" | xargs -r docker rm -f
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w" -v "${RUNNER_TOOL_CACHE}:/t" alpine:3.20 chown -R "$(id -u):$(id -g)" /w /t
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Pull images
+        run: |
+          docker pull "${BASE_IMAGE}"
+          docker pull "${HEAD_IMAGE}"
+
+      - name: A/B RTX 3070 (screen)
+        run: bash scripts/ci/bench_invoke.sh
+
+      - name: Decide on the isolated run
+        id: screen
+        if: always()
+        run: |
+          flagged="$(python3 -c 'import json,sys
+          try:
+              d = json.load(open("artifacts/rtx3070.json"))
+          except (OSError, ValueError):
+              print("true"); sys.exit()
+          print("true" if d.get("flagged") else "false")')"
+          echo "needs_isolated=${flagged}" >> "${GITHUB_OUTPUT}"
+          echo "needs_isolated=${flagged}"
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-rtx3070
+          path: artifacts/
+          if-no-files-found: warn
+
+  # Deferred, blocking: runs only when the screen flagged a model in both
+  # attempts. Waits for approval in the gpu-isolated environment; clear the
+  # RTX 3070 (stop parakeet and other GPU services) before approving. The
+  # strict idle guard refuses while any other compute process is present.
+  bench-perf-isolated:
+    name: bench-perf-isolated
+    needs: [bench-filter, bench-images, bench-perf-rtx3070]
+    if: always() && needs.bench-perf-rtx3070.result != 'skipped' && needs.bench-perf-rtx3070.result != 'cancelled' && needs.bench-perf-rtx3070.outputs.needs_isolated == 'true'
+    runs-on: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && fromJSON('{"group":"public-ci","labels":["self-hosted","Linux","X64","nvidia","sm_86","rtx_3070"]}') || 'ubuntu-24.04' }}
+    environment: gpu-isolated
     timeout-minutes: 30
     concurrency:
       group: gpu-xerxes-3070
@@ -415,8 +507,13 @@ jobs:
       HEAD_SHA: ${{ needs.bench-images.outputs.head_sha }}
       INJECT: ${{ github.event.inputs.inject_regression || '' }}
       MODE: perf
-      TARGET: rtx3070
-      OUT: artifacts/rtx3070.json
+      TARGET: rtx3070-isolated
+      OUT: artifacts/rtx3070-isolated.json
+      METRIC: sample
+      SECONDS_PER_RUN: "1.0"
+      BUDGET_S: "110"
+      ROUNDS: "12"
+      GUARD_RETRIES: "4"
     steps:
       - name: Isolate Docker credentials (self-hosted)
         if: runner.environment == 'self-hosted'
@@ -441,14 +538,14 @@ jobs:
           docker pull "${BASE_IMAGE}"
           docker pull "${HEAD_IMAGE}"
 
-      - name: A/B RTX 3070
+      - name: A/B RTX 3070 (isolated)
         run: bash scripts/ci/bench_invoke.sh
 
       - name: Upload
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: bench-rtx3070
+          name: bench-rtx3070-isolated
           path: artifacts/
           if-no-files-found: warn
 
@@ -474,6 +571,10 @@ jobs:
       MODE: perf
       TARGET: rtx5060ti
       OUT: artifacts/rtx5060ti.json
+      METRIC: sample
+      SECONDS_PER_RUN: "1.5"
+      BUDGET_S: "90"
+      ROUNDS: "6"
     steps:
       - name: Isolate Docker credentials (self-hosted)
         if: runner.environment == 'self-hosted'
@@ -572,6 +673,7 @@ jobs:
       - bench-accuracy
       - bench-perf-v100s
       - bench-perf-rtx3070
+      - bench-perf-isolated
       - bench-perf-rtx5060ti
       - bench-perf-cpu
     if: always()
@@ -604,6 +706,8 @@ jobs:
           ACC_RESULT: ${{ needs.bench-accuracy.result }}
           V100S_RESULT: ${{ needs.bench-perf-v100s.result }}
           RTX_RESULT: ${{ needs.bench-perf-rtx3070.result }}
+          NEEDS_ISOLATED: ${{ needs.bench-perf-rtx3070.outputs.needs_isolated }}
+          ISOLATED_RESULT: ${{ needs.bench-perf-isolated.result }}
           RTX5060_RESULT: ${{ needs.bench-perf-rtx5060ti.result }}
           CPU_RESULT: ${{ needs.bench-perf-cpu.result }}
           PR_NUMBER: ${{ github.event.pull_request.number || '' }}
@@ -638,14 +742,17 @@ jobs:
           acc="$(find_json accuracy)"
           v100s="$(find_json v100s)"
           rtx="$(find_json rtx3070)"
+          isolated="$(find_json rtx3070-isolated)"
           rtx5060="$(find_json rtx5060ti)"
           cpu="$(find_json cpu)"
           args=()
           [[ -n "${acc}" ]] && args+=(--accuracy "${acc}")
           [[ -n "${v100s}" ]] && args+=(--v100s "${v100s}")
           [[ -n "${rtx}" ]] && args+=(--rtx3070 "${rtx}")
+          [[ -n "${isolated}" ]] && args+=(--rtx3070-isolated "${isolated}")
           [[ -n "${rtx5060}" ]] && args+=(--rtx5060ti "${rtx5060}")
           [[ -n "${cpu}" ]] && args+=(--cpu "${cpu}")
+          [[ "${NEEDS_ISOLATED}" == "true" ]] && args+=(--screen-flagged)
           set +e
           python3 scripts/ci/bench_comment.py \
             --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
@@ -664,16 +771,18 @@ jobs:
               echo "bench-images result=${IMAGES_RESULT}" >&2
               exit 1
             fi
-            if [[ "${ACC_RESULT}" != "success" || "${V100S_RESULT}" != "success" || "${RTX_RESULT}" != "success" ]]; then
-              echo "blocking job results accuracy=${ACC_RESULT} v100s=${V100S_RESULT} rtx3070=${RTX_RESULT}" >&2
+            if [[ "${ACC_RESULT}" != "success" ]]; then
+              echo "bench-accuracy result=${ACC_RESULT}" >&2
               exit 1
             fi
-            if [[ "${CPU_RESULT}" == "failure" ]]; then
-              echo "CPU job failed (harness error, not a report-only warn)" >&2
+            if [[ "${NEEDS_ISOLATED}" == "true" && "${ISOLATED_RESULT}" != "success" ]]; then
+              echo "RTX 3070 screen flagged twice; bench-perf-isolated result=${ISOLATED_RESULT}" >&2
               exit 1
             fi
-            if [[ "${RTX5060_RESULT}" == "failure" ]]; then
-              echo "RTX 5060 Ti job failed (report-only; not blocking)" >&2
-            fi
+            for job in "v100s=${V100S_RESULT}" "rtx3070=${RTX_RESULT}" "rtx5060ti=${RTX5060_RESULT}" "cpu=${CPU_RESULT}"; do
+              if [[ "${job#*=}" == "failure" ]]; then
+                echo "report-only job ${job%%=*} failed (not blocking)" >&2
+              fi
+            done
           fi
           exit "${rc}"

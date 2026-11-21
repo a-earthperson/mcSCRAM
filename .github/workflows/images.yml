@@ -108,6 +108,18 @@ jobs:
             acpp_targets: "cuda:sm_70"
             cuda_embed_ptx: highest
             include_sscp: "0"
+          - variant: cuda12.8-sm86
+            cmake_preset: cuda-sm86
+            fuzzybits_variant: cuda-sm86
+            acpp_targets: "cuda:sm_86"
+            cuda_embed_ptx: highest
+            include_sscp: "0"
+          - variant: cuda12.8-sm120
+            cmake_preset: cuda-sm120
+            fuzzybits_variant: cuda-sm120
+            acpp_targets: "cuda:sm_120"
+            cuda_embed_ptx: highest
+            include_sscp: "0"
     env:
       VARIANT: ${{ matrix.variant }}
     steps:
@@ -333,12 +345,12 @@ jobs:
             docker_gpus: device=0
           # physical GPU 1 = RTX 3070
           - name: sm86
-            variants: generic
+            variants: "generic cuda12.8-sm86"
             runs_on: [self-hosted, Linux, X64, nvidia, sm_86, rtx_3070]
             concurrency_group: gpu-xerxes-3070
             docker_gpus: device=1
           - name: sm120
-            variants: generic
+            variants: "generic cuda12.8-sm120"
             runs_on: [self-hosted, Linux, X64, nvidia, fast, sm_120, rtx_5060ti_8gb]
             concurrency_group: gpu-shelly-5060ti
             docker_gpus: device=0
@@ -397,7 +409,8 @@ jobs:
             name="${SMOKE_PREFIX}-${tag}"
             echo "::group::smoke ${RUNTIME_IMAGE}"
             omp=1
-            if [[ "${RUNTIME_IMAGE}" == *cuda12.8-sm70 ]]; then
+            # SMCP-only images (cuda12.8-smNN) have no host kernels.
+            if [[ "${RUNTIME_IMAGE}" == *-cuda12.8-sm* ]]; then
               omp=0
             fi
             docker run --rm --name "${name}" --gpus "${DOCKER_GPUS}" \

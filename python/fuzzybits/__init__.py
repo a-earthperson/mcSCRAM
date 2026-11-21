@@ -10,9 +10,9 @@ Public surface:
 - :func:`nombrilo_to_pcfb` / :func:`pcfb_to_nombrilo`
 - :class:`Session` (streaming per-pass popcounts over a ``.pcfb``)
 
-The native SYCL extension is selected at import: ``_native_cuda_sm70`` if that
-wheel is installed *and* an sm_70 device is present, otherwise
-``_native_generic``.
+The native SYCL extension is selected at import: ``_native_cuda_smNN``
+(sm70, sm86, sm120) if that extension is installed *and* a device of that
+compute capability is present, otherwise ``_native_generic``.
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from ._runtime import (
     active_backend,
     active_device,
     active_variant,
+    cuda_sm_versions,
     has_cuda_device,
     has_sm70_device,
     init,
@@ -58,6 +59,7 @@ __all__ = [
     "active_variant",
     "compile",
     "compile_file",
+    "cuda_sm_versions",
     "exact",
     "has_cuda_device",
     "has_sm70_device",

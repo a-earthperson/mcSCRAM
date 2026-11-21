@@ -146,8 +146,22 @@ def summarize_ab(payload: Mapping[str, Any]) -> str:
         f"- head: `{context.get('head_sha')}` image `{context.get('head_image')}`",
         f"- head digest: `{context.get('head_digest') or ''}`",
         f"- target: `{context.get('target')}` backend `{context.get('backend')}`",
-        f"- rounds: {context.get('rounds')} (first dropped as warm-up)",
     ]
+    if context.get("metric") == "sample":
+        seconds = context.get("seconds")
+        size = f", ~{_fmt_float(seconds, 2)} s per side per round" if seconds else ""
+        lines.append(
+            f"- rounds: {context.get('rounds')}, base/head order alternating{size} "
+            "(in-process `fuzzybits.run` time after a warm-up)"
+        )
+    else:
+        lines.append(f"- rounds: {context.get('rounds')} (first dropped as warm-up)")
+    if payload.get("attempts"):
+        flagged = payload.get("flagged_ids") or []
+        lines.append(
+            f"- attempts: {payload.get('attempts')}; flagged: "
+            + (", ".join(f"`{i}`" for i in flagged) if flagged else ("yes" if payload.get("flagged") else "none"))
+        )
     note = shared_device_note(context if isinstance(context, Mapping) else None)
     if note:
         lines.append(f"- {note}")
@@ -160,24 +174,33 @@ def summarize_ab(payload: Mapping[str, Any]) -> str:
     for model in models:
         metric = model.get("metric") or "primary"
         ci = model.get("ratio_ci") or [None, None]
+        verdict = model.get("verdict")
+        if model.get("measured_verdict") and model.get("measured_verdict") != verdict:
+            verdict = f"{verdict} (measured {model.get('measured_verdict')})"
         rows.append(
             [
                 model.get("id"),
                 metric,
+                model.get("base_trials") or "—",
                 _fmt_float(model.get("ratio"), 4),
                 _fmt_float(ci[0] if isinstance(ci, list) else None, 4),
                 _fmt_float(ci[1] if isinstance(ci, list) else None, 4),
-                _fmt_float(model.get("iqr_ratio"), 4),
-                model.get("verdict"),
+                _fmt_float(model.get("t"), 2),
+                verdict,
             ]
         )
     if rows:
         lines.append(
             _md_table(
-                ["model", "metric", "ratio", "ci_lo", "ci_hi", "iqr", "verdict"],
+                ["model", "metric", "trials", "ratio", "ci_lo", "ci_hi", "t", "verdict"],
                 rows,
             )
         )
+        lines.append("")
+    errors = [m for m in models if m.get("error")]
+    for model in errors:
+        lines.append(f"- `{model.get('id')}`: {str(model.get('error'))[:300]}")
+    if errors:
         lines.append("")
     accuracy = [m for m in models if m.get("accuracy")]
     if accuracy:

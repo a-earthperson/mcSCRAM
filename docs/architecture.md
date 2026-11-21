@@ -110,7 +110,7 @@ for (auto i = 0; i < num_inputs; ++i) {
 
 ## Build and Installation
 
-Python: `pip install` a Linux x86_64 wheel (see [`docs/python.md`](docs/python.md)). The import name is **`fuzzybits`**; the wheel also installs an `fzb` console script matching the native CLI. Wheels bundle AdaptiveCpp (`MALLOC_TYPE=malloc`, no `LD_PRELOAD` / `PYTHONPATH`). Variants are `generic` (default, SSCP JIT) and `cuda-sm70`.
+Python: `pip install` a Linux x86_64 wheel (see [`docs/python.md`](docs/python.md)). The import name is **`fuzzybits`**; the wheel also installs an `fzb` console script matching the native CLI. Wheels bundle AdaptiveCpp (`MALLOC_TYPE=malloc`, no `LD_PRELOAD` / `PYTHONPATH`). Variants are `generic` (default, SSCP JIT) and the CUDA AOT builds `cuda-sm70`, `cuda-sm86` and `cuda-sm120`.
 
 ### Container-based Development (Recommended)
 

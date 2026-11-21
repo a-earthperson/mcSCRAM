@@ -109,7 +109,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [generic, cuda12.8-sm70]
+        variant: [generic, cuda12.8-sm70, cuda12.8-sm86, cuda12.8-sm120]
     env:
       VARIANT: ${{ matrix.variant }}
     steps:
@@ -199,7 +199,7 @@ jobs:
             raw="${raw#ghcr.io/fuzzybit-org/fuzzybits-runtime:}"
             raw="$(printf '%s' "${raw}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
             case "${raw}" in
-              *-cuda12.8-sm70) raw="${raw%-cuda12.8-sm70}" ;;
+              *-cuda12.8-sm[0-9]*) raw="${raw%-cuda12.8-sm*}" ;;
               *-generic) raw="${raw%-generic}" ;;
             esac
             printf '%s' "${raw}"

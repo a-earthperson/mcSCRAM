@@ -48,6 +48,40 @@
       }
     },
     {
+      "name": "cuda-sm86",
+      "displayName": "cuda-sm86 (Ampere SMCP AOT)",
+      "description": "Linux x86_64 Ampere (RTX 30xx, A10/A40) AOT. ACPP_TARGETS=cuda:sm_86 (clang CUDA SMCP) with PTX of sm_86 embedded. See docs/build-variants.md.",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "ACPP_TARGETS": "cuda:sm_86",
+        "ACPP_USE_ACCELERATED_CPU": "off",
+        "ACPP_STDPAR": "off",
+        "ACPP_EXTRA_COMPILE_OPTIONS": "--cuda-include-ptx=sm_86"
+      }
+    },
+    {
+      "name": "cuda-sm120",
+      "displayName": "cuda-sm120 (Blackwell consumer SMCP AOT)",
+      "description": "Linux x86_64 Blackwell consumer (RTX 50xx) AOT. ACPP_TARGETS=cuda:sm_120 (clang CUDA SMCP) with PTX of sm_120 embedded. Needs CUDA >= 12.8. See docs/build-variants.md.",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "ACPP_TARGETS": "cuda:sm_120",
+        "ACPP_USE_ACCELERATED_CPU": "off",
+        "ACPP_STDPAR": "off",
+        "ACPP_EXTRA_COMPILE_OPTIONS": "--cuda-include-ptx=sm_120"
+      }
+    },
+    {
       "name": "metal",
       "displayName": "metal (macOS generic + Metal)",
       "description": "macOS 26 Apple Silicon. ACPP_TARGETS=generic against AdaptiveCpp built with WITH_METAL_BACKEND=ON, ACPP_COMPILER_FEATURE_PROFILE=full, ACPP_REF_METAL (post-94e1749) and METAL_CPP_VERSION=release/metal-cpp_macOS26_iOS26. Intel Darwin can configure; Metal runtime needs arm64.",
@@ -99,6 +133,14 @@
       "configurePreset": "cuda-sm70"
     },
     {
+      "name": "cuda-sm86",
+      "configurePreset": "cuda-sm86"
+    },
+    {
+      "name": "cuda-sm120",
+      "configurePreset": "cuda-sm120"
+    },
+    {
       "name": "metal",
       "configurePreset": "metal"
     },
@@ -147,6 +189,16 @@
         "ACPP_PERSISTENT_RUNTIME": "1",
         "CTEST_NO_TESTS_ACTION": "ignore"
       }
+    },
+    {
+      "name": "cuda-sm86",
+      "inherits": "cuda-sm70",
+      "configurePreset": "cuda-sm86"
+    },
+    {
+      "name": "cuda-sm120",
+      "inherits": "cuda-sm70",
+      "configurePreset": "cuda-sm120"
     },
     {
       "name": "metal",
@@ -236,6 +288,22 @@
         { "type": "configure", "name": "cuda-sm70" },
         { "type": "build", "name": "cuda-sm70" },
         { "type": "test", "name": "cuda-sm70" }
+      ]
+    },
+    {
+      "name": "cuda-sm86",
+      "steps": [
+        { "type": "configure", "name": "cuda-sm86" },
+        { "type": "build", "name": "cuda-sm86" },
+        { "type": "test", "name": "cuda-sm86" }
+      ]
+    },
+    {
+      "name": "cuda-sm120",
+      "steps": [
+        { "type": "configure", "name": "cuda-sm120" },
+        { "type": "build", "name": "cuda-sm120" },
+        { "type": "test", "name": "cuda-sm120" }
       ]
     },
     {

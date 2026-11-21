@@ -104,15 +104,28 @@ Chosen for coverage of the engine's cost profile (kernel breakdowns from
 | `edf9203` | Known fused-path regressor in #20 (2.2× slower than unfused). |
 | `chinese` | Small model; launch / JIT / host overhead baseline (~9–13 ms kernels). |
 
-Perf trial count is 1e8 on GPU. CPU perf trial counts are sized per model so
-in-process sampling is ~2–5 s (`trials.cpu_perf` in the manifest). GPU metrics
-are per-kernel times (`basic_event`, gate kernels, tally) via **nvprof** on
-V100S (`sm_70`) and **nsys** on RTX 3070 (`sm_86`). RTX 5060 Ti (`sm_120`,
-shelly) has no Nsight Systems; A/B falls back to fzb `sample_s` / wall.
-Warm and cold AdaptiveCpp cache times are reported separately; the gate uses
-**warm** numbers.
+The PR gate's GPU A/B uses `das9201`, `das9701`, `nus9601` and `edf9203`
+(`GPU_PERF_IDS` in `bench.yml`); `chinese` stays in the CPU set and in
+published history. These four are still small: a realistic large-model set
+waits on manifest v2 (#158) and whole-model compile (#92, #153).
 
-The A/B **gate metric is `gpu_total_ms`** (all compute kernels; memcpy
+The PR gate times GPU A/B with **`--metric sample`**: in-process
+`fuzzybits.run` wall time (`sample_s`) after AdaptiveCpp init and a 2^20
+warm-up, with the trial count sized per model so one timed run lasts
+`--seconds` (see [PR gate](#pr-gate-ci)). Pass size does not depend on the
+trial count (2^20 for das9701, 2^19 for nus9601 on the RTX 3070), so the
+warm-up compiles the timed launch shape; across fresh containers sharing the
+JIT volume, the first timed call matched a second one within 0.5–1.4%.
+
+`--metric kernel` (the default outside the gate) keeps per-kernel times
+(`basic_event`, gate kernels, tally) via **nvprof** on V100S (`sm_70`) and
+**nsys** on RTX 3070 (`sm_86`) at 1e8 trials. RTX 5060 Ti (`sm_120`, shelly)
+has no Nsight Systems and falls back to `sample_s`. CPU perf trial counts are
+sized per model so in-process sampling is ~2–5 s (`trials.cpu_perf` in the
+manifest). Warm and cold AdaptiveCpp cache times are reported separately;
+comparisons use **warm** numbers.
+
+With `--metric kernel`, the **metric is `gpu_total_ms`** (all compute kernels; memcpy
 excluded), not `basic_event` alone. On das9701 at 1e8, `basic_event` is 81.5 ms
 of 218 ms total GPU kernel time (~37%). A kernel-only gate would miss
 regressions in gates/tally/other, and a 10% `basic_event` regression is only
@@ -182,8 +195,15 @@ with the same recipe and timed alternately on the same host** (lesson from
    resolved that tag to different local config ids
    (`sha256:bb0239034e17…` vs `sha256:26b0c066974e…`). Results JSON records the
    full digest.
-2. Warm both AdaptiveCpp JIT caches (`ACPP_APPDB_DIR` on a per-side volume).
-3. Alternate base/head for N rounds (default 6; CPU A/A uses 10). Drop the first round.
+2. Warm both AdaptiveCpp JIT caches (`ACPP_APPDB_DIR` on a per-side volume)
+   at the timed trial count. Containers run with `ACPP_ADAPTIVITY_LEVEL=1`
+   (the runtime image default of 2 re-JITs for new launch shapes; 1 matches
+   the deployed server; 0 fails with CU:701 on das9701, #18).
+3. Alternate base/head for N rounds (default 6; CPU A/A uses 10), swapping
+   the order every round (A-B, B-A, …) so slow drift does not always land on
+   one side. Profiled runs drop the first round; `--metric sample` keeps all
+   rounds because each container warms up before timing. GPU rounds record
+   the device's other compute processes and utilisation (`round_load`).
 4. CPU: `OMP_NUM_THREADS=8 OMP_PROC_BIND=close OMP_PLACES=cores`,
    `docker --cpuset-cpus 0-7`, `ACPP_VISIBILITY_MASK=omp`. The metric is
    **in-process `fuzzybits.run(..., trials=head_trials)` time after AdaptiveCpp
@@ -196,10 +216,15 @@ with the same recipe and timed alternately on the same host** (lesson from
    `nvprof --print-gpu-summary --profile-child-processes` (volume `pr91-nvprof`
    at `/opt/cuda`, binary `/opt/cuda/cuda/bin/nvprof`); RTX 3070 uses
    `nsys profile --stats=true --trace-fork-before-exec=true` (volume `pr91-data`).
-5. Report median ratio head/base with a bootstrap 95% CI.
+5. Report the paired ratio: the geometric mean of the per-round
+   `head / base` ratios with a 95% Student t interval on the mean log ratio,
+   plus `t` = mean / standard error. Pairing within a round cancels load that
+   hits both sides of that round; the t interval (not a bootstrap) stays
+   honest at 6–12 rounds.
 6. Verdict:
    - **block** only when the CI *lower bound* exceeds the threshold: GPU
-     `gpu_total_ms` **or** `gpu_kernel_ms` `ci_lo > 1.03`. CPU sample
+     `sample_s` (or, with `--metric kernel`, `gpu_total_ms` **or**
+     `gpu_kernel_ms`) `ci_lo > 1.03`. CPU sample
      `ci_lo > 1.05` is computed the same way but is **report-only**
      (`CPU_GATE_BLOCKS = False`, [#124](https://github.com/fuzzybit-org/fuzzybits/issues/124)).
      A point estimate above the threshold with `ci_lo` still below it is
@@ -209,8 +234,14 @@ with the same recipe and timed alternately on the same host** (lesson from
    - **error** if a gated timing is missing or ≤ 0 (never a crash, never
      `block` / `pass`).
    - **pass** otherwise.
-   - **inconclusive** if idle/load guards fail, rather than reporting noise as
-     a regression.
+   - **inconclusive** if idle/load guards fail, or another compute process
+     appears on an exclusive target during the rounds, rather than reporting
+     noise as a regression.
+   - Report-only targets keep the measured verdict in `measured_verdict` and
+     report at most **warn**.
+7. `--attempts 2` repeats the models flagged `block`, `error`, `timeout` or
+   `inconclusive` once; the JSON records `attempts`, `flagged` and
+   `flagged_ids`, and each retried row keeps its `first_attempt`.
 
 ### PR gate (CI)
 
@@ -220,11 +251,27 @@ with the same recipe and timed alternately on the same host** (lesson from
 | job | runner | what | merge? |
 |---|---|---|---|
 | `bench-accuracy` | `fuzzybits-ci` | head image, every `accuracy` model | blocks on \|z\| > 4 (and harness `block`/`error`) |
-| `bench-perf-v100s` | `public-ci` V100S (`sm_70,v100s`, NVML GPU 0) | A/B vs develop runtime image | blocks when `ci_lo > 1.03` (exclusive GPU) |
-| `bench-perf-rtx3070` | `public-ci` RTX 3070 (`sm_86,rtx_3070`, NVML GPU 1) | same; `shared_device: true` | blocks when `ci_lo > 1.03`; co-runs with owner services |
-| `bench-perf-rtx5060ti` | `public-ci` RTX 5060 Ti (`sm_120,rtx_5060ti_8gb`, NVML GPU 0 on shelly) | same; `shared_device` + `report_only` | **report-only**; never blocks. ~0.5 GiB free beside VLLM |
+| `bench-perf-rtx3070` | `public-ci` RTX 3070 (`sm_86,rtx_3070`, NVML GPU 1) | screen: A/B vs develop runtime image, `sample_s`, 6 rounds × 1.5 s, `--attempts 2` | **report-only**; a model flagged in both attempts requires `bench-perf-isolated` |
+| `bench-perf-isolated` | same runner, environment `gpu-isolated` | A/B, `sample_s`, 12 rounds × 1.0 s, exclusive (`rtx3070-isolated`) | runs only after a double flag and a manual approval; blocks when `ci_lo > 1.03` |
+| `bench-perf-v100s` | `public-ci` V100S (`sm_70,v100s`, NVML GPU 0) | A/B, `sample_s`, 6 rounds × 1.5 s | **report-only**; shares the GPU with the live and dev fuzzybits-server |
+| `bench-perf-rtx5060ti` | `public-ci` RTX 5060 Ti (`sm_120,rtx_5060ti_8gb`, NVML GPU 0 on shelly) | same as V100S | **report-only**; ~0.5 GiB free beside VLLM |
 | `bench-perf-cpu` | `fuzzybits-bench` (gateway) | A/B, `cpu_sample_s` | **report-only** (#124) |
-| `bench-summary` | hosted | sticky PR comment + overall verdict | the check to require first |
+| `bench-summary` | hosted | sticky PR comment + overall verdict | the one required check |
+
+Each GPU A/B spends at most `BUDGET_S` seconds timing samples per attempt
+(90 s for the screen and the report-only jobs, 110 s for the isolated run):
+`--seconds` shrinks if `2 × (rounds + 1) × models × seconds` would exceed it.
+Container start-up, sizing and warm-up runs come on top.
+
+**When the screen flags twice.** The PR comment says so, and
+`bench-perf-isolated` waits for approval in the `gpu-isolated` environment.
+Clear the RTX 3070 first (stop parakeet, the old server and any other GPU
+process on GPU 1), then approve. The isolated target refuses to start while
+any other compute process is on the device (`inconclusive`, so the check
+fails), and marks a model `inconclusive` if one appears during its rounds.
+Rerun the job after clearing the GPU. `bench-summary` waits for the isolated
+job, so the PR stays blocked until it passes. If the screen job itself
+fails before writing its JSON, the isolated run is required too.
 
 Fork and Dependabot PRs skip the self-hosted jobs with a notice (push a
 `ci/**` branch for numbers). Docs-only PRs skip accuracy/perf and
@@ -235,19 +282,26 @@ when that tag exists, else `nightly-generic`, pinned by registry digest. Head
 is rebuilt with `docker/runtime.Dockerfile --target runtime` only when product
 paths change (`src/`, `python/`, `cmake/`, `docker/`, …); otherwise head is
 the same digest as base (true A/A). Jobs use `--docker-context default` and
-take `/tmp/gpu-lock-xerxes-{0,1}` and `/tmp/gpu-lock-shelly-0` locally. Indices
+`flock` `/tmp/gpu-lock-xerxes-{0,1}` and `/tmp/gpu-lock-shelly-0` locally; the
+kernel drops the lock when the holder exits, so a cancelled job cannot leave
+it held. The old `mkdir` lock stayed behind when a job was cancelled, and it
+failed outright while a hand-run `flock` had left a plain file at the path;
+that file made `bench-perf-v100s` fail with `inconclusive`. A leftover
+directory from the old scheme still works as a `flock` target. To hold a GPU
+by hand, run `flock /tmp/gpu-lock-xerxes-1 <command>`. Indices
 are **nvidia-smi / NVML / docker `--gpus device=N`**, matching the harness
 table — on xerxes, GPU 0 = Tesla V100S (PCI 42:00.0, lock-0), GPU 1 = RTX 3070
 (PCI 43:00.0, lock-1); on shelly, GPU 0 = RTX 5060 Ti (lock-0). Do not derive
 them from CUDA's default FASTEST_FIRST ordering (the reverse on xerxes).
 V100S / RTX 3070 / RTX 5060 Ti jobs also take GitHub `concurrency` groups
 `gpu-xerxes-v100s` / `gpu-xerxes-3070` / `gpu-shelly-5060ti`
-(`cancel-in-progress: false`) so they queue behind `images.yml` smoke. `rtx3070` is `shared_device: true` in the harness target
-table: the idle guard records foreign GPU processes (name, MiB, utilisation)
-and never refuses because of them. The job still takes `/tmp/gpu-lock-xerxes-1`
-so our benches do not overlap each other. V100S stays exclusive. Shared-device
-results are flagged in the PR comment (`shared GPU, foreign load: …`); a
-block there may be interference — the owner reruns manually.
+(`cancel-in-progress: false`) so they queue behind `images.yml` smoke; the
+isolated job shares `gpu-xerxes-3070`. `v100s`, `rtx3070` and `rtx5060ti` are
+`shared_device: true` in the harness target table: the idle guard records
+foreign GPU processes (name, MiB, utilisation) and never refuses because of
+them. The lock still keeps our benches from overlapping each other.
+Shared-device results are flagged in the PR comment (`shared GPU, foreign
+load: …`). `rtx3070-isolated` is the only exclusive GPU target.
 
 `rtx5060ti` (shelly-1, NVML GPU 0, lock `/tmp/gpu-lock-shelly-0`, concurrency
 `gpu-shelly-5060ti`) is **report-only** and `shared_device`. VLLM and an owner
@@ -258,13 +312,12 @@ the harness records `unsupported` and does not block. Leave
 `bench-perf-rtx5060ti` optional.
 
 `workflow_dispatch` accepts `inject_regression` (`scale:1.10`, `scale:1.05`,
-`repeat`) to confirm the GPU jobs block. Do not make `bench-perf-cpu` a
-blocking required check.
+`repeat`) to confirm the screen flags twice and the isolated run blocks.
 
-Recommended required checks once green: **`bench-summary`**, then
-`bench-accuracy`, `bench-perf-v100s`, `bench-perf-rtx3070`. Leave
-`bench-perf-cpu` and `bench-perf-rtx5060ti` optional. Do not require
-`windows-generic` (#108).
+Require **`bench-summary`** only. It fails when accuracy fails, when images
+fail, or when the screen flagged twice and `bench-perf-isolated` did not
+pass. Requiring the GPU jobs themselves would block on report-only noise. Do
+not require `windows-generic` (#108).
 
 ### A/A noise (nightly-generic, identical images)
 
@@ -343,17 +396,18 @@ accuracy pass. In A/B, **head timeout / base ok is a regression
 
 | target | host (docker context) | device | time? |
 |---|---|---|---|
-| `v100s` | xerxes `--gpus device=0` (NVML GPU 0, PCI 42:00.0) | Tesla V100S | yes; exclusive; take `/tmp/gpu-lock-xerxes-0` |
-| `rtx3070` | xerxes `--gpus device=1` (NVML GPU 1, PCI 43:00.0) | RTX 3070 | yes; shared (`shared_device`); take `/tmp/gpu-lock-xerxes-1` |
+| `v100s` | xerxes `--gpus device=0` (NVML GPU 0, PCI 42:00.0) | Tesla V100S | yes; shared with live/dev fuzzybits-server + **report-only**; take `/tmp/gpu-lock-xerxes-0` |
+| `rtx3070` | xerxes `--gpus device=1` (NVML GPU 1, PCI 43:00.0) | RTX 3070 | yes; shared (`shared_device`) + **report-only** screen; take `/tmp/gpu-lock-xerxes-1` |
+| `rtx3070-isolated` | same device as `rtx3070` | RTX 3070 | yes; **exclusive**, blocking; take `/tmp/gpu-lock-xerxes-1` |
 | `rtx5060ti` | shelly `--gpus device=0` (NVML GPU 0, sm_120) | RTX 5060 Ti 8 GB | yes; shared + **report-only**; take `/tmp/gpu-lock-shelly-0` |
 | `cpu` | gateway | i7-9700, 8 cores | yes |
 | — | xerxes CPU | noisy (Tdarr/Plex) | **no** |
 | — | shelly CPU, bubs | CI (`fuzzybits-ci`) | **no** CPU timing |
 
-GPU jobs take the lock. Exclusive targets (V100S) wait for idle compute apps
-and fail `inconclusive` if the device stays busy. Shared targets (`rtx3070`,
-`rtx5060ti`) record foreign processes and time anyway. Do not time GPU work
-without the lock.
+GPU jobs take the lock. The exclusive target (`rtx3070-isolated`) waits for
+idle compute apps and fails `inconclusive` if the device stays busy. Shared
+targets (`v100s`, `rtx3070`, `rtx5060ti`) record foreign processes and time
+anyway. Do not time GPU work without the lock.
 
 ### Injected regression (acceptance)
 

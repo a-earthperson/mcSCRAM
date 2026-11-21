@@ -167,22 +167,6 @@ jobs:
           echo "driver=${driver}" >> "${GITHUB_OUTPUT}"
           echo "driver=${driver:-none}"
 
-      - name: Take GPU lock
-        if: env.LOCK_PATH != ''
-        run: |
-          set -euo pipefail
-          lock="${LOCK_PATH}"
-          for i in $(seq 1 120); do
-            if mkdir "${lock}" 2>/dev/null; then
-              echo "acquired ${lock}"
-              exit 0
-            fi
-            echo "waiting for ${lock} (${i})"
-            sleep 15
-          done
-          echo "could not acquire ${lock}" >&2
-          exit 1
-
       - name: Run accuracy + perf
         env:
           IMAGE: ${{ steps.meta.outputs.image }}
@@ -192,11 +176,13 @@ jobs:
           RUNNER_NAME: ${{ runner.name }}
           OUT_DIR: ${{ runner.temp }}/bench-history
           DOCKER_CONTEXT: default
-        run: bash scripts/ci/bench-history-run.sh
-
-      - name: Release GPU lock
-        if: always() && env.LOCK_PATH != ''
-        run: rmdir "${LOCK_PATH}" || true
+        # flock holds the GPU lock for the run; the kernel releases it if the job is cancelled.
+        run: |
+          set -euo pipefail
+          if [[ -n "${LOCK_PATH}" ]]; then
+            exec flock -w 1800 "${LOCK_PATH}" bash scripts/ci/bench-history-run.sh
+          fi
+          exec bash scripts/ci/bench-history-run.sh
 
       - name: Upload merged results
         if: always()
