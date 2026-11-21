@@ -59,7 +59,7 @@ case "${cmd}" in
     echo "build product targets (${preset})"
     native_mod="_native_generic"
     case "${preset}" in
-      *sm70*) native_mod="_native_cuda_sm70" ;;
+      cuda-sm[0-9]*) native_mod="_native_${preset//-/_}" ;;
     esac
     cmake --build --preset "${preset}" --target scram-cli fzb mc "${native_mod}"
     ;;
@@ -73,7 +73,7 @@ case "${cmd}" in
     echo "build product targets (${preset})"
     native_mod="_native_generic"
     case "${preset}" in
-      *sm70*) native_mod="_native_cuda_sm70" ;;
+      cuda-sm[0-9]*) native_mod="_native_${preset//-/_}" ;;
     esac
     cmake --build --preset "${preset}" --target scram-cli fzb mc "${native_mod}"
     ;;

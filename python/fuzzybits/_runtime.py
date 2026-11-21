@@ -11,13 +11,14 @@ import ctypes
 import importlib
 import importlib.util
 import os
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Literal
 
 Backend = Literal["auto", "cuda", "omp", "metal"]
-Variant = Literal["auto", "generic", "cuda-sm70"]
+Variant = Literal["auto", "generic", "cuda-sm70", "cuda-sm86", "cuda-sm120"]
 
 _NATIVE: ModuleType | None = None
 _INITIALIZED = False
@@ -26,7 +27,7 @@ _VARIANT: str | None = None
 _DEVICE: str | None = None
 
 _GENERIC_MOD = "_native_generic"
-_CUDA_SM70_MOD = "_native_cuda_sm70"
+_CUDA_SM_MOD = re.compile(r"^_native_cuda_sm(\d+)(?:[.].*)?\.(?:so|pyd|dylib)$")
 
 
 def _cache_dir() -> Path:
@@ -125,9 +126,14 @@ def _cuda_compute_capabilities() -> list[tuple[int, int, int]]:
     return out
 
 
+def cuda_sm_versions() -> set[int]:
+    """Compute capabilities of visible CUDA devices as ``major * 10 + minor`` (7.0 → 70)."""
+    return {major * 10 + minor for _, major, minor in _cuda_compute_capabilities()}
+
+
 def has_sm70_device() -> bool:
     """True if at least one visible CUDA device reports compute capability 7.0."""
-    return any(major == 7 and minor == 0 for _, major, minor in _cuda_compute_capabilities())
+    return 70 in cuda_sm_versions()
 
 
 def has_cuda_device() -> bool:
@@ -138,15 +144,15 @@ def _discover_installed() -> dict[str, str]:
     """Map variant name → import path for native extensions sitting in this package."""
     pkg_dir = Path(__file__).resolve().parent
     found: dict[str, str] = {}
-    for variant, short in (("generic", _GENERIC_MOD), ("cuda-sm70", _CUDA_SM70_MOD)):
-        so_present = (
-            any(pkg_dir.glob(f"{short}*.so"))
-            or any(pkg_dir.glob(f"{short}*.pyd"))
-            or any(pkg_dir.glob(f"{short}*.dylib"))
-        )
-        spec = importlib.util.find_spec(f"fuzzybits.{short}")
-        if so_present or spec is not None:
-            found[variant] = f"fuzzybits.{short}"
+    generic_present = any(
+        any(pkg_dir.glob(f"{_GENERIC_MOD}*.{ext}")) for ext in ("so", "pyd", "dylib")
+    )
+    if generic_present or importlib.util.find_spec(f"fuzzybits.{_GENERIC_MOD}") is not None:
+        found["generic"] = f"fuzzybits.{_GENERIC_MOD}"
+    for path in sorted(pkg_dir.iterdir()):
+        match = _CUDA_SM_MOD.match(path.name)
+        if match:
+            found[f"cuda-sm{match.group(1)}"] = f"fuzzybits._native_cuda_sm{match.group(1)}"
     return found
 
 
@@ -154,19 +160,21 @@ def _select_variant(requested: str, installed: dict[str, str]) -> str:
     if not installed:
         raise ImportError(
             "no fuzzybits native extension found (expected fuzzybits._native_generic "
-            "and/or fuzzybits._native_cuda_sm70). Reinstall the wheel."
+            "and/or fuzzybits._native_cuda_smNN). Reinstall the wheel."
         )
-    if requested == "generic":
-        if "generic" not in installed:
-            raise ImportError("fuzzybits generic variant is not installed")
-        return "generic"
-    if requested in {"cuda-sm70", "cuda_sm70"}:
-        if "cuda-sm70" not in installed:
-            raise ImportError("fuzzybits cuda-sm70 variant is not installed")
-        return "cuda-sm70"
-    # auto: cuda-sm70 if installed *and* an sm_70 device is present, else generic.
-    if "cuda-sm70" in installed and has_sm70_device():
-        return "cuda-sm70"
+    requested = requested.replace("_", "-")
+    if requested != "auto":
+        if requested not in installed:
+            raise ImportError(f"fuzzybits {requested} variant is not installed")
+        return requested
+    # auto: a cuda-smNN extension whose architecture matches a visible device,
+    # else generic (SSCP JIT runs on any device).
+    cuda_variants = [name for name in installed if name.startswith("cuda-sm")]
+    if cuda_variants:
+        visible = cuda_sm_versions()
+        for name in cuda_variants:
+            if int(name.removeprefix("cuda-sm")) in visible:
+                return name
     if "generic" in installed:
         return "generic"
     return next(iter(installed))
@@ -221,9 +229,10 @@ def init(
         CUDA device ordinal or UUID forwarded to ``CUDA_VISIBLE_DEVICES``.
         ``FUZZYBITS_DEVICE`` is consulted when this is ``None``.
     variant:
-        Compile-time wheel variant: ``"generic"``, ``"cuda-sm70"``, or
-        ``"auto"``. Auto picks cuda-sm70 only when that extension is installed
-        *and* an sm_70 GPU is present; otherwise generic. Overrides
+        Compile-time wheel variant: ``"generic"``, ``"cuda-sm70"``,
+        ``"cuda-sm86"``, ``"cuda-sm120"``, or ``"auto"``. Auto picks a
+        ``cuda-smNN`` extension only when it is installed *and* a GPU of that
+        compute capability is visible; otherwise generic. Overrides
         ``FUZZYBITS_VARIANT`` / ``MCSCRAM_VARIANT``.
     """
     global _NATIVE, _INITIALIZED, _BACKEND, _VARIANT, _DEVICE

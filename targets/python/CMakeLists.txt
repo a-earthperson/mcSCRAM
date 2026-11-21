@@ -1,9 +1,9 @@
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # Wheels (and non-wheel builds) ship one distinctly named extension per variant
-# so generic and cuda-sm70 can coexist on sys.path (python/fuzzybits/_runtime.py).
-if(ACPP_TARGETS MATCHES "cuda:sm_70")
-  set(FUZZYBITS_NATIVE_MODULE _native_cuda_sm70)
+# so generic and cuda-smNN can coexist on sys.path (python/fuzzybits/_runtime.py).
+if(ACPP_TARGETS MATCHES "^cuda:sm_([0-9]+)$")
+  set(FUZZYBITS_NATIVE_MODULE _native_cuda_sm${CMAKE_MATCH_1})
 else()
   set(FUZZYBITS_NATIVE_MODULE _native_generic)
 endif()

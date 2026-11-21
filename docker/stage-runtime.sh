@@ -2,9 +2,9 @@
 # Stage a slim runtime rootfs from a toolchain+product builder.
 # Env:
 #   DEST              staging prefix (default /opt/runtime-root)
-#   INCLUDE_SSCP_JIT  1 = copy LLVM/SSCP pieces (generic); 0 = SMCP-only (cuda-sm70)
+#   INCLUDE_SSCP_JIT  1 = copy LLVM/SSCP pieces (generic); 0 = SMCP-only (cuda-smNN)
 #   CLANG_VERSION     LLVM major (default 20)
-#   CMAKE_PRESET      build dir name under /src/build (generic|cuda-sm70)
+#   CMAKE_PRESET      build dir name under /src/build (generic|cuda-sm70|cuda-sm86|cuda-sm120)
 set -euo pipefail
 
 DEST="${DEST:-/opt/runtime-root}"

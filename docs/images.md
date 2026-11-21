@@ -43,12 +43,23 @@ plus:
 Runs as non-root `coder` (uid 1000) with writable JIT cache
 `ACPP_APPDB_DIR=/home/coder/.cache/fuzzybits/acpp`. `MALLOC_TYPE=malloc`.
 
-Size budget: **generic ≤ ~4 GB**, **cuda-sm70 ≤ ~3.5 GB** (docker uncompressed).
+Size budget: **generic ≤ ~4 GB**, **cuda-smNN ≤ ~3.5 GB** (docker uncompressed).
 
 ## Tags
 
 Let `SHA12` be the first 12 hex chars of the fuzzybits git SHA. Variant is
-`generic` (default, SSCP) or `cuda12.8-sm70` (`ACPP_TARGETS=cuda:sm_70`).
+`generic` (default, SSCP JIT, any NVIDIA GPU or CPU) or one of the CUDA AOT
+builds (SMCP SASS + embedded PTX, CUDA only, no SSCP):
+
+| variant | `ACPP_TARGETS` | GPUs |
+|---|---|---|
+| `cuda12.8-sm70` | `cuda:sm_70` | Volta (V100, V100S) |
+| `cuda12.8-sm86` | `cuda:sm_86` | Ampere consumer (RTX 30xx, A10, A40) |
+| `cuda12.8-sm120` | `cuda:sm_120` | Blackwell consumer (RTX 50xx) |
+
+Every variant is published on the same triggers (nightly, `develop`, `ci/**`
+and release tags). `fuzzybits-server` publishes the same four variants on top
+of the matching runtime image; deploys use `cuda12.8-sm70`.
 
 | tag | when | mutability |
 |---|---|---|
@@ -68,8 +79,10 @@ Pre-merge smoke on `ci/images` pulls `ci-<sha12>-<variant>` so it never races a 
 # default generic (after a develop publish)
 docker pull ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic
 
-# Volta AOT
+# Volta / Ampere / Blackwell AOT
 docker pull ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-cuda12.8-sm70
+docker pull ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-cuda12.8-sm86
+docker pull ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-cuda12.8-sm120
 
 # pin a SHA
 docker pull ghcr.io/fuzzybit-org/fuzzybits-runtime:sha-<sha12>-generic
@@ -90,8 +103,11 @@ on xerxes):
 | host GPU | `--gpus` | image variant |
 |---|---|---|
 | Tesla V100S (`sm_70`) | `device=0` | `cuda12.8-sm70` **and** `generic` |
-| RTX 3070 (`sm_86`) | `device=1` | `generic` |
-| RTX 5060 Ti (`sm_120`, shelly-1) | `device=0` | `generic` |
+| RTX 3070 (`sm_86`) | `device=1` | `cuda12.8-sm86` **and** `generic` |
+| RTX 5060 Ti (`sm_120`, shelly-1) | `device=0` | `cuda12.8-sm120` **and** `generic` |
+
+The smoke job on each GPU runs both of its variants. SMCP-only images skip the
+OpenMP smoke: they carry no host kernels.
 
 ```bash
 IMG=ghcr.io/fuzzybit-org/fuzzybits-runtime:nightly-generic

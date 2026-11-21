@@ -18,10 +18,13 @@ Presets require CMake ≥ 3.25 (schema version 6). `cmake_minimum_required` in
 | **`generic`** (default) | Linux x86_64 (+ aarch64 later) | `generic` (SSCP JIT) | CUDA, OpenMP CPU | covers sm_86 / sm_120 via runtime JIT |
 | **`windows-generic`** | Windows x86_64 | `generic` (SSCP JIT) | CUDA, OpenMP CPU | GitHub-hosted `windows-2025` ([#76](https://github.com/fuzzybit-org/fuzzybits/issues/76)). AdaptiveCpp linked into LLVM. CUDA execution untested until a self-hosted Windows+NVIDIA runner exists. |
 | **`cuda-sm70`** | Linux x86_64 | `cuda:sm_70` (SMCP, clang CUDA), SASS + PTX | CUDA | Volta-specialised AOT |
+| **`cuda-sm86`** | Linux x86_64 | `cuda:sm_86` (SMCP, clang CUDA), SASS + PTX | CUDA | Ampere consumer AOT (RTX 30xx, A10, A40) |
+| **`cuda-sm120`** | Linux x86_64 | `cuda:sm_120` (SMCP, clang CUDA), SASS + PTX | CUDA | Blackwell consumer AOT (RTX 50xx); needs CUDA ≥ 12.8 |
 | **`metal`** | macOS 26, Apple Silicon | `generic` + Metal backend (experimental) | Metal, OpenMP CPU | hosted `macos-metal` + `macos-wheel` in [macos.yml](../.github/workflows/macos.yml). Device-code gaps: [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30) |
 
-No specialisation for sm_86 / sm_120. Use `generic` there (see
-[backend-per-architecture](#backend-per-architecture)).
+`generic` still runs on sm_86 and sm_120 through runtime JIT (see
+[backend-per-architecture](#backend-per-architecture)); `cuda-sm86` and
+`cuda-sm120` are the AOT alternatives, built and published like `cuda-sm70`.
 
 There is also a `debug` preset: generic SSCP, `CMAKE_BUILD_TYPE=Debug`,
 `-march=native`, `ACPP_DEBUG_LEVEL=4`.
@@ -36,6 +39,8 @@ invoked directly.
 | `generic` | `generic` | `malloc` | Release | ON | `OPTIMIZE_FOR_NATIVE=OFF` |
 | `windows-generic` | `generic` | `malloc` | Release | ON | Windows-only; clang targeting the MSVC ABI; same cache as `generic` |
 | `cuda-sm70` | `cuda:sm_70` | `malloc` | Release | ON | `ACPP_USE_ACCELERATED_CPU=off`, `ACPP_STDPAR=off`, `ACPP_EXTRA_COMPILE_OPTIONS=--cuda-include-ptx=sm_70`; Linux-only |
+| `cuda-sm86` | `cuda:sm_86` | `malloc` | Release | ON | same as `cuda-sm70` with `sm_86` |
+| `cuda-sm120` | `cuda:sm_120` | `malloc` | Release | ON | same as `cuda-sm70` with `sm_120` |
 | `metal` | `generic` | `malloc` | Release | ON | Darwin-only (Apple Silicon required at run time) |
 | `metal-cpu` | (test preset) | | | | `ctest --preset metal-cpu`: same metal build, `ACPP_VISIBILITY_MASK=omp` |
 | `debug` | `generic` | `malloc` | Debug | ON | `OPTIMIZE_FOR_NATIVE=ON`, `ACPP_DEBUG_LEVEL=4` |
@@ -46,7 +51,7 @@ Option names (from `CMakeLists.txt` / `cmake/Find_adaptivecpp.cmake`):
 |---|---|
 | `ACPP_TARGETS` | AdaptiveCpp compilation target (`generic`, `cuda:sm_70`, …) |
 | `MALLOC_TYPE` | `malloc` (default), `tcmalloc`, `jemalloc` |
-| `BUILD_PYTHON_BINDINGS` | native `fuzzybits._native_generic` / `_native_cuda_sm70` extension |
+| `BUILD_PYTHON_BINDINGS` | native `fuzzybits._native_generic` / `_native_cuda_smNN` extension (`NN` from `ACPP_TARGETS=cuda:sm_NN`) |
 | `BUILD_TESTS` | test suite (ON in CMakeLists; the `add_subdirectory(tests)` block is commented out until [#31](https://github.com/fuzzybit-org/fuzzybits/issues/31)) |
 | `WITH_PROFILE` | `-pg` instrumentation |
 | `WITH_COVERAGE` | coverage instrumentation |

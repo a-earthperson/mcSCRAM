@@ -52,16 +52,20 @@ Variants follow [#29](https://github.com/fuzzybit-org/fuzzybits/issues/29):
 
 | wheel | native module | AdaptiveCpp flow | when to use |
 |---|---|---|---|
-| `generic` (default) | `fuzzybits._native_generic` | SSCP JIT | sm_86 / sm_120 / CPU |
+| `generic` (default) | `fuzzybits._native_generic` | SSCP JIT | any NVIDIA GPU / CPU |
 | `cuda-sm70` | `fuzzybits._native_cuda_sm70` | clang CUDA SMCP AOT + embedded PTX | Volta (V100) |
+| `cuda-sm86` | `fuzzybits._native_cuda_sm86` | clang CUDA SMCP AOT + embedded PTX | Ampere consumer (RTX 30xx) |
+| `cuda-sm120` | `fuzzybits._native_cuda_sm120` | clang CUDA SMCP AOT + embedded PTX | Blackwell consumer (RTX 50xx) |
 
 macOS Metal is an experimental extra wheel ([#87](https://github.com/fuzzybit-org/fuzzybits/issues/87));
 `backend="metal"` is accepted and should raise a Python exception until
 [#30](https://github.com/fuzzybit-org/fuzzybits/issues/30) lands.
 
 Import selection (override with `fuzzybits.init(variant=...)` or
-`FUZZYBITS_VARIANT`): **cuda-sm70** if that extension is installed *and* an
-sm_70 device is present, otherwise **generic**.
+`FUZZYBITS_VARIANT`): a **cuda-smNN** extension if it is installed *and* a
+device of that compute capability is visible (`fuzzybits.cuda_sm_versions()`),
+otherwise **generic**. Only the runtime images ship the `cuda-smNN`
+extensions; PyPI carries the generic wheel.
 
 This phase ships one variant per wheel under the same distribution name, so
 pip will replace one with the other. The import machinery still auto-selects
