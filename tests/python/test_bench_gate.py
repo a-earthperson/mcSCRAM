@@ -29,6 +29,7 @@ from benchmarks.harness.cli import (  # noqa: E402
 from benchmarks.harness.stats import paired_log_ratio_ci, t975  # noqa: E402
 from benchmarks.harness.guards import (  # noqa: E402
     GuardError,
+    _display_name,
     acquire_lock,
     format_foreign_load,
     release_lock,
@@ -294,6 +295,14 @@ def test_format_foreign_load_parakeet():
         "shared GPU, foreign load: parakeet 3.0 GiB, util 14%"
     )
     assert shared_device_note({"shared_device": False, "load_before": snap}) is None
+
+
+def test_display_name_skips_interpreters_and_inline_code():
+    spawn = "/app/server/.venv/bin/python3 -c from multiprocessing.spawn import spawn_main"
+    assert _display_name("/app/server/.venv/bin/python3", "169672", spawn) == "server"
+    assert _display_name("[Not Found]", "7", "python3 -c import fuzzybits") == "pid 7"
+    assert _display_name("python3", "8", "python3 -m vllm.entrypoints.api_server") == "vllm.entrypoints.api_server"
+    assert _display_name("/app/parakeet", "15727") == "parakeet"
 
 
 def test_shared_device_records_foreign_load_and_does_not_refuse(monkeypatch):

@@ -100,8 +100,16 @@ def _display_name(process_name: str, pid: str, cmdline: str = "") -> str:
     skip = {"", "[not found]", "[n/a]", "n/a", "python", "python3", "python3.12", "bash", "sh"}
     for source in (process_name, cmdline):
         for token in str(source).split():
-            base = Path(token).name.strip()
-            if base.lower() not in skip and not base.startswith("-"):
+            if token == "-c":
+                break  # the rest is inline code
+            path = Path(token)
+            base = path.name.strip()
+            if base.lower() in skip:
+                # /app/server/.venv/bin/python3 -> "server"
+                if ".venv" in path.parts and path.parts.index(".venv") >= 2:
+                    return path.parts[path.parts.index(".venv") - 1]
+                continue
+            if not base.startswith("-"):
                 return base
     return f"pid {pid}" if pid else "unknown"
 
