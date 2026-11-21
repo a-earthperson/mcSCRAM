@@ -34,9 +34,12 @@
 #include "pdag.h"
 
 #include <sycl/sycl.hpp>
+#include <hipSYCL/runtime/settings.hpp>
 
 #include <cstdint>
+#include <cstdlib>
 #include <exception>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -73,8 +76,28 @@ inline std::string &sycl_async_error_slot() {
     return g_sycl_async_error;
 }
 
+/// AdaptiveCpp reads ACPP_VISIBILITY_MASK once, when the __acpp_register_hcf
+/// static initializers run before main(). A mask set later (fzb --backend,
+/// runtime::apply_backend_mask) therefore filters nothing, and the default
+/// selector picks any loaded backend. Re-apply the mask's backend list when
+/// the queue is created (per-device conditions such as `cuda:1` are not
+/// re-applied). A mask naming no backend this AdaptiveCpp knows (`metal` on
+/// v25.10) selects nothing rather than falling back to the default device.
+inline int visibility_mask_selector(const sycl::device &device) {
+    const char *env = std::getenv("ACPP_VISIBILITY_MASK");
+    if (env != nullptr && *env != '\0') {
+        hipsycl::rt::visibility_mask_t mask;
+        std::istringstream in{env};
+        in >> mask;
+        if (mask.find(device.get_backend()) == mask.end()) {
+            return -1;
+        }
+    }
+    return sycl::default_selector_v(device);
+}
+
 inline sycl::queue make_throwing_sycl_queue() {
-    return sycl::queue{[](sycl::exception_list errors) {
+    return sycl::queue{visibility_mask_selector, [](sycl::exception_list errors) {
         if (errors.empty()) {
             return;
         }
@@ -275,7 +298,7 @@ class layer_manager {
     std::vector<kernel_dependency_edge> execution_dependency_edges_;
 
     /// @brief Map from node index to allocated device-side tally event structures
-    std::unordered_map<index_t_, event::tally<bitpack_t_> *> allocated_tally_events_by_index_;
+    std::unordered_map<index_t_, event::device_tally<bitpack_t_> *> allocated_tally_events_by_index_;
     
     /// @brief Map from node index to allocated device-side basic event structures
     std::unordered_map<index_t_, event::basic_event<prob_t_, bitpack_t_> *> allocated_basic_events_by_index_;

@@ -31,8 +31,22 @@ inline std::string csv_string(const double &v) {
     return oss.str();
 }
 
-inline std::string csv_string(const char *s) { return std::string{s}; }
-inline std::string csv_string(const std::string &s) { return s; }
+// RFC 4180: device strings (e.g. Metal's info::device::profile) contain commas.
+inline std::string csv_string(const std::string &s) {
+    if (s.find_first_of(",\"\r\n") == std::string::npos) {
+        return s;
+    }
+    std::string out;
+    out.reserve(s.size() + 2);
+    out.push_back('"');
+    for (const char c : s) {
+        if (c == '"') out.push_back('"');
+        out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
+}
+inline std::string csv_string(const char *s) { return csv_string(std::string{s}); }
 
 /**
  * @brief Generate a timestamp string in YYYYMMDD_HHMMSS format.

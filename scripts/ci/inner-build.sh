@@ -83,6 +83,8 @@ case "${cmd}" in
     cmake --build --preset "${preset}"
     ;;
   ctest-omp)
+    # The compile-fail tests build through CMAKE_CXX_COMPILER_LAUNCHER=ccache.
+    ensure_ccache
     echo "ctest --preset ${preset} (OpenMP, quarantine excluded)"
     export ACPP_VISIBILITY_MASK="${ACPP_VISIBILITY_MASK:-omp}"
     export ACPP_DEBUG_LEVEL="${ACPP_DEBUG_LEVEL:-0}"
@@ -90,6 +92,7 @@ case "${cmd}" in
     ctest --preset "${preset}" --output-on-failure --no-tests=error
     ;;
   ctest-mc)
+    ensure_ccache
     echo "ctest -L mc ACPP_VISIBILITY_MASK=cuda (${preset})"
     export ACPP_VISIBILITY_MASK=cuda
     export ACPP_DEBUG_LEVEL="${ACPP_DEBUG_LEVEL:-0}"

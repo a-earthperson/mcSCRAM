@@ -40,8 +40,9 @@ class InvalidPcfbError : public RuntimeError {
 struct RunOptions {
   std::uint64_t trials = 0;
   int seed = 372;
-  /// "cuda", "omp", or empty (AdaptiveCpp default). Applied via
-  /// ACPP_VISIBILITY_MASK before the first sycl::queue is constructed.
+  /// "cuda", "metal", "omp", or empty (AdaptiveCpp default). Applied via
+  /// ACPP_VISIBILITY_MASK, which make_throwing_sycl_queue() reads at queue
+  /// construction.
   std::string backend;
 };
 

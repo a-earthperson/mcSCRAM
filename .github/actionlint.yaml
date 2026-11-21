@@ -1,9 +1,4 @@
 # Labels on org runners enabled for this repo (gpu-runners + Default).
-# macos.yml still trips shellcheck style; ignore those hits.
-paths:
-  .github/workflows/macos.yml:
-    ignore:
-      - "shellcheck reported issue"
 self-hosted-runner:
   labels:
     - nvidia

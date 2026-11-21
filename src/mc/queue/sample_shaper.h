@@ -70,7 +70,7 @@ namespace scram::log::sample_shaper {
 
 /// Hard ceiling on a single device allocation we are willing to request, in bytes.
 /// The realized budget is min(this, device max_mem_alloc_size).
-static constexpr std::size_t MAX_ALLOCATABLE_DEVICE_BYTES = 256ULL * 1024ULL * 1024ULL;
+static constexpr std::size_t MAX_ALLOCATABLE_DEVICE_BYTES = 1024ULL * 1024ULL * 1024ULL;
 
 namespace scram::mc::queue {
 template<typename bitpack_t_>

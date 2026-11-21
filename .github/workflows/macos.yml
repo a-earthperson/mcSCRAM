@@ -107,32 +107,10 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
-        run: |
-          set -euo pipefail
-          # llvm@20 is preinstalled on macos-26; still ensure kegs exist.
-          # Skip `brew update` (flaky, slow). AdaptiveCpp's own macos-metal.yml
-          # uses llvm@20 + lld@20 + libomp.
-          brew install llvm@20 libomp ninja ccache coreutils cmake
-          brew install lld@20 || brew install lld || true
-          LLVM_PREFIX="$(brew --prefix llvm@20)"
-          OMP_PREFIX="$(brew --prefix libomp)"
-          LLD_BIN=""
-          for c in \
-              "$(brew --prefix lld@20 2>/dev/null)/bin/ld64.lld" \
-              "$(brew --prefix lld 2>/dev/null)/bin/ld64.lld" \
-              "${LLVM_PREFIX}/bin/ld64.lld"; do
-            if [[ -x "${c}" ]]; then
-              LLD_BIN="${c}"
-              break
-            fi
-          done
-          test -n "${LLD_BIN}"
-          echo "${LLVM_PREFIX}/bin" >> "${GITHUB_PATH}"
-          echo "LLVM_PREFIX=${LLVM_PREFIX}" >> "${GITHUB_ENV}"
-          echo "OMP_PREFIX=${OMP_PREFIX}" >> "${GITHUB_ENV}"
-          echo "ACPP_LLD_PATH=${LLD_BIN}" >> "${GITHUB_ENV}"
-          ccache -z || true
-          df -h /
+        # llvm@20 is preinstalled on macos-26; still ensure kegs exist.
+        # Skip `brew update` (flaky, slow). AdaptiveCpp's own macos-metal.yml
+        # uses llvm@20 + lld@20 + libomp.
+        run: bash scripts/ci/macos-brew-deps.sh
 
       - name: Cache AdaptiveCpp install
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
@@ -161,96 +139,14 @@ jobs:
 
       - name: Build Boost 1.89
         if: steps.boost-cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          start=$(date +%s)
-          mkdir -p "${BOOST_PREFIX}" "${RUNNER_TEMP}/boost"
-          curl -fsSL -o "${RUNNER_TEMP}/boost/boost.tar.gz" "${BOOST_URL}"
-          echo "${BOOST_SHA256}  ${RUNNER_TEMP}/boost/boost.tar.gz" | shasum -a 256 -c
-          mkdir -p "${RUNNER_TEMP}/boost/src"
-          tar -xzf "${RUNNER_TEMP}/boost/boost.tar.gz" -C "${RUNNER_TEMP}/boost/src" --strip-components=1
-          cmake -S "${RUNNER_TEMP}/boost/src" -B "${RUNNER_TEMP}/boost/build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="${BOOST_PREFIX}" \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DBOOST_INCLUDE_LIBRARIES="${BOOST_INCLUDE_LIBRARIES}"
-          cmake --build "${RUNNER_TEMP}/boost/build"
-          cmake --install "${RUNNER_TEMP}/boost/build"
-          mkdir -p "${BOOST_PREFIX}/include/boost"
-          cp -a "${RUNNER_TEMP}/boost/src/libs/dll/include/boost/dll.hpp" \
-            "${BOOST_PREFIX}/include/boost/dll.hpp"
-          cp -a "${RUNNER_TEMP}/boost/src/libs/dll/include/boost/dll" \
-            "${BOOST_PREFIX}/include/boost/dll"
-          rm -rf "${RUNNER_TEMP}/boost"
-          echo "boost_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
-          df -h /
+        run: bash scripts/ci/macos-boost-build.sh
 
       - name: Fetch metal-cpp
-        run: |
-          set -euo pipefail
-          if [[ ! -f "${METAL_CPP_DIR}/Metal/Metal.hpp" ]]; then
-            rm -rf "${METAL_CPP_DIR}"
-            git clone --depth 1 --branch "${METAL_CPP_VERSION}" \
-              https://github.com/apple/metal-cpp.git "${METAL_CPP_DIR}"
-          fi
-          test -f "${METAL_CPP_DIR}/Metal/Metal.hpp"
-          git -C "${METAL_CPP_DIR}" rev-parse HEAD
+        run: bash scripts/ci/macos-metal-cpp-fetch.sh
 
       - name: Build AdaptiveCpp (Metal + OpenMP SSCP)
         id: acpp-build
-        run: |
-          set -euo pipefail
-          start=$(date +%s)
-          acpp_ok=0
-          if [[ -x "${ACPP_PREFIX}/bin/acpp-info" ]]; then
-            if DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}" \
-                 "${ACPP_PREFIX}/bin/acpp-info" >/dev/null 2>&1; then
-              acpp_ok=1
-            fi
-          fi
-          if [[ "${acpp_ok}" -eq 1 ]]; then
-            echo "AdaptiveCpp cache hit at ${ACPP_PREFIX}"
-            echo "cache=hit" >> "${GITHUB_OUTPUT}"
-            echo "acpp_build_seconds=0" >> "${GITHUB_ENV}"
-            exit 0
-          fi
-          echo "cache=miss" >> "${GITHUB_OUTPUT}"
-          rm -rf "${ACPP_PREFIX}"
-          mkdir -p "${ACPP_PREFIX}" "${RUNNER_TEMP}/acpp"
-          git clone --filter=blob:none "${ACPP_REPO}" "${RUNNER_TEMP}/acpp/src"
-          git -C "${RUNNER_TEMP}/acpp/src" fetch --depth 1 origin "${ACPP_REF_METAL}"
-          git -C "${RUNNER_TEMP}/acpp/src" checkout --detach FETCH_HEAD
-          got=$(git -C "${RUNNER_TEMP}/acpp/src" rev-parse HEAD)
-          test "${got}" = "${ACPP_REF_METAL}"
-          cmake -S "${RUNNER_TEMP}/acpp/src" -B "${RUNNER_TEMP}/acpp/build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=/usr/bin/clang \
-            -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCLANG_EXECUTABLE_PATH="${LLVM_PREFIX}/bin/clang++" \
-            -DLLVM_DIR="${LLVM_PREFIX}/lib/cmake/llvm" \
-            -DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)" \
-            -DCMAKE_INSTALL_PREFIX="${ACPP_PREFIX}" \
-            -DWITH_OPENCL_BACKEND=OFF \
-            -DWITH_CUDA_BACKEND=OFF \
-            -DWITH_ROCM_BACKEND=OFF \
-            -DWITH_LEVEL_ZERO_BACKEND=OFF \
-            -DWITH_METAL_BACKEND=ON \
-            -DACPP_COMPILER_FEATURE_PROFILE=full \
-            -DACPP_LLD_PATH="${ACPP_LLD_PATH}" \
-            -DMETAL_INCLUDE_DIR="${METAL_CPP_DIR}" \
-            -DSEQUENTIAL_LINK_LINE="${OMP_PREFIX}/lib/libomp.dylib" \
-            "-DOMP_LINK_LINE=-fopenmp ${OMP_PREFIX}/lib/libomp.dylib -L${OMP_PREFIX}/lib/" \
-            "-DOMP_CXX_FLAGS=-fopenmp -D_ENABLE_EXTENDED_ALIGNED_STORAGE -I${OMP_PREFIX}/include"
-          cmake --build "${RUNNER_TEMP}/acpp/build"
-          cmake --install "${RUNNER_TEMP}/acpp/build"
-          rm -rf "${RUNNER_TEMP}/acpp"
-          echo "acpp_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
-          df -h /
+        run: bash scripts/ci/macos-acpp-build.sh
 
       - name: Probe AdaptiveCpp devices
         id: probe
@@ -276,6 +172,13 @@ jobs:
             echo "metal_device=no" >> "${GITHUB_OUTPUT}"
             echo "No Metal device visible; CPU-only job." >> "${GITHUB_STEP_SUMMARY}"
           fi
+          # Known Metal failures, run report-only: #171 on every device; #172
+          # on the hosted runner's paravirtual GPU.
+          report_only='fzb_runtime_tests\.metal_step_n'
+          if grep -qi 'paravirtual' acpp-info.txt; then
+            report_only="${report_only}|mc\.cli\..*|mc\.tally_kernel"
+          fi
+          echo "metal_report_only=^(${report_only})\$" >> "${GITHUB_OUTPUT}"
 
       - name: Configure and build fuzzybits (metal preset)
         id: product
@@ -326,21 +229,35 @@ jobs:
       - name: ctest Metal (label mc)
         if: ${{ always() && steps.probe.outputs.metal_device == 'yes' && steps.product.outcome == 'success' }}
         timeout-minutes: 15
-        continue-on-error: true
         env:
           ACPP_VISIBILITY_MASK: metal
           ACPP_DEBUG_LEVEL: "0"
           ACPP_PERSISTENT_RUNTIME: "1"
+          METAL_REPORT_ONLY: ${{ steps.probe.outputs.metal_report_only }}
         run: |
           set -euo pipefail
           export PATH="${ACPP_PREFIX}/bin:${PATH}"
           export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
           start=$(date +%s)
           # Per-test TIMEOUT 60 is set in tests/mc/CMakeLists.txt.
-          # Device-code failures (double, 64-bit atomics) belong to #30.
-          ctest --preset metal -L mc --output-on-failure --no-tests=error \
+          ctest --preset metal -L mc -E "${METAL_REPORT_ONLY}" --output-on-failure --no-tests=error \
             | tee metal-ctest.log
           echo "metal_ctest_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+
+      - name: ctest Metal known failures (#171, #172, report only)
+        if: ${{ always() && steps.probe.outputs.metal_device == 'yes' && steps.product.outcome == 'success' }}
+        timeout-minutes: 10
+        continue-on-error: true
+        env:
+          ACPP_VISIBILITY_MASK: metal
+          ACPP_DEBUG_LEVEL: "0"
+          ACPP_PERSISTENT_RUNTIME: "1"
+          METAL_REPORT_ONLY: ${{ steps.probe.outputs.metal_report_only }}
+        run: |
+          set -euo pipefail
+          export PATH="${ACPP_PREFIX}/bin:${PATH}"
+          export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+          ctest --preset metal -L mc -R "${METAL_REPORT_ONLY}" --output-on-failure --no-tests=error
 
       - name: Record timings
         if: always()
@@ -423,29 +340,7 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
-        run: |
-          set -euo pipefail
-          brew install llvm@20 libomp ninja ccache coreutils cmake
-          brew install lld@20 || brew install lld || true
-          LLVM_PREFIX="$(brew --prefix llvm@20)"
-          OMP_PREFIX="$(brew --prefix libomp)"
-          LLD_BIN=""
-          for c in \
-              "$(brew --prefix lld@20 2>/dev/null)/bin/ld64.lld" \
-              "$(brew --prefix lld 2>/dev/null)/bin/ld64.lld" \
-              "${LLVM_PREFIX}/bin/ld64.lld"; do
-            if [[ -x "${c}" ]]; then
-              LLD_BIN="${c}"
-              break
-            fi
-          done
-          test -n "${LLD_BIN}"
-          echo "${LLVM_PREFIX}/bin" >> "${GITHUB_PATH}"
-          echo "LLVM_PREFIX=${LLVM_PREFIX}" >> "${GITHUB_ENV}"
-          echo "OMP_PREFIX=${OMP_PREFIX}" >> "${GITHUB_ENV}"
-          echo "ACPP_LLD_PATH=${LLD_BIN}" >> "${GITHUB_ENV}"
-          ccache -z || true
-          df -h /
+        run: bash scripts/ci/macos-brew-deps.sh
 
       - name: uv
         uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
@@ -478,96 +373,14 @@ jobs:
 
       - name: Build Boost 1.89
         if: steps.boost-cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          start=$(date +%s)
-          mkdir -p "${BOOST_PREFIX}" "${RUNNER_TEMP}/boost"
-          curl -fsSL -o "${RUNNER_TEMP}/boost/boost.tar.gz" "${BOOST_URL}"
-          echo "${BOOST_SHA256}  ${RUNNER_TEMP}/boost/boost.tar.gz" | shasum -a 256 -c
-          mkdir -p "${RUNNER_TEMP}/boost/src"
-          tar -xzf "${RUNNER_TEMP}/boost/boost.tar.gz" -C "${RUNNER_TEMP}/boost/src" --strip-components=1
-          cmake -S "${RUNNER_TEMP}/boost/src" -B "${RUNNER_TEMP}/boost/build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="${BOOST_PREFIX}" \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DBOOST_INCLUDE_LIBRARIES="${BOOST_INCLUDE_LIBRARIES}"
-          cmake --build "${RUNNER_TEMP}/boost/build"
-          cmake --install "${RUNNER_TEMP}/boost/build"
-          mkdir -p "${BOOST_PREFIX}/include/boost"
-          cp -a "${RUNNER_TEMP}/boost/src/libs/dll/include/boost/dll.hpp" \
-            "${BOOST_PREFIX}/include/boost/dll.hpp"
-          cp -a "${RUNNER_TEMP}/boost/src/libs/dll/include/boost/dll" \
-            "${BOOST_PREFIX}/include/boost/dll"
-          rm -rf "${RUNNER_TEMP}/boost"
-          echo "boost_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
-          df -h /
+        run: bash scripts/ci/macos-boost-build.sh
 
       - name: Fetch metal-cpp
-        run: |
-          set -euo pipefail
-          if [[ ! -f "${METAL_CPP_DIR}/Metal/Metal.hpp" ]]; then
-            rm -rf "${METAL_CPP_DIR}"
-            git clone --depth 1 --branch "${METAL_CPP_VERSION}" \
-              https://github.com/apple/metal-cpp.git "${METAL_CPP_DIR}"
-          fi
-          test -f "${METAL_CPP_DIR}/Metal/Metal.hpp"
-          git -C "${METAL_CPP_DIR}" rev-parse HEAD
+        run: bash scripts/ci/macos-metal-cpp-fetch.sh
 
       - name: Build AdaptiveCpp (Metal + OpenMP SSCP)
         id: acpp-build
-        run: |
-          set -euo pipefail
-          start=$(date +%s)
-          acpp_ok=0
-          if [[ -x "${ACPP_PREFIX}/bin/acpp-info" ]]; then
-            if DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}" \
-                 "${ACPP_PREFIX}/bin/acpp-info" >/dev/null 2>&1; then
-              acpp_ok=1
-            fi
-          fi
-          if [[ "${acpp_ok}" -eq 1 ]]; then
-            echo "AdaptiveCpp cache hit at ${ACPP_PREFIX}"
-            echo "cache=hit" >> "${GITHUB_OUTPUT}"
-            echo "acpp_build_seconds=0" >> "${GITHUB_ENV}"
-            exit 0
-          fi
-          echo "cache=miss" >> "${GITHUB_OUTPUT}"
-          rm -rf "${ACPP_PREFIX}"
-          mkdir -p "${ACPP_PREFIX}" "${RUNNER_TEMP}/acpp"
-          git clone --filter=blob:none "${ACPP_REPO}" "${RUNNER_TEMP}/acpp/src"
-          git -C "${RUNNER_TEMP}/acpp/src" fetch --depth 1 origin "${ACPP_REF_METAL}"
-          git -C "${RUNNER_TEMP}/acpp/src" checkout --detach FETCH_HEAD
-          got=$(git -C "${RUNNER_TEMP}/acpp/src" rev-parse HEAD)
-          test "${got}" = "${ACPP_REF_METAL}"
-          cmake -S "${RUNNER_TEMP}/acpp/src" -B "${RUNNER_TEMP}/acpp/build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=/usr/bin/clang \
-            -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCLANG_EXECUTABLE_PATH="${LLVM_PREFIX}/bin/clang++" \
-            -DLLVM_DIR="${LLVM_PREFIX}/lib/cmake/llvm" \
-            -DCMAKE_OSX_SYSROOT="$(xcrun --show-sdk-path)" \
-            -DCMAKE_INSTALL_PREFIX="${ACPP_PREFIX}" \
-            -DWITH_OPENCL_BACKEND=OFF \
-            -DWITH_CUDA_BACKEND=OFF \
-            -DWITH_ROCM_BACKEND=OFF \
-            -DWITH_LEVEL_ZERO_BACKEND=OFF \
-            -DWITH_METAL_BACKEND=ON \
-            -DACPP_COMPILER_FEATURE_PROFILE=full \
-            -DACPP_LLD_PATH="${ACPP_LLD_PATH}" \
-            -DMETAL_INCLUDE_DIR="${METAL_CPP_DIR}" \
-            -DSEQUENTIAL_LINK_LINE="${OMP_PREFIX}/lib/libomp.dylib" \
-            "-DOMP_LINK_LINE=-fopenmp ${OMP_PREFIX}/lib/libomp.dylib -L${OMP_PREFIX}/lib/" \
-            "-DOMP_CXX_FLAGS=-fopenmp -D_ENABLE_EXTENDED_ALIGNED_STORAGE -I${OMP_PREFIX}/include"
-          cmake --build "${RUNNER_TEMP}/acpp/build"
-          cmake --install "${RUNNER_TEMP}/acpp/build"
-          rm -rf "${RUNNER_TEMP}/acpp"
-          echo "acpp_build_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
-          df -h /
+        run: bash scripts/ci/macos-acpp-build.sh
 
       - name: Build wheels
         id: wheel

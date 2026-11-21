@@ -132,6 +132,17 @@ namespace scram::mc::event {
         return os;
     }
 
+    
+    template<typename bitpack_t_>
+    struct device_tally : node<bitpack_t_> {
+        /// @brief Count of positive outcomes (1-bits) across all samples
+        std::size_t num_one_bits = 0;
+
+        /// @brief Count of total outcomes evaluated so far
+        std::size_t total_bits = 0;
+
+    };
+
     /**
      * @struct tally
      * @brief Accumulates and stores statistical results from Monte Carlo sampling
@@ -162,13 +173,7 @@ namespace scram::mc::event {
      * @endcode
      */
     template<typename bitpack_t_>
-    struct tally : node<bitpack_t_> {
-        /// @brief Count of positive outcomes (1-bits) across all samples
-        std::size_t num_one_bits = 0;
-
-        /// @brief Count of total outcomes evaluated so far
-        std::size_t total_bits = 0;
-        
+    struct tally : device_tally<bitpack_t_> {
         /// @brief Estimated mean probability based on sample proportion
         std::double_t mean = 0.;
         
@@ -202,7 +207,7 @@ namespace scram::mc::event {
      * @endcode
      */
     template<typename bitpack_t_>
-    void destroy_tally_event(const sycl::queue queue, tally<bitpack_t_> *event) {
+    void destroy_tally_event(const sycl::queue queue, device_tally<bitpack_t_> *event) {
         sycl::free(event, queue);
     }
 
@@ -423,7 +428,7 @@ namespace scram::mc::event {
      * no extra fields beyond the base `node_block`.
      */
     template<typename bitpack_t_>
-    struct tally_block : public node_block<tally<bitpack_t_>> {
+    struct tally_block : public node_block<device_tally<bitpack_t_>> {
         // no additional state – buffers are external
     };
 
@@ -439,7 +444,7 @@ namespace scram::mc::event {
     create_tally_block(const sycl::queue                    &queue,
                        const std::vector<bitpack_t_ *>      &source_buffers) {
         const std::size_t n = source_buffers.size();
-        using tally_t = tally<bitpack_t_>;
+        using tally_t = device_tally<bitpack_t_>;
         const auto align = queue.get_device().get_info<cache_line_bytes>();
         tally_t *tallies = sycl::aligned_alloc_shared<tally_t>(align, n, queue);
 
@@ -447,9 +452,6 @@ namespace scram::mc::event {
             tallies[i].buffer       = source_buffers[i];
             tallies[i].num_one_bits = 0;
             tallies[i].total_bits   = 0;
-            tallies[i].mean         = 0.0;
-            tallies[i].std_err      = 0.0;
-            tallies[i].ci           = {0.0, 0.0, 0.0, 0.0};
         }
 
         tally_block<bitpack_t_> blk;
