@@ -43,6 +43,32 @@ std::string shell_quote(const std::string &s) {
 #endif
 }
 
+// RFC 4180 fields on a single line: device strings in the row are quoted.
+std::vector<std::string> split_csv_line(const std::string &line) {
+  std::vector<std::string> fields(1);
+  bool quoted = false;
+  for (std::size_t i = 0; i < line.size(); ++i) {
+    const char c = line[i];
+    if (quoted) {
+      if (c == '"' && i + 1 < line.size() && line[i + 1] == '"') {
+        fields.back().push_back('"');
+        ++i;
+      } else if (c == '"') {
+        quoted = false;
+      } else {
+        fields.back().push_back(c);
+      }
+    } else if (c == '"') {
+      quoted = true;
+    } else if (c == ',') {
+      fields.emplace_back();
+    } else {
+      fields.back().push_back(c);
+    }
+  }
+  return fields;
+}
+
 HitsN parse_convergence_csv(const std::filesystem::path &csv) {
   std::ifstream in(csv);
   REQUIRE(in);
@@ -51,22 +77,8 @@ HitsN parse_convergence_csv(const std::filesystem::path &csv) {
   std::string row;
   REQUIRE(std::getline(in, row));
 
-  std::vector<std::string> keys;
-  {
-    std::stringstream ss(header);
-    std::string k;
-    while (std::getline(ss, k, ',')) {
-      keys.push_back(k);
-    }
-  }
-  std::vector<std::string> vals;
-  {
-    std::stringstream ss(row);
-    std::string v;
-    while (std::getline(ss, v, ',')) {
-      vals.push_back(v);
-    }
-  }
+  const auto keys = split_csv_line(header);
+  const auto vals = split_csv_line(row);
   REQUIRE(keys.size() == vals.size());
   HitsN out;
   for (std::size_t i = 0; i < keys.size(); ++i) {
@@ -98,6 +110,8 @@ void check_n(const std::filesystem::path &xml, std::uint64_t requested) {
 
   const auto tmp = std::filesystem::temp_directory_path() /
                    ("fuzzybits-cli-id-" + xml.stem().string() + "-" + std::to_string(requested));
+  // scram-cli appends to convergence.csv; a failed earlier run leaves its rows behind.
+  std::filesystem::remove_all(tmp);
   std::filesystem::create_directories(tmp);
   const auto pcfb = tmp / (xml.stem().string() + ".pcfb");
   const auto report = tmp / "report.xml";
