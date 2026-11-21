@@ -16,10 +16,15 @@ TEST_CASE("default SYCL queue honours ACPP_VISIBILITY_MASK", "[mc][device]") {
     return;
   }
   const std::string vis{mask};
+  const int backend = static_cast<int>(queue.get_device().get_backend());
+  INFO("sycl::backend=" << backend);
   if (vis == "omp") {
     CHECK(type == sycl::info::device_type::cpu);
-  } else if (vis == "cuda" || vis == "hip" || vis == "metal") {
+  } else if (vis == "cuda" || vis == "hip") {
     CHECK(type == sycl::info::device_type::gpu);
+  } else if (vis == "metal") {
+    CHECK(type == sycl::info::device_type::gpu);
+    CHECK(backend == 5);
   } else {
     SUCCEED();
   }

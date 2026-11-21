@@ -295,6 +295,18 @@ class layer_manager {
     /// @brief Map from node index to allocated blocks
     std::vector<event::tally_block<bitpack_t_>> device_tally_blocks_;
 
+    /// Metal-only cumulative hits, keyed by PDAG index. Not stored in USM
+    /// because wait() copies the device tally image (hits=0) over host writes.
+    std::unordered_map<index_t_, std::size_t> metal_host_hits_;
+
+    /// Host copies of gate/tally I/O. Not on `gate_block`/`tally_block`: those
+    /// wrappers are captured by kernel functors.
+    std::vector<scram::mc::compat::metal_gate_host_io<bitpack_t_>> metal_gate_ios_;
+    std::vector<scram::mc::compat::metal_gate_host_io<bitpack_t_>> metal_atleast_ios_;
+    std::vector<scram::mc::compat::metal_tally_host_io<bitpack_t_>> metal_tally_ios_;
+
+    void snapshot_metal_host_io();
+
     /**
      * @brief Recursively gathers all nodes from a gate hierarchy
      * 

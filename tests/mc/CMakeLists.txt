@@ -77,3 +77,52 @@ set_tests_properties(mc.device_selection PROPERTIES
   LABELS "mc"
   TIMEOUT ${MC_TEST_TIMEOUT}
 )
+
+# Removal canaries for src/mc/compat/metal.h. Not labelled `mc`. Default
+# presets exclude `metal-canary`. On Apple, AdaptiveCpp aborts (SIGABRT);
+# CTest WILL_FAIL does not treat that as an expected failure, so macos-metal
+# uses metal_canary_xfail.cmake (xfail-strict).
+add_executable(mc_metal_canary_tests metal_canary_tests.cc)
+target_link_libraries(mc_metal_canary_tests PRIVATE Catch2::Catch2WithMain mc)
+target_include_directories(mc_metal_canary_tests PRIVATE
+  "${PROJECT_SOURCE_DIR}/src"
+  "${PROJECT_SOURCE_DIR}/tests"
+)
+add_sycl_to_target(TARGET mc_metal_canary_tests SOURCES metal_canary_tests.cc)
+
+set(_metal_xfail_canaries reduce64 double)
+foreach(_canary IN LISTS _metal_xfail_canaries)
+  if(APPLE)
+    add_test(NAME mc.metal_canary.${_canary}
+      COMMAND ${CMAKE_COMMAND}
+        "-DCANARY_COMMAND=$<TARGET_FILE:mc_metal_canary_tests>"
+        "-DCANARY_FILTER=[${_canary}]"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/metal_canary_xfail.cmake")
+  else()
+    add_test(NAME mc.metal_canary.${_canary} COMMAND mc_metal_canary_tests "[${_canary}]")
+  endif()
+  set_tests_properties(mc.metal_canary.${_canary} PROPERTIES
+    LABELS "metal-canary"
+    TIMEOUT ${MC_TEST_TIMEOUT}
+  )
+endforeach()
+
+# 64-bit fetch_add and single nested-USM popcount are host-visible on the
+# hosted Metal device; not shims. Double-indirection `bitpack_t **` in gate
+# kernels is still host-evaluated (host_eval_gate_if_metal).
+add_test(NAME mc.metal_canary.atomic64 COMMAND mc_metal_canary_tests "[atomic64]")
+set_tests_properties(mc.metal_canary.atomic64 PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)
+add_test(NAME mc.metal_canary.device_tally_hits COMMAND mc_metal_canary_tests "[device_tally_hits]")
+set_tests_properties(mc.metal_canary.device_tally_hits PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)
+
+add_test(NAME mc.metal_reduce32_3d COMMAND mc_metal_canary_tests "[reduce32-3d]")
+set_tests_properties(mc.metal_reduce32_3d PROPERTIES
+  LABELS "mc"
+  TIMEOUT ${MC_TEST_TIMEOUT}
+)

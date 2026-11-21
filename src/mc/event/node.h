@@ -33,11 +33,14 @@
 
 #include "logger.h"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <sycl/sycl.hpp>
 #include <vector>
 
+#include "mc/compat/metal.h"
 #include "mc/event/sample_shape.h"
 
 using cache_line_bytes = sycl::info::device::global_mem_cache_line_size;
@@ -168,15 +171,35 @@ namespace scram::mc::event {
 
         /// @brief Count of total outcomes evaluated so far
         std::size_t total_bits = 0;
-        
-        /// @brief Estimated mean probability based on sample proportion
-        std::double_t mean = 0.;
-        
-        /// @brief Standard error of the probability estimate
-        std::double_t std_err = 0.;
-        
-        /// @brief Confidence intervals: [lower_95, upper_95, lower_99, upper_99]
-        std::array<double_t, 4> ci = {0., 0., 0., 0.};
+
+        /// Host-only mean / std_err / ci[4], stored as six uint64 words so the
+        /// device struct type contains no `double` (Metal LLVMToMetal rejects
+        /// it). Layout matches the previous six `std::double_t` fields. Do not
+        /// load these words from device kernels.
+        std::uint64_t host_fp_words_[compat::kTallyHostFpWords]{};
+
+        struct host_fp {
+            std::double_t mean = 0.;
+            std::double_t std_err = 0.;
+            std::array<std::double_t, 4> ci = {0., 0., 0., 0.};
+        };
+        static_assert(sizeof(host_fp) == compat::kTallyHostFpBytes);
+
+        struct host_view {
+            std::size_t num_one_bits;
+            std::size_t total_bits;
+            std::double_t mean;
+            std::double_t std_err;
+            std::array<std::double_t, 4> ci;
+        };
+
+        [[nodiscard]] host_fp &fp() { return *reinterpret_cast<host_fp *>(host_fp_words_); }
+        [[nodiscard]] const host_fp &fp() const { return *reinterpret_cast<const host_fp *>(host_fp_words_); }
+
+        [[nodiscard]] host_view view() const {
+            const auto &f = fp();
+            return {num_one_bits, total_bits, f.mean, f.std_err, f.ci};
+        }
     };
 
     /**
@@ -424,7 +447,8 @@ namespace scram::mc::event {
      */
     template<typename bitpack_t_>
     struct tally_block : public node_block<tally<bitpack_t_>> {
-        // no additional state – buffers are external
+        // Kernel functors copy this wrapper by value. Do not add host-only
+        // containers here — LLVMToMetal emits their dtors as `_ZdlPvm`.
     };
 
     /**
@@ -447,9 +471,7 @@ namespace scram::mc::event {
             tallies[i].buffer       = source_buffers[i];
             tallies[i].num_one_bits = 0;
             tallies[i].total_bits   = 0;
-            tallies[i].mean         = 0.0;
-            tallies[i].std_err      = 0.0;
-            tallies[i].ci           = {0.0, 0.0, 0.0, 0.0};
+            tallies[i].fp()         = {};
         }
 
         tally_block<bitpack_t_> blk;
@@ -724,11 +746,12 @@ namespace scram::mc::event {
 
 template<typename bitpack_t_>
 inline std::ostream &operator<<(std::ostream &os, const event::tally<bitpack_t_> &t) {
-       os << "p01= " << t.ci[2] << "  |  "
-          << "p05= " << t.ci[0] << "  |  "
-          << "mu = " << t.mean  << "  |  "
-          << "p95= " << t.ci[1] << "  |  "
-          << "p99= " << t.ci[3] << "  |  ";
+       const auto &fp = t.fp();
+       os << "p01= " << fp.ci[2] << "  |  "
+          << "p05= " << fp.ci[0] << "  |  "
+          << "mu = " << fp.mean  << "  |  "
+          << "p95= " << fp.ci[1] << "  |  "
+          << "p99= " << fp.ci[3] << "  |  ";
         return os;
     }
 

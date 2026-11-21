@@ -103,10 +103,10 @@ class convergence_controller {
         // The half_width helper expects the *Z*-score. We pre-computed the
         // two-sided normal quantile when initialising `targets_`, so use it
         // here instead of the confidence level itself.
-        interval_.current.half_width_epsilon = stats::half_width(tally, target_z);
-        interval_.current.half_width_epsilon_log10 = stats::half_width_log10(tally, target_z);
+        interval_.current.half_width_epsilon = stats::half_width(tally.fp(), target_z);
+        interval_.current.half_width_epsilon_log10 = stats::half_width_log10(tally.fp(), target_z);
         // ------------------ update target epsilon, log10-epsilon----------------------
-        const auto p_hat = std::max(tally.mean, stats::DELTA_EPSILON);
+        const auto p_hat = std::max(tally.fp().mean, stats::DELTA_EPSILON);
         const auto p_hat_log10 = std::log10(p_hat);
         // set the target epsilon as a fraction of the estimated mean
         const std::double_t target_epsilon = settings_.ci_rel_margin_error() * p_hat;
@@ -250,9 +250,9 @@ class convergence_controller {
         if (worst_tally_ptr) {
             current_tally_.num_one_bits = worst_tally_ptr->num_one_bits;
             current_tally_.total_bits   = worst_tally_ptr->total_bits;
-            current_tally_.mean         = worst_tally_ptr->mean;
-            current_tally_.std_err      = worst_tally_ptr->std_err;
-            current_tally_.ci           = worst_tally_ptr->ci;
+            current_tally_.fp().mean    = worst_tally_ptr->mean;
+            current_tally_.fp().std_err = worst_tally_ptr->std_err;
+            current_tally_.fp().ci      = worst_tally_ptr->ci;
         }
     }
 
@@ -470,14 +470,14 @@ public:
     [[nodiscard]] std::optional<stats::AccuracyMetrics> accuracy_metrics() const {
         std::optional<stats::AccuracyMetrics> metrics;
         if (diagnostics_enabled()) {
-            metrics = stats::compute_accuracy_metrics(current_tally(), settings_.oracle_p());
+            metrics = stats::compute_accuracy_metrics(current_tally().view(), settings_.oracle_p());
         }
         return metrics;
     }
     [[nodiscard]] std::optional<stats::SamplingDiagnostics> sampling_diagnostics() const {
         std::optional<stats::SamplingDiagnostics> sampling_diagnostics;
         if (diagnostics_enabled()) {
-            sampling_diagnostics = stats::compute_sampling_diagnostics(current_tally(), settings_.oracle_p(), target_state());
+            sampling_diagnostics = stats::compute_sampling_diagnostics(current_tally().view(), settings_.oracle_p(), target_state());
         }
         return sampling_diagnostics;
     }

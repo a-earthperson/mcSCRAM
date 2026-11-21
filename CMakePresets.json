@@ -162,7 +162,7 @@
       },
       "filter": {
         "exclude": {
-          "label": "quarantine"
+          "label": "quarantine|metal-canary"
         }
       },
       "environment": {
@@ -180,7 +180,7 @@
       },
       "filter": {
         "exclude": {
-          "label": "quarantine"
+          "label": "quarantine|metal-canary"
         }
       },
       "environment": {
@@ -208,7 +208,7 @@
       },
       "filter": {
         "exclude": {
-          "label": "quarantine"
+          "label": "quarantine|metal-canary"
         }
       },
       "environment": {
@@ -226,7 +226,7 @@
       },
       "filter": {
         "exclude": {
-          "label": "quarantine"
+          "label": "quarantine|metal-canary"
         }
       },
       "environment": {
@@ -244,7 +244,7 @@
       },
       "filter": {
         "exclude": {
-          "label": "quarantine"
+          "label": "quarantine|metal-canary"
         }
       },
       "environment": {
@@ -262,7 +262,7 @@
       },
       "filter": {
         "exclude": {
-          "label": "quarantine"
+          "label": "quarantine|metal-canary"
         }
       },
       "environment": {
