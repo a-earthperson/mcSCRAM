@@ -172,6 +172,13 @@ jobs:
             echo "metal_device=no" >> "${GITHUB_OUTPUT}"
             echo "No Metal device visible; CPU-only job." >> "${GITHUB_STEP_SUMMARY}"
           fi
+          # Known Metal failures, run report-only: #171 on every device; #172
+          # on the hosted runner's paravirtual GPU.
+          report_only='fzb_runtime_tests\.metal_step_n'
+          if grep -qi 'paravirtual' acpp-info.txt; then
+            report_only="${report_only}|mc\.cli\..*|mc\.tally_kernel"
+          fi
+          echo "metal_report_only=^(${report_only})\$" >> "${GITHUB_OUTPUT}"
 
       - name: Configure and build fuzzybits (metal preset)
         id: product
@@ -222,21 +229,35 @@ jobs:
       - name: ctest Metal (label mc)
         if: ${{ always() && steps.probe.outputs.metal_device == 'yes' && steps.product.outcome == 'success' }}
         timeout-minutes: 15
-        continue-on-error: true
         env:
           ACPP_VISIBILITY_MASK: metal
           ACPP_DEBUG_LEVEL: "0"
           ACPP_PERSISTENT_RUNTIME: "1"
+          METAL_REPORT_ONLY: ${{ steps.probe.outputs.metal_report_only }}
         run: |
           set -euo pipefail
           export PATH="${ACPP_PREFIX}/bin:${PATH}"
           export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
           start=$(date +%s)
           # Per-test TIMEOUT 60 is set in tests/mc/CMakeLists.txt.
-          # Device-code failures (double, 64-bit atomics) belong to #30.
-          ctest --preset metal -L mc --output-on-failure --no-tests=error \
+          ctest --preset metal -L mc -E "${METAL_REPORT_ONLY}" --output-on-failure --no-tests=error \
             | tee metal-ctest.log
           echo "metal_ctest_seconds=$(( $(date +%s) - start ))" >> "${GITHUB_ENV}"
+
+      - name: ctest Metal known failures (#171, #172, report only)
+        if: ${{ always() && steps.probe.outputs.metal_device == 'yes' && steps.product.outcome == 'success' }}
+        timeout-minutes: 10
+        continue-on-error: true
+        env:
+          ACPP_VISIBILITY_MASK: metal
+          ACPP_DEBUG_LEVEL: "0"
+          ACPP_PERSISTENT_RUNTIME: "1"
+          METAL_REPORT_ONLY: ${{ steps.probe.outputs.metal_report_only }}
+        run: |
+          set -euo pipefail
+          export PATH="${ACPP_PREFIX}/bin:${PATH}"
+          export DYLD_LIBRARY_PATH="${ACPP_PREFIX}/lib:${OMP_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+          ctest --preset metal -L mc -R "${METAL_REPORT_ONLY}" --output-on-failure --no-tests=error
 
       - name: Record timings
         if: always()

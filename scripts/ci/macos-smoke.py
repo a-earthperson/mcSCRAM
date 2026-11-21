@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""macOS wheel smoke: import, devices, omp 4σ, optional metal exception, pytest.
+"""macOS wheel smoke: import, devices, chinese within 4σ on omp (and metal), pytest.
+
+On a paravirtual Metal device (hosted runner) the Metal run must complete, but
+its accuracy is reported, not gated (#172).
 
 Arm64 wheels must ship Metal + OpenMP. x86_64 wheels are OpenMP + generic SSCP
 host JIT (no Metal). Intended for a clean venv that has only the wheel
@@ -95,7 +98,8 @@ def _run_child(script: str, extra_args: list[str], env: dict[str, str], timeout:
     )
 
 
-def smoke_devices(*, require_metal: bool) -> None:
+def smoke_devices(*, require_metal: bool) -> bool:
+    """Returns whether the visible Metal device is paravirtual (hosted runner)."""
     script = r"""
 import os, sys
 os.environ.pop("ACPP_VISIBILITY_MASK", None)
@@ -116,6 +120,7 @@ blob = " ".join(str(d).lower() for d in devices)
 has_omp = "omp" in backends or any(str(d.get("type", "")).lower() == "cpu" for d in devices)
 has_metal = "metal" in backends or "paravirtual" in blob or "metal" in blob or "apple" in blob
 print("has_omp", has_omp, "has_metal", has_metal, "backends", sorted(backends))
+print("paravirtual", "paravirtual" in blob)
 if not has_omp:
     raise SystemExit("OpenMP host device missing from list_devices()")
 if require_metal and not has_metal:
@@ -134,20 +139,21 @@ print("import+list_devices ok")
     sys.stderr.write(proc.stderr)
     if proc.returncode != 0:
         raise SystemExit(f"list_devices smoke failed rc={proc.returncode}")
+    return "paravirtual True" in proc.stdout.splitlines()
 
 
-def smoke_chinese(xml: Path) -> None:
+def smoke_chinese(xml: Path, backend: str, *, gate_accuracy: bool = True) -> None:
     script = r"""
 import math, os, sys
+xml, trials, ref, z, backend = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4]), sys.argv[5]
 os.environ.setdefault("ACPP_DEBUG_LEVEL", "0")
 os.environ.setdefault("ACPP_PERSISTENT_RUNTIME", "1")
-os.environ["FUZZYBITS_BACKEND"] = "omp"
-os.environ["ACPP_VISIBILITY_MASK"] = "omp"
+os.environ["FUZZYBITS_BACKEND"] = backend
+os.environ["ACPP_VISIBILITY_MASK"] = backend
 import fuzzybits
-fuzzybits.init(backend="omp")
-xml, trials, ref, z = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4])
+fuzzybits.init(backend=backend)
 blob = fuzzybits.compile([xml], pdag_c=2, no_kn=True)
-rows = fuzzybits.run(blob, trials=trials, backend="omp")
+rows = fuzzybits.run(blob, trials=trials, backend=backend)
 row = rows[0]
 p = float(row.estimate)
 n = float(row.n) if row.n else float(trials)
@@ -155,67 +161,25 @@ se = math.sqrt(p * (1.0 - p) / n) if 0.0 < p < 1.0 else float("nan")
 delta = abs(p - ref)
 bound = z * se
 print(
-    f"chinese: estimate={p:.6e} n={int(n)} se={se:.6e} "
+    f"chinese[{backend}]: estimate={p:.6e} n={int(n)} se={se:.6e} "
     f"ref={ref:.6e} |d|={delta:.6e} 4s={bound:.6e} ok={delta <= bound}"
 )
-sys.exit(0 if delta <= bound else 1)
+sys.exit(0 if delta <= bound else 3)
 """
     env = os.environ.copy()
-    env["FUZZYBITS_BACKEND"] = "omp"
-    env["ACPP_VISIBILITY_MASK"] = "omp"
-    proc = _run_child(script, [str(xml), str(TRIALS), str(CHINESE_REF), str(Z)], env, MC_TIMEOUT)
+    env["FUZZYBITS_BACKEND"] = backend
+    env["ACPP_VISIBILITY_MASK"] = backend
+    env["PYTHONFAULTHANDLER"] = "1"
+    proc = _run_child(script, [str(xml), str(TRIALS), str(CHINESE_REF), str(Z), backend], env, MC_TIMEOUT)
     sys.stdout.write(proc.stdout)
     sys.stderr.write(proc.stderr)
     if proc.returncode < 0:
-        raise SystemExit(f"omp chinese run crashed with signal {-proc.returncode}")
+        raise SystemExit(f"{backend} chinese run crashed with signal {-proc.returncode}")
+    if proc.returncode == 3 and not gate_accuracy:
+        print(f"::warning::{backend} chinese estimate outside 4 sigma on a paravirtual GPU (#172); not gating")
+        return
     if proc.returncode != 0:
-        raise SystemExit(f"omp chinese smoke failed rc={proc.returncode}")
-
-
-def smoke_metal(xml: Path) -> None:
-    script = r"""
-import os, sys
-os.environ.setdefault("ACPP_DEBUG_LEVEL", "2")
-os.environ.setdefault("ACPP_PERSISTENT_RUNTIME", "1")
-os.environ["FUZZYBITS_BACKEND"] = "metal"
-os.environ["ACPP_VISIBILITY_MASK"] = "metal"
-import fuzzybits
-fuzzybits.init(backend="metal")
-xml = sys.argv[1]
-blob = fuzzybits.compile([xml], pdag_c=2, no_kn=True)
-try:
-    rows = fuzzybits.run(blob, trials=1 << 16, backend="metal")
-except BaseException as exc:
-    print(f"metal_exception={type(exc).__name__}: {exc}")
-    text = str(exc).lower()
-    if "double" in text or "metal" in text or "sycl" in text or "adaptivecpp" in text or "not supported" in text:
-        print("metal expected JIT failure as Python exception")
-        sys.exit(0)
-    print("metal raised, but the message did not mention double/Metal/SYCL")
-    sys.exit(0)
-print("metal unexpectedly succeeded", rows)
-sys.exit(2)
-"""
-    env = os.environ.copy()
-    env["FUZZYBITS_BACKEND"] = "metal"
-    env["ACPP_VISIBILITY_MASK"] = "metal"
-    env["PYTHONFAULTHANDLER"] = "1"
-    proc = _run_child(script, [str(xml)], env, MC_TIMEOUT)
-    sys.stdout.write(proc.stdout)
-    sys.stdout.flush()
-    if proc.stderr:
-        sys.stderr.write("--- metal child stderr ---\n")
-        sys.stderr.write(proc.stderr)
-        sys.stderr.flush()
-    if proc.returncode < 0:
-        raise SystemExit(
-            f"metal run crashed with signal {-proc.returncode} "
-            "(wanted a Python exception, not abort; #17/#30)"
-        )
-    if proc.returncode == 2:
-        raise SystemExit("metal run succeeded; expected a double/JIT exception until #17/#30")
-    if proc.returncode != 0:
-        raise SystemExit(f"metal smoke failed rc={proc.returncode}")
+        raise SystemExit(f"{backend} chinese smoke failed rc={proc.returncode}")
 
 
 def run_pytest(repo: Path) -> None:
@@ -253,10 +217,10 @@ def main() -> int:
         raise SystemExit(f"fzb --help failed rc={help_proc.returncode}")
     if "Usage: fzb" not in help_proc.stdout:
         raise SystemExit("fzb --help did not print the native-style usage")
-    smoke_devices(require_metal=has_metal)
-    smoke_chinese(xml)
+    paravirtual = smoke_devices(require_metal=has_metal)
+    smoke_chinese(xml, "omp")
     if has_metal:
-        smoke_metal(xml)
+        smoke_chinese(xml, "metal", gate_accuracy=not paravirtual)
     else:
         print("skip metal smoke (OpenMP-only wheel)")
     run_pytest(repo)

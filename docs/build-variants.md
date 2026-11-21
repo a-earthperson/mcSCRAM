@@ -217,6 +217,11 @@ PYTHON_VERSIONS=3.12 scripts/ci/macos-wheel-versions.sh all   # wheel + smoke
 scripts/dev/macos-dev.sh doctor     # read-only state report
 ```
 
+On a macOS 27 host, Homebrew's `llvm@20`, `lld@20` and `libomp` bottles
+target macOS 27, so `delocate` rejects the default 26.0 wheel target; set
+`MACOSX_DEPLOYMENT_TARGET=27.2` for a local wheel (it then installs only on
+27.2+). Hosted `macos-26` runners are unaffected.
+
 The test presets set `ACPP_VISIBILITY_MASK` themselves (`omp` for
 `metal-local-cpu`, `metal` for `metal-local`), so a value exported in the
 shell does not move `cmake --workflow` onto the GPU; pick the test preset.
@@ -272,9 +277,12 @@ without flattening `hipSYCL/`. There is no `libmc.dylib`. Artifact names:
 Smoke (clean venv on the hosted runner): `import fuzzybits`;
 `list_devices()` shows the paravirtual Metal GPU and the OpenMP host;
 `fuzzybits.run(..., backend="omp")` on `input/Aralia/chinese.xml` at
-`trials=2**20` is within 4σ of `1.17058e-3`; `backend="metal"` raises a
-Python exception until #17/#30 (JIT: "Double type is not supported on Metal
-GPU"). CPU pytest: `pytest tests/python -m "not gpu"`.
+`trials=2**20` is within 4σ of `1.17058e-3`, and so is `backend="metal"`.
+On the paravirtual GPU the Metal run must complete, but its accuracy is
+reported, not gated
+([#172](https://github.com/fuzzybit-org/fuzzybits/issues/172)). The macos-metal
+job likewise runs `mc.cli.*` and `mc.tally_kernel` report-only there. CPU
+pytest: `pytest tests/python -m "not gpu"`.
 
 ### macOS x86_64 wheel
 
